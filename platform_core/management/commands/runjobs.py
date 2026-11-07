@@ -2,7 +2,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from django.core.management.base import BaseCommand
-from django.db import close_old_connections
+from django.db import close_old_connections, connections
 
 from platform_core.models import Organization
 from platform_modules.connectors.outbound import process_changes
@@ -15,7 +15,7 @@ def deliver(organization):
     try:
         return process_changes(organization, limit=1)
     finally:
-        close_old_connections()
+        connections.close_all()
 
 
 class Command(BaseCommand):

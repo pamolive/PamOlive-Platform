@@ -19,7 +19,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import DatabaseError, close_old_connections, connection, transaction
+from django.db import DatabaseError, close_old_connections, connection, connections, transaction
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -705,7 +705,7 @@ class ConcurrentClaimTests(TransactionTestCase):
                 result = _claim(organization)
                 return result.pk if result else None
             finally:
-                close_old_connections()
+                connections.close_all()
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             results = list(executor.map(lambda _: claim(), range(2)))
