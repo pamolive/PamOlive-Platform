@@ -107,6 +107,16 @@ Ces fonctions exploitent les objets et événements disponibles. Elles ne branch
 
 Python 3.12+, `python -m venv .venv`, puis installer `requirements-dev.lock`. Utiliser `python manage.py test` et `ruff check .`. SQLite est réservé aux tests rapides locaux ; la CI et les contrôles de contraintes utilisent PostgreSQL réel.
 
+L’image contient aussi les moteurs natifs SSH/RDP en préparation, sans les démarrer dans l’application. Pour vérifier leur chargement et un véritable aller-retour SSH vers un serveur factice éphémère, sous Linux, macOS, Windows ou sur le NAS :
+
+```sh
+docker build -t pamolive-platform:check .
+docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:check -m deploy.check_guacd
+docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:check -m deploy.check_native_ssh
+```
+
+Ces conteneurs de test sont temporaires, n’accèdent à aucune base ni machine externe et n’installent pas de compte système. Ils ne constituent pas encore un relais utilisable depuis l’interface ni un test de login RDP. Les fins de ligne des scripts sont conservées en LF, y compris dans un clone Windows ; le client tiers conserve ses octets et son empreinte d’origine.
+
 ## Documentation
 
 - [Vision produit](docs/product-vision.md) et [atlas visuel autonome](docs/architecture-platform.html)

@@ -44,6 +44,7 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 - Préparation du transport PAM dans l’image unique : moteur natif Guacamole SSH/RDP compilé depuis une source épinglée et signée, bibliothèques chargées en test isolé, sans Java/Tomcat ni service Compose supplémentaire. Le moteur n’est pas encore démarré par le runtime de production.
 - Sondes pré-authentification SSH et RDP : clé d’hôte ou empreinte SHA-256 obligatoire, NLA/TLS exigés pour RDP, validité temporelle du certificat contrôlée, hôtes/ports et réseaux autorisés explicitement, résolution IP épinglée. Elles n’acceptent ni mot de passe ni clé privée et ne prouvent pas une connexion de compte réussie.
 - Cadrage Guacamole UTF-8 borné et liste fermée d’entrées clavier/souris/affichage ; refus des arguments de connexion, flux montants, fichiers et presse-papiers côté client. Ces primitives n’exposent pas encore de tunnel HTTP/WebSocket.
+- Test natif SSH sur serveur factice éphémère : mauvaise clé refusée avant authentification, bon couple clé/identifiants accepté, aller-retour clavier et fermeture effective du canal constatés. Il n’utilise aucun compte système, shell, serveur externe ni base de données. Ce test ne valide pas encore une ouverture via l’interface, un enregistrement, une révocation de bail en cours de flux ou un login RDP.
 
 ## Travail requis pour la cible complète
 
