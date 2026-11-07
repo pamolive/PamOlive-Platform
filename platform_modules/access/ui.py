@@ -39,7 +39,11 @@ from .services import create_record, ingest_event, revoke_identity
 
 CATALOG = {
     "identity": ("Identités", Identity, ("name", "kind", "email", "owner", "department")),
-    "resource": ("Ressources", Resource, ("name", "kind", "owner", "location", "critical")),
+    "resource": (
+        "Ressources",
+        Resource,
+        ("name", "kind", "owner", "location", "critical", "environment"),
+    ),
     "account": (
         "Comptes de connexion",
         ExternalAccount,
@@ -82,6 +86,9 @@ CATALOG = {
             "reference",
             "contract",
             "country_code",
+            "network_switch",
+            "network_port",
+            "network_vlan",
             "fulfillment",
             "starts_at",
             "ends_at",
@@ -106,6 +113,11 @@ CATALOG = {
             "evidence",
             "contract",
             "country_code",
+            "domain",
+            "network_switch",
+            "network_port",
+            "network_vlan",
+            "credential_observation",
         ),
     ),
 }
@@ -241,6 +253,7 @@ def record_detail(request, kind, object_id):
     title, model, fields = CATALOG[kind]
     require_module(request.organization, "access" if kind in ("intent", "event") else "identity")
     obj = get_object_or_404(model.objects, pk=object_id)
+    from platform_core.models import ModuleActivation
     from platform_modules.connectors.models import ExternalChange
 
     changes = ExternalChange.objects.none()
@@ -260,6 +273,12 @@ def record_detail(request, kind, object_id):
         "governance/detail.html",
         {
             "title": title,
+            "intelligence_enabled": ModuleActivation.objects.filter(
+                organization=request.organization, module_key="intelligence", enabled=True
+            ).exists(),
+            "evaluation_history": obj.evaluations.order_by("-evaluated_at")[:20]
+            if kind == "event"
+            else [],
             "external_changes": changes.order_by("-created_at")[:50],
             "obj": obj,
             "kind": kind,
@@ -513,6 +532,19 @@ def export_event(request, object_id):
             "source": event.source,
             "external_id": event.external_id,
             "evidence": event.evidence,
+            "facts": {
+                "identity_id": str(event.identity_id) if event.identity_id else None,
+                "account_id": str(event.account_id) if event.account_id else None,
+                "resource_id": str(event.resource_id),
+                "domain": event.domain or None,
+                "credential_id": str(event.credential_id) if event.credential_id else None,
+                "credential_observation": event.credential_observation,
+                "network_switch_id": str(event.network_switch_id)
+                if event.network_switch_id
+                else None,
+                "network_port": event.network_port or None,
+                "network_vlan": event.network_vlan or None,
+            },
             "evaluation": {
                 "verdict": evaluation.verdict,
                 "rule_version": evaluation.rule_version,
@@ -541,7 +573,11 @@ def api_events(request):
         if not isinstance(data, dict) or set(data) - allowed:
             raise ValueError
         with organization_context(source.organization):
-            form = model_form(AccessEvent, CATALOG["event"][2], {**data, "source": str(source.pk)})
+            form = model_form(
+                AccessEvent,
+                CATALOG["event"][2],
+                {"credential_observation": "identifier_only", **data, "source": str(source.pk)},
+            )
             if not form.is_valid():
                 return JsonResponse(
                     {"error": "invalid_event", "fields": form.errors.get_json_data()}, status=400
@@ -563,3 +599,18 @@ def health(request):
         return JsonResponse({"status": "ok"})
     except Exception:
         return JsonResponse({"status": "unavailable"}, status=503)
+
+
+@scoped("access", roles=("admin", "operator"))
+@require_POST
+def reevaluate(request, object_id):
+    from .services import reevaluate_event
+
+    get_object_or_404(AccessEvent.objects, pk=object_id)
+    reevaluate_event(object_id, actor=request.user, organization=request.organization)
+    messages.success(
+        request,
+        "Nouvelle évaluation ajoutée. "
+        "Le fait source et les évaluations précédentes sont conservés.",
+    )
+    return redirect("record-detail", kind="event", object_id=object_id)

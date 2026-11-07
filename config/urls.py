@@ -5,8 +5,35 @@ from platform_core.security import MFALoginForm, security_settings
 from platform_modules.access import ui
 from platform_modules.connectors import views as connector_views
 from platform_modules.governance import views as governance_views
+from platform_modules.intelligence import views as intelligence_views
 
 urlpatterns = [
+    path(
+        "intelligence/evidence/<slug:kind>/<uuid:object_id>/",
+        intelligence_views.evidence,
+        name="intelligence-evidence",
+    ),
+    path("events/<uuid:object_id>/reevaluate/", ui.reevaluate, name="event-reevaluate"),
+    path("intelligence/", intelligence_views.index, name="intelligence-home"),
+    path(
+        "intelligence/configuration/",
+        intelligence_views.configuration,
+        name="intelligence-configuration",
+    ),
+    path(
+        "intelligence/new/<slug:kind>/", intelligence_views.configure, name="intelligence-configure"
+    ),
+    path(
+        "intelligence/<slug:kind>/<uuid:object_id>/retire/",
+        intelligence_views.retire,
+        name="intelligence-retire",
+    ),
+    path(
+        "intelligence/graph/<uuid:object_id>/export/",
+        intelligence_views.graph_export,
+        name="intelligence-graph-export",
+    ),
+    path("api/v1/collection-reports/", intelligence_views.report_api, name="collection-report-api"),
     path("governance/", governance_views.index, name="governance-home"),
     path("governance/new/<slug:kind>/", governance_views.edit, name="governance-create"),
     path(

@@ -56,6 +56,15 @@ class AccessIntent(ScopedModel):
         ],
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    network_switch = models.ForeignKey(
+        "identity.Resource",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="expected_network_intents",
+    )
+    network_port = models.CharField("Port réseau demandé", max_length=80, blank=True)
+    network_vlan = models.CharField("VLAN demandé", max_length=80, blank=True)
 
     def clean(self):
         super().clean()
@@ -65,6 +74,11 @@ class AccessIntent(ScopedModel):
             raise ValidationError("La fin doit suivre le début.")
         if self.account_id and self.account.identity_id != self.identity_id:
             raise ValidationError("Le compte ne correspond pas à l’identité.")
+        if self.network_switch_id or self.network_port or self.network_vlan:
+            if not self.network_switch_id or not self.network_port or not self.network_vlan:
+                raise ValidationError("Un déplacement réseau exige switch, port et VLAN précis.")
+            if self.network_switch.kind != "network":
+                raise ValidationError("Le switch demandé doit être une ressource réseau.")
 
     def __str__(self):
         return f"{self.identity} → {self.resource} · {self.reference or self.method}"
@@ -98,6 +112,39 @@ class AccessEvent(ScopedModel):
         "Pays observé fourni par la source (2 lettres)", max_length=2, blank=True
     )
     evidence = models.TextField("Référence de preuve", blank=True)
+    domain = models.CharField(
+        "Domaine d’observation",
+        max_length=20,
+        blank=True,
+        choices=[
+            ("physical", "Physique"),
+            ("pam", "PAM"),
+            ("remote", "Assistance distante"),
+            ("network", "Réseau"),
+            ("application", "Application"),
+            ("certificate", "Certificat"),
+            ("directory", "Annuaire"),
+            ("cloud", "Cloud"),
+        ],
+    )
+    network_switch = models.ForeignKey(
+        "identity.Resource",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="switch_observations",
+    )
+    network_port = models.CharField("Port réseau observé", max_length=80, blank=True)
+    network_vlan = models.CharField("VLAN observé", max_length=80, blank=True)
+    credential_observation = models.CharField(
+        "Nature de l’observation du credential",
+        max_length=30,
+        default="identifier_only",
+        choices=[
+            ("identifier_only", "Identifiant public seulement"),
+            ("possession_asserted", "Possession déclarée par la source, non vérifiée ici"),
+        ],
+    )
 
     class Meta(ScopedModel.Meta):
         constraints = [
@@ -117,6 +164,8 @@ class AccessEvent(ScopedModel):
             raise ValidationError("Le compte observé ne correspond pas à l’identité.")
         if self.credential_id and self.identity_id != self.credential.identity_id:
             raise ValidationError("Le credential ne correspond pas à l’identité.")
+        if self.network_switch_id and self.network_switch.kind != "network":
+            raise ValidationError("Le switch observé doit être une ressource réseau.")
 
     def __str__(self):
         return f"{self.occurred_at:%d/%m %H:%M} · {self.action} · {self.resource}"
@@ -134,6 +183,6 @@ class AccessEvaluation(ScopedModel):
             ("unknown", "Contexte insuffisant"),
         ],
     )
-    rule_version = models.CharField(max_length=30, default="access-contract/2")
+    rule_version = models.CharField(max_length=30, default="access-context/3")
     findings = models.JSONField(default=list)
     evaluated_at = models.DateTimeField(auto_now_add=True)

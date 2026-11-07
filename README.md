@@ -90,6 +90,19 @@ Les pays et lieux déclarés dans une demande ne sont pas des preuves d’origin
 
 Les publications et retraits nécessitent une MFA récente personnelle. Les contrôles publiés restent applicables si l’interface du module est désactivée : cette désactivation ne constitue pas un contournement de politique. Aucun challenge MFA n’est injecté au milieu d’une session SSH/RDP.
 
+## Graphe et investigations
+
+Activer **Graphe et investigations** dans le catalogue de l’organisation. Aucune base graphe ni aucun conteneur supplémentaire : les relations et preuves restent dans PostgreSQL.
+
+1. Sélectionner une identité et une période pour afficher son graphe et sa chronologie. Contexte déclaré, autorisations locales, intentions approuvées et observations sont quatre couches différentes ; une flèche ne constitue pas à elle seule une permission ou une preuve de causalité.
+2. Dans **Relations et couverture des sources**, publier une relation avec sa provenance : identité qui possède un appareil, serveur situé dans une zone, porte gérée par une application, certificat attendu sur un hôte, ou topologie réseau déclarée. La confiance « vérifiée » désigne la vérification du déclarant, pas une certification cryptographique de PAM-olive.
+3. Publier les switch, port et VLAN attendus d’une identité machine. Les observations réseau fournissent ces trois champs. Un changement autorisé précise aussi ces valeurs dans son intention ; une autorisation générique ne justifie pas un déplacement vers n’importe quel port.
+4. Configurer les périmètres des sources de collecte puis envoyer des [rapports de collecte](docs/api.md). Une couverture de ressource ne vaut pas couverture de toute l’organisation. Une panne, un trou ou une limite de lecture interdit de conclure à une collecte complète.
+5. Utiliser les quatre investigations prédéfinies. L’intersection physique/privilégié exige des droits datés et un placement vérifié dans la zone. La recherche fournisseur/production exige un contrat applicable et une ressource explicitement classée « Production ». Un compte sans intention ponctuelle peut toujours disposer d’un droit permanent légitime.
+6. Ouvrir un événement pour ses preuves et ajouter une réévaluation sans réécrire le fait source. Les arrivées tardives et incertitudes d’horloge restent visibles. L’usage d’un certificat sur un autre hôte est un écart à examiner, jamais à lui seul une preuve de copie de clé privée.
+
+Ces fonctions exploitent les objets et événements disponibles. Elles ne branchent pas automatiquement TeamViewer, un badgeur ou un switch sans collecteur adapté à son API. Aucun jeu de données de démonstration n’est ajouté pendant l’installation.
+
 ## Développement et tests
 
 Python 3.12+, `python -m venv .venv`, puis installer `requirements-dev.lock`. Utiliser `python manage.py test` et `ruff check .`. SQLite est réservé aux tests rapides locaux ; la CI et les contrôles de contraintes utilisent PostgreSQL réel.

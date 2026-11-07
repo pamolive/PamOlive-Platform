@@ -133,6 +133,15 @@ def evaluate_event(event, *, organization):
                     and (not candidate.account_id or candidate.account_id == event.account_id)
                     and (not candidate.location or candidate.location == event.location)
                     and (not candidate.privilege or candidate.privilege == event.privilege)
+                    and (
+                        not candidate.network_switch_id
+                        or (
+                            candidate.network_switch_id,
+                            candidate.network_port,
+                            candidate.network_vlan,
+                        )
+                        == (event.network_switch_id, event.network_port, event.network_vlan)
+                    )
                 ):
                     match = candidate
                     break
@@ -250,7 +259,16 @@ def evaluate_event(event, *, organization):
             if credential.expires_at and credential.expires_at <= event.occurred_at:
                 verdict = "deviation"
                 add("credential_expired", "deviation", "Credential expiré.", credential.pk)
-            if credential.resource_id and credential.resource_id != event.resource_id:
+            from platform_modules.intelligence.services import expected_certificate_hosts
+
+            expected_hosts = (
+                expected_certificate_hosts(credential, event.occurred_at)
+                if credential.kind == "certificate"
+                else {credential.resource_id}
+                if credential.resource_id
+                else set()
+            )
+            if expected_hosts and event.resource_id not in expected_hosts:
                 verdict = "deviation"
                 add(
                     "credential_host",
@@ -258,6 +276,16 @@ def evaluate_event(event, *, organization):
                     "Usage sur une ressource inattendue ; à examiner.",
                     credential.pk,
                 )
+            elif credential.kind == "certificate" and not expected_hosts:
+                add(
+                    "credential_host",
+                    "unknown",
+                    "Aucun hôte attendu documenté à la date de l’événement.",
+                    credential.pk,
+                )
+        from platform_modules.intelligence.services import context_findings
+
+        findings.extend(context_findings(event, organization=organization, matched_intent=match))
         if event.result != "success":
             add(
                 "result",
@@ -354,3 +382,13 @@ def identity_status_at(identity, at):
         return last.next_status
     first = identity.state_changes.order_by("effective_at").first()
     return first.previous_status if first else identity.status
+
+
+@transaction.atomic
+def reevaluate_event(event_id, *, actor, organization):
+    authorize(actor, organization, roles=("admin", "operator"))
+    require_module(organization, "access")
+    Organization.objects.select_for_update().get(pk=organization.pk)
+    with organization_context(organization):
+        event = AccessEvent.objects.get(pk=event_id)
+        return evaluate_event(event, organization=organization)

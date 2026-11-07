@@ -8,7 +8,7 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 - MFA TOTP chiffrée, codes de récupération à usage unique et refus du rejeu de code.
 - Validation récente personnelle de 2/5/10/15 minutes et reprise du formulaire conservé après challenge.
 - Requêtes organisationnelles refusées sans contexte ; relations croisées refusées dans les modèles et par contraintes PostgreSQL.
-- Activation indépendante des sept modules livrés dans le même conteneur.
+- Activation indépendante des huit modules livrés dans le même conteneur.
 - Identités humaines, externes, machines, services, applications, workloads et API.
 - Comptes externes séparés, ressources physiques/numériques, références publiques de certificats et badges, droits motivés.
 - Intention datée avec méthode, ressource, compte, origine, privilège et justification.
@@ -32,6 +32,15 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 - Retrait ciblé des droits contractuels ; désactivation globale réservée aux comptes dédiés, conservation des comptes partagés et droits indépendants.
 - Évaluation temporelle : révision applicable à la date source, absence de justification rétroactive, conservation des preuves avant départ/révocation et pays observé non inventé.
 - Attribution SCIM différée au début de la fenêtre approuvée.
+- Graphe relationnel daté : comptes, ressources, certificats, fournisseurs, droits, intentions et observations ; liens de contexte avec provenance et confiance déclarée.
+- Relations explicites de propriété, hébergement dans une zone, application gestionnaire d’une porte, hôtes attendus de certificat et topologie réseau. Un lien de contexte ne crée aucun droit.
+- Chronologie physique/numérique d’une identité, arrivées tardives, précision d’horloge déclarée et ordre relatif incertain ; aucune attribution automatique d’une machine à son propriétaire.
+- Comparaison switch/port/VLAN attendu et observé ; un déplacement doit être précisément inclus dans une intention approuvée pour expliquer l’écart.
+- Écart d’hôte de certificat sans prétendre prouver une duplication de clé ; hôtes alternatifs datés et vérifiés par le déclarant.
+- Rapports de collecte immuables par source et périmètre, déduplication, corrections séquencées et calcul de couverture par intervalles. Une source activée n’est pas considérée collectante sans rapport.
+- Investigations datées : intersection accès physique/privilégié, fournisseurs vers production, comptes privilégiés sans intention ponctuelle et événements sans référence déclarée dans une intention rapprochée.
+- Réévaluations append-only des événements, historique conservé et export JSON du graphe et des faits réseau/certificats.
+- Les droits, intentions et liens sont datés ; les libellés, types de comptes et classifications de ressources restent leurs métadonnées actuelles, pas un inventaire historique complet.
 
 ## Travail requis pour la cible complète
 
@@ -39,7 +48,8 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 - Adaptateurs spécifiques AD/Entra, ticketing, accès physiques, PAM et collecte réseau/certificats ; création initiale de comptes et synchronisation d’inventaire. Le client SCIM livré couvre des comptes existants et des groupes, pas tous les fournisseurs SCIM.
 - Vérification des tickets/contrats dans leurs systèmes sources, catalogue de pays de confiance, gestion des délégations et escalades d’approbation. Les horaires sont vérifiés sur la fenêtre d’autorisation entière, pas appliqués nativement à chaque application SCIM.
 - Passerelle SSH/RDP, coupure effective et enregistrement des sessions : le bail existant est une autorisation, pas un tunnel.
-- Graphe inter-domaines complet, corrélation temporelle de plusieurs sources et couverture de collecte.
+- Résolution automatique des identifiants externes, groupes/roles métier transverses, preuves cryptographiques de possession de clé, ticketing vérifié et analyse de risque spécialisée. La chronologie rapproche des faits, pas des causes démontrées.
+- Parcours de grand graphe et pagination haute volumétrie. La projection actuelle limite le contexte à deux sauts, 120 nœuds et 400 relations ; chronologie à 500 événements, investigations à 1000 droits examinés, couverture à 100 périmètres et 500 rapports par périmètre. Les limites sont signalées ; une couverture tronquée n’est jamais déclarée complète.
 - Installation de paquets tiers par entry points, signature et entitlement commercial.
 - Vérifications de restauration, mise à niveau, charge et actif-actif à plusieurs instances.
 

@@ -27,3 +27,45 @@ Le pays déclaré dans une intention n’est jamais recopié comme pays observé
 La source est imposée par le jeton ; aucun `organization_id` ni `source` n’est accepté du client. Une nouvelle observation renvoie HTTP 201 ; son rejeu avec le même identifiant source renvoie HTTP 200 et le même UUID. Le fait initial n’est pas modifié.
 
 Le détail de l’événement et son export `/api/v1/events/<uuid>/export/` nécessitent une session interactive autorisée dans l’organisation. Les sources d’ingestion ne peuvent pas lire les données ou approuver des accès.
+
+## Contexte réseau et certificat
+
+Les observations acceptent également :
+
+```json
+{
+  "domain": "network",
+  "network_switch": "UUID d’une ressource réseau de cette organisation",
+  "network_port": "1/1/24",
+  "network_vlan": "RADIOLOGY",
+  "credential_observation": "identifier_only"
+}
+```
+
+Ces champs complètent le corps d’événement précédent, ils ne le remplacent pas. `domain` vaut `physical`, `pam`, `remote`, `network`, `application`, `certificate`, `directory` ou `cloud`. Sans domaine connu, ne pas en inventer un. `credential_observation` vaut `identifier_only` par défaut, ou `possession_asserted` si la source déclare avoir une preuve de possession ; PAM-olive ne vérifie pas cryptographiquement cette déclaration. Aucun secret ou certificat privé n’est transmis. Un certificat gouverné reste distinct de l’identité machine qui le possède.
+
+Les exports d’événements incluent les UUID et champs structurés dans `facts`, ainsi que les constats et leur version. Une réévaluation ajoute une explication, elle ne modifie ni l’observation ni les évaluations précédentes.
+
+## Rapports de couverture de collecte
+
+L’administrateur active le module Graphe et investigations, puis crée un périmètre dans **Relations et couverture des sources** : source, domaine et ressource ou organisation entière explicitement confirmée. Le producteur utilise son jeton de source existant pour `POST /api/v1/collection-reports/` :
+
+```json
+{
+  "scope": "UUID du périmètre attribué à cette source",
+  "external_id": "coverage-2026-11-07T14:00Z",
+  "covered_from": "2026-11-07T14:00:00Z",
+  "covered_until": "2026-11-07T14:05:00Z",
+  "state": "complete",
+  "clock_uncertainty_seconds": 3,
+  "detail": "Collecte et pagination terminées sur la période"
+}
+```
+
+`Authorization: Bearer <jeton>` et `Content-Type: application/json` sont obligatoires ; HTTPS est requis hors évaluation privée. La source ne peut utiliser ni le périmètre d’une autre source ni celui d’une autre organisation. Les dates sont postérieures à la publication du périmètre et ne peuvent couvrir le futur. Les rapports sont bornés à 16 Kio.
+
+`state` vaut `complete`, `partial` ou `unavailable`. Une fin de pagination non atteinte, une erreur fournisseur ou un trou de collecte impose `partial` ou `unavailable`, pas `complete`. L’incertitude d’horloge déclarée vaut 0 à 3600 secondes, ou reste inconnue si absente. Une source activée ou un simple heartbeat ne prouve pas une collecte complète.
+
+Un nouveau rapport renvoie 201. Le même couple périmètre/identifiant renvoie 200 avec le rapport initial, sans réécriture. Pour corriger une déclaration, envoyer un nouvel identifiant : la séquence serveur détermine quelle déclaration l’emporte sur chaque sous-intervalle, même si deux réceptions ont la même heure. Les anciens rapports restent conservés.
+
+L’absence d’événement n’est interprétable que pour les sources et périodes effectivement couvertes. Même une déclaration complète n’est pas une preuve universelle qu’aucun accès n’a eu lieu. Les événements arrivés tardivement conservent leur heure source et leur heure de réception ; la proximité horaire de deux activités n’établit pas leur causalité.

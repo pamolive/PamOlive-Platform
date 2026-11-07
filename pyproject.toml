@@ -1,6 +1,6 @@
 [project]
 name = "pamolive-core"
-version = "0.2.0a3"
+version = "0.2.0a4"
 description = "PAM-olive modular identity and access platform"
 readme = "README.md"
 requires-python = ">=3.12"

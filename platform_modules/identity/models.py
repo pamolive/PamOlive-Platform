@@ -59,6 +59,17 @@ class Resource(ScopedModel):
     owner = models.CharField("Responsable", max_length=180, blank=True)
     location = models.CharField("Emplacement attendu", max_length=255, blank=True)
     critical = models.BooleanField("Ressource critique", default=False)
+    environment = models.CharField(
+        "Environnement",
+        max_length=20,
+        default="unknown",
+        choices=[
+            ("unknown", "Non classé"),
+            ("production", "Production"),
+            ("test", "Test"),
+            ("development", "Développement"),
+        ],
+    )
 
     def __str__(self):
         return self.name
@@ -118,6 +129,7 @@ class Credential(ScopedModel):
     issuer = models.CharField("Émetteur", max_length=180, blank=True)
     expires_at = models.DateTimeField("Expiration", null=True, blank=True)
     usage = models.CharField("Usage attendu", max_length=180, blank=True)
+    registered_at = models.DateTimeField(auto_now_add=True, db_default=Now())
 
     def __str__(self):
         return self.name
