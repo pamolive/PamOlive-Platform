@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="sheet-heading"><div><p class="eyebrow">{{ current_organization }}</p><h1>Gouverner et expliquer chaque accès</h1><p>Qui · Quoi · Où · Quand · Comment · Pourquoi</p></div></section>
+<p><a href="{% url 'account-security' %}">Ma sécurité · MFA et durée personnelle de validation →</a></p>
+<div class="metrics"><article><b>{{ identity_count|default_if_none:'—' }}</b><span>Identités gouvernées</span></article><article><b>{{ resource_count|default_if_none:'—' }}</b><span>Ressources</span></article><article><b>{{ event_count|default_if_none:'—' }}</b><span>Événements observés</span></article><article><b>{{ pending_count|default_if_none:'—' }}</b><span>Intentions à approuver</span></article></div>
+<h2>Applications installées</h2><div class="app-grid">{% for module in modules %}<a href="{% url module.url_name %}"><span class="app-tile">{{ module.name|first }}</span><b>{{ module.name }}</b><small>{{ module.summary }}</small></a>{% empty %}<p>Activez les modules dans le catalogue pour commencer.</p>{% endfor %}</div>
+<h2>Derniers accès observés</h2><div class="table-wrap"><table><thead><tr><th>Date source</th><th>Qui</th><th>Quoi</th><th>Comment</th><th>Explication</th></tr></thead><tbody>{% for event in events %}<tr><td>{{ event.occurred_at }}</td><td>{{ event.identity|default:'Non résolue' }}</td><td>{{ event.resource }}</td><td>{{ event.method }}</td><td><a href="{% url 'record-detail' 'event' event.pk %}">Expliquer cet accès →</a></td></tr>{% empty %}<tr><td colspan="5">Aucun événement collecté.</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}

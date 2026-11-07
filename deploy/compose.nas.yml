@@ -1,0 +1,9 @@
+services:
+  web:
+    networks:
+      - default
+      - database
+networks:
+  database:
+    external: true
+    name: ${PAMOLIVE_DATABASE_NETWORK:-pam-olive_internal}

@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block title %}Modules · PAM-olive{% endblock %}
+{% block page_name %}Applications{% endblock %}
+{% block content %}
+<section class="page-header"><div><p class="eyebrow">EXTENSIBILITÉ</p><h1>Catalogue des modules</h1><p>Chaque module reste indépendant : son activation n’efface jamais ses données.</p></div></section>
+<div class="catalogue">{% for module, state in modules %}<article class="catalogue-card"><div class="catalogue-top"><span class="module-icon">{{ module.name|first }}</span>{% if module.is_paid %}<span class="paid">MODULE COMMERCIAL</span>{% else %}<span class="community">OPEN SOURCE</span>{% endif %}</div><p class="eyebrow">{{ module.category }}</p><h2>{{ module.name }}</h2><p>{{ module.summary }}</p><div class="card-footer"><span>v{{ module.version }}</span>{% if state and state.enabled %}<form method="post" action="{% url 'module-disable' module.key %}">{% csrf_token %}<button class="button subtle" type="submit">Désactiver</button></form>{% else %}<form method="post" action="{% url 'module-install' module.key %}">{% csrf_token %}<button class="button" type="submit">Activer →</button></form>{% endif %}</div></article>{% endfor %}</div>
+<section class="help-note"><b>Créer votre module</b><span>Déclarez un paquet Python dans <code>platform_modules/</code>, son manifeste et ses migrations. La documentation explique le contrat.</span></section>
+{% endblock %}

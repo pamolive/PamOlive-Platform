@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% block title %}Rôles et droits · PAM-olive{% endblock %}
+{% block actions %}<a class="erp-primary" href="{% url 'role-create' %}">Nouveau</a><span class="page-app-name">Rôles et droits</span>{% endblock %}
+{% block content %}
+<section class="sheet-heading"><div><h1>Rôles métier</h1><p>Regroupez les droits selon les responsabilités réelles de l’organisation.</p></div><span class="record-count">{{ roles|length }} enregistrement{{ roles|length|pluralize }}</span></section>
+<section class="list-section flush"><table class="erp-table"><thead><tr><th>Rôle</th><th>Identifiant technique</th><th>Membres</th><th>Permissions</th><th></th></tr></thead><tbody>{% for role in roles %}<tr><td><span class="row-role-icon">R</span><strong>{{ role.name }}</strong></td><td><code>{{ role.key }}</code></td><td>{{ role.members.count }}</td><td>{% for grant in role.permission_grants.all|slice:':3' %}<span class="tag">{{ grant.code }}</span>{% empty %}—{% endfor %}</td><td><a href="{% url 'role-edit' role.pk %}">Ouvrir</a></td></tr>{% empty %}<tr><td colspan="5" class="empty-row">Aucun rôle métier.</td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}

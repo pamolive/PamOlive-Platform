@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }} · PAM-olive{% endblock %}
+{% block actions %}<button class="erp-primary" type="submit" form="record-form">Enregistrer</button><a class="erp-secondary" href="{% url 'dashboard' %}">Ignorer</a><span class="page-app-name">{{ section }}</span>{% endblock %}
+{% block content %}
+<section class="form-sheet">
+  <div class="form-title"><h1>{{ title }}</h1><p>Les modifications seront enregistrées dans le journal d’audit.</p></div>
+  <form method="post" id="record-form" class="erp-form" novalidate>{% csrf_token %}
+    {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="form-grid">{% for field in form %}<div class="form-field {% if field.field.widget.input_type == 'checkbox' %}checkbox-field{% endif %}"><label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %}<sup>*</sup>{% endif %}</label>{{ field }}{% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}{% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}</div>{% endfor %}</div>
+  </form>
+</section>
+{% endblock %}

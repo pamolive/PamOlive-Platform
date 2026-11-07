@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}Vue d’ensemble · PAM-olive{% endblock %}
+{% block page_name %}Vue d’ensemble{% endblock %}
+{% block content %}
+<section class="sheet-heading"><div><h1>Configuration générale</h1><p>Gérez le socle commun et les applications de votre plateforme.</p></div><span class="core-badge"><i></i>Noyau opérationnel</span></section>
+
+<section class="settings-section">
+  <h2>Organisation</h2>
+  <div class="settings-grid">
+    <article class="setting-item"><span class="setting-icon">U</span><div><h3>Utilisateurs</h3><p><strong>{{ user_count }} utilisateur{{ user_count|pluralize }} actif{{ user_count|pluralize }}</strong></p><a href="{% url 'user-list' %}">→ Gérer les utilisateurs</a></div></article>
+    <article class="setting-item"><span class="setting-icon">R</span><div><h3>Rôles métier</h3><p><strong>{{ role_count }} rôle{{ role_count|pluralize }} configuré{{ role_count|pluralize }}</strong></p><a href="{% url 'role-list' %}">→ Gérer les rôles et les droits</a></div></article>
+  </div>
+</section>
+
+<section class="settings-section">
+  <h2>Applications et modules</h2>
+  <div class="settings-grid">
+    <article class="setting-item"><span class="setting-icon">▦</span><div><h3>Applications installées</h3><p><strong>{{ module_count }} module{{ module_count|pluralize }} actif{{ module_count|pluralize }}</strong></p><a href="{% url 'module-list' %}">→ Parcourir le catalogue</a></div></article>
+    <article class="setting-item wide"><div class="installed-apps">{% for module in enabled_modules %}<a href="{% url module.url_name %}"><span class="app-tile">{{ module.name|first }}</span><span><b>{{ module.name }}</b><small>{{ module.summary }}</small></span><em>→</em></a>{% empty %}<p>Aucune application installée.</p>{% endfor %}</div></article>
+  </div>
+</section>
+
+<section class="settings-section">
+  <h2>Sécurité et traçabilité</h2>
+  <div class="settings-grid">
+    <article class="setting-item"><span class="setting-icon">≡</span><div><h3>Journal d’audit</h3><p>Connexions et modifications récentes</p><a href="{% url 'audit-log' %}">→ Consulter tous les événements</a></div></article>
+    <article class="setting-item activity"><div class="compact-events">{% for event in recent_events %}<div><span></span><p><b>{{ event.summary }}</b><small>{{ event.created_at|date:'d/m/Y H:i' }}{% if event.actor %} · {{ event.actor }}{% endif %}</small></p></div>{% empty %}<p>Aucune activité récente.</p>{% endfor %}</div></article>
+  </div>
+</section>
+{% endblock %}

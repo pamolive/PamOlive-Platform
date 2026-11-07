@@ -1,0 +1,28 @@
+[project]
+name = "pamolive-core"
+version = "0.2.0a1"
+description = "PAM-olive modular identity and access platform"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "AGPL-3.0-or-later"}
+dependencies = [
+  "Django>=5.2,<5.3",
+  "dj-database-url>=3.1,<4",
+  "psycopg[binary]>=3.2,<4",
+  "gunicorn>=23,<24",
+  "whitenoise>=6.8,<7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3", "pytest-django>=4.9", "ruff>=0.9"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+python_files = ["test_*.py", "*_tests.py"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

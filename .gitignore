@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+.bootstrap-admin
+deploy/bootstrap-nas.sh
+*.tar.gz
+*.tgz
+.venv/
+__pycache__/
+*.py[cod]
+*.sqlite3
+staticfiles/
+.pytest_cache/
+.ruff_cache/
+coverage.xml
+.coverage

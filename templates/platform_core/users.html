@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% block title %}Utilisateurs · PAM-olive{% endblock %}
+{% block actions %}<a class="erp-primary" href="{% url 'user-create' %}">Nouveau</a><span class="page-app-name">Utilisateurs</span>{% endblock %}
+{% block content %}
+<section class="sheet-heading"><div><h1>Utilisateurs</h1><p>Comptes locaux et identités autorisées à utiliser la plateforme.</p></div><span class="record-count">{{ users|length }} enregistrement{{ users|length|pluralize }}</span></section>
+<section class="list-section flush"><table class="erp-table"><thead><tr><th>Identifiant</th><th>Nom</th><th>Adresse e-mail</th><th>Rôles métier</th><th>Statut</th><th></th></tr></thead><tbody>{% for item in users %}<tr><td><span class="row-user-icon">{{ item.username|first|upper }}</span><strong>{{ item.username }}</strong></td><td>{{ item.get_full_name|default:'—' }}</td><td>{{ item.email|default:'—' }}</td><td>{% for role in item.pamolive_business_roles.all %}<span class="tag">{{ role.name }}</span>{% empty %}—{% endfor %}</td><td><span class="state-pill {% if item.is_active %}on{% endif %}">{% if item.is_active %}Actif{% else %}Désactivé{% endif %}</span></td><td><a href="{% url 'user-edit' item.pk %}">Ouvrir</a></td></tr>{% empty %}<tr><td colspan="6" class="empty-row">Aucun utilisateur.</td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}

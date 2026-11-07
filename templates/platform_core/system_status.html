@@ -1,0 +1,3 @@
+{% extends 'base.html' %}
+{% block title %}Système · PAM-olive{% endblock %}
+{% block content %}<section class="page-header"><div><p class="eyebrow">OPÉRATIONS</p><h1>État du système</h1><p>Contrôle rapide du noyau de la plateforme.</p></div></section><section class="stats status-cards"><article><span>BASE DE DONNÉES</span><strong class="{% if database_online %}healthy{% else %}unhealthy{% endif %}">{% if database_online %}Connectée{% else %}Indisponible{% endif %}</strong><small>{{ database_vendor|upper }}</small></article><article><span>MODULES ACTIFS</span><strong>{{ module_count }}</strong><small>Registre de la plateforme</small></article><article><span>MODE D’EXÉCUTION</span><strong>Python</strong><small>Django / WSGI</small></article></section>{% endblock %}
