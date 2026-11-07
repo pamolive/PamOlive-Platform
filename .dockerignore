@@ -1,6 +1,10 @@
 .git
 .venv
 .env
+.bootstrap-admin
+*.tgz
+*.tar.gz
+deploy/bootstrap-nas.sh
 .env.*
 !.env.example
 *.sqlite3
