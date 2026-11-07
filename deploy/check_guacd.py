@@ -51,7 +51,7 @@ async def inspect_plugins(port):
     print("No remote connection, credentials or end-to-end session were tested here.")
 
 
-def main():
+def run_check(check=inspect_plugins):
     binary = Path("/opt/pamolive-guac/sbin/guacd")
     if not binary.is_file():
         raise SystemExit("Native engine missing from the application image")
@@ -63,7 +63,18 @@ def main():
         tempfile.TemporaryFile() as log,
     ):
         process = subprocess.Popen(
-            [str(binary), "-f", "-b", "127.0.0.1", "-p", str(port), "-L", "error"],
+            [
+                str(binary),
+                "-f",
+                "-b",
+                "127.0.0.1",
+                "-p",
+                str(port),
+                "-P",
+                str(Path(directory) / "guacd.pid"),
+                "-L",
+                "error",
+            ],
             env={
                 "PATH": "/usr/local/bin:/usr/bin:/bin",
                 "LD_LIBRARY_PATH": "/opt/pamolive-guac/lib",
@@ -76,7 +87,7 @@ def main():
             start_new_session=True,
         )
         try:
-            asyncio.run(inspect_plugins(port))
+            asyncio.run(check(port))
         except Exception:
             # This test has no targets or credentials. Keep bounded diagnostics
             # for missing libraries/startup failures instead of hiding the cause.
@@ -98,4 +109,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    run_check()
