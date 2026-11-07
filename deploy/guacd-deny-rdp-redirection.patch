@@ -1,0 +1,25 @@
+--- a/src/protocols/rdp/rdp.c
++++ b/src/protocols/rdp/rdp.c
+@@ -71,6 +71,14 @@
+ #include <stdlib.h>
+ #include <time.h>
+ 
++/* PAM-olive: each connection is authorized for one resolved target only.
++ * Do not let a server redirect FreeRDP to a different target or account. */
++static BOOL pamolive_reject_rdp_redirection(freerdp* instance) {
++    (void) instance;
++    return FALSE;
++}
++
++
+ /**
+  * Initializes and loads the necessary FreeRDP plugins based on the current
+  * RDP session settings. This function is designed to work in environments
+@@ -513,6 +521,7 @@
+         rdp_inst->LoadChannels = rdp_freerdp_load_channels;
+     #endif
+     rdp_inst->PreConnect = rdp_freerdp_pre_connect;
++    rdp_inst->Redirect = pamolive_reject_rdp_redirection;
+     rdp_inst->Authenticate = rdp_freerdp_authenticate;
+ #ifdef HAVE_FREERDP_VERIFYCERTIFICATEEX
+     rdp_inst->VerifyCertificateEx = rdp_freerdp_verify_certificate;

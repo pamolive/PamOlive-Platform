@@ -12,3 +12,4 @@ pyotp==2.9.0
 cryptography==49.0.0
 cffi==2.1.1
 pycparser==3.12
+asyncssh==2.24.1

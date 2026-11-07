@@ -35,3 +35,5 @@ jobs:
           printf 'must-not-enter-the-image' > .bootstrap-admin
           docker build -t pamolive-platform:ci .
           docker run --rm --entrypoint python pamolive-platform:ci -c "from pathlib import Path; assert not Path('/app/.bootstrap-admin').exists(); assert not Path('/app/.env').exists()"
+      - name: Verify native SSH/RDP plugins without contacting a target
+        run: docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:ci -m deploy.check_guacd

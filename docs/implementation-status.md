@@ -41,13 +41,16 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 - Investigations datées : intersection accès physique/privilégié, fournisseurs vers production, comptes privilégiés sans intention ponctuelle et événements sans référence déclarée dans une intention rapprochée.
 - Réévaluations append-only des événements, historique conservé et export JSON du graphe et des faits réseau/certificats.
 - Les droits, intentions et liens sont datés ; les libellés, types de comptes et classifications de ressources restent leurs métadonnées actuelles, pas un inventaire historique complet.
+- Préparation du transport PAM dans l’image unique : moteur natif Guacamole SSH/RDP compilé depuis une source épinglée et signée, bibliothèques chargées en test isolé, sans Java/Tomcat ni service Compose supplémentaire. Le moteur n’est pas encore démarré par le runtime de production.
+- Sondes pré-authentification SSH et RDP : clé d’hôte ou empreinte SHA-256 obligatoire, NLA/TLS exigés pour RDP, validité temporelle du certificat contrôlée, hôtes/ports et réseaux autorisés explicitement, résolution IP épinglée. Elles n’acceptent ni mot de passe ni clé privée et ne prouvent pas une connexion de compte réussie.
+- Cadrage Guacamole UTF-8 borné et liste fermée d’entrées clavier/souris/affichage ; refus des arguments de connexion, flux montants, fichiers et presse-papiers côté client. Ces primitives n’exposent pas encore de tunnel HTTP/WebSocket.
 
 ## Travail requis pour la cible complète
 
 - Étendre les contrôles MFA aux contrats des futurs services exécutant des actions externes ; ajouter WebAuthn et revue spécialisée des parcours d’authentification.
 - Adaptateurs spécifiques AD/Entra, ticketing, accès physiques, PAM et collecte réseau/certificats ; création initiale de comptes et synchronisation d’inventaire. Le client SCIM livré couvre des comptes existants et des groupes, pas tous les fournisseurs SCIM.
 - Vérification des tickets/contrats dans leurs systèmes sources, catalogue de pays de confiance, gestion des délégations et escalades d’approbation. Les horaires sont vérifiés sur la fenêtre d’autorisation entière, pas appliqués nativement à chaque application SCIM.
-- Passerelle SSH/RDP, coupure effective et enregistrement des sessions : le bail existant est une autorisation, pas un tunnel.
+- Raccorder le transport SSH/RDP au bail : configuration de cible et secret chiffré, ticket à usage unique lié au compte/organisation/session, WebSocket même origine, utilisateur système séparé du moteur natif, coupure effective et enregistrements chiffrés. Le bail existant reste une autorisation, pas un tunnel. Les sondes testent le serveur avant authentification, pas les identifiants de connexion. Les scénarios complets SSH/RDP, révocation en cours de flux et redirection RDP malveillante restent des portes obligatoires avant ouverture du relais.
 - Résolution automatique des identifiants externes, groupes/roles métier transverses, preuves cryptographiques de possession de clé, ticketing vérifié et analyse de risque spécialisée. La chronologie rapproche des faits, pas des causes démontrées.
 - Parcours de grand graphe et pagination haute volumétrie. La projection actuelle limite le contexte à deux sauts, 120 nœuds et 400 relations ; chronologie à 500 événements, investigations à 1000 droits examinés, couverture à 100 périmètres et 500 rapports par périmètre. Les limites sont signalées ; une couverture tronquée n’est jamais déclarée complète.
 - Installation de paquets tiers par entry points, signature et entitlement commercial.

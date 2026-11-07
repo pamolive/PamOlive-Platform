@@ -22,6 +22,18 @@ CONNECTOR_ALLOWED_NETWORKS = tuple(
     )
 )
 CONNECTOR_CA_BUNDLE = os.environ.get("PAMOLIVE_CONNECTOR_CA_BUNDLE", "")
+# A PAM destination must match BOTH a host:port entry and an IP network.
+# Empty deployment allowlists intentionally deny all session probes/targets.
+PAM_ALLOWED_HOSTS = frozenset(
+    value.strip().lower()
+    for value in os.environ.get("PAMOLIVE_TARGET_HOSTS", "").split(",")
+    if value.strip()
+)
+PAM_ALLOWED_NETWORKS = tuple(
+    value.strip()
+    for value in os.environ.get("PAMOLIVE_TARGET_NETWORKS", "").split(",")
+    if value.strip()
+)
 DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 ALLOWED_HOSTS = [
     host.strip()
