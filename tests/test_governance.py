@@ -414,6 +414,9 @@ class GovernanceTests(TestCase):
             response = self.client.get(reverse("governance-create", args=[kind]))
             self.assertEqual(response.status_code, 200, response.content)
             self.assertNotContains(response, "/django-admin/")
+            if kind == "contract":
+                # Weekdays are a group, not one horizontally aligned boolean field.
+                self.assertContains(response, 'class="form-field checkbox-field"', count=2)
         self.assertEqual(
             self.client.get(reverse("governance-contract", args=[self.contract.pk])).status_code,
             200,
