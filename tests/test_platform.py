@@ -2,6 +2,7 @@ import json
 import time
 from datetime import timedelta
 from unittest import skipUnless
+from unittest.mock import patch
 
 import pyotp
 from django.contrib.auth import get_user_model
@@ -374,18 +375,23 @@ class PlatformTests(TestCase):
         response = self.client.get(reverse("account-security"))
         self.assertEqual(response.status_code, 200)
         secret = cipher().decrypt(self.client.session["mfa_enrollment"].encode()).decode()
-        response = self.client.post(
-            reverse("account-security"),
-            {
-                "password": "test-only-strong-password",
-                "code": pyotp.TOTP(secret).now(),
-                "freshness_minutes": "10",
-            },
-        )
+        enrollment_time = timezone.now().replace(second=29, microsecond=950000)
+        # A wall-clock boundary must not make this integration test intermittent.
+        # The actual TOTP algorithm is exercised, not mocked out.
+        with patch("platform_core.security.timezone.now", return_value=enrollment_time):
+            response = self.client.post(
+                reverse("account-security"),
+                {
+                    "password": "test-only-strong-password",
+                    "code": pyotp.TOTP(secret).at(enrollment_time),
+                    "freshness_minutes": "10",
+                },
+            )
         self.assertContains(response, "Reprendre mon action")
         self.assertContains(response, "Saved form")
         profile = AccountSecurity.objects.get(account=self.operator)
         self.assertEqual(profile.freshness_minutes, 10)
+        self.assertEqual(profile.last_counter, int(enrollment_time.timestamp()) // 30)
         self.assertEqual(len(profile.recovery_hashes), 8)
         self.assertNotEqual(profile.encrypted_secret, secret)
         self.assertEqual(

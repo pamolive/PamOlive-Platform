@@ -148,11 +148,14 @@ def security_settings(request):
             request.session.pop("mfa_enrollment", None)
             return redirect("account-security")
     if request.method == "POST" and form.is_valid():
+        enrollment_time = timezone.now()
         valid = request.user.check_password(form.cleaned_data["password"])
         if enabled:
             valid = valid and verify_mfa(request.user, form.cleaned_data["code"].strip())
         else:
-            valid = valid and pyotp.TOTP(secret).verify(form.cleaned_data["code"].strip())
+            valid = valid and pyotp.TOTP(secret).verify(
+                form.cleaned_data["code"].strip(), for_time=enrollment_time
+            )
         if valid:
             codes = []
             # Refresh after the verifier's locked update to preserve its replay counter.
@@ -160,7 +163,9 @@ def security_settings(request):
             if not enabled:
                 codes = [secrets.token_hex(8) for _ in range(8)]
                 profile.encrypted_secret = cipher().encrypt(secret.encode()).decode()
-                profile.last_counter = int(time.time()) // 30
+                # Persist the exact counter actually verified, even if hashing
+                # the recovery codes crosses the next 30-second boundary.
+                profile.last_counter = int(enrollment_time.timestamp()) // 30
                 profile.recovery_hashes = [make_password(code) for code in codes]
             profile.freshness_minutes = form.cleaned_data["freshness_minutes"]
             profile.save()
