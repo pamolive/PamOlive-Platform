@@ -12,7 +12,7 @@ from contextlib import suppress
 
 import asyncssh
 
-from deploy.check_guacd import run_check
+from deploy.check_guacd import inspect_plugins, run_check
 from platform_modules.pam.protocol import Instruction, Parser, validate_input
 
 
@@ -88,8 +88,10 @@ class NativeClient:
                     self.image_streams.discard(instruction.arguments[0])
                 elif instruction.opcode == "error":
                     return "rejected"
-                elif instruction.opcode in ("argv", "required", "clipboard", "file"):
+                elif instruction.opcode in ("required", "clipboard", "file"):
                     raise RuntimeError("Native fixture requested forbidden interactive parameters")
+                # Native display settings may be advertised through argv. This
+                # non-browser test ignores them and never sends argv responses.
         except EOFError:
             return "closed"
 
@@ -183,6 +185,7 @@ async def exercise(engine_port, *, wrong_host_key):
 
 
 async def check(engine_port):
+    await inspect_plugins(engine_port)
     await exercise(engine_port, wrong_host_key=True)
     await exercise(engine_port, wrong_host_key=False)
     print(
