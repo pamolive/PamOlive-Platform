@@ -2,6 +2,8 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django.db.models.functions import Now
+from django.utils import timezone
 
 from platform_core.tenancy import ScopedModel
 
@@ -79,6 +81,13 @@ class ExternalAccount(ScopedModel):
     )
     active = models.BooleanField("Actif", default=True)
     state_revision = models.PositiveIntegerField(default=1, editable=False)
+    managed_contract = models.ForeignKey(
+        "governance.SupplierContract",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        verbose_name="Compte dédié au contrat",
+    )
 
     class Meta(ScopedModel.Meta):
         constraints = [
@@ -127,16 +136,48 @@ class Grant(ScopedModel):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     state_revision = models.PositiveIntegerField(default=1, editable=False)
+    contract = models.ForeignKey(
+        "governance.SupplierContract", null=True, blank=True, on_delete=models.PROTECT
+    )
+    valid_from = models.DateTimeField(default=timezone.now, db_default=Now())
+    revoked_at = models.DateTimeField(null=True, blank=True, editable=False)
+    method = models.CharField("Méthode d’accès", max_length=80, blank=True)
+    location = models.CharField("Origine déclarée", max_length=255, blank=True)
+    country_code = models.CharField("Pays d’origine déclaré (2 lettres)", max_length=2, blank=True)
+    reference = models.CharField("Référence métier déclarée", max_length=180, blank=True)
 
     def clean(self):
         super().clean()
+        if self.expires_at and self.valid_from and self.expires_at <= self.valid_from:
+            from django.core.exceptions import ValidationError
+
+            raise ValidationError("La fin du droit doit suivre son début.")
         if self.account_id and self.account.identity_id != self.identity_id:
             from django.core.exceptions import ValidationError
 
             raise ValidationError("Le compte doit appartenir à cette identité.")
+        if (
+            self.account_id
+            and self.account.managed_contract_id
+            and self.contract_id != self.account.managed_contract_id
+        ):
+            from django.core.exceptions import ValidationError
+
+            raise ValidationError("Ce compte est dédié à un autre contrat.")
 
     def __str__(self):
         return f"{self.identity} → {self.resource} · {self.entitlement}"
+
+
+class IdentityStateChange(ScopedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    identity = models.ForeignKey(Identity, on_delete=models.PROTECT, related_name="state_changes")
+    previous_status = models.CharField(max_length=16)
+    next_status = models.CharField(max_length=16)
+    effective_at = models.DateTimeField()
+
+    def __str__(self):
+        return f"{self.identity} · {self.previous_status} → {self.next_status}"
 
 
 class IdentityApplication(models.Model):

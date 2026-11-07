@@ -103,7 +103,7 @@ class PlatformTests(TestCase):
             "resource": self.resource,
             "method": "SSH",
             "action": "session.start",
-            "occurred_at": self.now,
+            "occurred_at": timezone.now(),
         }
         return ingest_event({**data, **overrides}, actor=self.operator, organization=self.org)[0]
 

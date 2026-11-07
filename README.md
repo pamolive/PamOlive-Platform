@@ -70,6 +70,26 @@ Dans Docker Desktop, `host.docker.internal` permet de joindre un PostgreSQL éco
 
 Les droits permanents motivés peuvent justifier un accès sans ticket. Un fait insuffisamment documenté reste « contexte insuffisant ». Les révocations locales ne valent pas confirmation de retrait sur un système externe.
 
+## Contrats fournisseurs et politiques
+
+Le module optionnel **Contrats et politiques** s’active dans le catalogue de l’organisation. Il est livré dans la même image, sans autre conteneur.
+
+1. Ajouter, dans **Paramètres**, un responsable ayant le rôle administrateur ou approbateur de l’organisation.
+2. Créer la société fournisseur, puis un contrat : période datée (fuseau de l’installation, stockage UTC), responsable, ressources, privilège, méthodes, plages locales avec fuseau IANA, pays et origines éventuels. Une porte ou zone nécessite aussi l’autorisation physique explicite.
+3. Inscrire chaque identité intervenante au contrat. Une société n’est pas un compte de connexion. L’inscription commence lors de sa publication, jamais rétroactivement.
+4. Publier la politique d’approbation : 1, 2 ou 3 approbateurs distincts, seuil spécifique pour les ressources critiques, contrat obligatoire pour les prestataires et validation du responsable du contrat.
+5. Créer une intention liée au contrat, avec une référence métier et une fenêtre entièrement autorisée. Choisir la suite IAM pour attribuer un droit temporaire, ou PAM pour un bail privilégié.
+6. Les votes restent visibles. Aucun effet IAM n’est demandé avant le seuil requis ; une attribution future n’est envoyée qu’au début de sa fenêtre.
+7. Retirer un intervenant ou un contrat révoque les droits et autorisations liés. Seul un compte explicitement **dédié au contrat** est désactivé globalement ; les comptes partagés et droits indépendants sont conservés. Le suivi des changements externes indique si le retrait est réellement confirmé.
+
+Publier une politique impose le parcours d’approbation pour les nouvelles attributions : le formulaire de droit direct ne permet pas de contourner les votes. Les règles de séparation des tâches interdisent une combinaison de deux droits sur des fenêtres qui se chevauchent, y compris des intentions déjà approuvées. Elles ne suppriment pas arbitrairement un des droits existants : les conflits sont signalés dans les évaluations et doivent être revus.
+
+Une révision de contrat conserve les précédentes ; les événements sont évalués selon la révision publiée au moment de l’accès. Une approbation ou un droit créé plus tard ne justifie jamais un événement passé. Les intervalles sont semi-ouverts : début inclus, fin exclue. Une plage de nuit est rattachée au jour d’ouverture ; les heures inexistantes ou ambiguës lors du changement d’heure n’élargissent jamais une autorisation.
+
+Les pays et lieux déclarés dans une demande ne sont pas des preuves d’origine. Le pays observé doit venir de la source ; s’il manque alors qu’il est exigé, le résultat reste indéterminé. Une référence de ticket n’est pas vérifiée tant qu’aucun connecteur ticketing n’apporte cette preuve. Les plages horaires sont contrôlées pour la fenêtre demandée et les observations ; SCIM ne rend pas automatiquement les applications tierces capables de bloquer chaque connexion hors horaires.
+
+Les publications et retraits nécessitent une MFA récente personnelle. Les contrôles publiés restent applicables si l’interface du module est désactivée : cette désactivation ne constitue pas un contournement de politique. Aucun challenge MFA n’est injecté au milieu d’une session SSH/RDP.
+
 ## Développement et tests
 
 Python 3.12+, `python -m venv .venv`, puis installer `requirements-dev.lock`. Utiliser `python manage.py test` et `ruff check .`. SQLite est réservé aux tests rapides locaux ; la CI et les contrôles de contraintes utilisent PostgreSQL réel.

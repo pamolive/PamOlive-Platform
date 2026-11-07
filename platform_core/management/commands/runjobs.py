@@ -6,6 +6,7 @@ from django.db import close_old_connections, connections
 
 from platform_core.models import Organization
 from platform_modules.connectors.outbound import process_changes
+from platform_modules.governance.reconcile import reconcile_contracts
 from platform_modules.identity.services import expire_grants
 from platform_modules.pam.services import expire_leases
 
@@ -33,6 +34,7 @@ class Command(BaseCommand):
                 for organization in organizations:
                     expire_leases(organization)
                     expire_grants(organization)
+                    reconcile_contracts(organization)
                 if options["once"]:
                     for organization in organizations:
                         process_changes(organization)

@@ -33,6 +33,9 @@ def open_lease(intent_id, *, actor, organization):
             )
         if actor.pk != intent.requested_by_id:
             raise ValidationError("Seul le demandeur peut ouvrir son accès.")
+        from platform_modules.governance.policy import enforce_authorization
+
+        enforce_authorization(intent, organization=organization, remaining=True)
         existing = SessionLease.objects.filter(intent=intent, status="active").first()
         if existing:
             return existing

@@ -17,15 +17,32 @@ def revoke_grant(grant, *, actor, organization, origin):
         raise ValidationError("Droit d’une autre organisation.")
     if actor:
         authorize(actor, organization, roles=("admin", "operator", "reviewer"))
-    elif origin != "grant.expired" or not grant.expires_at or grant.expires_at > timezone.now():
-        raise ValidationError("L’expiration automatique doit correspondre à une échéance passée.")
     Organization.objects.select_for_update().get(pk=organization.pk)
     with organization_context(organization):
         grant = Grant.objects.select_for_update().get(pk=grant.pk)
+        if actor is None:
+            from platform_modules.governance.policy import contract_withdrawal_required
+
+            expired = (
+                origin == "grant.expired"
+                and grant.expires_at
+                and grant.expires_at <= timezone.now()
+            )
+            withdrawn = (
+                origin == "contract.withdrawn"
+                and grant.contract_id
+                and contract_withdrawal_required(grant, organization=organization)
+            )
+            if not expired and not withdrawn:
+                raise ValidationError(
+                    "La révocation automatique doit correspondre à une politique persistée "
+                    "ou une expiration."
+                )
         if grant.status != "revoked":
             grant.status = "revoked"
+            grant.revoked_at = timezone.now()
             grant.state_revision += 1
-            grant.save(update_fields=["status", "state_revision"])
+            grant.save(update_fields=["status", "state_revision", "revoked_at"])
             queue_grant_state(grant, actor=actor, organization=organization, origin=origin)
             record(
                 action="identity.grant.revoked.v1",
@@ -73,8 +90,17 @@ def grant_from_approval(intent, *, actor, organization):
         entitlement=intent.privilege,
         justification=f"{intent.reason} · {intent.reference}".strip(" ·"),
         expires_at=intent.ends_at,
+        valid_from=max(intent.starts_at, timezone.now()),
+        contract=intent.contract,
+        method=intent.method,
+        location=intent.location,
+        country_code=intent.country_code,
+        reference=intent.reference,
     )
     grant.full_clean()
+    from platform_modules.governance.policy import enforce_authorization
+
+    enforce_authorization(grant, organization=organization)
     grant.save()
     queue_grant_state(grant, actor=actor, organization=organization, origin="approvals.approved")
     record(

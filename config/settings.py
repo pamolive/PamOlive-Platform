@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "platform_modules.connectors",
     "platform_modules.recertification",
     "platform_modules.pam",
+    "platform_modules.governance.apps.GovernanceConfig",
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",

@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils import timezone
 
 from platform_core.audit import record
 from platform_core.models import Organization
@@ -21,6 +22,14 @@ def decide(intent_id, *, actor, organization, approved, comment):
             raise ValidationError("Le demandeur ne peut pas approuver sa propre demande.")
         if intent.status != "pending":
             raise ValidationError("Cette demande a déjà reçu une décision.")
+        if intent.ends_at <= timezone.now():
+            raise ValidationError("Cette demande est expirée.")
+        if ApprovalDecision.objects.filter(intent=intent, reviewer=actor).exists():
+            raise ValidationError("Vous avez déjà voté sur cette demande.")
+        from platform_modules.governance.policy import approval_requirements, enforce_authorization
+
+        if approved:
+            enforce_authorization(intent, organization=organization, remaining=True)
         if not comment.strip():
             raise ValidationError("Motivez la décision.")
         decision = ApprovalDecision.objects.create(
@@ -30,9 +39,18 @@ def decide(intent_id, *, actor, organization, approved, comment):
             approved=approved,
             comment=comment,
         )
-        intent.status = "approved" if approved else "denied"
-        intent.save(update_fields=["status"])
-        if approved and intent.fulfillment == "iam_group":
+        requirements = approval_requirements(intent)
+        intent.status = (
+            "approved"
+            if approved and requirements["complete"]
+            else "pending"
+            if approved
+            else "denied"
+        )
+        if intent.status == "approved":
+            intent.approved_at = timezone.now()
+        intent.save(update_fields=["status", "approved_at"])
+        if intent.status == "approved" and intent.fulfillment == "iam_group":
             from platform_modules.identity.services import grant_from_approval
 
             intent.provisioned_grant = grant_from_approval(
@@ -45,6 +63,10 @@ def decide(intent_id, *, actor, organization, approved, comment):
             actor=actor,
             organization=organization,
             target=decision,
-            metadata={"intent_id": str(intent.pk), "comment": comment},
+            metadata={
+                "intent_id": str(intent.pk),
+                "comment": comment,
+                "requirements": requirements,
+            },
         )
         return decision

@@ -211,8 +211,16 @@ def queue_account_disable(account, *, actor, organization, origin):
     if account.organization_id != organization.pk or account.active:
         raise ValidationError("Le compte doit être localement désactivé dans cette organisation.")
     if actor is None:
-        raise PermissionDenied
-    authorize(actor, organization, roles=("admin", "operator", "reviewer"))
+        from platform_modules.governance.policy import account_contract_live
+
+        if (
+            origin != "contract.withdrawn"
+            or not account.managed_contract_id
+            or account_contract_live(account)
+        ):
+            raise PermissionDenied
+    else:
+        authorize(actor, organization, roles=("admin", "operator", "reviewer"))
     key = f"account:{account.pk}:disable:{account.state_revision}"
     return _enqueue(
         account=account,
@@ -230,13 +238,19 @@ def queue_grant_state(grant, *, actor, organization, origin):
         raise ValidationError("Droit d’une autre organisation.")
     if actor:
         authorize(actor, organization, roles=("admin", "operator", "reviewer"))
-    if actor is None and not (
-        origin == "grant.expired"
-        and grant.expires_at
-        and grant.expires_at <= timezone.now()
-        and grant.status == "revoked"
-    ):
-        raise PermissionDenied
+    if actor is None:
+        from platform_modules.governance.policy import contract_withdrawal_required
+
+        system_withdrawal = (
+            origin == "contract.withdrawn"
+            and grant.contract_id
+            and contract_withdrawal_required(grant, organization=organization)
+        )
+        expired = (
+            origin == "grant.expired" and grant.expires_at and grant.expires_at <= timezone.now()
+        )
+        if grant.status != "revoked" or not (expired or system_withdrawal):
+            raise PermissionDenied
     present = grant.status == "active"
     key = f"grant:{grant.pk}:{grant.status}:{grant.state_revision}"
     return _enqueue(
@@ -266,6 +280,8 @@ def _enqueue(*, account, grant, kind, key, actor, organization, origin):
             authorized_by=actor,
         )
         _route(change, actor=actor, organization=organization)
+        if kind == "add_membership":
+            change.next_attempt_at = max(timezone.now(), grant.valid_from)
         change.full_clean()
         change.save()
         record(
@@ -289,7 +305,11 @@ def retry_change(change_id, *, actor, organization):
             raise ValidationError("Cette opération ne peut pas être relancée dans cet état.")
         _route(change, actor=actor, organization=organization)
         change.attempt_limit = change.attempts + 5
-        change.next_attempt_at = timezone.now()
+        change.next_attempt_at = (
+            max(timezone.now(), change.grant.valid_from)
+            if change.kind == "add_membership"
+            else timezone.now()
+        )
         change.save()
         record(
             action="connectors.external_change.reauthorized.v1",
@@ -317,12 +337,29 @@ def _obsolete(change):
             status="active",
             identity__status="active",
             account__active=True,
+            valid_from__lte=timezone.now(),
         )
         .filter(scope)
         .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()))
-        .exists()
     )
-    return active != (change.kind == "add_membership")
+    from platform_modules.governance.policy import assess_authorization
+
+    allowed = any(
+        assess_authorization(grant, organization=grant.organization, remaining=True).status
+        == "allow"
+        for grant in active
+    )
+    if change.kind == "add_membership":
+        own_allowed = (
+            change.grant.status == "active"
+            and change.grant.valid_from <= timezone.now()
+            and assess_authorization(
+                change.grant, organization=change.organization, remaining=True
+            ).status
+            == "allow"
+        )
+        return not allowed or not own_allowed
+    return allowed
 
 
 def _check_dispatch(claim, organization):

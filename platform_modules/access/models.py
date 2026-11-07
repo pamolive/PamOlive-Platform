@@ -19,6 +19,12 @@ class AccessIntent(ScopedModel):
     privilege = models.CharField("Privilège", max_length=160, blank=True)
     reason = models.TextField("Pourquoi ?")
     reference = models.CharField("Ticket / contrat / projet", max_length=180, blank=True)
+    contract = models.ForeignKey(
+        "governance.SupplierContract", null=True, blank=True, on_delete=models.PROTECT
+    )
+    country_code = models.CharField("Pays d’origine déclaré (2 lettres)", max_length=2, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True, editable=False)
+    approved_at = models.DateTimeField(null=True, blank=True, editable=False)
     fulfillment = models.CharField(
         "Suite après approbation",
         max_length=20,
@@ -85,6 +91,12 @@ class AccessEvent(ScopedModel):
     location = models.CharField("Origine / lieu observé", max_length=255, blank=True)
     privilege = models.CharField("Privilège observé", max_length=160, blank=True)
     result = models.CharField("Résultat", max_length=80, default="success")
+    contract = models.ForeignKey(
+        "governance.SupplierContract", null=True, blank=True, on_delete=models.PROTECT
+    )
+    country_code = models.CharField(
+        "Pays observé fourni par la source (2 lettres)", max_length=2, blank=True
+    )
     evidence = models.TextField("Référence de preuve", blank=True)
 
     class Meta(ScopedModel.Meta):
@@ -122,6 +134,6 @@ class AccessEvaluation(ScopedModel):
             ("unknown", "Contexte insuffisant"),
         ],
     )
-    rule_version = models.CharField(max_length=30, default="access-intent/1")
+    rule_version = models.CharField(max_length=30, default="access-contract/2")
     findings = models.JSONField(default=list)
     evaluated_at = models.DateTimeField(auto_now_add=True)

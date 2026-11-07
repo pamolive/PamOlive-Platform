@@ -43,7 +43,7 @@ CATALOG = {
     "account": (
         "Comptes de connexion",
         ExternalAccount,
-        ("identity", "username", "system", "kind", "active"),
+        ("identity", "username", "system", "kind", "active", "managed_contract"),
     ),
     "credential": (
         "Certificats et badges",
@@ -53,7 +53,20 @@ CATALOG = {
     "grant": (
         "Droits et rôles attribués",
         Grant,
-        ("identity", "account", "resource", "entitlement", "justification", "expires_at"),
+        (
+            "identity",
+            "account",
+            "resource",
+            "entitlement",
+            "justification",
+            "valid_from",
+            "expires_at",
+            "contract",
+            "method",
+            "location",
+            "country_code",
+            "reference",
+        ),
     ),
     "intent": (
         "Intentions d’accès",
@@ -67,6 +80,8 @@ CATALOG = {
             "privilege",
             "reason",
             "reference",
+            "contract",
+            "country_code",
             "fulfillment",
             "starts_at",
             "ends_at",
@@ -89,6 +104,8 @@ CATALOG = {
             "privilege",
             "result",
             "evidence",
+            "contract",
+            "country_code",
         ),
     ),
 }
@@ -264,14 +281,19 @@ def access_home(request):
 
 @scoped("approvals")
 def approvals_home(request):
+    from platform_modules.governance.policy import approval_requirements
+
+    intents = list(
+        AccessIntent.objects.select_related("identity", "resource", "requested_by").order_by(
+            "-created_at"
+        )[:100]
+    )
+    for intent in intents:
+        intent.requirements = approval_requirements(intent)
     return render(
         request,
         "governance/approvals.html",
-        {
-            "intents": AccessIntent.objects.select_related(
-                "identity", "resource", "requested_by"
-            ).order_by("-created_at")[:100]
-        },
+        {"intents": intents},
     )
 
 

@@ -4,8 +4,27 @@ from django.urls import path
 from platform_core.security import MFALoginForm, security_settings
 from platform_modules.access import ui
 from platform_modules.connectors import views as connector_views
+from platform_modules.governance import views as governance_views
 
 urlpatterns = [
+    path("governance/", governance_views.index, name="governance-home"),
+    path("governance/new/<slug:kind>/", governance_views.edit, name="governance-create"),
+    path(
+        "governance/contracts/<uuid:object_id>/",
+        governance_views.detail,
+        name="governance-contract",
+    ),
+    path(
+        "governance/contracts/<uuid:object_id>/revise/",
+        governance_views.edit,
+        {"kind": "contract"},
+        name="governance-contract-revise",
+    ),
+    path(
+        "governance/<slug:kind>/<uuid:object_id>/withdraw/",
+        governance_views.withdraw,
+        name="governance-withdraw",
+    ),
     path("health/", ui.health, name="health"),
     path(
         "accounts/login/",

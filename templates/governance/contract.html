@@ -1,0 +1,13 @@
+{% extends 'base.html' %}{% load tz %}{% block content %}
+<h1>{{ contract }}</h1><p>Une nouvelle révision s’applique aux décisions suivantes, sans réécrire les événements passés.</p>
+<nav class="domain-tabs"><a href="{% url 'governance-home' %}">← Contrats et politiques</a>{% if not contract.retired_at %}<a href="{% url 'governance-contract-revise' contract.pk %}">Publier une révision</a>{% endif %}</nav>
+{% for revision in revisions %}<section class="workflow-card"><h2>Révision {{ revision.sequence }}</h2><p>Publiée le {{ revision.effective_at }} · {{ revision.published_by }}</p>
+<dl class="record-details">
+  <div><dt>Période UTC</dt><dd>{{ revision.starts_at|utc }} → {{ revision.ends_at|utc }}</dd></div>
+  <div><dt>Responsable</dt><dd>{{ revision.sponsor }}</dd></div>
+  <div><dt>Plages locales</dt><dd>{{ revision.daily_start }} → {{ revision.daily_end }} · {{ revision.timezone_name }}</dd><dd>Jours (0=lundi, 6=dimanche) : {{ revision.weekdays|join:', ' }}</dd></div>
+  <div><dt>Méthodes</dt><dd>{{ revision.allowed_methods|join:', ' }}</dd></div>
+  <div><dt>Pays autorisés</dt><dd>{{ revision.allowed_countries|join:', '|default:'Sans restriction de pays' }}</dd></div>
+  <div><dt>Physique / référence métier</dt><dd>{{ revision.physical_allowed|yesno:'Physique autorisé,Physique interdit' }} · {{ revision.require_reference|yesno:'référence exigée,référence facultative' }}</dd></div>
+</dl><h3>Périmètre</h3><ul>{% for scope in revision.scopes.all %}<li>{{ scope.resource }} · {{ scope.privilege|default:'Tous privilèges' }} · {{ scope.locations|join:', '|default:'Toutes origines' }}</li>{% endfor %}</ul>
+</section>{% endfor %}{% endblock %}

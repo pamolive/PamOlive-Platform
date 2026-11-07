@@ -6,6 +6,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from datetime import time as wall_time
 from datetime import timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -118,6 +119,69 @@ class ScimHandler(BaseHTTPRequestHandler):
 
 
 class ProvisioningTests(TestCase):
+    def test_contract_withdrawal_reaches_scim_and_is_confirmed_on_target(self):
+        from platform_modules.governance import services as governance
+
+        self.configured()
+        install_module("governance", actor=self.admin, organization=self.org)
+        now = timezone.now()
+        with self.assurance():
+            supplier = governance.create_supplier(
+                {"name": "Maintenance vendor"}, actor=self.admin, organization=self.org
+            )
+            contract = governance.publish_contract(
+                {
+                    "supplier": supplier,
+                    "name": "Maintenance RH",
+                    "reference": "CTR-1",
+                    "sponsor": self.reviewer,
+                    "starts_at": now - timedelta(days=1),
+                    "ends_at": now + timedelta(days=1),
+                    "timezone_name": "Europe/Brussels",
+                    "weekdays": list(range(7)),
+                    "daily_start": wall_time(0),
+                    "daily_end": wall_time(0),
+                    "allowed_methods": ["SCIM"],
+                    "allowed_countries": [],
+                    "physical_allowed": False,
+                    "require_reference": True,
+                },
+                [{"resource": self.resource, "privilege": "reader", "locations": []}],
+                actor=self.admin,
+                organization=self.org,
+            )
+            governance.add_participant(
+                {"contract": contract, "identity": self.identity},
+                actor=self.admin,
+                organization=self.org,
+            )
+            grant = create_record(
+                "grant",
+                {
+                    "identity": self.identity,
+                    "account": self.account,
+                    "resource": self.resource,
+                    "entitlement": "reader",
+                    "justification": "Maintenance",
+                    "contract": contract,
+                    "method": "SCIM",
+                    "reference": "CHG-1",
+                    "expires_at": now + timedelta(minutes=15),
+                },
+                actor=self.admin,
+                organization=self.org,
+            )
+        process_changes(self.org)
+        self.assertEqual(self.server.state["members"], {"user-1"})
+        with self.assurance():
+            governance.withdraw("contract", contract.pk, actor=self.admin, organization=self.org)
+        process_changes(self.org)
+        removal = ExternalChange.objects.get(grant=grant, kind="remove_membership")
+        self.assertEqual(removal.status, "succeeded")
+        self.assertTrue(removal.proofs.get().confirmed)
+        self.assertFalse(self.server.state["members"])
+        self.assertTrue(self.server.state["active"])  # Shared account: no global disable.
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -320,7 +384,7 @@ class ProvisioningTests(TestCase):
         self.assertEqual(change.status, "succeeded")
         self.assertEqual(self.server.state["members"], {"user-1"})
         Grant.objects.filter(pk=intent.provisioned_grant_id).update(
-            expires_at=now - timedelta(seconds=1)
+            valid_from=now - timedelta(days=1), expires_at=now - timedelta(seconds=1)
         )
         expire_grants(self.org)
         process_changes(self.org)
