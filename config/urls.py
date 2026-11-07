@@ -6,8 +6,28 @@ from platform_modules.access import ui
 from platform_modules.connectors import views as connector_views
 from platform_modules.governance import views as governance_views
 from platform_modules.intelligence import views as intelligence_views
+from platform_modules.pam import views as pam_views
 
 urlpatterns = [
+    path("pam/endpoints/", pam_views.endpoints, name="pam-endpoints"),
+    path("pam/endpoints/new/", pam_views.configure, name="pam-endpoint-create"),
+    path("pam/endpoints/<uuid:endpoint_id>/", pam_views.configure, name="pam-endpoint-edit"),
+    path(
+        "pam/endpoints/<uuid:endpoint_id>/<slug:action>/",
+        pam_views.endpoint_action,
+        name="pam-endpoint-action",
+    ),
+    path("pam/intents/<uuid:intent_id>/open/", pam_views.launch, name="pam-launch"),
+    path("pam/connections/<uuid:connection_id>/", pam_views.detail, name="pam-connection"),
+    path("pam/connections/<uuid:connection_id>/stop/", pam_views.stop, name="pam-stop"),
+    path(
+        "pam/connections/<uuid:connection_id>/recording/", pam_views.recording, name="pam-recording"
+    ),
+    path(
+        "pam/connections/<uuid:connection_id>/recording/data/",
+        pam_views.recording_data,
+        name="pam-recording-data",
+    ),
     path(
         "intelligence/evidence/<slug:kind>/<uuid:object_id>/",
         intelligence_views.evidence,

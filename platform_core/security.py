@@ -9,6 +9,7 @@ import pyotp
 from cryptography.fernet import Fernet, InvalidToken
 from django import forms
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.hashers import check_password, make_password
@@ -110,6 +111,7 @@ def ensure_recent(request):
         raise forms.ValidationError("Requête trop volumineuse pour la reprise sécurisée.")
     action = {
         "path": request.path,
+        "organization_id": str(request.organization.pk) if request.organization else "",
         "fields": [
             (k, v)
             for k, values in request.POST.lists()
@@ -182,6 +184,15 @@ def security_settings(request):
             if pending:
                 try:
                     action = json.loads(cipher().decrypt(pending.encode(), ttl=600))
+                    organization_id = str(request.organization.pk) if request.organization else ""
+                    if action.get("organization_id") != organization_id:
+                        request.session["post_mfa_action"] = pending
+                        action = None
+                        messages.warning(
+                            request,
+                            "L’organisation a changé. Sélectionnez l’organisation d’origine "
+                            "et reprenez votre action ; aucune modification n’a été appliquée.",
+                        )
                 except (InvalidToken, ValueError):
                     pass
             response = render(request, "security/resume.html", {"action": action, "codes": codes})

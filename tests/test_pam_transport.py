@@ -18,14 +18,60 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 from django.conf import settings
+from django.core.exceptions import PermissionDenied
 from django.test import SimpleTestCase, override_settings
 
+from platform_modules.pam.context import check_websocket_origin, client_address
 from platform_modules.pam.destination import TransportFailure, host_port, resolve_destination
+from platform_modules.pam.native import DisplayBoundary
 from platform_modules.pam.probe import certificate_pin, probe_rdp, probe_ssh, ssh_host_key
 from platform_modules.pam.protocol import Instruction, Parser, ProtocolFailure, validate_input
 
 
 class FramingTests(SimpleTestCase):
+    def test_native_connection_parameter_streams_never_reach_display_or_recording(self):
+        boundary = DisplayBoundary()
+        self.assertIsNone(boundary.outbound(Instruction("argv", ("1", "text/plain", "password"))))
+        self.assertIsNone(boundary.outbound(Instruction("blob", ("1", "c2VjcmV0"))))
+        self.assertIsNone(boundary.outbound(Instruction("end", ("1",))))
+        for opcode in ("clipboard", "file", "required", "ready", "select", "connect"):
+            with self.assertRaises(ProtocolFailure):
+                boundary.outbound(Instruction(opcode, ("secret",)))
+        for instruction in (
+            Instruction("size", ("0", "20000", "20000")),
+            Instruction("img", ("0", "1", "0", "image/svg+xml", "0", "0")),
+        ):
+            with self.assertRaises(ProtocolFailure):
+                DisplayBoundary().outbound(instruction)
+
+    @override_settings(
+        ALLOWED_HOSTS=["pam.example"],
+        PAM_PUBLIC_ORIGIN="https://pam.example",
+        PAM_TRUSTED_PROXY_NETWORKS=(),
+    )
+    def test_websocket_requires_exact_origin_no_url_ticket_and_explicit_proxy_trust(self):
+        scope = {
+            "scheme": "ws",
+            "headers": [(b"host", b"pam.example"), (b"origin", b"https://pam.example")],
+            "subprotocols": ["guacamole"],
+            "client": ("192.0.2.1", 1234),
+            "query_string": b"",
+        }
+        self.assertEqual(check_websocket_origin(scope)[1], "192.0.2.1")
+        for changes in (
+            {"query_string": b"ticket=secret"},
+            {"subprotocols": []},
+            {"headers": [(b"host", b"pam.example"), (b"origin", b"https://attacker.invalid")]},
+            {"headers": scope["headers"] + [(b"origin", b"https://pam.example")]},
+        ):
+            with self.assertRaises(PermissionDenied):
+                check_websocket_origin(dict(scope, **changes))
+        self.assertEqual(client_address("192.0.2.1", "10.0.0.1"), "192.0.2.1")
+        with override_settings(PAM_TRUSTED_PROXY_NETWORKS=("192.0.2.1/32",)):
+            self.assertEqual(client_address("192.0.2.1", "10.0.0.1"), "10.0.0.1")
+            with self.assertRaises(PermissionDenied):
+                client_address("192.0.2.1", "10.0.0.1, 10.0.0.2")
+
     def test_vendored_client_matches_published_provenance(self):
         provenance = json.loads(
             (settings.BASE_DIR / "third_party/guacamole/provenance.json").read_text()

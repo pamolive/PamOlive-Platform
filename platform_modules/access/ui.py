@@ -415,12 +415,39 @@ def review(request, object_id):
 
 @scoped("pam")
 def pam_home(request):
+    from platform_modules.pam.models import RelayConnection
+
+    privileged = (
+        request.user.is_superuser
+        or OrganizationMembership.objects.filter(
+            organization=request.organization,
+            account=request.user,
+            active=True,
+            role__in=("admin", "auditor"),
+        ).exists()
+    )
+    manager = (
+        request.user.is_superuser
+        or OrganizationMembership.objects.filter(
+            organization=request.organization,
+            account=request.user,
+            active=True,
+            role="admin",
+        ).exists()
+    )
+    connections = RelayConnection.objects.select_related("endpoint", "opened_by")
+    if not privileged:
+        connections = connections.filter(opened_by=request.user)
     return render(
         request,
         "governance/pam.html",
         {
             "leases": SessionLease.objects.select_related("intent"),
-            "intents": AccessIntent.objects.filter(status="approved", requested_by=request.user),
+            "intents": AccessIntent.objects.filter(
+                status="approved", requested_by=request.user, fulfillment="pam"
+            ),
+            "connections": connections.order_by("-created_at")[:100],
+            "manage_endpoints": manager,
         },
     )
 

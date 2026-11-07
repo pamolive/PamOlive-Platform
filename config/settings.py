@@ -1,4 +1,6 @@
+import json
 import os
+import socket
 from pathlib import Path
 
 import dj_database_url
@@ -34,6 +36,26 @@ PAM_ALLOWED_NETWORKS = tuple(
     for value in os.environ.get("PAMOLIVE_TARGET_NETWORKS", "").split(",")
     if value.strip()
 )
+PAM_TRUSTED_PROXY_NETWORKS = tuple(
+    filter(
+        None,
+        (
+            value.strip()
+            for value in os.environ.get("PAMOLIVE_TRUSTED_PROXY_NETWORKS", "").split(",")
+        ),
+    )
+)
+PAM_NETWORK_CONTEXT = json.loads(os.environ.get("PAMOLIVE_NETWORK_CONTEXT", "[]"))
+PAM_PUBLIC_ORIGIN = os.environ.get("PAMOLIVE_PUBLIC_ORIGIN", "").rstrip("/")
+# RDP activation remains closed until its native end-to-end release gate passes.
+PAM_SESSION_PROTOCOLS = frozenset({"ssh"})
+PAM_MAX_CONNECTIONS_USER = 4
+PAM_MAX_CONNECTIONS_ORG = 16
+PAM_MAX_SESSION_SECONDS = 4 * 60 * 60
+PAM_MAX_RECORDING_BYTES = 64 * 1024 * 1024
+PAM_MAX_RECORDING_ORG_BYTES = 1024 * 1024 * 1024
+PAM_GUACD_PORT = 4822
+PAM_INSTANCE_ID = os.environ.get("PAMOLIVE_INSTANCE_ID", socket.gethostname())
 DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 ALLOWED_HOSTS = [
     host.strip()
@@ -65,6 +87,7 @@ INSTALLED_APPS = [
     "platform_modules.intelligence.apps.IntelligenceConfig",
 ]
 MIDDLEWARE = [
+    "platform_core.middleware.TrustedProxyMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -98,7 +121,7 @@ ASGI_APPLICATION = "config.asgi.application"
 database_url = os.environ.get("DATABASE_URL")
 if database_url:
     DATABASES = {
-        "default": dj_database_url.parse(database_url, conn_max_age=600, conn_health_checks=True)
+        "default": dj_database_url.parse(database_url, conn_max_age=0, conn_health_checks=True)
     }
 else:
     DATABASES = {
@@ -126,6 +149,8 @@ LOGOUT_REDIRECT_URL = "login"
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "false").lower() == "true"
 SESSION_COOKIE_SECURE = os.environ.get("SECURE_COOKIES", str(not DEBUG)).lower() == "true"
+SESSION_COOKIE_NAME = "pamolive_platform_session"
+CSRF_COOKIE_NAME = "pamolive_platform_csrftoken"
 CSRF_COOKIE_SECURE = SESSION_COOKIE_SECURE
 SECURE_HSTS_SECONDS = 31_536_000 if not DEBUG else 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG

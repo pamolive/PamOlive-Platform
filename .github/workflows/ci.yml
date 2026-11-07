@@ -36,6 +36,18 @@ jobs:
           docker build -t pamolive-platform:ci .
           docker run --rm --entrypoint python pamolive-platform:ci -c "from pathlib import Path; assert not Path('/app/.bootstrap-admin').exists(); assert not Path('/app/.env').exists()"
       - name: Verify native SSH/RDP plugins without contacting a target
-        run: docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:ci -m deploy.check_guacd
+        run: docker run --rm --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:ci -m deploy.check_guacd
       - name: Verify native SSH pinning and keyboard round-trip on a disposable fixture
-        run: docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:ci -m deploy.check_native_ssh
+        run: docker run --rm --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:ci -m deploy.check_native_ssh
+      - name: Verify real WebSocket SSH transport and recording on PostgreSQL
+        run: docker run --rm --user 1000:1000 --network host --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 -e DATABASE_URL -e SECRET_KEY -e PAM_REQUIRE_NATIVE=1 --entrypoint python pamolive-platform:ci manage.py test tests.test_pam_relay_e2e --noinput
+      - name: Verify single-container runtime privilege separation
+        run: |
+          docker run --rm --network host -e DATABASE_URL -e SECRET_KEY --entrypoint python pamolive-platform:ci manage.py migrate --noinput
+          docker run -d --name pamolive-platform-runtime-ci --init --network host --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add KILL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 -e DATABASE_URL -e SECRET_KEY pamolive-platform:ci
+          trap 'docker logs pamolive-platform-runtime-ci; docker rm -f pamolive-platform-runtime-ci' EXIT
+          for attempt in $(seq 1 30); do
+            if docker exec pamolive-platform-runtime-ci python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/',timeout=1)"; then break; fi
+            sleep 1
+          done
+          docker exec pamolive-platform-runtime-ci python -m deploy.check_runtime

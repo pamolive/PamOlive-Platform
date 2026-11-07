@@ -9,6 +9,7 @@ from platform_modules.connectors.outbound import process_changes
 from platform_modules.governance.reconcile import reconcile_contracts
 from platform_modules.identity.services import expire_grants
 from platform_modules.pam.services import expire_leases
+from platform_modules.pam.sessions import reap_connections
 
 
 def deliver(organization):
@@ -31,6 +32,8 @@ class Command(BaseCommand):
             while True:
                 close_old_connections()
                 organizations = list(Organization.objects.filter(active=True))
+                for organization in Organization.objects.all():
+                    reap_connections(organization)
                 for organization in organizations:
                     expire_leases(organization)
                     expire_grants(organization)

@@ -1,0 +1,9 @@
+{% extends 'base.html' %}{% load static %}{% block content %}
+<link rel="stylesheet" href="{% static 'platform_core/pam.css' %}">
+<section class="sheet-heading"><div><h1>{{ connection.endpoint }}</h1><p>{{ connection.get_status_display }} · Limite {{ connection.expires_at }} · Révision {{ connection.endpoint_revision }}</p></div><a href="{% url 'pam-connection' connection.pk %}" class="quiet-link">Fiche du relais</a></section>
+<section class="pam-workspace"><div class="pam-toolbar"><span id="pam-state" role="status">Préparation…</span>{% if player.mode == 'live' %}<button id="pam-close" class="erp-secondary">Fermer sans nouveau code MFA</button>{% else %}<button id="pam-play" class="erp-secondary" disabled>Lecture / pause</button><input id="pam-position" type="range" min="0" value="0" max="0" aria-label="Position de lecture"><span id="pam-time"></span>{% endif %}</div>
+{% if player.mode == 'live' %}<p>Connexion à la cible approuvée ; aucun identifiant distant n’est remis au navigateur. L’ouverture du relais ne constitue pas à elle seule une attestation de connexion du système distant.</p>{% elif not connection.recording_complete %}<p class="field-error">Capture partielle : une interruption ou un échec a empêché sa finalisation normale.</p>{% endif %}
+<div id="pam-display" tabindex="0" role="application" aria-label="{% if player.mode == 'live' %}Session distante enregistrée{% else %}Lecture de la capture{% endif %}"></div><p>Le contenu visible est enregistré côté serveur. Les transferts de fichiers, le presse-papiers et les modifications d’arguments par le client sont désactivés.</p></section>
+{{ player|json_script:'pam-player-config' }}
+<script src="{% static 'platform_core/vendor/guacamole-1.6.0.min.js' %}" defer></script><script src="{% static 'platform_core/pam.js' %}" defer></script>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends 'base.html' %}{% block content %}
+<section class="form-sheet"><div class="form-title"><h1>Configurer une cible PAM</h1><p>1. Enregistrer inactive → 2. Vérifier l’identité du serveur → 3. Activer → 4. Utiliser une intention approuvée.</p></div>
+<p>Le DNS et le port doivent être autorisés par <code>PAMOLIVE_TARGET_HOSTS</code>, et toutes les adresses DNS par <code>PAMOLIVE_TARGET_NETWORKS</code>. La clé d’hôte ou l’empreinte du certificat doit provenir d’un canal de confiance.</p>
+<p>Pour conserver le secret enregistré, laissez les champs de secret vides. Aucun secret enregistré n’est réaffiché. Une modification désactive la cible et ferme les relais de l’ancienne révision. RDP reste inactivable tant que sa validation complète n’est pas achevée.</p>
+<form method="post" class="erp-form">{% csrf_token %}{{ form.as_p }}<button class="button">Enregistrer inactive</button></form>
+{% if endpoint %}<hr><h2>Test et activation</h2><p>Révision {{ endpoint.revision }} · {{ endpoint.test_code|default:'Non testée' }} · {{ endpoint.tested_at|default:'—' }}</p><p>Le test confirme le réseau et la clé/certificat du serveur, <b>pas le mot de passe ni une session distante réussie</b>. Il n’envoie aucun identifiant de compte. Une activation nécessite un test de cette révision datant de moins de 15 minutes.</p>
+<form method="post" action="{% url 'pam-endpoint-action' endpoint.pk 'test' %}">{% csrf_token %}<button class="erp-secondary">Tester le réseau et l’identité du serveur</button></form>
+<form method="post" action="{% url 'pam-endpoint-action' endpoint.pk 'enable' %}">{% csrf_token %}<button class="button">Activer la cible testée</button></form>
+{% if endpoint.enabled %}<form method="post" action="{% url 'pam-endpoint-action' endpoint.pk 'disable' %}">{% csrf_token %}<button class="erp-secondary">Désactiver et fermer les relais</button></form>{% endif %}{% endif %}<p><a href="{% url 'pam-endpoints' %}">← Cibles PAM</a></p></section>
+{% endblock %}
