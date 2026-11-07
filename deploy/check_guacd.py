@@ -82,7 +82,7 @@ def main():
             # for missing libraries/startup failures instead of hiding the cause.
             log.seek(0, os.SEEK_END)
             log.seek(max(0, log.tell() - 4096))
-            sys.stderr.write(log.read().decode("utf-8", errors="replace"))
+            sys.stderr.write(log.read(4096).decode("utf-8", errors="replace"))
             raise
         finally:
             # Only this smoke test's explicitly created process group is signalled.
