@@ -197,6 +197,31 @@ class PamSessionTests(TestCase):
             host_key=self.host_key,
         )
 
+    def test_encrypted_openssh_key_is_imported_without_retaining_its_passphrase(self):
+        key = asyncssh.generate_private_key("ssh-ed25519")
+        protected = key.export_private_key("openssh", passphrase="fixture-import-passphrase")
+        with self.assurance():
+            endpoint = configure_endpoint(
+                actor=self.admin,
+                organization=self.org,
+                name="Private key fixture",
+                resource=self.resource,
+                account=self.account,
+                protocol="ssh",
+                hostname="ssh.example.test",
+                port=22,
+                auth_method="private_key",
+                private_key=protected.decode(),
+                passphrase="fixture-import-passphrase",
+                host_key=self.host_key,
+            )
+        material = json.loads(cipher().decrypt(endpoint.encrypted_secret.encode()))
+        self.assertEqual(set(material), {"private_key"})
+        self.assertEqual(
+            asyncssh.import_private_key(material["private_key"]).public_data, key.public_data
+        )
+        self.assertNotIn("fixture-import-passphrase", endpoint.encrypted_secret)
+
     def test_ticket_is_one_use_and_bound_to_actor_browser_address_and_organization(self):
         item, token = self.launched()
         for changes in (
@@ -406,6 +431,18 @@ class PamSessionTests(TestCase):
         loaded.endpoint.encrypted_secret = "invalid"
         with self.assertRaises(TransportFailure):
             endpoint_credentials(loaded)
+
+    def test_empty_capture_does_not_open_a_broken_player(self):
+        from django.urls import reverse
+
+        item, owner = self.claimed()
+        finish_session(item.pk, self.org, owner, reason="native_closed", complete=True)
+        session = self.client.session
+        session["mfa_verified_at"] = time.time()
+        session.save()
+        response = self.client.post(reverse("pam-recording", args=[item.pk]))
+        self.assertRedirects(response, reverse("pam-connection", args=[item.pk]))
+        self.assertNotIn(str(item.pk), self.client.session.get("pam_recording_grants", {}))
 
     @skipUnless(connection.vendor == "postgresql", "PostgreSQL append-only and tenant guards")
     def test_postgresql_rejects_recording_mutation_and_cross_tenant_bulk_insert(self):

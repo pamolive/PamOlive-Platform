@@ -2,6 +2,8 @@
 
 > Statut : proposition à valider avec l’architecture. Ce document décrit les garanties attendues du noyau ; il ne remplace pas une revue de sécurité avant publication.
 
+Le périmètre effectivement livré et ses limites figurent dans [l’état d’implémentation](implementation-status.md). Le [transport PAM SSH](pam-transport.md) précise ses contrôles opérationnels, les captures, la séparation des utilisateurs système et la porte de qualification RDP encore fermée.
+
 ## 1. Actifs à protéger
 
 - comptes de connexion, facteurs MFA et sessions PAM-olive ;
@@ -79,6 +81,8 @@ Une action est sensible lorsqu’elle permet de prendre le contrôle d’un comp
 - activer un module commercial ou modifier une configuration de connecteur capable d’écrire.
 
 La MFA récente est demandée avant l’ouverture d’une session SSH/RDP ou avant l’action administrative. Elle n’interrompt jamais une session SSH/RDP déjà ouverte. La durée de fraîcheur est configurable par utilisateur parmi les valeurs autorisées par la politique de l’organisation ; l’organisation peut imposer une durée maximale, pas affaiblir le minimum de sécurité du produit.
+
+Dans l’alpha actuelle, les valeurs personnelles sont 2/5/10/15 minutes ; le plafond organisationnel n’est pas encore implémenté. Réduire ses propres privilèges en fermant son relais ne nécessite pas de MFA, même après expiration de cette fraîcheur.
 
 ## 6. Disponibilité et reprise
 

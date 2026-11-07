@@ -39,7 +39,12 @@ from platform_core.tenancy import organization_context
 from platform_modules.access.models import AccessIntent
 from platform_modules.approvals.services import decide
 from platform_modules.identity.models import ExternalAccount, Identity, Resource
-from platform_modules.pam.models import RecordingChunk, RelayConnection, SessionEndpoint
+from platform_modules.pam.models import (
+    RecordingChunk,
+    RelayConnection,
+    SessionEndpoint,
+    SessionLease,
+)
 from platform_modules.pam.protocol import Instruction, Parser
 from platform_modules.pam.recordings import issue_recording_grant, recording_page
 
@@ -167,7 +172,7 @@ class NativeRelayTests(TransactionTestCase):
         self.directory.cleanup()
         self.overrides.disable()
 
-    def create_launch(self, host_key, target_port):
+    def create_launch(self, host_key, target_port, private_key=None):
         with organization_context(self.org):
             endpoint = SessionEndpoint.objects.create(
                 organization=self.org,
@@ -177,9 +182,15 @@ class NativeRelayTests(TransactionTestCase):
                 protocol="ssh",
                 hostname="127.0.0.1",
                 port=target_port,
-                auth_method="password",
+                auth_method="private_key" if private_key else "password",
                 encrypted_secret=cipher()
-                .encrypt(json.dumps({"password": "fixture-secret"}).encode())
+                .encrypt(
+                    json.dumps(
+                        {"private_key": private_key}
+                        if private_key
+                        else {"password": "fixture-secret"}
+                    ).encode()
+                )
                 .decode(),
                 ssh_host_key=host_key,
                 enabled=True,
@@ -222,7 +233,27 @@ class NativeRelayTests(TransactionTestCase):
         return endpoint.pk, intent.pk, config
 
     async def test_real_websocket_roundtrip_recording_and_logout_disconnect(self):
+        await self.exercise("logout")
+
+    async def test_expired_lease_cuts_the_real_ssh_connection(self):
+        await self.exercise("expiry")
+
+    async def test_disabled_endpoint_cuts_the_real_ssh_connection(self):
+        await self.exercise("disabled")
+
+    async def test_forbidden_browser_arguments_cut_the_real_ssh_connection(self):
+        await self.exercise("forbidden")
+
+    async def test_recording_quota_cuts_the_real_ssh_connection(self):
+        await self.exercise("quota")
+
+    async def test_private_key_authentication_and_logout_disconnect(self):
+        await self.exercise("logout", private_key=True)
+
+    async def exercise(self, termination, private_key=False):
         opened, echoed, lost = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        processes = []
+        account_key = asyncssh.generate_private_key("ssh-ed25519") if private_key else None
 
         class SSH(asyncssh.SSHServer):
             authenticated = False
@@ -231,7 +262,16 @@ class NativeRelayTests(TransactionTestCase):
                 return True
 
             def password_auth_supported(self):
-                return True
+                return not private_key
+
+            def public_key_auth_supported(self):
+                return private_key
+
+            def validate_public_key(self, username, key):
+                self.authenticated = (
+                    username == "fixture" and key.public_data == account_key.public_data
+                )
+                return self.authenticated
 
             def validate_password(self, username, password):
                 self.authenticated = username == "fixture" and password == "fixture-secret"
@@ -242,6 +282,7 @@ class NativeRelayTests(TransactionTestCase):
                     lost.set()
 
         async def terminal(process):
+            processes.append(process)
             opened.set()
             process.stdout.write("PAM-olive actual WebSocket SSH fixture\r\n")
             if (await process.stdin.readline()).strip() == "native-broker-proof":
@@ -259,8 +300,10 @@ class NativeRelayTests(TransactionTestCase):
                 PAM_ALLOWED_HOSTS={f"127.0.0.1:{target_port}"},
                 PAM_ALLOWED_NETWORKS=("127.0.0.0/8",),
             ):
-                _, _, config = await sync_to_async(self.create_launch)(
-                    key.export_public_key().decode(), target_port
+                endpoint_id, _, config = await sync_to_async(self.create_launch)(
+                    key.export_public_key().decode(),
+                    target_port,
+                    account_key.export_private_key("openssh").decode() if account_key else None,
                 )
                 async with connect(
                     f"ws://127.0.0.1:{self.web_port}" + config["websocket_path"],
@@ -330,11 +373,34 @@ class NativeRelayTests(TransactionTestCase):
                                 Instruction("key", ("65293", pressed)).encode().decode()
                             )
                         await asyncio.wait_for(echoed.wait(), timeout=5)
-                        await sync_to_async(
-                            Session.objects.filter(session_key=self.session_key).delete
-                        )()
-                        await asyncio.wait_for(lost.wait(), timeout=6)
-                        await asyncio.wait_for(drain, timeout=6)
+
+                        def revoke():
+                            with organization_context(self.org):
+                                if termination == "logout":
+                                    Session.objects.filter(session_key=self.session_key).delete()
+                                elif termination == "expiry":
+                                    SessionLease.objects.update(expires_at=timezone.now())
+                                elif termination == "disabled":
+                                    SessionEndpoint.objects.filter(pk=endpoint_id).update(
+                                        enabled=False
+                                    )
+
+                        with override_settings(
+                            PAM_MAX_RECORDING_BYTES=(
+                                1 if termination == "quota" else settings.PAM_MAX_RECORDING_BYTES
+                            )
+                        ):
+                            await sync_to_async(revoke)()
+                            if termination == "forbidden":
+                                await websocket.send(
+                                    Instruction("connect", ("browser-chosen-target",))
+                                    .encode()
+                                    .decode()
+                                )
+                            elif termination == "quota":
+                                processes[0].stdout.write("capture quota test\r\n" * 100)
+                            await asyncio.wait_for(lost.wait(), timeout=6)
+                            await asyncio.wait_for(drain, timeout=6)
                     finally:
                         drain.cancel()
                         await asyncio.gather(drain, return_exceptions=True)
@@ -344,12 +410,19 @@ class NativeRelayTests(TransactionTestCase):
                 def verify_recording():
                     with organization_context(self.org):
                         item = RelayConnection.objects.get(pk=connection_id)
-                        self.assertEqual(item.end_reason, "authority_lost")
+                        self.assertEqual(
+                            item.end_reason,
+                            {
+                                "forbidden": "input_not_authorized",
+                                "quota": "recording_quota_exceeded",
+                            }.get(termination, "authority_lost"),
+                        )
                         self.assertIsNotNone(item.ended_at)
                         self.assertGreater(item.recording_bytes, 0)
                         for chunk in RecordingChunk.objects.filter(connection=item):
                             payload = cipher().decrypt(bytes(chunk.encrypted_payload))
                             self.assertNotIn(b"fixture-secret", payload)
+                            self.assertNotIn(b"PRIVATE KEY", payload)
                             self.assertNotIn(b"4.argv", payload)
                         # Re-authenticate for playback, never during the transport.
                         self.client.force_login(self.actor)
