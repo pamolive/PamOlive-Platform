@@ -11,7 +11,9 @@ tar -xzf guacamole-server.tar.gz
 cd guacamole-server-1.6.0
 patch --batch --forward -p1 < /guacd-deny-rdp-redirection.patch
 pkg-config --exists freerdp3
-./configure --prefix=/opt/pamolive-guac --with-ssh --with-rdp --without-vnc --without-telnet --without-websockets --without-pulse --without-vorbis --without-libavcodec --without-libavformat --without-libavutil --without-libswscale
+# Debian FreeRDP 3 headers contain deprecated compatibility helpers. Preserve
+# warnings and all other -Werror checks; only these deprecations remain warnings.
+CFLAGS="-O2 -Wno-error=deprecated-declarations" ./configure --prefix=/opt/pamolive-guac --with-ssh --with-rdp --without-vnc --without-telnet --without-websockets --without-pulse --without-vorbis --without-libavcodec --without-libavformat --without-libavutil --without-libswscale
 make -j2
 make install
 test -e /opt/pamolive-guac/lib/libguac-client-ssh.so
