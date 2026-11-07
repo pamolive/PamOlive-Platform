@@ -30,9 +30,11 @@ L’URL ne contient ni identifiants ni paramètres arbitraires. Les chemins de r
 
 ## Parcours approbation → attribution → expiration
 
-Une intention propose trois suites : observation, attribution temporaire d’un droit IAM, ou autorisation de session privilégiée. Le choix IAM exige un compte et un droit précis. L’approbation par une autre personne crée un droit daté et une opération d’ajout au groupe correspondant. À l’échéance, le droit local est révoqué et une opération de retrait est créée. Sans correspondance, l’état reste « à configurer ».
+Une intention propose trois suites : observation, attribution temporaire d’un droit IAM, ou autorisation de session privilégiée. Le choix IAM exige un compte et un droit précis. Lorsque le seuil d’approbation et la condition du responsable du contrat sont satisfaits, la décision crée un droit daté et une opération d’ajout au groupe correspondant. Une attribution future n’est envoyée qu’au début de sa fenêtre ; une opération relancée ne peut pas avancer cette date. À l’échéance, le droit local est révoqué et une opération de retrait est créée. Sans correspondance, l’état reste « à configurer ».
 
 La recertification et le départ utilisent cette même file. Le départ demande la désactivation des comptes reliés et le retrait des droits correspondants. Une opération sans compte lié reste manuelle ; elle ne provoque pas la désactivation d’un autre compte par supposition.
+
+Le retrait d’un contrat ou d’un intervenant utilise également cette file. Il révoque les droits liés au contrat et conserve les autres droits. Une désactivation globale du compte n’est demandée que si celui-ci a été explicitement déclaré dédié à ce contrat. Une révision plus restrictive est réconciliée par le processus de tâches. Ces contrôles continuent même si l’interface du module Contrats et politiques est désactivée.
 
 ## Garanties d’exécution et limites
 
