@@ -417,6 +417,35 @@ class PlatformTests(TestCase):
         self.assertEqual(self.client.post(reverse("login"), data).status_code, 200)
         self.assertNotIn("_auth_user_id", self.client.session)
 
+    def test_mfa_resume_cannot_move_a_pending_action_to_another_organization(self):
+        OrganizationMembership.objects.create(
+            organization=self.other, account=self.operator, role="operator"
+        )
+        self.client.force_login(self.operator)
+        self.client.post(
+            reverse("record-create", args=["identity"]),
+            {"name": "Original organization only", "kind": "service"},
+        )
+        pending = self.client.session["post_mfa_action"]
+        self.client.get(reverse("account-security"))
+        secret = cipher().decrypt(self.client.session["mfa_enrollment"].encode()).decode()
+        session = self.client.session
+        session["organization_id"] = str(self.other.pk)
+        session.save()
+        enrollment_time = timezone.now().replace(second=15, microsecond=0)
+        with patch("platform_core.security.timezone.now", return_value=enrollment_time):
+            response = self.client.post(
+                reverse("account-security"),
+                {
+                    "password": "test-only-strong-password",
+                    "code": pyotp.TOTP(secret).at(enrollment_time),
+                    "freshness_minutes": "5",
+                },
+            )
+        self.assertNotContains(response, "Reprendre mon action")
+        self.assertEqual(self.client.session["post_mfa_action"], pending)
+        self.assertFalse(Identity.unscoped.filter(name="Original organization only").exists())
+
     @skipUnless(connection.vendor == "postgresql", "PostgreSQL database boundary")
     def test_postgresql_blocks_raw_tenant_crossing_and_evidence_rewrite(self):
         foreign = Resource.unscoped.create(organization=self.other, name="Other door", kind="door")

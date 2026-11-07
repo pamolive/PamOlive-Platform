@@ -17,6 +17,6 @@
     "vendored_path": "platform_core/static/platform_core/vendor/guacamole-1.6.0.min.js",
     "vendored_sha256": "cc89f710ecc544477dbe6bfea453fab752dafa1b1ab9770f523676e7b744b44a"
   },
-  "notice": "LICENSE.txt and NOTICE.txt are preserved from the official WAR distribution. Native server LICENSE/NOTICE and local patch are included in the image. Java/Tomcat and the WAR application are not included. The native engine is packaged but is not yet started or exposed by the production runtime.",
+  "notice": "LICENSE.txt and NOTICE.txt are preserved from the official WAR distribution. Native server LICENSE/NOTICE and local patch are included in the image. Java/Tomcat and the WAR application are not included. The native engine listens on container loopback under UID 1001; the application owns same-origin WebSocket authorization. SSH is enabled only for explicitly configured targets; RDP session activation remains closed pending its native end-to-end release gate.",
   "reproducibility_limits": "Python base image is digest-pinned, upstream source is SHA256-pinned and signature-checked. Debian packages use the distribution security repositories and are not byte-for-byte snapshot-pinned."
 }

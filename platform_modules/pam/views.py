@@ -253,6 +253,8 @@ def recording(request, connection_id):
     )
     try:
         authorize_recording(item, request.user)
+        if not item.recording_bytes:
+            raise ValidationError("Aucun affichage distant n’a été capturé pour ce relais.")
     except ValidationError as error:
         messages.error(request, str(error))
         return redirect("pam-connection", connection_id=connection_id)

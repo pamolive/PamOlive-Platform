@@ -8,7 +8,7 @@ PAM-olive rapproche une identité, ses comptes et ressources, une autorisation o
 
 ## Un seul conteneur applicatif
 
-L’image contient Django, l’interface, tous les modules livrés et le traitement des expirations. Aucun conteneur worker, scheduler, Redis ou proxy n’est nécessaire à cette version. Les tâches durables et verrous utilisent PostgreSQL. Plusieurs instances applicatives peuvent partager la même base ; la validation HA complète reste à effectuer.
+L’image contient Django, l’interface, tous les modules livrés, le traitement des expirations et le moteur natif privé de sessions PAM. Aucun conteneur worker, scheduler, Redis ou proxy n’est nécessaire à cette version. Les tâches durables et verrous utilisent PostgreSQL. Plusieurs instances applicatives peuvent partager la même base ; la validation HA complète reste à effectuer, et une session SSH ne migre pas entre instances en cas de panne.
 
 PostgreSQL 16+ doit être disponible sur un serveur existant, éventuellement une autre VM. `compose.yml` contient **un seul service**, `web`. Si vous souhaitez une base locale distincte, le fichier optionnel `compose.local-db.yml` ajoute un second conteneur PostgreSQL.
 
@@ -107,15 +107,17 @@ Ces fonctions exploitent les objets et événements disponibles. Elles ne branch
 
 Python 3.12+, `python -m venv .venv`, puis installer `requirements-dev.lock`. Utiliser `python manage.py test` et `ruff check .`. SQLite est réservé aux tests rapides locaux ; la CI et les contrôles de contraintes utilisent PostgreSQL réel.
 
-L’image contient aussi les moteurs natifs SSH/RDP en préparation, sans les démarrer dans l’application. Pour vérifier leur chargement et un véritable aller-retour SSH vers un serveur factice éphémère, sous Linux, macOS, Windows ou sur le NAS :
+Le [relais PAM SSH](docs/pam-transport.md) utilise le même port applicatif et un moteur natif privé, séparé du Web par son utilisateur système. RDP reste désactivé en attendant sa qualification complète. Les cibles sont refusées tant que les listes d’autorisation du déploiement et leur identité n’ont pas été configurées.
+
+Pour vérifier le chargement natif et un aller-retour SSH sur un serveur factice éphémère, sous Linux, macOS, Windows ou sur le NAS :
 
 ```sh
 docker build -t pamolive-platform:check .
-docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:check -m deploy.check_guacd
-docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:check -m deploy.check_native_ssh
+docker run --rm --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:check -m deploy.check_guacd
+docker run --rm --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:check -m deploy.check_native_ssh
 ```
 
-Ces conteneurs de test sont temporaires, n’accèdent à aucune base ni machine externe et n’installent pas de compte système. Ils ne constituent pas encore un relais utilisable depuis l’interface ni un test de login RDP. Les fins de ligne des scripts sont conservées en LF, y compris dans un clone Windows ; le client tiers conserve ses octets et son empreinte d’origine.
+Ces deux contrôles sont temporaires, n’accèdent à aucune base ni machine externe et n’installent pas de compte système. La CI ajoute un test complet formulaire/WebSocket/moteur SSH sur PostgreSQL, avec révocation et lecture des captures, puis vérifie la séparation des privilèges du runtime. Aucun de ces tests ne constitue une qualification de login RDP. Les fins de ligne des scripts sont conservées en LF, y compris dans un clone Windows ; le client tiers conserve ses octets et son empreinte d’origine.
 
 ## Documentation
 
@@ -123,6 +125,7 @@ Ces conteneurs de test sont temporaires, n’accèdent à aucune base ni machine
 - [Architecture](docs/architecture.md), [données](docs/data-model.md) et [sécurité](docs/security-boundaries.md)
 - [API d’observation](docs/api.md), [modules](docs/modules.md), [PostgreSQL](docs/postgresql.md)
 - [Provisioning SCIM et confirmations externes](docs/provisioning.md)
+- [Transport PAM SSH, captures et configuration du proxy](docs/pam-transport.md)
 - [Roadmap](docs/implementation-roadmap.md), [décisions](docs/architecture-decisions.md), [état livré](docs/implementation-status.md)
 
 ## Licence et gestion du projet

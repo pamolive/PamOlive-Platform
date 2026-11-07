@@ -187,6 +187,13 @@ class NativeSession:
                 raise TransportFailure("native_handshake_failed")
 
     async def close(self):
+        # Explicitly end the sole Guacamole user before dropping its socket.
+        # A bare EOF can leave native cleanup waiting for an input timeout.
+        try:
+            async with asyncio.timeout(0.5):
+                await self.send(Instruction("disconnect"))
+        except (OSError, TimeoutError):
+            pass
         self.writer.close()
         try:
             async with asyncio.timeout(1):
