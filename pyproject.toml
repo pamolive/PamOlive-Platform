@@ -1,6 +1,6 @@
 [project]
 name = "pamolive-core"
-version = "0.2.0a1"
+version = "0.2.0a2"
 description = "PAM-olive modular identity and access platform"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -11,6 +11,8 @@ dependencies = [
   "psycopg[binary]>=3.2,<4",
   "gunicorn>=23,<24",
   "whitenoise>=6.8,<7",
+  "pyotp>=2.9,<3",
+  "cryptography>=49,<50",
 ]
 
 [project.optional-dependencies]

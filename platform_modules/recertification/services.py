@@ -7,6 +7,7 @@ from platform_core.models import Organization
 from platform_core.services import authorize, require_module
 from platform_core.tenancy import organization_context
 from platform_modules.identity.models import Grant
+from platform_modules.identity.services import revoke_grant
 
 from .models import Campaign, Review
 
@@ -45,9 +46,12 @@ def review_grant(review_id, *, actor, organization, keep, comment):
         review.reviewer, review.comment, review.reviewed_at = actor, comment, timezone.now()
         review.save()
         if not keep:
-            grant = review.grant
-            grant.status = "revoked"
-            grant.save(update_fields=["status"])
+            revoke_grant(
+                review.grant,
+                actor=actor,
+                organization=organization,
+                origin="recertification.revoked",
+            )
         record(
             action="recertification.grant.reviewed.v1",
             summary=review.decision,

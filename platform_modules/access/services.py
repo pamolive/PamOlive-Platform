@@ -32,6 +32,10 @@ def create_record(kind, data, *, actor, organization):
         obj = model(organization=organization, **data)
         obj.full_clean()
         obj.save()
+        if kind == "grant":
+            from platform_modules.connectors.outbound import queue_grant_state
+
+            queue_grant_state(obj, actor=actor, organization=organization, origin="grant.created")
         record(
             action=f"{model._meta.app_label}.{kind}.created.v1",
             summary=str(obj),
@@ -200,8 +204,18 @@ def revoke_identity(identity_id, *, actor, organization, reason):
         identity.save(update_fields=["status"])
         accounts = ExternalAccount.objects.filter(identity=identity, active=True)
         account_ids = list(accounts.values_list("id", flat=True))
-        accounts.update(active=False)
-        Grant.objects.filter(identity=identity, status="active").update(status="revoked")
+        from platform_modules.connectors.outbound import queue_account_disable
+        from platform_modules.identity.services import revoke_grant
+
+        for account in accounts:
+            account.active = False
+            account.state_revision += 1
+            account.save(update_fields=["active", "state_revision"])
+            queue_account_disable(
+                account, actor=actor, organization=organization, origin="identity.departed"
+            )
+        for grant in Grant.objects.filter(identity=identity, status="active"):
+            revoke_grant(grant, actor=actor, organization=organization, origin="identity.departed")
         AccessIntent.objects.filter(identity=identity, status__in=["pending", "approved"]).update(
             status="revoked"
         )

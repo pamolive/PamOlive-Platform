@@ -3,6 +3,7 @@ from django.urls import path
 
 from platform_core.security import MFALoginForm, security_settings
 from platform_modules.access import ui
+from platform_modules.connectors import views as connector_views
 
 urlpatterns = [
     path("health/", ui.health, name="health"),
@@ -34,6 +35,53 @@ urlpatterns = [
     path("access/", ui.access_home, name="access-home"),
     path("approvals/", ui.approvals_home, name="approvals-home"),
     path("connectors/", ui.connectors_home, name="connectors-home"),
+    path("connectors/provisioning/", connector_views.index, name="provisioning-home"),
+    path("connectors/provisioning/new/", connector_views.configure, name="connector-create"),
+    path(
+        "connectors/provisioning/<uuid:connector_id>/",
+        connector_views.configure,
+        name="connector-edit",
+    ),
+    path(
+        "connectors/provisioning/<uuid:connector_id>/test/",
+        connector_views.connector_action,
+        {"action": "test"},
+        name="connector-test",
+    ),
+    path(
+        "connectors/provisioning/<uuid:connector_id>/enable/",
+        connector_views.connector_action,
+        {"action": "enable"},
+        name="connector-enable",
+    ),
+    path(
+        "connectors/provisioning/<uuid:connector_id>/disable/",
+        connector_views.connector_action,
+        {"action": "disable"},
+        name="connector-disable",
+    ),
+    path(
+        "connectors/bind-account/",
+        connector_views.binding_create,
+        {"kind": "account"},
+        name="account-bind",
+    ),
+    path(
+        "connectors/bind-group/",
+        connector_views.binding_create,
+        {"kind": "group"},
+        name="group-bind",
+    ),
+    path(
+        "connectors/changes/<uuid:change_id>/",
+        connector_views.change_detail,
+        name="external-change",
+    ),
+    path(
+        "connectors/changes/<uuid:change_id>/retry/",
+        connector_views.retry,
+        name="external-change-retry",
+    ),
     path("recertification/", ui.recertification_home, name="recertification-home"),
     path("pam/", ui.pam_home, name="pam-home"),
     path("records/<slug:kind>/", ui.record_list, name="record-list"),

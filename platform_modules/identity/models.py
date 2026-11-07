@@ -78,6 +78,7 @@ class ExternalAccount(ScopedModel):
         default="standard",
     )
     active = models.BooleanField("Actif", default=True)
+    state_revision = models.PositiveIntegerField(default=1, editable=False)
 
     class Meta(ScopedModel.Meta):
         constraints = [
@@ -125,6 +126,7 @@ class Grant(ScopedModel):
         max_length=16, default="active", choices=[("active", "Actif"), ("revoked", "Révoqué")]
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    state_revision = models.PositiveIntegerField(default=1, editable=False)
 
     def clean(self):
         super().clean()

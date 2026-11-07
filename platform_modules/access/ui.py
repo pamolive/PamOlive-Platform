@@ -14,6 +14,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from platform_core.audit import record, verify_chain
+from platform_core.authorization import recent_authentication
 from platform_core.models import AuditEvent, OrganizationMembership
 from platform_core.security import ensure_recent
 from platform_core.services import (
@@ -66,6 +67,7 @@ CATALOG = {
             "privilege",
             "reason",
             "reference",
+            "fulfillment",
             "starts_at",
             "ends_at",
         ),
@@ -105,6 +107,10 @@ def scoped(module=None, roles=("admin", "operator", "reviewer", "auditor")):
                 challenge = ensure_recent(request)
                 if challenge is not None:
                     return challenge
+                with recent_authentication(
+                    request.user, organization, request.session.get("mfa_verified_at", 0)
+                ):
+                    return view(request, *args, **kwargs)
             return view(request, *args, **kwargs)
 
         return wrapped
@@ -218,12 +224,26 @@ def record_detail(request, kind, object_id):
     title, model, fields = CATALOG[kind]
     require_module(request.organization, "access" if kind in ("intent", "event") else "identity")
     obj = get_object_or_404(model.objects, pk=object_id)
+    from platform_modules.connectors.models import ExternalChange
+
+    changes = ExternalChange.objects.none()
+    if kind == "identity":
+        from django.db.models import Q
+
+        changes = ExternalChange.objects.filter(Q(account__identity=obj) | Q(grant__identity=obj))
+    elif kind == "grant":
+        changes = ExternalChange.objects.filter(grant=obj)
+    elif kind == "account":
+        changes = ExternalChange.objects.filter(account=obj)
+    elif kind == "intent" and obj.provisioned_grant_id:
+        changes = ExternalChange.objects.filter(grant_id=obj.provisioned_grant_id)
     details = [(model._meta.get_field(f).verbose_name, getattr(obj, f)) for f in fields]
     return render(
         request,
         "governance/detail.html",
         {
             "title": title,
+            "external_changes": changes.order_by("-created_at")[:50],
             "obj": obj,
             "kind": kind,
             "details": details,

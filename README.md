@@ -79,6 +79,7 @@ Python 3.12+, `python -m venv .venv`, puis installer `requirements-dev.lock`. Ut
 - [Vision produit](docs/product-vision.md) et [atlas visuel autonome](docs/architecture-platform.html)
 - [Architecture](docs/architecture.md), [données](docs/data-model.md) et [sécurité](docs/security-boundaries.md)
 - [API d’observation](docs/api.md), [modules](docs/modules.md), [PostgreSQL](docs/postgresql.md)
+- [Provisioning SCIM et confirmations externes](docs/provisioning.md)
 - [Roadmap](docs/implementation-roadmap.md), [décisions](docs/architecture-decisions.md), [état livré](docs/implementation-status.md)
 
 ## Licence et gestion du projet

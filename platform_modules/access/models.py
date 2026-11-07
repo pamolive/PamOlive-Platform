@@ -19,6 +19,23 @@ class AccessIntent(ScopedModel):
     privilege = models.CharField("Privilège", max_length=160, blank=True)
     reason = models.TextField("Pourquoi ?")
     reference = models.CharField("Ticket / contrat / projet", max_length=180, blank=True)
+    fulfillment = models.CharField(
+        "Suite après approbation",
+        max_length=20,
+        default="observe",
+        choices=[
+            ("observe", "Justification et observation"),
+            ("iam_group", "Attribution temporaire d’un droit IAM"),
+            ("pam", "Autorisation de session privilégiée"),
+        ],
+    )
+    provisioned_grant = models.ForeignKey(
+        "identity.Grant",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="approved_intents",
+    )
     starts_at = models.DateTimeField("Début")
     ends_at = models.DateTimeField("Fin")
     requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
@@ -36,6 +53,8 @@ class AccessIntent(ScopedModel):
 
     def clean(self):
         super().clean()
+        if self.fulfillment == "iam_group" and (not self.account_id or not self.privilege):
+            raise ValidationError("Une attribution IAM nécessite un compte et un droit précis.")
         if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
             raise ValidationError("La fin doit suivre le début.")
         if self.account_id and self.account.identity_id != self.identity_id:

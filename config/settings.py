@@ -6,6 +6,22 @@ import dj_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get("SECRET_KEY", "insecure-development-key-change-me")
 PAMOLIVE_ENCRYPTION_KEY = os.environ.get("PAMOLIVE_ENCRYPTION_KEY", SECRET_KEY)
+CONNECTOR_ALLOWED_HOSTS = frozenset(
+    filter(
+        None,
+        (
+            value.strip().lower()
+            for value in os.environ.get("PAMOLIVE_CONNECTOR_HOSTS", "").split(",")
+        ),
+    )
+)
+CONNECTOR_ALLOWED_NETWORKS = tuple(
+    filter(
+        None,
+        (value.strip() for value in os.environ.get("PAMOLIVE_CONNECTOR_NETWORKS", "").split(",")),
+    )
+)
+CONNECTOR_CA_BUNDLE = os.environ.get("PAMOLIVE_CONNECTOR_CA_BUNDLE", "")
 DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 ALLOWED_HOSTS = [
     host.strip()

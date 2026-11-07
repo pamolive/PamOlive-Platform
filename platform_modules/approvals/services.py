@@ -32,6 +32,13 @@ def decide(intent_id, *, actor, organization, approved, comment):
         )
         intent.status = "approved" if approved else "denied"
         intent.save(update_fields=["status"])
+        if approved and intent.fulfillment == "iam_group":
+            from platform_modules.identity.services import grant_from_approval
+
+            intent.provisioned_grant = grant_from_approval(
+                intent, actor=actor, organization=organization
+            )
+            intent.save(update_fields=["provisioned_grant"])
         record(
             action="approvals.intent.decided.v1",
             summary=f"Demande {intent.status}",
