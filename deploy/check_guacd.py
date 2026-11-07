@@ -5,6 +5,7 @@ import os
 import signal
 import socket
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -57,7 +58,10 @@ def main():
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
         port = reservation.getsockname()[1]
-    with tempfile.TemporaryDirectory(prefix="pamolive-native-check-") as directory:
+    with (
+        tempfile.TemporaryDirectory(prefix="pamolive-native-check-") as directory,
+        tempfile.TemporaryFile() as log,
+    ):
         process = subprocess.Popen(
             [str(binary), "-f", "-b", "127.0.0.1", "-p", str(port), "-L", "error"],
             env={
@@ -67,15 +71,25 @@ def main():
                 "HOME": directory,
                 "GUACAMOLE_HOME": directory,
             },
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=log,
+            stderr=subprocess.STDOUT,
             start_new_session=True,
         )
         try:
             asyncio.run(inspect_plugins(port))
+        except Exception:
+            # This test has no targets or credentials. Keep bounded diagnostics
+            # for missing libraries/startup failures instead of hiding the cause.
+            log.seek(0, os.SEEK_END)
+            log.seek(max(0, log.tell() - 4096))
+            sys.stderr.write(log.read().decode("utf-8", errors="replace"))
+            raise
         finally:
             # Only this smoke test's explicitly created process group is signalled.
-            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
