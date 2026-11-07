@@ -75,6 +75,11 @@ class AccessIntent(ScopedModel):
         if self.account_id and self.account.identity_id != self.identity_id:
             raise ValidationError("Le compte ne correspond pas à l’identité.")
         if self.network_switch_id or self.network_port or self.network_vlan:
+            if self.fulfillment != "observe":
+                raise ValidationError(
+                    "Le déplacement réseau précis est actuellement évalué en observation. "
+                    "Aucun provisioning NAC/switch n’est exécuté par ce parcours."
+                )
             if not self.network_switch_id or not self.network_port or not self.network_vlan:
                 raise ValidationError("Un déplacement réseau exige switch, port et VLAN précis.")
             if self.network_switch.kind != "network":

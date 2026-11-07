@@ -44,6 +44,8 @@ Les observations acceptent également :
 
 Ces champs complètent le corps d’événement précédent, ils ne le remplacent pas. `domain` vaut `physical`, `pam`, `remote`, `network`, `application`, `certificate`, `directory` ou `cloud`. Sans domaine connu, ne pas en inventer un. `credential_observation` vaut `identifier_only` par défaut, ou `possession_asserted` si la source déclare avoir une preuve de possession ; PAM-olive ne vérifie pas cryptographiquement cette déclaration. Aucun secret ou certificat privé n’est transmis. Un certificat gouverné reste distinct de l’identité machine qui le possède.
 
+Une intention contenant un switch/port/VLAN précis utilise la suite « observation ». Ce parcours ne configure pas un NAC ou un switch et n’est pas converti en droit IAM générique, qui perdrait ces restrictions. L’intégration d’un provisioning réseau requiert un adaptateur capable de les faire appliquer.
+
 Les exports d’événements incluent les UUID et champs structurés dans `facts`, ainsi que les constats et leur version. Une réévaluation ajoute une explication, elle ne modifie ni l’observation ni les évaluations précédentes.
 
 ## Rapports de couverture de collecte

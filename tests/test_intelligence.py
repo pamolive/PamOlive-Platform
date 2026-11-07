@@ -315,6 +315,28 @@ class IntelligenceTests(TestCase):
         )
         self.assertEqual(wrong.evaluations.get().verdict, "deviation")
 
+    def test_network_scope_cannot_be_silently_widened_into_a_generic_iam_grant(self):
+        with self.assertRaises(ValidationError):
+            create_record(
+                "intent",
+                {
+                    "identity": self.identity,
+                    "account": self.account,
+                    "resource": self.resource,
+                    "method": "SSH",
+                    "privilege": "admin",
+                    "reason": "Move",
+                    "fulfillment": "iam_group",
+                    "starts_at": timezone.now(),
+                    "ends_at": timezone.now() + timedelta(minutes=15),
+                    "network_switch": self.switch,
+                    "network_port": "24",
+                    "network_vlan": "RADIOLOGY",
+                },
+                actor=self.admin,
+                organization=self.org,
+            )
+
     def test_certificate_host_signal_does_not_claim_private_key_duplication(self):
         certificate = Credential.objects.create(
             organization=self.org,
