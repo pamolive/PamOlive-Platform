@@ -83,6 +83,12 @@ def ingest_event(data, *, organization, actor=None, source=None):
             return existing, False
         event = AccessEvent(organization=organization, **data)
         event.full_clean()
+        from datetime import timedelta
+
+        if event.occurred_at > timezone.now() + timedelta(minutes=5):
+            raise ValidationError(
+                "Un événement observé ne peut pas être daté de plus de cinq minutes dans le futur."
+            )
         event.save()
         record(
             action="access.event.received.v1",

@@ -10,6 +10,8 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import connection, transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
@@ -571,6 +573,13 @@ def api_events(request):
         data = json.loads(request.body)
         allowed = set(CATALOG["event"][2]) - {"source"}
         if not isinstance(data, dict) or set(data) - allowed:
+            raise ValueError
+        occurred = (
+            parse_datetime(data.get("occurred_at", ""))
+            if isinstance(data.get("occurred_at"), str)
+            else None
+        )
+        if occurred is None or not timezone.is_aware(occurred):
             raise ValueError
         with organization_context(source.organization):
             form = model_form(

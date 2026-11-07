@@ -531,6 +531,49 @@ class IntelligenceTests(TestCase):
             self.client.post(url, "{}", content_type="application/json").status_code, 401
         )
 
+    def test_source_event_api_requires_timezone_and_rejects_future_facts(self):
+        payload = {
+            "external_id": "bad-time",
+            "resource": str(self.resource.pk),
+            "method": "SSH",
+            "action": "login",
+            "occurred_at": timezone.now().replace(tzinfo=None).isoformat(),
+        }
+        headers = {"HTTP_AUTHORIZATION": f"Bearer {self.token}"}
+        url = reverse("api-events")
+        self.assertEqual(
+            self.client.post(
+                url, json.dumps(payload), content_type="application/json", **headers
+            ).status_code,
+            400,
+        )
+        payload["occurred_at"] = (timezone.now() + timedelta(minutes=10)).isoformat()
+        self.assertEqual(
+            self.client.post(
+                url, json.dumps(payload), content_type="application/json", **headers
+            ).status_code,
+            400,
+        )
+        self.assertFalse(AccessEvent.objects.exists())
+
+    def test_collection_report_api_requires_explicit_timezone(self):
+        scope = self.scope()
+        payload = {
+            "scope": str(scope.pk),
+            "external_id": "naive-time",
+            "state": "complete",
+            "covered_from": (self.base + timedelta(minutes=1)).replace(tzinfo=None).isoformat(),
+            "covered_until": (self.base + timedelta(hours=1)).isoformat(),
+        }
+        response = self.client.post(
+            reverse("collection-report-api"),
+            json.dumps(payload),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(CollectionReport.objects.exists())
+
     def test_timeline_shows_late_arrivals_clock_overlap_and_physical_digital_domains(self):
         scope = self.scope()
         self.report(scope, clock_uncertainty_seconds=30)

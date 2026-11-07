@@ -26,6 +26,8 @@ Le pays déclaré dans une intention n’est jamais recopié comme pays observé
 
 La source est imposée par le jeton ; aucun `organization_id` ni `source` n’est accepté du client. Une nouvelle observation renvoie HTTP 201 ; son rejeu avec le même identifiant source renvoie HTTP 200 et le même UUID. Le fait initial n’est pas modifié.
 
+Les dates des API sources exigent un fuseau explicite (`Z` ou un décalage ISO 8601). Aucune heure locale sans fuseau n’est interprétée silencieusement. Un fait daté de plus de cinq minutes dans le futur est refusé : les interventions prévues appartiennent aux intentions, pas aux observations.
+
 Le détail de l’événement et son export `/api/v1/events/<uuid>/export/` nécessitent une session interactive autorisée dans l’organisation. Les sources d’ingestion ne peuvent pas lire les données ou approuver des accès.
 
 ## Contexte réseau et certificat

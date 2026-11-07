@@ -4,6 +4,8 @@ from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
@@ -160,6 +162,10 @@ def report_api(request):
         data = json.loads(request.body)
         if not isinstance(data, dict) or set(data) - set(ReportForm.base_fields):
             raise ValueError
+        for field in ("covered_from", "covered_until"):
+            value = parse_datetime(data[field]) if isinstance(data.get(field), str) else None
+            if value is None or not timezone.is_aware(value):
+                raise ValueError
         form = ReportForm(data)
         if not form.is_valid():
             return JsonResponse(
