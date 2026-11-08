@@ -1,6 +1,7 @@
 """Executed with a real wheel installed by deploy.check_extensions, never by a view."""
 
 import io
+import os
 import time
 from types import SimpleNamespace
 from unittest import skipUnless
@@ -194,6 +195,22 @@ class ExtensionRuntimeTests(TestCase):
         self.assertContains(response, "&lt;script&gt;bad&lt;/script&gt;")
         self.assertNotContains(response, "<script>bad</script>")
         self.assertTrue(verify_chain(self.org))
+
+    def test_namespaced_stylesheet_is_found_and_served_by_the_built_image(self):
+        from django.contrib.staticfiles import finders
+        from django.contrib.staticfiles.storage import staticfiles_storage
+
+        name = "pamolive_ext_notes/notes.css"
+        self.assertTrue(finders.find(name))
+        self.enabled()
+        self.client.force_login(self.operator)
+        url = staticfiles_storage.url(name)
+        self.assertContains(self.client.get(self.home), url)
+        if os.environ.get("PAMOLIVE_REQUIRE_EXTENSION_ASSETS") == "1":
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            data = b"".join(response.streaming_content) if response.streaming else response.content
+            self.assertIn(b".extension-note-body", data)
 
     def test_csrf_wrong_methods_and_no_organization_do_not_execute(self):
         self.enabled()

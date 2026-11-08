@@ -14,4 +14,4 @@ dependencies = ["Django>=5.2,<5.3"]
 example_notes = "pamolive_ext_notes.manifest:module"
 
 [tool.setuptools.package-data]
-pamolive_ext_notes = ["manifest.json", "templates/pamolive_ext_notes/*.html"]
+pamolive_ext_notes = ["manifest.json", "templates/pamolive_ext_notes/*.html", "static/pamolive_ext_notes/*.css"]

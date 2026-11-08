@@ -20,6 +20,7 @@ Distribution wheel py3-none-any
     views.py
     migrations/
     templates/<package>/
+    static/<package>/
 ```
 
 Consulter le [manifeste complet de l’exemple](../examples/notes-extension/pamolive_ext_notes/manifest.json). Le contrat impose une clé propre, une version canonique PEP 440 de 30 caractères maximum, une plage de compatibilité du noyau, la version d’API `1`, le package, l’AppConfig, les dépendances, les permissions et les routes. Les objets de contrat Python sont immuables.
@@ -99,7 +100,7 @@ docker build --build-arg PAMOLIVE_BASE_IMAGE=pamolive-platform:base -t pamolive-
 
 `pamolive-platform:base` désigne ici l’image de base construite depuis un commit validé du dépôt, pas une image publique présumée existante. En livraison, conserver la révision et une référence d’image vérifiable. Le Dockerfile vérifie toutes les attestations **et la correspondance exacte du verrou avec le catalogue** avant pip : aucune URL, option d’index ou wheel supplémentaire n’est admise. Il installe hors réseau avec `--require-hashes --no-deps --no-compile`, vérifie les dépendances installées, les modèles et les points d’entrée, puis retire les wheels temporaires. Les bibliothèques Python nécessaires doivent déjà être présentes et verrouillées dans l’image choisie ; une dépendance absente fait échouer la construction.
 
-Le runtime hérite du port unique, du superviseur, des UID séparés, du moteur PAM privé et des contrôles de santé. Ne pas copier une clé privée ou un fichier `.env` dans ce contexte.
+La construction exécute aussi `collectstatic` après l’installation des extensions : leurs ressources statiques sont servies dans la même image, sans serveur supplémentaire. Les templates peuvent compléter le bloc `extra_head` de la coque. Le runtime hérite du port unique, du superviseur, des UID séparés, du moteur PAM privé et des contrôles de santé. Ne pas copier une clé privée ou un fichier `.env` dans ce contexte.
 
 ## Migrer puis activer
 
