@@ -24,6 +24,7 @@ REVIEWED = {
     ("connectors", "0006_teamviewer_physical_sessions"),
     ("connectors", "0007_teamviewer_access_observations"),
     ("connectors", "0008_business_reference_sources"),
+    ("connectors", "0009_business_intent_associations"),
 }
 NEW_DEFAULTS = {
     "access_accessevent": {"ended_at": None},

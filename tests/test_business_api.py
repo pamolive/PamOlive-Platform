@@ -2,6 +2,7 @@ import copy
 import json
 import time
 from datetime import timedelta
+from pathlib import Path
 from unittest import skipUnless
 from unittest.mock import patch
 
@@ -17,7 +18,10 @@ from platform_core.models import AccountSecurity, AuditEvent
 from platform_core.tenancy import organization_context
 from platform_modules.access.models import AccessIntent
 from platform_modules.connectors.business import (
+    FIELDS,
     FORMAT,
+    KINDS,
+    STATES,
     business_rate_bucket,
     canonical,
     configure_business_source,
@@ -76,6 +80,23 @@ class BusinessAPITests(TestCase):
             content_type="application/json",
             HTTP_AUTHORIZATION="Bearer " + (token or self.token),
         )
+
+    def test_machine_readable_contract_matches_the_actual_fields_enums_and_response(self):
+        spec = json.loads(
+            (Path(__file__).resolve().parents[1] / "docs/business-api.openapi.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        schema = spec["components"]["schemas"]["BusinessRead"]
+        self.assertEqual(set(schema["properties"]), FIELDS)
+        self.assertEqual(set(schema["properties"]["kind"]["enum"]), KINDS)
+        self.assertEqual(set(schema["properties"]["state"]["enum"]), STATES)
+        self.assertEqual(schema["properties"]["schema"]["const"], FORMAT)
+        response = self.post()
+        self.assertEqual(response.status_code, 201)
+        expected = spec["components"]["schemas"]["Receipt"]
+        self.assertLessEqual(set(expected["required"]), set(response.json()))
+        self.assertLessEqual(set(response.json()), set(expected["properties"]))
 
     def test_http_round_trip_seals_minimal_facts_without_any_local_access_approval(self):
         counts = (Identity.unscoped.count(), AccessIntent.unscoped.count(), Grant.unscoped.count())

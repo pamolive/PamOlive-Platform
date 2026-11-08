@@ -1,11 +1,12 @@
 import json
 from functools import wraps
+from uuid import UUID
 
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import IntegrityError, connection
+from django.db import IntegrityError, connection, transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -161,6 +162,63 @@ def model_form(model, fields, data=None):
         if isinstance(field, forms.DateTimeField):
             field.widget = forms.DateTimeInput(attrs={"type": "datetime-local"})
     return form
+
+
+def _business_intent_matches(evaluation):
+    """Only callers' verified, non-stale evaluations; never match reference text."""
+    if evaluation is None:
+        return [], False
+    ids = {evaluation.intent_id} if evaluation.intent_id else set()
+    for finding in evaluation.findings:
+        if (
+            isinstance(finding, dict)
+            and finding.get("code") == "intent"
+            and finding.get("state") == "confirmed"
+        ):
+            try:
+                ids.add(UUID(str(finding.get("evidence", ""))))
+            except (ValueError, TypeError):
+                continue
+    limited = len(ids) > 32
+    return list(AccessIntent.objects.filter(pk__in=sorted(ids)[:32]).order_by("pk")), limited
+
+
+def _event_business_export(request, event, evaluation):
+    from platform_core.models import Organization
+    from platform_modules.connectors.business_associations import intent_business_context
+    from platform_modules.connectors.business_models import BusinessAssociation
+
+    intents, limited = _business_intent_matches(evaluation)
+    data = dict(
+        schema="pamolive.event-business-context/1",
+        intents=[],
+        truncated=limited,
+        included_in_historical_evaluation=False,
+        local_authorizations_modified=False,
+        state="no_verified_intent_match",
+    )
+    if not intents:
+        return data, None
+    # Privacy check and reads share the same lock as association publication.
+    # A concurrent new association must not bypass the fresh-MFA export gate.
+    with transaction.atomic():
+        Organization.objects.select_for_update().get(pk=request.organization.pk, active=True)
+        active = ModuleActivation.objects.filter(
+            organization=request.organization, module_key="connectors", enabled=True
+        ).exists()
+        if active and BusinessAssociation.objects.filter(intent__in=intents).exists():
+            challenge = ensure_recent(request)
+            if challenge is not None:
+                return None, challenge
+        data["state"] = "separate_current_context"
+        data["intents"] = [
+            intent_business_context(
+                obj.pk, event_at=event.occurred_at, evaluated_at=evaluation.evaluated_at
+            )
+            for obj in intents
+        ]
+        data["truncated"] |= any(item["truncated"] for item in data["intents"])
+    return data, None
 
 
 @login_required
@@ -358,6 +416,11 @@ def record_detail(request, kind, object_id):
             "credentials": Credential.objects.filter(identity=obj) if kind == "identity" else [],
             "evaluation": latest if evaluation_valid and not stale else None,
             "historical_evaluation": latest if evaluation_valid and stale else None,
+            "business_intents": _business_intent_matches(
+                latest if evaluation_valid and not stale else None
+            )[0]
+            if kind == "event"
+            else [],
         },
     )
 
@@ -657,9 +720,19 @@ def export_event(request, object_id):
     )
     valid = evaluation is not None and verify_evaluation(evaluation)
     managed = is_managed_source(event.source)
+    business, challenge = _event_business_export(
+        request,
+        event,
+        evaluation
+        if valid and (not managed or evaluation.context_hash == context.fingerprint)
+        else None,
+    )
+    if challenge is not None:
+        return challenge
     response = JsonResponse(
         {
             "event_id": str(event.pk),
+            "business_context": business,
             "organization_id": str(request.organization.pk),
             "who": str(event.identity) if event.identity_id else None,
             "what": str(event.resource) if event.resource_id else None,
@@ -731,6 +804,7 @@ def export_event(request, object_id):
         }
     )
     response["Content-Disposition"] = f'attachment; filename="access-{event.pk}.json"'
+    response["Cache-Control"] = "no-store"
     return response
 
 

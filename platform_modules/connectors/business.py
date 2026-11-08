@@ -409,18 +409,29 @@ def receipt_public(receipt):
     # an administrator may have revoked/rotated this source in the meantime.
     source = BusinessSource.objects.select_related("audit").get(pk=receipt.record.source_id)
     now = timezone.now()
+    latest_sequence = (
+        BusinessReceipt.objects.filter(record_id=receipt.record_id)
+        .order_by("-sequence")
+        .values_list("sequence", flat=True)
+        .first()
+    )
+    return _receipt_snapshot(receipt, source=source, latest_sequence=latest_sequence, now=now)
+
+
+def _receipt_snapshot(receipt, *, source, latest_sequence, now):
+    """Internal bulk reader; callers hold the organization lock and loaded current sources."""
+    if (
+        source.pk != receipt.record.source_id
+        or source.organization_id != receipt.organization_id
+        or not verify_business_receipt(receipt)
+    ):
+        raise ValidationError("Preuve métier invalide.")
     observed = parse_datetime(receipt.payload["observed_at"])
     fresh = (
         0 <= (now - min(observed, receipt.received_at)).total_seconds() <= source.freshness_seconds
     )
     current = source.active and verify_source(source) and receipt.source_revision == source.revision
-    latest = (
-        BusinessReceipt.objects.filter(record_id=receipt.record_id)
-        .order_by("-sequence")
-        .values_list("sequence", flat=True)
-        .first()
-        == receipt.sequence
-    )
+    latest = latest_sequence == receipt.sequence
     return dict(
         receipt_id=str(receipt.pk),
         record_id=str(receipt.record_id),
@@ -456,5 +467,14 @@ def verify_business_evidence():
     for receipt in BusinessReceipt.unscoped.select_related("record__source", "audit").iterator():
         if not verify_business_receipt(receipt):
             raise RuntimeError("Invalid restored business receipt")
+        count += 1
+    from .business_associations import verify_business_association
+    from .business_models import BusinessAssociation
+
+    for obj in BusinessAssociation.unscoped.select_related(
+        "intent", "record", "receipt__record__source", "receipt__audit", "audit"
+    ).iterator():
+        if not verify_business_association(obj):
+            raise RuntimeError("Invalid restored business association")
         count += 1
     return count

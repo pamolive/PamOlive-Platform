@@ -4,13 +4,17 @@ Plusieurs outils de ticketing, de gestion des changements ou de projets peuvent 
 
 Cette API reçoit des **déclarations de sources authentifiées**. Elle ne contacte pas elle-même GLPI, Jira ou ServiceNow et ne certifie pas leur configuration. Un adaptateur dans l’outil émetteur, une automatisation existante ou un client d’intégration doit lire le système source et traduire ses champs. L’état source `approved` n’est jamais une approbation PAM-olive : l’API ne crée ni identité, ni compte, ni intention, ni droit et ne déclenche aucun provisioning.
 
-Le rattachement explicite de ces références à une intention et à son explication est une étape suivante ; une référence texte identique dans deux systèmes n’établit aucun lien automatique.
+Le [contrat OpenAPI](business-api.openapi.json) décrit les deux opérations destinées aux intégrateurs. Les opérations interactives de rattachement restent protégées par la session du portail et la MFA ; elles ne sont pas accessibles avec le jeton source.
+
+Le rattachement à une intention est une déclaration humaine séparée, datée et protégée par MFA. Une référence texte identique dans deux systèmes n’établit aucun lien automatique.
 
 ## Configurer une intégration
 
 Dans l’organisation concernée, activer Connecteurs puis ouvrir **Systèmes métier et API** avec le rôle administrateur. Créer par exemple `glpi-it`, `jira-projets` et `servicenow-production` comme trois sources distinctes. La création, la désactivation, la réactivation et le remplacement d’un jeton nécessitent une MFA personnelle récente. Le jeton n’est affiché qu’une fois ; seul son hash est conservé.
 
 Les anciens jetons d’ingestion d’événements ne peuvent pas appeler cette API et les nouveaux jetons métier ne peuvent pas importer d’événement d’accès. Un cookie du portail ne remplace pas le jeton. Le nom et la clé de source ne sont pas une preuve de certification du fournisseur.
+
+L’identifiant externe doit rester stable pour un même dossier dans une même source. Ne pas réutiliser une intégration pour un autre outil ou espace d’identifiants : créer une nouvelle source. Une rotation de jeton conserve l’intégration ; elle exige une nouvelle lecture sous la révision courante avant de présenter sa déclaration comme actuelle.
 
 Pour une évaluation sur le réseau local, conserver l’adresse existante de l’application. HTTP ne chiffre ni le jeton ni les références : limiter cet usage au réseau de confiance. Employer HTTPS pour une exposition distante ou des échanges sensibles. Aucun changement DNS ni reverse proxy n’est nécessaire au développement local.
 
@@ -86,6 +90,30 @@ Invoke-RestMethod -Method Get -Headers $businessHeaders -Uri 'http://192.168.0.2
 ```
 
 Une réponse `404` avec un jeton valide signifie que cette source n’a pas encore publié cet identifiant. Ne jamais inscrire la valeur du jeton dans un exemple Git, une capture d’écran ou une conversation.
+
+## Rattacher une référence à une intention
+
+1. Ouvrir l’intention dans le portail, puis **Références métier, sources et historique**.
+2. Valider sa MFA personnelle et choisir **Associer une référence métier**. Le demandeur peut gérer ses propres intentions ; un administrateur de l’organisation peut gérer les autres. Les rôles de consultation ou d’approbation seuls ne peuvent pas publier ce rattachement.
+3. Sélectionner la source et son identifiant externe exact, puis **Afficher la lecture source**. Examiner la référence, l’état, la date déclarée de lecture et la date de réception.
+4. Renseigner pourquoi ce dossier concerne l’intention et confirmer la lecture sélectionnée. Une lecture historique peut être associée pour l’investigation ; elle ne devient pas actuelle pour autant.
+5. Pour corriger le dossier ou la lecture choisie, publier une nouvelle association. Pour retirer le lien, fournir un motif depuis son état courant. Une commande issue d’une ancienne page est refusée si un rattachement plus récent l’a remplacé.
+
+Plusieurs sources et dossiers peuvent être associés à la même intention. Le périmètre de l’intention est figé dans chaque attestation, sans changer son statut, ses votes, son bail PAM ou ses droits. Une modification ultérieure du périmètre invalide l’utilisation courante du rattachement mais conserve son ancienne preuve. Un changement de référence ou de type dans le système source demande aussi une revue explicite.
+
+La vue présente séparément la lecture choisie lors du rattachement et la dernière lecture connue du même dossier. « Contexte source actuel » signifie seulement que la relation déclarée et la dernière déclaration source restent actuelles. Un ticket clos peut constituer un contexte actuel ; ce libellé ne dit pas que l’accès est autorisé. L’historique conserve les associations et retraits, avec export de leur preuve et du périmètre d’origine.
+
+L’affichage est borné à 20 dossiers courants et 50 publications historiques par intention, avec avertissement si la liste est partielle. La limite d’affichage n’efface aucune preuve et ne constitue pas une revue exhaustive.
+
+## Utiliser le contexte dans l’explication d’un accès
+
+Le détail d’un accès propose les références des seules intentions rapprochées par une évaluation signée et encore compatible avec l’interprétation courante. Il n’effectue aucune recherche automatique par texte de ticket. Les accès justifiés par un droit permanent sans intention ne sont pas présentés comme dépourvus de justification parce que cette vue n’a pas de rattachement.
+
+L’export d’accès ajoute `business_context` à côté des faits et de l’évaluation historique, sans réécrire celle-ci ni sa signature. S’il contient des preuves métier, une MFA personnelle récente est requise avant leur lecture, y compris à l’export. La consultation ordinaire de l’accès ne révèle pas les titres ou charges utiles des systèmes métier avant ce contrôle.
+
+Les champs `association_known_before_access`, `pinned_read_known_before_access` et `association_known_before_evaluation` distinguent les éléments déjà connus des rattachements ultérieurs. Ces comparaisons utilisent l’heure d’accès déclarée et les dates de réception/publication dans la plateforme ; elles ne certifient pas l’horloge source. Elles concernent le début de l’accès, pas toute la durée d’une session. `included_in_historical_evaluation` et `observed_interval_evaluated` restent faux : ce contexte séparé n’est pas ajouté rétroactivement à la décision signée et ne prouve pas une autorisation externe pendant toute la session.
+
+Un module Connecteurs désactivé rend ce contexte indisponible, sans supprimer son histoire ni inventer une conformité. Un jeton d’intégration ne peut ni publier un rattachement humain ni approuver une intention.
 
 ## Conservation des preuves
 

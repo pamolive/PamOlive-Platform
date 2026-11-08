@@ -133,3 +133,35 @@ class BusinessReceipt(BusinessEvidence):
                 name="business_receipt_positive",
             ),
         ]
+
+
+class BusinessAssociation(BusinessEvidence):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    intent = models.ForeignKey("access.AccessIntent", on_delete=models.PROTECT)
+    record = models.ForeignKey(BusinessRecord, on_delete=models.PROTECT)
+    receipt = models.ForeignKey(BusinessReceipt, on_delete=models.PROTECT)
+    sequence = models.PositiveIntegerField()
+    withdrawn = models.BooleanField(default=False)
+    rationale = models.CharField(max_length=500)
+    intent_scope = models.JSONField(default=dict)
+    published_at = models.DateTimeField(default=timezone.now)
+    published_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    mfa_verified_at = models.DateTimeField()
+    mfa_window_minutes = models.PositiveSmallIntegerField()
+    audit = models.OneToOneField("platform_core.AuditEvent", on_delete=models.PROTECT)
+    signature = models.CharField(max_length=64)
+
+    class Meta(BusinessEvidence.Meta):
+        abstract = False
+        constraints = [
+            models.UniqueConstraint(
+                fields=["intent", "record", "sequence"], name="business_association_sequence"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(sequence__gte=1), name="business_association_positive"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(mfa_window_minutes__in=[2, 5, 10, 15]),
+                name="business_association_mfa",
+            ),
+        ]

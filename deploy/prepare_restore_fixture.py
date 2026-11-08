@@ -102,7 +102,7 @@ def teamviewer_corpus(actor, organization):
         set_enabled(collector.pk, False, actor=actor, organization=organization)
 
 
-def business_corpus(actor, organization):
+def business_corpus(actor, organization, intent_id):
     """Synthetic publisher assertions, not a real GLPI/Jira integration."""
     import time
     from datetime import timedelta
@@ -116,6 +116,7 @@ def business_corpus(actor, organization):
         create_business_source,
         ingest_business_record,
     )
+    from platform_modules.connectors.business_associations import publish_business_association
 
     now = timezone.now()
     with recent_authentication(actor, organization, time.time()):
@@ -124,7 +125,7 @@ def business_corpus(actor, organization):
             actor=actor,
             organization=organization,
         )
-        ingest_business_record(
+        receipt, _ = ingest_business_record(
             dict(
                 schema=FORMAT,
                 external_id="fixture-483",
@@ -136,6 +137,28 @@ def business_corpus(actor, organization):
                 observed_at=now.isoformat(),
             ),
             token=token,
+            organization=organization,
+        )
+        association = publish_business_association(
+            intent_id,
+            receipt.pk,
+            "Synthetic business reference, not vendor qualification",
+            actor=actor,
+            organization=organization,
+        )
+        publish_business_association(
+            intent_id,
+            receipt.pk,
+            "Synthetic withdrawal with history preserved",
+            actor=actor,
+            organization=organization,
+            withdraw_association_id=association.pk,
+        )
+        publish_business_association(
+            intent_id,
+            receipt.pk,
+            "Synthetic explicit republication",
+            actor=actor,
             organization=organization,
         )
         configure_business_source(source.pk, actor=actor, organization=organization, active=False)
@@ -309,7 +332,7 @@ def main():
             with organization_context(fixture.org):
                 oidc_corpus(fixture.operator, fixture.org)
                 teamviewer_corpus(fixture.admin, fixture.org)
-                business_corpus(fixture.admin, fixture.org)
+                business_corpus(fixture.admin, fixture.org, fixture.intent.pk)
                 publish_domain_event(
                     organization=fixture.org,
                     emitter="identity",

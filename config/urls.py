@@ -13,6 +13,32 @@ from platform_modules.intelligence import views as intelligence_views
 from platform_modules.pam import views as pam_views
 
 urlpatterns = [
+    path(
+        "access/business-associations/<uuid:association_id>/proof/",
+        business_views.association_proof,
+        name="business-association-proof",
+    ),
+    path(
+        "access/intents/<uuid:intent_id>/business/",
+        business_views.intent_context,
+        name="intent-business-context",
+    ),
+    path(
+        "access/intents/<uuid:intent_id>/business/export/",
+        business_views.intent_context,
+        {"export": True},
+        name="intent-business-export",
+    ),
+    path(
+        "access/intents/<uuid:intent_id>/business/new/",
+        business_views.associate_intent,
+        name="intent-business-associate",
+    ),
+    path(
+        "access/business-associations/<uuid:association_id>/withdraw/",
+        business_views.withdraw_association,
+        name="business-association-withdraw",
+    ),
     path("api/v1/business-records/", business_views.records_api, name="business-records-api"),
     path("connectors/business/", business_views.sources, name="business-sources"),
     path(

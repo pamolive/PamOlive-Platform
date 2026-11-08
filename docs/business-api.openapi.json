@@ -1,0 +1,85 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "PAM-olive Business Records API",
+    "version": "1.0.0",
+    "description": "Independent integration credentials publish source assertions, never local access approval. A vendor-specific adapter must read and normalize its source. HTTPS is required for remote or sensitive exchanges; local HTTP is for trusted-network evaluation only."
+  },
+  "servers": [{"url": "/", "description": "The selected PAM-olive installation"}],
+  "security": [{"businessToken": []}],
+  "paths": {
+    "/api/v1/business-records/": {
+      "post": {
+        "operationId": "publishBusinessRead",
+        "summary": "Publish one versioned source read",
+        "description": "Only declared fields are accepted. Maximum body size 16384 bytes. Duplicate JSON keys, nonfinite numbers, timestamps without timezone or more than five minutes in the future are refused. Modification must not follow observation. A new sequence may not move either timestamp backwards. An exact replay does not renew freshness. This credential cannot associate an intent, approve access or provision a resource.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BusinessRead"}}}},
+        "responses": {
+          "201": {"description": "Read created, created=true", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Receipt"}}}},
+          "200": {"description": "Exact replay, created=false; original receipt time retained", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Receipt"}}}},
+          "400": {"$ref": "#/components/responses/Invalid"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "409": {"description": "Sequence collision or source history regression", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "413": {"description": "Body exceeds 16384 bytes", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "415": {"description": "JSON content type required and no query parameters allowed", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      },
+      "get": {
+        "operationId": "getLatestOwnBusinessRead",
+        "summary": "Read this publisher's latest sequence for one external identifier",
+        "description": "No global enumeration, request body or other query parameter is accepted. The credential determines the organization and publisher, independently of browser cookies.",
+        "parameters": [{"name": "external_id", "in": "query", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 180}}],
+        "responses": {
+          "200": {"description": "Own latest receipt; Cache-Control: no-store", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Receipt"}}}},
+          "400": {"$ref": "#/components/responses/Invalid"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "404": {"description": "This publisher has no such record", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {"businessToken": {"type": "http", "scheme": "bearer", "description": "A dedicated pobiz_ integration credential, not a telemetry token, human MFA proof or browser cookie."}},
+    "schemas": {
+      "BusinessRead": {
+        "type": "object", "additionalProperties": false,
+        "required": ["schema", "external_id", "sequence", "kind", "reference", "state", "source_updated_at", "observed_at"],
+        "properties": {
+          "schema": {"type": "string", "const": "pamolive.business-record/1"},
+          "external_id": {"type": "string", "minLength": 1, "maxLength": 180, "description": "Stable identifier in this publisher's namespace; outer whitespace is stripped."},
+          "sequence": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+          "kind": {"type": "string", "enum": ["ticket", "incident", "change", "maintenance", "project", "emergency", "other"]},
+          "reference": {"type": "string", "minLength": 1, "maxLength": 180},
+          "state": {"type": "string", "enum": ["unknown", "open", "approved", "closed", "cancelled"], "description": "Source state only; approved does not authorize local access."},
+          "title": {"type": "string", "maxLength": 240, "default": "", "description": "Optional minimized label; do not send full descriptions or unnecessary personal data."},
+          "url": {"type": "string", "maxLength": 500, "default": "", "description": "Empty or HTTPS reference without credentials or fragment. The server never fetches it."},
+          "source_updated_at": {"type": "string", "format": "date-time"},
+          "observed_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "Receipt": {
+        "type": "object", "additionalProperties": false,
+        "required": ["receipt_id", "record_id", "source_id", "source_key", "source_revision", "payload", "received_at", "as_of", "proof_verified", "source_configuration_current", "source_read_recent", "latest_for_record", "current_source_assertion", "authority", "local_access_approval", "local_authorizations_modified"],
+        "properties": {
+          "receipt_id": {"type": "string", "format": "uuid"}, "record_id": {"type": "string", "format": "uuid"}, "source_id": {"type": "string", "format": "uuid"},
+          "source_key": {"type": "string"}, "source_revision": {"type": "integer", "minimum": 1},
+          "payload": {"$ref": "#/components/schemas/BusinessRead"},
+          "received_at": {"type": "string", "format": "date-time"}, "as_of": {"type": "string", "format": "date-time"},
+          "proof_verified": {"type": "boolean", "const": true},
+          "source_configuration_current": {"type": "boolean"}, "source_read_recent": {"type": "boolean"}, "latest_for_record": {"type": "boolean"}, "current_source_assertion": {"type": "boolean"},
+          "authority": {"type": "string", "const": "authenticated_source_assertion"},
+          "local_access_approval": {"type": "boolean", "const": false}, "local_authorizations_modified": {"type": "boolean", "const": false},
+          "created": {"type": "boolean", "description": "Present on POST only."}
+        }
+      },
+      "Error": {"type": "object", "additionalProperties": false, "required": ["error"], "properties": {"error": {"type": "string", "enum": ["unauthorized", "rate_limited", "invalid_business_record", "sequence_conflict", "payload_too_large", "not_found", "application_json_required"]}}}
+    },
+    "responses": {
+      "Invalid": {"description": "Invalid fields, dates, duplicate keys or malformed query", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "Unauthorized": {"description": "Missing, invalid, revoked or out-of-scope integration credential, or disabled organization/module", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "RateLimited": {"description": "60 authenticated calls per publisher per shared PostgreSQL minute, including invalid payloads", "headers": {"Retry-After": {"schema": {"type": "integer", "const": 60}}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+    }
+  }
+}
