@@ -3,7 +3,7 @@
 from unittest import skipUnless
 
 from django.conf import settings
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import DatabaseError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase
@@ -19,6 +19,17 @@ from platform_core.services import require_module
     "Built-in-only PostgreSQL extension-schema upgrade gate",
 )
 class ExtensionSchemaUpgradeTests(TransactionTestCase):
+    def assert_audit_protected(self, event_id):
+        with self.assertRaises(ValidationError):
+            AuditEvent.objects.filter(pk=event_id).update(summary="forbidden upgrade fixture")
+        # Bypass the ORM guard deliberately to verify the PostgreSQL trigger too.
+        with self.assertRaises(DatabaseError), transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE platform_core_auditevent SET summary = %s WHERE id = %s",
+                    ["forbidden upgrade fixture", event_id],
+                )
+
     def test_existing_activations_security_and_audit_survive_without_implicit_delivery(self):
         executor = MigrationExecutor(connection)
         latest = executor.loader.graph.leaf_nodes()
@@ -70,8 +81,7 @@ class ExtensionSchemaUpgradeTests(TransactionTestCase):
                 for model in (old_org, old_membership, old_activation, old_security)
             ]
             audit_before = AuditEvent.objects.filter(pk=proof.pk).values().get()
-            with self.assertRaises(DatabaseError), transaction.atomic():
-                AuditEvent.objects.filter(pk=proof.pk).update(summary="forbidden before upgrade")
+            self.assert_audit_protected(proof.pk)
 
             MigrationExecutor(connection).migrate(latest)
 
@@ -88,7 +98,6 @@ class ExtensionSchemaUpgradeTests(TransactionTestCase):
             require_module(Organization.objects.get(pk=first.pk), "pam")
             with self.assertRaises(PermissionDenied):
                 require_module(Organization.objects.get(pk=second.pk), "pam")
-            with self.assertRaises(DatabaseError), transaction.atomic():
-                AuditEvent.objects.filter(pk=proof.pk).update(summary="forbidden after upgrade")
+            self.assert_audit_protected(proof.pk)
         finally:
             MigrationExecutor(connection).migrate(latest)
