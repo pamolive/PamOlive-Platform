@@ -1,5 +1,6 @@
 import json
 import time
+from contextlib import nullcontext
 from datetime import timedelta
 from unittest import skipUnless
 from unittest.mock import patch
@@ -13,6 +14,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from platform_core.audit import verify_chain
+from platform_core.authorization import recent_authentication
 from platform_core.models import (
     AccountSecurity,
     AuditEvent,
@@ -32,6 +34,8 @@ from platform_modules.pam.models import SessionLease
 from platform_modules.pam.services import expire_leases, open_lease
 from platform_modules.recertification.models import Review
 from platform_modules.recertification.services import review_grant, start_campaign
+
+from .person_fixtures import bind_person
 
 
 class PlatformTests(TestCase):
@@ -78,22 +82,36 @@ class PlatformTests(TestCase):
         )
         self.now = timezone.now()
 
-    def intent(self):
-        return create_record(
-            "intent",
-            {
-                "identity": self.identity,
-                "account": self.account,
-                "resource": self.resource,
-                "method": "SSH",
-                "reason": "Maintenance VMware",
-                "reference": "CHG-2026-382",
-                "starts_at": self.now - timedelta(minutes=1),
-                "ends_at": self.now + timedelta(minutes=15),
-            },
-            actor=self.operator,
-            organization=self.org,
-        )
+    def intent(self, **overrides):
+        assurance = nullcontext()
+        if overrides.get("fulfillment") == "pam":
+            bind_person(
+                self.operator,
+                organization=self.org,
+                administrator=self.admin,
+                identity=self.identity,
+            )
+            bind_person(
+                self.reviewer, organization=self.org, administrator=self.admin, role="reviewer"
+            )
+            assurance = recent_authentication(self.operator, self.org, time.time())
+        with assurance:
+            return create_record(
+                "intent",
+                {
+                    "identity": self.identity,
+                    "account": self.account,
+                    "resource": self.resource,
+                    "method": "SSH",
+                    "reason": "Maintenance VMware",
+                    "reference": "CHG-2026-382",
+                    "starts_at": self.now - timedelta(minutes=1),
+                    "ends_at": self.now + timedelta(minutes=15),
+                    **overrides,
+                },
+                actor=self.operator,
+                organization=self.org,
+            )
 
     def event(self, **overrides):
         data = {
@@ -186,10 +204,15 @@ class PlatformTests(TestCase):
         self.assertNotContains(self.client.get(reverse("identity-home")), "Foreign")
 
     def test_departure_revokes_accounts_grants_intents_and_leases(self):
-        intent = self.intent()
-        decide(
-            intent.pk, actor=self.reviewer, organization=self.org, approved=True, comment="Validé"
-        )
+        intent = self.intent(fulfillment="pam")
+        with recent_authentication(self.reviewer, self.org, time.time()):
+            decide(
+                intent.pk,
+                actor=self.reviewer,
+                organization=self.org,
+                approved=True,
+                comment="Validé",
+            )
         lease = open_lease(intent.pk, actor=self.operator, organization=self.org)
         grant = Grant.objects.create(
             organization=self.org,
@@ -233,10 +256,15 @@ class PlatformTests(TestCase):
             comment="Plus nécessaire",
         )
         self.assertEqual(Grant.objects.get().status, "revoked")
-        intent = self.intent()
-        decide(
-            intent.pk, actor=self.reviewer, organization=self.org, approved=True, comment="Validé"
-        )
+        intent = self.intent(fulfillment="pam")
+        with recent_authentication(self.reviewer, self.org, time.time()):
+            decide(
+                intent.pk,
+                actor=self.reviewer,
+                organization=self.org,
+                approved=True,
+                comment="Validé",
+            )
         lease = open_lease(intent.pk, actor=self.operator, organization=self.org)
         SessionLease.objects.filter(pk=lease.pk).update(expires_at=self.now - timedelta(seconds=1))
         expire_leases(self.org)

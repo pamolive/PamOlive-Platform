@@ -20,9 +20,10 @@ from platform_core.authorization import recent_authentication
 from platform_core.models import AccountSecurity
 from platform_core.security import cipher
 from platform_core.tenancy import organization_context
+from platform_modules.identity.bindings import current_binding, revoke_binding
 from platform_modules.pam.models import RelayConnection, SessionEndpoint, SessionLease
 from platform_modules.pam.protocol import Instruction, Parser
-from platform_modules.pam.recordings import issue_recording_grant, recording_page
+from platform_modules.pam.recordings import recording_page
 from platform_modules.pam.sessions import configure_endpoint, probe_endpoint, set_endpoint_enabled
 from tests.fixtures.paint import PaintProof
 from tests.fixtures.rdp import BINARY as RDP_BINARY
@@ -38,9 +39,11 @@ class NativeRDPRelayTests(RelayHarness):
         self.assertIn(
             "rdp", settings.PAM_SESSION_PROTOCOLS, "Published RDP must actually be enabled"
         )
-        AccountSecurity.objects.create(
+        AccountSecurity.objects.get_or_create(
             account=self.reviewer,
-            encrypted_secret=cipher().encrypt(pyotp.random_base32().encode()).decode(),
+            defaults={
+                "encrypted_secret": cipher().encrypt(pyotp.random_base32().encode()).decode()
+            },
         )
 
     def make_endpoint(
@@ -77,6 +80,12 @@ class NativeRDPRelayTests(RelayHarness):
     async def test_rdp_mfa_expiry_does_not_interrupt_but_logout_does(self):
         await self.exercise("logout")
 
+    async def test_rdp_person_uses_shared_service_account(self):
+        await self.exercise("logout", shared=True)
+
+    async def test_rdp_person_link_revocation_cuts_transport_not_service_account(self):
+        await self.exercise("binding_revoked", shared=True)
+
     async def test_rdp_expired_lease_cuts_the_actual_connection(self):
         await self.exercise("expiry")
 
@@ -92,7 +101,7 @@ class NativeRDPRelayTests(RelayHarness):
     async def test_rdp_wrong_password_never_authenticates(self):
         await self.exercise("password")
 
-    async def exercise(self, mode):
+    async def exercise(self, mode, shared=False):
         self.mode = mode
         async with RDPFixture(redirect=mode == "redirect") as peer:
             trap_connections = []
@@ -114,6 +123,7 @@ class NativeRDPRelayTests(RelayHarness):
                         protocol="rdp",
                         certificate_pin="00" * 32 if mode == "pin" else peer.pin,
                         password="incorrect-test-password" if mode == "password" else peer.password,
+                        shared=shared,
                     )
                     async with connect(
                         f"ws://127.0.0.1:{self.web_port}" + config["websocket_path"],
@@ -203,6 +213,19 @@ class NativeRDPRelayTests(RelayHarness):
                                                 SessionEndpoint.objects.filter(
                                                     pk=endpoint_id
                                                 ).update(enabled=False)
+                                            elif mode == "binding_revoked":
+                                                binding = current_binding(
+                                                    self.actor, organization=self.org
+                                                )
+                                                with recent_authentication(
+                                                    self.reviewer, self.org, time.time()
+                                                ):
+                                                    revoke_binding(
+                                                        binding.pk,
+                                                        actor=self.reviewer,
+                                                        organization=self.org,
+                                                        reason="Fixture person revoked",
+                                                    )
 
                                     await sync_to_async(revoke)()
                                 await peer.wait(
@@ -229,11 +252,18 @@ class NativeRDPRelayTests(RelayHarness):
                             else:
                                 self.assertEqual(item.end_reason, "authority_lost")
                                 self.assertGreater(item.recording_bytes, 0)
-                            self.client.force_login(self.actor)
-                            with recent_authentication(self.actor, self.org, time.time()):
-                                grant = issue_recording_grant(
-                                    item, self.actor, self.client.session.session_key
+                            if shared:
+                                self.account.refresh_from_db()
+                                self.assertTrue(self.account.active)
+                                self.assertEqual(self.account.identity_id, self.shared_owner.pk)
+                                self.assertEqual(
+                                    item.authority_snapshot["identity_id"], str(self.identity.pk)
                                 )
+                                self.assertEqual(
+                                    item.authority_snapshot["account_owner_identity_id"],
+                                    str(self.shared_owner.pk),
+                                )
+                            grant = self.recording_grant(item, mode == "binding_revoked")
                             total, sequence, previous = 0, 0, ""
                             recorded_parser, recorded_pixels = Parser(), PaintProof()
                             while True:

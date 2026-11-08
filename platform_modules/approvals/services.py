@@ -1,8 +1,11 @@
+from datetime import UTC, datetime
+
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
 from platform_core.audit import record
+from platform_core.authorization import require_recent_authentication
 from platform_core.models import Organization
 from platform_core.services import authorize, require_module
 from platform_core.tenancy import organization_context
@@ -28,17 +31,47 @@ def decide(intent_id, *, actor, organization, approved, comment):
             raise ValidationError("Vous avez déjà voté sur cette demande.")
         from platform_modules.governance.policy import approval_requirements, enforce_authorization
 
+        binding = None
+        assurance = None
+        if intent.fulfillment == "pam":
+            from platform_modules.identity.bindings import current_binding
+            from platform_modules.pam.mandates import validate_request
+
+            assurance = require_recent_authentication(actor, organization)
+            # A refusal may close an obsolete request; an approval may not revive it.
+            if approved:
+                validate_request(intent, organization=organization)
+            binding = current_binding(actor, organization=organization)
+            if binding.identity_id == intent.identity_id:
+                raise ValidationError("L’intervenant ne peut pas approuver avec un autre compte.")
+            if ApprovalDecision.objects.filter(
+                intent=intent, reviewer_identity_id=binding.identity_id
+            ).exists():
+                raise ValidationError("Cette personne a déjà voté, même avec un autre compte.")
         if approved:
             enforce_authorization(intent, organization=organization, remaining=True)
         if not comment.strip():
             raise ValidationError("Motivez la décision.")
-        decision = ApprovalDecision.objects.create(
+        decision = ApprovalDecision(
             organization=organization,
             intent=intent,
             reviewer=actor,
             approved=approved,
             comment=comment,
+            reviewer_binding=binding,
+            reviewer_identity=binding.identity if binding else None,
+            mfa_verified_at=datetime.fromtimestamp(assurance.verified_at, UTC)
+            if assurance
+            else None,
+            mfa_window_minutes=assurance.freshness_minutes if assurance else 0,
         )
+        if intent.fulfillment == "pam":
+            from platform_modules.pam.mandates import decision_signature, scope_hash
+
+            decision.scope_hash = scope_hash(intent)
+            decision.signature = decision_signature(decision)
+        decision.full_clean()
+        decision.save()
         requirements = approval_requirements(intent)
         intent.status = (
             "approved"

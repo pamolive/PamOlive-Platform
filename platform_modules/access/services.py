@@ -31,6 +31,11 @@ def create_record(kind, data, *, actor, organization):
         if kind == "intent":
             data = {**data, "requested_by": actor, "status": "pending"}
         obj = model(organization=organization, **data)
+        if kind == "intent" and obj.fulfillment == "pam":
+            from platform_modules.pam.mandates import prepare_request
+
+            require_module(organization, "pam")
+            prepare_request(obj, actor=actor, organization=organization)
         obj.full_clean()
         from platform_modules.governance.policy import account_contract_live, enforce_authorization
 
@@ -159,6 +164,11 @@ def evaluate_event(event, *, organization):
                 .order_by("created_at")
             )
             for candidate in candidates:
+                if candidate.fulfillment == "pam":
+                    from platform_modules.pam.mandates import authorized_at
+
+                    if not authorized_at(candidate, event.occurred_at):
+                        continue
                 if (
                     candidate.resource_id == event.resource_id
                     and candidate.method.casefold() == event.method.casefold()
@@ -369,6 +379,11 @@ def revoke_identity(identity_id, *, actor, organization, reason):
             )
         identity.status = "departed"
         identity.save(update_fields=["status"])
+        from platform_modules.identity.models import LoginIdentityBinding
+
+        linked = LoginIdentityBinding.objects.filter(identity=identity, revoked_at__isnull=True)
+        binding_ids = list(linked.values_list("id", flat=True))
+        linked.update(revoked_at=now, revoked_by=actor, revocation_reason=f"Départ : {reason}")
         accounts = ExternalAccount.objects.filter(identity=identity, active=True)
         account_ids = list(accounts.values_list("id", flat=True))
         owned_account_ids = list(
@@ -405,6 +420,7 @@ def revoke_identity(identity_id, *, actor, organization, reason):
             metadata={
                 "reason": reason,
                 "accounts": [str(i) for i in account_ids],
+                "login_bindings_revoked": [str(i) for i in binding_ids],
                 "external_execution": "requires_connector_confirmation",
             },
         )

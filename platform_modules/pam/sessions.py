@@ -30,6 +30,7 @@ from platform_modules.governance.policy import approval_requirements, enforce_au
 
 from .context import network_context
 from .destination import TransportFailure, host_port
+from .mandates import account_can_use_pam, scope_hash, validate_request
 from .models import LIVE_CONNECTION_STATES, RecordingChunk, RelayConnection, SessionEndpoint
 from .probe import certificate_pin, probe_rdp, probe_ssh, ssh_host_key
 from .services import open_lease
@@ -277,9 +278,8 @@ def _check_authority(item, *, session_key, client_ip):
         or not intent.starts_at <= now < intent.ends_at
         or intent.requested_by_id != actor.pk
         or not intent.account_id
-        or intent.account.identity_id != intent.identity_id
         or not intent.account.active
-        or intent.account.kind != "privileged"
+        or not account_can_use_pam(intent.account)
         or intent.identity.status != "active"
         or not intent.approved_at
         or not endpoint.enabled
@@ -292,6 +292,10 @@ def _check_authority(item, *, session_key, client_ip):
         or not constant_time_compare(item.authority_seal, authority_seal(item))
         or item.authority_snapshot.get("intent_id") != str(intent.pk)
         or item.authority_snapshot.get("identity_id") != str(intent.identity_id)
+        or item.authority_snapshot.get("requester_binding_id") != str(intent.requester_binding_id)
+        or item.authority_snapshot.get("account_owner_identity_id")
+        != str(intent.account.identity_id)
+        or item.authority_snapshot.get("mandate_scope_hash") != scope_hash(intent)
         or item.authority_snapshot.get("account_username") != intent.account.username
         or item.authority_snapshot.get("reason") != intent.reason
         or item.authority_snapshot.get("reference") != intent.reference
@@ -301,6 +305,12 @@ def _check_authority(item, *, session_key, client_ip):
         or item.authority_snapshot.get("endpoint_digest") != endpoint_digest(endpoint)
     ):
         raise PermissionDenied("L’autorisation du relais n’est plus applicable.")
+    try:
+        validate_request(intent, actor=actor, organization=organization)
+    except ValidationError:
+        raise PermissionDenied(
+            "Le lien de personne ou le compte du mandat n’est plus applicable."
+        ) from None
     host_port(endpoint.hostname, endpoint.port)
     observed = copy(intent)
     observed.location, observed.country_code = network_context(client_ip)
@@ -318,6 +328,8 @@ def _related(queryset):
         "lease__opened_by",
         "lease__intent__identity",
         "lease__intent__account",
+        "lease__intent__account__identity",
+        "lease__intent__requester_binding",
         "lease__intent__resource",
         "lease__intent__contract",
     )
@@ -368,6 +380,12 @@ def launch_session(intent_id, *, actor, organization, session_key, client_ip):
             authority_snapshot={
                 "intent_id": str(intent.pk),
                 "identity_id": str(intent.identity_id),
+                "actor_identity_name": intent.identity.name,
+                "requester_binding_id": str(intent.requester_binding_id),
+                "binding_verification_reference": intent.requester_binding.verification_reference,
+                "account_owner_identity_id": str(intent.account.identity_id),
+                "account_owner_identity_name": intent.account.identity.name,
+                "mandate_scope_hash": scope_hash(intent),
                 "resource_id": str(intent.resource_id),
                 "account_id": str(intent.account_id),
                 "account_username": intent.account.username,

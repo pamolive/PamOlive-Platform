@@ -77,7 +77,9 @@ def configure(request, endpoint_id=None):
             "account": forms.ModelChoiceField(
                 label="Compte privilégié",
                 queryset=ExternalAccount.objects.filter(
-                    active=True, kind="privileged", identity__status="active"
+                    active=True,
+                    kind__in=("privileged", "service"),
+                    identity__status="active",
                 ),
             ),
             "protocol": forms.ChoiceField(

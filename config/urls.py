@@ -5,10 +5,19 @@ from platform_core.security import MFALoginForm, security_settings
 from platform_modules.access import ui
 from platform_modules.connectors import views as connector_views
 from platform_modules.governance import views as governance_views
+from platform_modules.identity import binding_views as identity_views
 from platform_modules.intelligence import views as intelligence_views
 from platform_modules.pam import views as pam_views
 
 urlpatterns = [
+    path(
+        "identities/login-bindings/", identity_views.login_bindings, name="identity-login-bindings"
+    ),
+    path(
+        "identities/login-bindings/<uuid:binding_id>/revoke/",
+        identity_views.binding_revoke,
+        name="identity-binding-revoke",
+    ),
     path("pam/endpoints/", pam_views.endpoints, name="pam-endpoints"),
     path("pam/endpoints/new/", pam_views.configure, name="pam-endpoint-create"),
     path("pam/endpoints/<uuid:endpoint_id>/", pam_views.configure, name="pam-endpoint-edit"),

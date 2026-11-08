@@ -22,6 +22,7 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
+from django.core.exceptions import PermissionDenied
 from django.db import OperationalError
 from django.test import Client, TransactionTestCase, override_settings
 from django.urls import reverse
@@ -38,8 +39,9 @@ from platform_core.models import (
 )
 from platform_core.security import cipher
 from platform_core.tenancy import organization_context
-from platform_modules.access.models import AccessIntent
+from platform_modules.access.services import create_record
 from platform_modules.approvals.services import decide
+from platform_modules.identity.bindings import current_binding, revoke_binding
 from platform_modules.identity.models import ExternalAccount, Identity, Resource
 from platform_modules.pam.models import (
     RecordingChunk,
@@ -49,6 +51,8 @@ from platform_modules.pam.models import (
 )
 from platform_modules.pam.protocol import Instruction, Parser
 from platform_modules.pam.recordings import issue_recording_grant, recording_page
+
+from .person_fixtures import bind_person
 
 BINARY = Path("/opt/pamolive-guac/sbin/guacd")
 
@@ -151,6 +155,15 @@ class RelayHarness(TransactionTestCase):
                 system="Fixture",
                 kind="privileged",
             )
+            bind_person(
+                self.actor,
+                organization=self.org,
+                administrator=self.reviewer,
+                identity=self.identity,
+            )
+            bind_person(
+                self.reviewer, organization=self.org, administrator=self.reviewer, role="reviewer"
+            )
         self.client = Client(enforce_csrf_checks=True)
         self.client.force_login(self.actor)
         session = self.client.session
@@ -210,30 +223,45 @@ class RelayHarness(TransactionTestCase):
         protocol="ssh",
         certificate_pin="",
         password="fixture-secret",
+        shared=False,
     ):
-        with organization_context(self.org):
+        with (
+            organization_context(self.org),
+            recent_authentication(self.actor, self.org, time.time()),
+        ):
+            if shared:
+                self.shared_owner = Identity.objects.create(
+                    organization=self.org, name="Shared service fixture", kind="service"
+                )
+                self.account.identity, self.account.kind = self.shared_owner, "service"
+                self.account.state_revision += 1
+                self.account.save(update_fields=["identity", "kind", "state_revision"])
             endpoint = self.make_endpoint(
                 host_key, target_port, private_key, protocol, certificate_pin, password
             )
-            intent = AccessIntent.objects.create(
+            intent = create_record(
+                "intent",
+                {
+                    "identity": self.identity,
+                    "account": self.account,
+                    "resource": self.resource,
+                    "method": protocol.upper(),
+                    "reason": "Fixture test",
+                    "fulfillment": "pam",
+                    "starts_at": timezone.now() - timedelta(seconds=15),
+                    "ends_at": timezone.now() + timedelta(hours=1),
+                },
+                actor=self.actor,
                 organization=self.org,
-                identity=self.identity,
-                account=self.account,
-                resource=self.resource,
-                method=protocol.upper(),
-                reason="Fixture test",
-                fulfillment="pam",
-                starts_at=timezone.now() - timedelta(seconds=15),
-                ends_at=timezone.now() + timedelta(hours=1),
-                requested_by=self.actor,
             )
-            decide(
-                intent.pk,
-                actor=self.reviewer,
-                organization=self.org,
-                approved=True,
-                comment="Independent native fixture approval",
-            )
+            with recent_authentication(self.reviewer, self.org, time.time()):
+                decide(
+                    intent.pk,
+                    actor=self.reviewer,
+                    organization=self.org,
+                    approved=True,
+                    comment="Independent native fixture approval",
+                )
         self.client.get(reverse("pam-home"))
         token = self.client.cookies[settings.CSRF_COOKIE_NAME].value
         response = self.client.post(
@@ -250,8 +278,27 @@ class RelayHarness(TransactionTestCase):
         config = json.loads(match[1])
         return endpoint.pk, intent.pk, config
 
+    def recording_grant(self, item, revoked_binding=False):
+        if revoked_binding:
+            self.client.force_login(self.actor)
+            with (
+                recent_authentication(self.actor, self.org, time.time()),
+                self.assertRaises(PermissionDenied),
+            ):
+                issue_recording_grant(item, self.actor, self.client.session.session_key)
+        reader = self.reviewer if revoked_binding else self.actor
+        self.client.force_login(reader)
+        with recent_authentication(reader, self.org, time.time()):
+            return issue_recording_grant(item, reader, self.client.session.session_key)
+
 
 class NativeRelayTests(RelayHarness):
+    async def test_person_uses_shared_service_account_without_becoming_its_owner(self):
+        await self.exercise("logout", shared=True)
+
+    async def test_person_link_revocation_cuts_shared_ssh_but_preserves_service(self):
+        await self.exercise("binding_revoked", shared=True)
+
     async def test_real_websocket_roundtrip_recording_and_logout_disconnect(self):
         await self.exercise("logout")
 
@@ -291,7 +338,7 @@ class NativeRelayTests(RelayHarness):
             await self.exercise("logout")
         self.assertTrue(delayed.is_set())
 
-    async def exercise(self, termination, private_key=False):
+    async def exercise(self, termination, private_key=False, shared=False):
         opened, echoed, lost = asyncio.Event(), asyncio.Event(), asyncio.Event()
         processes = []
         account_key = asyncssh.generate_private_key("ssh-ed25519") if private_key else None
@@ -345,6 +392,7 @@ class NativeRelayTests(RelayHarness):
                     key.export_public_key().decode(),
                     target_port,
                     account_key.export_private_key("openssh").decode() if account_key else None,
+                    shared=shared,
                 )
                 async with connect(
                     f"ws://127.0.0.1:{self.web_port}" + config["websocket_path"],
@@ -425,6 +473,17 @@ class NativeRelayTests(RelayHarness):
                                     SessionEndpoint.objects.filter(pk=endpoint_id).update(
                                         enabled=False
                                     )
+                                elif termination == "binding_revoked":
+                                    binding = current_binding(self.actor, organization=self.org)
+                                    with recent_authentication(
+                                        self.reviewer, self.org, time.time()
+                                    ):
+                                        revoke_binding(
+                                            binding.pk,
+                                            actor=self.reviewer,
+                                            organization=self.org,
+                                            reason="Fixture person revoked",
+                                        )
 
                         with override_settings(
                             PAM_MAX_RECORDING_BYTES=(
@@ -480,11 +539,18 @@ class NativeRelayTests(RelayHarness):
                             self.assertNotIn(b"PRIVATE KEY", payload)
                             self.assertNotIn(b"4.argv", payload)
                         # Re-authenticate for playback, never during the transport.
-                        self.client.force_login(self.actor)
-                        with recent_authentication(self.actor, self.org, time.time()):
-                            grant = issue_recording_grant(
-                                item, self.actor, self.client.session.session_key
+                        if shared:
+                            self.account.refresh_from_db()
+                            self.assertTrue(self.account.active)
+                            self.assertEqual(self.account.identity_id, self.shared_owner.pk)
+                            self.assertEqual(
+                                item.authority_snapshot["identity_id"], str(self.identity.pk)
                             )
+                            self.assertEqual(
+                                item.authority_snapshot["account_owner_identity_id"],
+                                str(self.shared_owner.pk),
+                            )
+                        grant = self.recording_grant(item, termination == "binding_revoked")
                         sequence, previous, total = 0, "", 0
                         while True:
                             payloads, sequence, previous = recording_page(

@@ -17,7 +17,7 @@ from django.views.decorators.http import require_POST
 
 from platform_core.audit import record, verify_chain
 from platform_core.authorization import recent_authentication
-from platform_core.models import AuditEvent, OrganizationMembership
+from platform_core.models import AuditEvent, ModuleActivation, OrganizationMembership
 from platform_core.security import ensure_recent
 from platform_core.services import (
     authorize,
@@ -215,7 +215,22 @@ def record_list(request, kind):
         obj.display_status = (
             obj.get_status_display() if hasattr(obj, "status") else getattr(obj, "result", "")
         )
-    return render(request, "governance/list.html", {"title": title, "rows": rows, "kind": kind})
+    can_manage_bindings = (
+        request.user.is_superuser
+        or OrganizationMembership.objects.filter(
+            organization=request.organization, account=request.user, active=True, role="admin"
+        ).exists()
+    )
+    return render(
+        request,
+        "governance/list.html",
+        {
+            "title": title,
+            "rows": rows,
+            "kind": kind,
+            "can_manage_bindings": can_manage_bindings,
+        },
+    )
 
 
 @scoped(roles=("admin", "operator"))
@@ -255,7 +270,6 @@ def record_detail(request, kind, object_id):
     title, model, fields = CATALOG[kind]
     require_module(request.organization, "access" if kind in ("intent", "event") else "identity")
     obj = get_object_or_404(model.objects, pk=object_id)
-    from platform_core.models import ModuleActivation
     from platform_modules.connectors.models import ExternalChange
 
     changes = ExternalChange.objects.none()
@@ -270,6 +284,21 @@ def record_detail(request, kind, object_id):
     elif kind == "intent" and obj.provisioned_grant_id:
         changes = ExternalChange.objects.filter(grant_id=obj.provisioned_grant_id)
     details = [(model._meta.get_field(f).verbose_name, getattr(obj, f)) for f in fields]
+    if kind == "intent" and obj.fulfillment == "pam":
+        details.extend(
+            [
+                ("Compte demandeur PAM-olive", obj.requested_by),
+                (
+                    "Attestation de personne",
+                    obj.requester_binding or "Absente — demande non exécutable",
+                ),
+                ("Compte figé à la demande", obj.account_snapshot),
+                (
+                    "Accès natif",
+                    "Tous les droits natifs du compte ; aucun filtrage fin de commandes",
+                ),
+            ]
+        )
     if kind == "event":
         for relation, label in (
             ("account", "Propriétaire actuel du compte — contexte, pas acteur déduit"),
@@ -446,6 +475,12 @@ def pam_home(request):
     connections = RelayConnection.objects.select_related("endpoint", "opened_by")
     if not privileged:
         connections = connections.filter(opened_by=request.user)
+    from platform_modules.identity.bindings import current_binding
+
+    try:
+        person_binding = current_binding(request.user, organization=request.organization)
+    except (ValidationError, PermissionDenied):
+        person_binding = None
     return render(
         request,
         "governance/pam.html",
@@ -456,6 +491,7 @@ def pam_home(request):
             ),
             "connections": connections.order_by("-created_at")[:100],
             "manage_endpoints": manager,
+            "person_binding": person_binding,
         },
     )
 
@@ -549,6 +585,9 @@ def system(request):
             ).select_related("account"),
             "database_vendor": connection.vendor,
             "audit_valid": verify_chain(request.organization),
+            "identity_enabled": ModuleActivation.objects.filter(
+                organization=request.organization, module_key="identity", enabled=True
+            ).exists(),
         },
     )
 

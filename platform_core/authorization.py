@@ -15,6 +15,7 @@ class MutationAssurance:
     account_id: int
     organization_id: object
     verified_at: float
+    freshness_minutes: int = 0
 
 
 _assurance = ContextVar("pamolive_mutation_assurance", default=None)
@@ -25,8 +26,7 @@ def recent_authentication(actor, organization, verified_at):
     evidence = MutationAssurance(actor.pk, organization.pk, verified_at)
     token = _assurance.set(evidence)
     try:
-        require_recent_authentication(actor, organization)
-        yield evidence
+        yield require_recent_authentication(actor, organization)
     finally:
         _assurance.reset(token)
 
@@ -43,4 +43,9 @@ def require_recent_authentication(actor, organization):
         or not 0 <= time.time() - evidence.verified_at < profile.freshness_minutes * 60
     ):
         raise PermissionDenied("Une MFA récente est nécessaire pour cette action externe.")
-    return evidence
+    return MutationAssurance(
+        evidence.account_id,
+        evidence.organization_id,
+        evidence.verified_at,
+        profile.freshness_minutes,
+    )

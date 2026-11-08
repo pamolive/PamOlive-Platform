@@ -25,6 +25,7 @@ from platform_core.models import (
 from platform_core.security import cipher
 from platform_core.tenancy import organization_context
 from platform_modules.access.models import AccessIntent
+from platform_modules.access.services import create_record
 from platform_modules.approvals.services import decide
 from platform_modules.identity.models import ExternalAccount, Identity, Resource
 from platform_modules.pam.destination import TransportFailure
@@ -45,6 +46,8 @@ from platform_modules.pam.sessions import (
     set_endpoint_enabled,
     stop_session,
 )
+
+from .person_fixtures import bind_person
 
 
 @override_settings(PAM_ALLOWED_HOSTS={"ssh.example.test:22"})
@@ -87,26 +90,35 @@ class PamSessionTests(TestCase):
             system="Server",
             kind="privileged",
         )
-        self.intent = AccessIntent.objects.create(
-            organization=self.org,
-            identity=self.identity,
-            account=self.account,
-            resource=self.resource,
-            method="SSH",
-            reason="Approved test maintenance",
-            reference="CHG-test",
-            fulfillment="pam",
-            starts_at=timezone.now() - timedelta(minutes=1),
-            ends_at=timezone.now() + timedelta(hours=1),
-            requested_by=self.operator,
+        bind_person(
+            self.operator, organization=self.org, administrator=self.admin, identity=self.identity
         )
-        decide(
-            self.intent.pk,
-            actor=self.admin,
-            organization=self.org,
-            approved=True,
-            comment="Independent fixture approval",
-        )
+        bind_person(self.admin, organization=self.org, administrator=self.admin, role="admin")
+        with self.assurance(self.operator):
+            self.intent = create_record(
+                "intent",
+                {
+                    "identity": self.identity,
+                    "account": self.account,
+                    "resource": self.resource,
+                    "method": "SSH",
+                    "reason": "Approved test maintenance",
+                    "reference": "CHG-test",
+                    "fulfillment": "pam",
+                    "starts_at": timezone.now() - timedelta(minutes=1),
+                    "ends_at": timezone.now() + timedelta(hours=1),
+                },
+                actor=self.operator,
+                organization=self.org,
+            )
+        with self.assurance():
+            decide(
+                self.intent.pk,
+                actor=self.admin,
+                organization=self.org,
+                approved=True,
+                comment="Independent fixture approval",
+            )
         self.intent.refresh_from_db()
         self.client.force_login(self.operator)
         self.session_key = self.client.session.session_key
@@ -267,8 +279,9 @@ class PamSessionTests(TestCase):
         with self.assertRaises(PermissionDenied):
             launch_session(self.intent.pk, **params)
         AccessIntent.objects.filter(pk=self.intent.pk).update(fulfillment="observe")
-        with self.assurance(self.operator), self.assertRaises(PermissionDenied):
+        with self.assurance(self.operator), self.assertRaises(ValidationError):
             launch_session(self.intent.pk, **params)
+        self.assertFalse(RelayConnection.objects.exists())
 
     def test_open_session_does_not_rechallenge_mfa_and_owner_can_stop_without_mfa(self):
         item, owner = self.claimed()

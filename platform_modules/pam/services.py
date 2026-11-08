@@ -8,6 +8,7 @@ from platform_core.services import authorize, require_module
 from platform_core.tenancy import organization_context
 from platform_modules.access.models import AccessIntent
 
+from .mandates import validate_request
 from .models import SessionLease
 
 
@@ -20,13 +21,12 @@ def open_lease(intent_id, *, actor, organization):
         intent = AccessIntent.objects.get(pk=intent_id)
         now = timezone.now()
         if (
-            intent.status != "approved"
+            intent.fulfillment != "pam"
+            or intent.status != "approved"
             or not intent.starts_at <= now < intent.ends_at
             or intent.identity.status != "active"
             or not intent.account_id
             or not intent.account.active
-            or intent.account.identity_id != intent.identity_id
-            or intent.account.kind != "privileged"
             or intent.method.casefold() not in ("ssh", "rdp")
         ):
             raise ValidationError(
@@ -34,8 +34,16 @@ def open_lease(intent_id, *, actor, organization):
             )
         if actor.pk != intent.requested_by_id:
             raise ValidationError("Seul le demandeur peut ouvrir son accès.")
-        from platform_modules.governance.policy import enforce_authorization
+        from platform_modules.governance.policy import approval_requirements, enforce_authorization
 
+        validate_request(intent, actor=actor, organization=organization)
+        if (
+            not intent.approved_at
+            or not approval_requirements(intent, at=intent.approved_at)["complete"]
+        ):
+            raise ValidationError(
+                "Des décisions indépendantes portant sur ce mandat sont requises."
+            )
         enforce_authorization(intent, organization=organization, remaining=True)
         existing = SessionLease.objects.filter(intent=intent, status="active").first()
         if existing:

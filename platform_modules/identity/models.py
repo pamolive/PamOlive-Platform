@@ -1,6 +1,7 @@
 import uuid
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models.functions import Now
 from django.utils import timezone
@@ -36,6 +37,94 @@ class Identity(ScopedModel):
 
     def __str__(self):
         return self.name
+
+
+class LoginIdentityBinding(ScopedModel):
+    """An administrator-attested link; never inferred from a name or e-mail."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    login_account = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    identity = models.ForeignKey(Identity, on_delete=models.PROTECT, related_name="login_bindings")
+    verification_reference = models.CharField("Référence de vérification", max_length=255)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_identity_bindings"
+    )
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+    mfa_verified_at = models.DateTimeField(null=True, blank=True, editable=False)
+    mfa_window_minutes = models.PositiveSmallIntegerField(default=0, editable=False)
+    signature = models.CharField(max_length=64, blank=True, editable=False)
+    revoked_at = models.DateTimeField(null=True, blank=True, editable=False)
+    revoked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        editable=False,
+        on_delete=models.PROTECT,
+        related_name="revoked_identity_bindings",
+    )
+    revocation_reason = models.TextField(blank=True, editable=False)
+
+    class Meta(ScopedModel.Meta):
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "login_account"],
+                condition=models.Q(revoked_at__isnull=True),
+                name="one_current_login_identity_binding",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if not self.verification_reference.strip():
+            raise ValidationError("Une référence de vérification est requise.")
+        if self._state.adding:
+            from platform_core.models import OrganizationMembership
+
+            if self.identity.status != "active" or self.identity.kind not in ("human", "external"):
+                raise ValidationError("Liez une personne ou un intervenant externe actif.")
+            if (
+                not self.login_account.is_active
+                or not OrganizationMembership.objects.filter(
+                    organization_id=self.organization_id, account=self.login_account, active=True
+                ).exists()
+            ):
+                raise ValidationError("Le compte doit être membre actif de cette organisation.")
+        else:
+            previous = type(self).unscoped.get(pk=self.pk)
+            immutable = (
+                "organization_id",
+                "login_account_id",
+                "identity_id",
+                "verification_reference",
+                "created_by_id",
+                "created_at",
+                "mfa_verified_at",
+                "mfa_window_minutes",
+                "signature",
+            )
+            if any(getattr(previous, key) != getattr(self, key) for key in immutable):
+                raise ValidationError(
+                    "Un lien ne se réattribue pas : révoquez-le puis créez-en un."
+                )
+            if previous.revoked_at and (
+                self.revoked_at != previous.revoked_at
+                or self.revoked_by_id != previous.revoked_by_id
+                or self.revocation_reason != previous.revocation_reason
+            ):
+                raise ValidationError("Une révocation de lien est définitive.")
+        if self.revoked_at:
+            if not self.revoked_by_id or not self.revocation_reason.strip():
+                raise ValidationError("Auteur et motif de révocation requis.")
+            if self.created_at and self.revoked_at < self.created_at:
+                raise ValidationError("La révocation ne peut pas précéder la création.")
+        elif self.revoked_by_id or self.revocation_reason:
+            raise ValidationError("Une révocation exige sa date.")
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Les liens historiques se conservent ; utilisez la révocation.")
+
+    def __str__(self):
+        return f"{self.login_account} → {self.identity}"
 
 
 class Resource(ScopedModel):

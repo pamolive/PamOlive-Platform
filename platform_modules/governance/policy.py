@@ -353,20 +353,43 @@ def approval_requirements(intent, *, at=None):
         if intent.contract_id and policy.supplier_sponsor_required:
             revision = revision_at(intent.contract, at)
             sponsor_id = revision.sponsor_id if revision else None
-    approved = set(
-        intent.decisions.filter(approved=True, decided_at__lte=at).values_list(
-            "reviewer_id", flat=True
+    person_ids = set()
+    sponsor_same_person = False
+    if intent.fulfillment == "pam":
+        from platform_modules.pam.mandates import binding_at, valid_decisions
+
+        decisions = valid_decisions(intent, at)
+        approved = {decision.reviewer_id for decision in decisions}
+        person_ids = {decision.reviewer_identity_id for decision in decisions}
+        sponsor_binding = binding_at(sponsor_id, at) if sponsor_id else None
+        sponsor_same_person = bool(
+            sponsor_binding
+            and (
+                sponsor_binding.identity_id == intent.identity_id
+                or sponsor_binding.identity_id in person_ids
+            )
         )
-    )
+        count = len(person_ids)
+    else:
+        approved = set(
+            intent.decisions.filter(approved=True, decided_at__lte=at).values_list(
+                "reviewer_id", flat=True
+            )
+        )
+        count = len(approved)
     sponsor_satisfied = (
-        not sponsor_id or sponsor_id == intent.requested_by_id or sponsor_id in approved
+        not sponsor_id
+        or sponsor_id == intent.requested_by_id
+        or sponsor_id in approved
+        or sponsor_same_person
     )
     return {
         "minimum": minimum,
-        "approved": len(approved),
+        "approved": count,
+        "unit": "personnes liées" if intent.fulfillment == "pam" else "comptes de connexion",
         "sponsor_id": sponsor_id,
         "sponsor_satisfied": sponsor_satisfied,
-        "complete": len(approved) >= minimum and sponsor_satisfied,
+        "complete": count >= minimum and sponsor_satisfied,
         "policy_id": str(policy.pk) if policy else "baseline/1",
     }
 

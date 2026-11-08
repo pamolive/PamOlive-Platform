@@ -9,9 +9,10 @@ from django.utils.crypto import constant_time_compare, salted_hmac
 
 from platform_core.audit import digest
 from platform_core.authorization import require_recent_authentication
-from platform_core.models import AuditEvent
+from platform_core.models import AuditEvent, OrganizationMembership
 from platform_core.services import authorize
 from platform_core.tenancy import organization_context
+from platform_modules.identity.bindings import current_binding
 
 from .models import LIVE_CONNECTION_STATES, RecordingChunk, RelayConnection
 from .sessions import browser_hash, chunk_digest, recording_seal, session_actor
@@ -63,6 +64,27 @@ def authorize_recording(item, actor):
             else ("admin", "auditor")
         ),
     )
+    privileged_reader = (
+        actor.is_superuser
+        or OrganizationMembership.objects.filter(
+            organization=item.organization,
+            account=actor,
+            active=True,
+            role__in=("admin", "auditor"),
+        ).exists()
+    )
+    if item.opened_by_id == actor.pk and not privileged_reader:
+        from uuid import UUID
+
+        try:
+            identity_id = UUID(item.authority_snapshot.get("identity_id", ""))
+            if not item.authority_snapshot.get("requester_binding_id"):
+                raise ValueError
+            current_binding(actor, organization=item.organization, identity_id=identity_id)
+        except (ValueError, TypeError, ValidationError):
+            raise PermissionDenied(
+                "La personne détentrice de la capture n’est plus liée au compte."
+            ) from None
     if item.status in LIVE_CONNECTION_STATES or not item.ended_at:
         raise ValidationError("La capture n’est consultable qu’après la fermeture du relais.")
     with organization_context(item.organization):

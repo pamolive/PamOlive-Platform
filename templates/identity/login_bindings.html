@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block actions %}<span class="page-app-name">Identités · Comptes connectés</span>{% endblock %}
+{% block content %}
+<h1>Lier les comptes connectés aux personnes</h1>
+<p>Un compte PAM-olive n’est pas une identité IAM. Vous attestez explicitement ce lien pour cette organisation, après vérification de la personne. Aucun rapprochement de nom ou d’e-mail n’est automatique. Ce lien ne donne aucun rôle ni droit.</p>
+<p>Avant une demande PAM, liez le compte de l’intervenant et ceux des approbateurs. Deux comptes d’une même personne ne constituent pas deux validations indépendantes.</p>
+<section class="workflow-card"><h2>Établir un lien</h2><form method="post" class="erp-form">{% csrf_token %}{{ form.as_p }}<button class="button">Attester et enregistrer le lien</button></form></section>
+<h2>Les 200 derniers liens et leurs preuves</h2>
+<p>Un lien ne se réattribue pas. Révoquez-le avant d’en créer un nouveau. Sa révocation empêche l’usage de ses mandats PAM, sans désactiver le compte global ni supprimer l’historique.</p>
+{% for binding in bindings %}<article class="workflow-card"><h3>{{ binding }}</h3><p>Attestation : {{ binding.created_by }} · {{ binding.created_at }} · {{ binding.verification_reference }}</p>
+{% if binding.revoked_at %}<p>Révoqué le {{ binding.revoked_at }} par {{ binding.revoked_by }} : {{ binding.revocation_reason }}</p>{% else %}<form method="post" action="{% url 'identity-binding-revoke' binding.pk %}" class="inline-form">{% csrf_token %}<input name="reason" placeholder="Motif de révocation" required><button class="button subtle">Révoquer ce lien</button></form>{% endif %}</article>{% empty %}<p>Aucun lien établi. Créez les identités et les appartenances à l’organisation avant de les lier.</p>{% endfor %}
+{% endblock %}

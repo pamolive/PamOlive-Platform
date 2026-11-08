@@ -51,8 +51,11 @@ class SessionEndpoint(ScopedModel):
         super().clean()
         if self.resource_id and self.resource.kind not in ("server", "device", "cloud"):
             raise ValidationError("Une cible PAM doit être un serveur, appareil ou hôte cloud.")
-        if self.account_id and self.account.kind != "privileged":
-            raise ValidationError("Sélectionnez un compte privilégié.")
+        if self.account_id:
+            from .mandates import account_can_use_pam
+
+            if not account_can_use_pam(self.account):
+                raise ValidationError("Sélectionnez un compte privilégié ou un service technique.")
         if self.protocol == "rdp" and self.auth_method != "password":
             raise ValidationError("Le relais RDP utilise un mot de passe avec NLA.")
 

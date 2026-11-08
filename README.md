@@ -70,7 +70,7 @@ Dans Docker Desktop, `host.docker.internal` permet de joindre un PostgreSQL éco
 
 Les droits permanents motivés peuvent justifier un accès sans ticket. Un fait insuffisamment documenté reste « contexte insuffisant ». Les révocations locales ne valent pas confirmation de retrait sur un système externe.
 
-L’acteur d’une observation peut être différent du propriétaire du compte utilisé : par exemple un humain utilisant un compte de service. Sans attribution fournie par la source, l’acteur reste inconnu. Le formulaire, l’explication et le graphe distinguent ces rôles ; une intention d’observation peut préciser ce compte partagé, sans autoriser pour autant une délégation de session PAM ou de provisioning IAM. Voir le [contrat d’attribution de l’API](docs/api.md#acteur-compte-et-propriétaire--trois-notions-différentes).
+L’acteur d’une observation peut être différent du propriétaire du compte utilisé : par exemple un humain utilisant un compte de service. Sans attribution fournie par la source, l’acteur reste inconnu. Le formulaire, l’explication et le graphe distinguent ces rôles. Un [mandat PAM explicite](docs/pam-transport.md#personne-intervenante-compte-utilisé-et-mandat) permet aussi à une personne liée à son compte du portail d’utiliser un compte technique partagé après validation par des personnes indépendantes. L’intention d’observation seule n’ouvre jamais un relais ; le provisioning IAM reste réservé au compte de l’identité bénéficiaire. Voir le [contrat d’attribution de l’API](docs/api.md#acteur-compte-et-propriétaire--trois-notions-différentes).
 
 ## Contrats fournisseurs et politiques
 
@@ -137,6 +137,7 @@ Ce contrôle prouve NLA, les pins natifs, le clavier, les pixels de la cible et 
 - [API d’observation](docs/api.md), [modules](docs/modules.md), [PostgreSQL](docs/postgresql.md)
 - [Provisioning SCIM et confirmations externes](docs/provisioning.md)
 - [Transports PAM SSH/RDP, captures et configuration du proxy](docs/pam-transport.md)
+- [Mandats PAM liés à une personne et comptes techniques partagés](docs/pam-person-mandates.md)
 - [Roadmap](docs/implementation-roadmap.md), [décisions](docs/architecture-decisions.md), [état livré](docs/implementation-status.md)
 
 ## Licence et gestion du projet

@@ -17,7 +17,12 @@ class AccessIntent(ScopedModel):
     )
     resource = models.ForeignKey("identity.Resource", on_delete=models.PROTECT)
     account = models.ForeignKey(
-        "identity.ExternalAccount", null=True, blank=True, on_delete=models.PROTECT
+        "identity.ExternalAccount",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        verbose_name="Compte utilisé",
+        help_text="Un compte technique partagé nécessite un mandat PAM lié à l’intervenant.",
     )
     method = models.CharField("Méthode (SSH, RDP, badge…)", max_length=80)
     location = models.CharField("Origine / lieu autorisé", max_length=255, blank=True)
@@ -50,6 +55,14 @@ class AccessIntent(ScopedModel):
     starts_at = models.DateTimeField("Début")
     ends_at = models.DateTimeField("Fin")
     requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    requester_binding = models.ForeignKey(
+        "identity.LoginIdentityBinding",
+        null=True,
+        blank=True,
+        editable=False,
+        on_delete=models.PROTECT,
+    )
+    account_snapshot = models.JSONField(default=dict, blank=True, editable=False)
     status = models.CharField(
         max_length=16,
         default="pending",
@@ -80,13 +93,17 @@ class AccessIntent(ScopedModel):
         if (
             self.account_id
             and self.account.identity_id != self.identity_id
-            and self.fulfillment != "observe"
+            and self.fulfillment == "iam_group"
         ):
             raise ValidationError(
-                "L’observation peut distinguer intervenant et propriétaire du compte. "
-                "Le provisioning IAM et le relais PAM exigent encore un compte de cette identité ; "
-                "ils ne prennent pas en charge la délégation de compte partagé."
+                "Le provisioning IAM exige un compte de l’identité bénéficiaire. "
+                "Une utilisation partagée se demande par un mandat PAM, pas un droit SCIM."
             )
+        if self.requester_binding_id and (
+            self.requester_binding.identity_id != self.identity_id
+            or self.requester_binding.login_account_id != self.requested_by_id
+        ):
+            raise ValidationError("Le lien du demandeur ne correspond pas à l’intervenant.")
         if self.network_switch_id or self.network_port or self.network_vlan:
             if self.fulfillment != "observe":
                 raise ValidationError(
@@ -215,6 +232,6 @@ class AccessEvaluation(ScopedModel):
             ("unknown", "Contexte insuffisant"),
         ],
     )
-    rule_version = models.CharField(max_length=30, default="access-context/4")
+    rule_version = models.CharField(max_length=30, default="access-context/5")
     findings = models.JSONField(default=list)
     evaluated_at = models.DateTimeField(auto_now_add=True)

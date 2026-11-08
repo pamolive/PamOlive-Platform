@@ -1,6 +1,7 @@
 """Source attribution is not inventory ownership or permission to execute."""
 
 import json
+import time
 from datetime import timedelta
 from unittest import skipUnless
 
@@ -11,6 +12,9 @@ from django.urls import reverse
 from django.utils import timezone
 
 from platform_core.audit import verify_chain
+from platform_core.authorization import recent_authentication
+from platform_core.models import AccountSecurity
+from platform_core.security import cipher
 from platform_core.services import install_module
 from platform_core.tenancy import organization_context
 from platform_modules.access.models import AccessEvaluation, AccessEvent
@@ -110,7 +114,7 @@ class AccessAttributionTests(TestCase):
         self.assertEqual(event.account.identity_id, self.service.pk)
         self.assertEqual(event.credential.identity_id, self.service.pk)
         self.assertEqual((evaluation.verdict, evaluation.intent_id), ("expected", intent.pk))
-        self.assertEqual(evaluation.rule_version, "access-context/4")
+        self.assertEqual(evaluation.rule_version, "access-context/5")
         context = next(f for f in evaluation.findings if f["code"] == "account_owner_context")
         self.assertEqual(context["state"], "observed")
         self.assertIn(str(self.service.pk), context["detail"])
@@ -151,8 +155,15 @@ class AccessAttributionTests(TestCase):
         self.assertEqual(event.evaluations.get().verdict, "unknown")
 
     def test_observation_does_not_enable_shared_account_provisioning_or_pam(self):
+        AccountSecurity.objects.create(
+            account=self.operator, encrypted_secret=cipher().encrypt(b"fixture-assurance").decode()
+        )
         for fulfillment in ("pam", "iam_group"):
-            with self.subTest(fulfillment=fulfillment), self.assertRaises(ValidationError):
+            with (
+                self.subTest(fulfillment=fulfillment),
+                recent_authentication(self.operator, self.org, time.time()),
+                self.assertRaises(ValidationError),
+            ):
                 self.planned(fulfillment=fulfillment, privilege="Administrator")
         intent = self.approved()
         with self.assertRaises(ValidationError):
@@ -362,5 +373,5 @@ class AccessAttributionTests(TestCase):
         current = reevaluate_event(event.pk, actor=self.operator, organization=self.org)
         old.refresh_from_db()
         self.assertEqual(old.rule_version, "access-context/3")
-        self.assertEqual(current.rule_version, "access-context/4")
+        self.assertEqual(current.rule_version, "access-context/5")
         self.assertEqual(event.evaluations.count(), 3)
