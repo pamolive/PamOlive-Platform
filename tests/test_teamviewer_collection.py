@@ -65,8 +65,7 @@ from platform_modules.connectors.teamviewer_restoration import verify_evidence
 from tests.fixtures.oidc import tls_material
 
 
-@override_settings(CONNECTOR_ALLOWED_HOSTS=["webapi.teamviewer.com:443"])
-class TeamViewerFixture(TestCase):
+class TeamViewerFixtureData:
     @classmethod
     def setUpTestData(cls):
         cls.admin = get_user_model().objects.create_user("tv-admin")
@@ -131,6 +130,11 @@ class TeamViewerFixture(TestCase):
     def enable(self, collector, enabled=True):
         with recent_authentication(self.admin, self.org, time.time()):
             return set_enabled(collector.pk, enabled, actor=self.admin, organization=self.org)
+
+
+@override_settings(CONNECTOR_ALLOWED_HOSTS=["webapi.teamviewer.com:443"])
+class TeamViewerFixture(TeamViewerFixtureData, TestCase):
+    pass
 
 
 class TeamViewerConfigurationTests(TeamViewerFixture):
@@ -345,7 +349,12 @@ class TeamViewerConfigurationTests(TeamViewerFixture):
                 cursor.execute(statement, parameters)
 
 
-class TeamViewerViewTests(TeamViewerFixture):
+@override_settings(CONNECTOR_ALLOWED_HOSTS=["webapi.teamviewer.com:443"])
+class TeamViewerViewTests(TeamViewerFixtureData, TransactionTestCase):
+    def setUp(self):
+        self.setUpTestData()
+        super().setUp()
+
     def browser_client(self, *, actor=None, fresh=True, csrf=False):
         client = Client(enforce_csrf_checks=csrf)
         client.force_login(actor or self.admin)

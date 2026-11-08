@@ -22,17 +22,33 @@ from platform_core.security import cipher
 from platform_core.services import require_module
 
 
+def historical_targets(executor, core_migration):
+    """Exclude cross-app descendants of later core migrations from the old state.
+
+    Replacing only the core leaf while retaining a newer dependent connector
+    leaf produces an impossible project state: its dependency adds the new core
+    columns back into the historical model even though the DB was rolled back.
+    """
+    graph = executor.loader.graph
+    target = ("platform_core", core_migration)
+    excluded = set(graph.backwards_plan(target)) - {target}
+    return [
+        key
+        for key, node in graph.node_map.items()
+        if key not in excluded
+        and not any(child.key[0] == key[0] and child.key not in excluded for child in node.children)
+    ]
+
+
 @skipUnless(
     connection.vendor == "postgresql" and not settings.PAMOLIVE_EXTENSIONS,
     "Built-in-only PostgreSQL extension-schema upgrade gate",
 )
 class ExtensionSchemaUpgradeTests(TransactionTestCase):
     def test_event_schema_adds_no_backfill_and_preserves_existing_evidence(self):
-        latest = MigrationExecutor(connection).loader.graph.leaf_nodes()
-        previous = [
-            (label, "0006_extension_deployment") if label == "platform_core" else (label, name)
-            for label, name in latest
-        ]
+        executor = MigrationExecutor(connection)
+        latest = executor.loader.graph.leaf_nodes()
+        previous = historical_targets(executor, "0006_extension_deployment")
         try:
             MigrationExecutor(connection).migrate(previous)
             org = Organization.objects.create(key="event-upgrade", name="Existing organization")
@@ -69,12 +85,7 @@ class ExtensionSchemaUpgradeTests(TransactionTestCase):
     def test_existing_activations_security_and_audit_survive_without_implicit_delivery(self):
         executor = MigrationExecutor(connection)
         latest = executor.loader.graph.leaf_nodes()
-        previous = [
-            (label, "0005_loginthrottle_accountsecurity")
-            if label == "platform_core"
-            else (label, name)
-            for label, name in latest
-        ]
+        previous = historical_targets(executor, "0005_loginthrottle_accountsecurity")
         try:
             executor.migrate(previous)
             old = MigrationExecutor(connection).loader.project_state(previous).apps
@@ -82,6 +93,7 @@ class ExtensionSchemaUpgradeTests(TransactionTestCase):
             old_user = old.get_model(*settings.AUTH_USER_MODEL.split("."))
             old_membership = old.get_model("platform_core", "OrganizationMembership")
             old_activation = old.get_model("platform_core", "ModuleActivation")
+            self.assertNotIn("release_hash", {field.name for field in old_activation._meta.fields})
             old_security = old.get_model("platform_core", "AccountSecurity")
             actor = old_user.objects.create(username="extension-upgrade-fixture", is_active=True)
             first = old_org.objects.create(key="extension-upgrade-a", name="Upgrade A")
