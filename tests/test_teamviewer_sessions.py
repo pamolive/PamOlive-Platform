@@ -374,7 +374,7 @@ class TeamViewerSessionTests(SessionFixtureData, TeamViewerFixture):
         page = client.get(url)
         self.assertContains(page, "Session TeamViewer")
         self.assertEqual(page["Cache-Control"], "no-store")
-        self.assertContains(page, "reste à livrer")
+        self.assertContains(page, "Normalisation en attente ou refusée")
         session = client.session
         session["mfa_verified_at"] = 0
         session.save()

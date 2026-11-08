@@ -17,6 +17,7 @@ def teamviewer_corpus(actor, organization):
     from platform_core.authorization import recent_authentication
     from platform_core.services import install_module
     from platform_modules.connectors.teamviewer import ConnectionReport, ReportBatch, ReportPage
+    from platform_modules.connectors.teamviewer_access import normalize_sessions
     from platform_modules.connectors.teamviewer_collection import (
         save_configuration,
         set_enabled,
@@ -97,6 +98,7 @@ def teamviewer_corpus(actor, organization):
                 sighting_id=sighting.pk,
             )
         index_sessions(organization)
+        normalize_sessions(organization)
         set_enabled(collector.pk, False, actor=actor, organization=organization)
 
 

@@ -2,7 +2,7 @@
 
 Le module Connecteurs lit les rapports de sessions TeamViewer terminées et conserve leurs preuves source par organisation. Il fonctionne dans le conteneur applicatif existant : aucun worker Compose, Redis ou conteneur TeamViewer supplémentaire n’est nécessaire.
 
-Ce parcours livre la collecte brute, les correspondances explicites et le regroupement des observations d’une session. La normalisation en événements d’accès corrélés reste à implémenter : une association affichée ne constitue pas encore une explication d’accès. Les rapports ne sont pas des captures vidéo de sessions.
+Ce parcours relie la collecte brute, les correspondances explicites et les observations regroupées à un événement d’accès et à ses évaluations. Une association administrative n’est pas une preuve d’authentification : la conformité exprime uniquement une concordance avec le périmètre documenté. Les rapports ne sont pas des captures vidéo de sessions.
 
 ## Préparer la destination et le jeton
 
@@ -63,6 +63,20 @@ Pour chaque dimension — compte opérateur, identité attribuée et machine —
 
 La résolution examine au maximum 64 variantes distinctes de rapport et de révision de configuration. Les relectures identiques ne consomment pas cette borne, même si toutes leurs preuves restent conservées et vérifiées pendant une restauration. L’indexation traite au plus dix observations par passage ; elle n’ajoute ni service Docker ni processus de tâches supplémentaire. La liste montre les 100 derniers dossiers créés, sans purge automatique.
 
+## Expliquer une session sans modifier ses preuves
+
+Depuis le détail d’une session regroupée, choisir **Expliquer cet accès et consulter son historique d’évaluation**. Le traitement existant crée un seul événement `managed:teamviewer` par session de l’organisation, même après plusieurs collecteurs ou relectures. Son début et sa fin proviennent du rapport d’origine ; les autres versions restent liées au dossier. Un désaccord sur ces faits bloque leur interprétation au lieu de désigner silencieusement une version correcte.
+
+L’événement conserve les faits source sans remplir artificiellement les UUID d’identité, de compte ou de ressource locale. Une ressource non résolue reste vide. Sa réception est celle de la version de rapport d’origine ; la date du lien de normalisation est conservée séparément, pour ne pas présenter le temps de traitement comme un retard de la source. L’interprétation vérifie les liens signés, les observations et les attestations datées, puis transmet leurs objets rapprochés au moteur d’accès. Celui-ci compare toute la période aux intentions et droits applicables, avec le cycle de vie, les approbations et les restrictions disponibles.
+
+Par exemple, une attestation associe l’opérateur TeamViewer à Cyriel et la machine à PC-123. Une intention approuvée avant la session prévoit cette personne, ce compte, cette machine, la méthode TeamViewer et la période. L’explication peut rapprocher cette intention et sa référence métier. Si elle exige aussi un privilège Windows « Administrator », que le rapport ne fournit pas, ce champ reste inconnu : il n’est ni recopié de l’intention ni traité comme une valeur différente observée. Une machine différente effectivement identifiée reste en revanche un écart de périmètre connu.
+
+Chaque nouvelle évaluation conserve son contexte, ses témoins et une signature liée à l’audit et aux faits source. Corriger une association ajoute une analyse sans changer l’événement ni l’ancienne conclusion. Le traitement parcourt les dossiers par lots de cinq avec un curseur réinitialisable ; une simple relecture identique ne crée pas une nouvelle analyse si l’interprétation n’a pas changé. Ce parcours ne garantit pas une analyse immédiate d’un historique volumineux. Les changements de politique sans nouvelle interprétation nécessitent une réévaluation explicite.
+
+Le détail, l’export, le graphe et la chronologie distinguent les faits de leur interprétation actuelle. Lorsqu’elle diffère de celle de la dernière analyse, cette conclusion historique n’est pas affichée comme le résultat actuel. Le bouton de réévaluation conserve une nouvelle analyse après les contrôles habituels. Les anciennes évaluations non signées restent dans l’historique ; elles ne deviennent pas des preuves signées rétroactivement.
+
+L’espace de source `managed:` est réservé aux adaptateurs du déploiement. Une saisie manuelle ne peut pas préremplir un événement censé venir d’un collecteur. Si une ancienne donnée utilise déjà le même identifiant sans lien signé, la normalisation refuse de l’adopter, conserve les preuves et affiche le refus dans le dossier de session. Le [contrat technique des interprétations](observation-context.md) détaille cette séparation.
+
 ## Fenêtres et reprises de collecte
 
 L’API est interrogée en lecture seule sur `GET /api/v1/reports/connections`. Le paramètre `from_date` filtre le début des sessions : le collecteur l’omet pour conserver une session longue ayant commencé avant la fenêtre. Il fige `to_date`, parcourt les pages par `offset_id` et applique localement la borne de fin minimale. Le contrat est décrit dans la [documentation officielle TeamViewer](https://webapi.teamviewer.com/api/v1/docs/index) et le [client officiel TeamViewerPS](https://github.com/teamviewer/TeamViewerPS/blob/a15ec4e55af7d17ce338aa9b4dbcce4db9e81eeb/Cmdlets/Public/Get-TeamViewerConnectionReport.ps1).
@@ -87,4 +101,4 @@ Les limites d’interprétation sont importantes :
 - L’état `complete` signifie seulement que la pagination de la fenêtre est terminée. Il ne déclare pas une couverture complète de l’organisation.
 - L’interface montre les 100 derniers passages, les 100 dernières versions de rapports et les 100 dernières publications de correspondances par collecteur, sans purge automatique des preuves. Le détail d’une version propose ses 20 dernières observations.
 
-Les tests incluent un serveur HTTPS éphémère et le parcours formulaire avec CSRF, MFA, activation, collecte, publication des trois associations et lecture de leur résolution. Ils distinguent l’intervenant du propriétaire du compte partagé. La qualification d’un compte TeamViewer réel et de son périmètre de visibilité reste une étape d’intégration distincte.
+Les tests incluent un serveur HTTPS éphémère et le parcours formulaire avec CSRF, MFA, activation, collecte, publication des trois associations, événement normalisé et détail d’explication. Ils distinguent l’intervenant du propriétaire du compte partagé, conservent les anciennes analyses et refusent les collisions de provenance. La qualification d’un compte TeamViewer réel et de son périmètre de visibilité reste une étape d’intégration distincte.

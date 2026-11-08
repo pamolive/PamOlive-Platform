@@ -35,7 +35,9 @@ from platform_modules.pam.services import open_lease
 from platform_modules.recertification.models import Campaign, Review
 from platform_modules.recertification.services import review_grant, start_campaign
 
+from .evidence import verify_evaluation
 from .models import AccessEvent, AccessIntent
+from .observations import is_managed_source, observation_context
 from .services import create_record, ingest_event, revoke_identity
 
 CATALOG = {
@@ -307,6 +309,20 @@ def record_detail(request, kind, object_id):
             subject = getattr(obj, relation)
             if subject:
                 details.append((label, subject.identity))
+    interpreted = (
+        observation_context(obj, organization=request.organization) if kind == "event" else None
+    )
+    latest = (
+        obj.evaluations.select_related("audit", "event", "intent").order_by("-evaluated_at").first()
+        if kind == "event"
+        else None
+    )
+    evaluation_valid = latest is not None and verify_evaluation(latest)
+    stale = bool(
+        interpreted
+        and is_managed_source(obj.source)
+        and (not evaluation_valid or latest.context_hash != interpreted.fingerprint)
+    )
     return render(
         request,
         "governance/detail.html",
@@ -322,12 +338,26 @@ def record_detail(request, kind, object_id):
             "obj": obj,
             "kind": kind,
             "details": details,
+            "interpretation": interpreted
+            if kind == "event" and is_managed_source(obj.source)
+            else None,
+            "interpretation_dimensions": [
+                (label, getattr(interpreted.event, field))
+                for label, field in (
+                    ("Intervenant attribué", "identity"),
+                    ("Compte opérateur", "account"),
+                    ("Ressource rapprochée", "resource"),
+                )
+            ]
+            if interpreted
+            else [],
+            "interpretation_stale": stale,
+            "evaluation_valid": evaluation_valid,
             "accounts": ExternalAccount.objects.filter(identity=obj) if kind == "identity" else [],
             "grants": Grant.objects.filter(identity=obj) if kind == "identity" else [],
             "credentials": Credential.objects.filter(identity=obj) if kind == "identity" else [],
-            "evaluation": obj.evaluations.order_by("-evaluated_at").first()
-            if kind == "event"
-            else None,
+            "evaluation": latest if evaluation_valid and not stale else None,
+            "historical_evaluation": latest if evaluation_valid and stale else None,
         },
     )
 
@@ -619,13 +649,20 @@ def system(request, member_id=None):
 @scoped("access")
 def export_event(request, object_id):
     event = get_object_or_404(AccessEvent.objects, pk=object_id)
-    evaluation = event.evaluations.order_by("-evaluated_at").first()
+    context = observation_context(event, organization=request.organization)
+    evaluation = (
+        event.evaluations.select_related("audit", "event", "intent")
+        .order_by("-evaluated_at")
+        .first()
+    )
+    valid = evaluation is not None and verify_evaluation(evaluation)
+    managed = is_managed_source(event.source)
     response = JsonResponse(
         {
             "event_id": str(event.pk),
             "organization_id": str(request.organization.pk),
             "who": str(event.identity) if event.identity_id else None,
-            "what": str(event.resource),
+            "what": str(event.resource) if event.resource_id else None,
             "where": event.location or None,
             "when": event.occurred_at.isoformat(),
             "ended_at": event.ended_at.isoformat() if event.ended_at else None,
@@ -638,9 +675,13 @@ def export_event(request, object_id):
             "evidence": event.evidence,
             "facts": {
                 "identity_id": str(event.identity_id) if event.identity_id else None,
-                "identity_attribution": "source_reported" if event.identity_id else "unresolved",
+                "identity_attribution": "unverified_managed_declaration"
+                if managed and event.identity_id
+                else "source_reported"
+                if event.identity_id
+                else "unresolved",
                 "account_id": str(event.account_id) if event.account_id else None,
-                "resource_id": str(event.resource_id),
+                "resource_id": str(event.resource_id) if event.resource_id else None,
                 "domain": event.domain or None,
                 "credential_id": str(event.credential_id) if event.credential_id else None,
                 "credential_observation": event.credential_observation,
@@ -664,9 +705,28 @@ def export_event(request, object_id):
             "evaluation": {
                 "verdict": evaluation.verdict,
                 "rule_version": evaluation.rule_version,
+                "evaluated_at": evaluation.evaluated_at.isoformat(),
                 "findings": evaluation.findings,
+                "context": evaluation.context,
+                "context_hash": evaluation.context_hash,
+                "proof_verified": valid and bool(evaluation.signature),
+                "integrity_status": "signed" if evaluation.signature else "legacy_unsealed",
+                "current_interpretation_differs": managed
+                and evaluation.context_hash != context.fingerprint,
             }
-            if evaluation
+            if evaluation and valid
+            else None,
+            "interpretation": dict(
+                blocked=context.blocked,
+                identity_id=str(context.event.identity_id) if context.event.identity_id else None,
+                account_id=str(context.event.account_id) if context.event.account_id else None,
+                resource_id=str(context.event.resource_id) if context.event.resource_id else None,
+                context=context.snapshot,
+                context_hash=context.fingerprint,
+                actor_provenance="administrative_attestation_not_authentication_proof",
+                actor_inferred_from_ownership=False,
+            )
+            if managed
             else None,
         }
     )

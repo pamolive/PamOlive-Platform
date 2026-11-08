@@ -8,6 +8,7 @@ from platform_core.events import process_events
 from platform_core.models import Organization
 from platform_core.oidc.services import cleanup_expired
 from platform_modules.connectors.outbound import process_changes
+from platform_modules.connectors.teamviewer_access import process_access_observations
 from platform_modules.connectors.teamviewer_ingestion import process_collectors
 from platform_modules.connectors.teamviewer_sessions import process_sessions
 from platform_modules.connectors.teamviewer_sightings import process_sightings
@@ -24,7 +25,15 @@ def deliver(organization):
         changes = process_changes(organization, limit=1)
         collected = process_collectors(organization, limit=1)
         indexed = process_sightings(organization)
-        return notifications + changes + collected + indexed + process_sessions(organization)
+        sessions = process_sessions(organization)
+        return (
+            notifications
+            + changes
+            + collected
+            + indexed
+            + sessions
+            + process_access_observations(organization)
+        )
     finally:
         connections.close_all()
 
@@ -55,6 +64,7 @@ class Command(BaseCommand):
                         process_collectors(organization, limit=1)
                         process_sightings(organization)
                         process_sessions(organization)
+                        process_access_observations(organization)
                     return
                 for key, future in list(pending.items()):
                     if future.done():

@@ -128,7 +128,10 @@ def _uuid(value):
         return False
 
 
-def event_timeline(queryset, start, end):
+def event_timeline(queryset, start, end, *, identity=None):
+    from platform_modules.access.evidence import verify_evaluation
+    from platform_modules.access.observations import is_managed_source, observation_context
+
     from .services import validate_window
 
     validate_window(start, end)
@@ -140,9 +143,21 @@ def event_timeline(queryset, start, end):
     )
     rows, previous = [], None
     for event in events[:500]:
+        context = observation_context(event, organization=current_organization())
+        event = context.event
+        if identity is not None and event.identity_id != identity.pk:
+            continue
         uncertainty, report_id = event_clock(event)
         evaluations = list(event.evaluations.all())
         evaluation = max(evaluations, key=lambda value: value.evaluated_at) if evaluations else None
+        stale = bool(
+            evaluation
+            and is_managed_source(event.source)
+            and evaluation.context_hash != context.fingerprint
+        )
+        historical = evaluation
+        if evaluation and (stale or not verify_evaluation(evaluation)):
+            evaluation = None
         overlap = previous is not None and (
             uncertainty is None
             or previous[1] is None
@@ -168,7 +183,7 @@ def event_timeline(queryset, start, end):
             )
         )
         reference = " · ".join(references)
-        if evaluation and evaluation.rule_version != "access-context/6":
+        if evaluation and evaluation.rule_version not in {"access-context/6", "access-context/7"}:
             reference = evaluation.intent.reference if evaluation.intent_id else ""
             reference_complete = bool(reference)
         completed_at = event.ended_at or event.occurred_at
@@ -176,6 +191,9 @@ def event_timeline(queryset, start, end):
             {
                 "event": event,
                 "evaluation": evaluation,
+                "historical_evaluation": historical if stale else None,
+                "interpretation_stale": stale,
+                "interpretation": context.snapshot if is_managed_source(event.source) else None,
                 "reference": reference,
                 "reference_complete": reference_complete,
                 "clock_uncertainty": uncertainty,

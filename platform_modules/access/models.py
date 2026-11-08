@@ -131,7 +131,7 @@ class AccessEvent(ScopedModel):
         blank=True,
         help_text="Vide pour un fait instantané ; sinon intervalle début inclus, fin exclue.",
     )
-    received_at = models.DateTimeField(auto_now_add=True)
+    received_at = models.DateTimeField(default=timezone.now, editable=False)
     identity = models.ForeignKey(
         "identity.Identity",
         null=True,
@@ -151,7 +151,13 @@ class AccessEvent(ScopedModel):
         verbose_name="Compte observé",
         help_text="Peut appartenir à une autre identité de cette organisation (compte partagé).",
     )
-    resource = models.ForeignKey("identity.Resource", on_delete=models.PROTECT)
+    resource = models.ForeignKey(
+        "identity.Resource",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        help_text="Vide si la ressource locale n’est pas identifiée ; aucune cible n’est inventée.",
+    )
     credential = models.ForeignKey(
         "identity.Credential",
         null=True,
@@ -236,13 +242,14 @@ class AccessEvent(ScopedModel):
             raise ValidationError("Le switch observé doit être une ressource réseau.")
 
     def __str__(self):
-        return f"{self.occurred_at:%d/%m %H:%M} · {self.action} · {self.resource}"
+        target = self.resource or "Ressource non résolue"
+        return f"{self.occurred_at:%d/%m %H:%M} · {self.action} · {target}"
 
 
 class AccessEvaluation(ScopedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     event = models.ForeignKey(AccessEvent, on_delete=models.PROTECT, related_name="evaluations")
-    intent = models.ForeignKey(AccessIntent, null=True, on_delete=models.PROTECT)
+    intent = models.ForeignKey(AccessIntent, null=True, blank=True, on_delete=models.PROTECT)
     verdict = models.CharField(
         max_length=20,
         choices=[
@@ -251,6 +258,29 @@ class AccessEvaluation(ScopedModel):
             ("unknown", "Contexte insuffisant"),
         ],
     )
-    rule_version = models.CharField(max_length=30, default="access-context/6")
+    rule_version = models.CharField(max_length=30, default="access-context/7")
     findings = models.JSONField(default=list)
-    evaluated_at = models.DateTimeField(auto_now_add=True)
+    evaluated_at = models.DateTimeField(default=timezone.now)
+    context = models.JSONField(default=dict, blank=True, editable=False)
+    context_hash = models.CharField(max_length=64, blank=True, editable=False)
+    audit = models.OneToOneField(
+        "platform_core.AuditEvent",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="access_evaluation_proof",
+    )
+    signature = models.CharField(max_length=64, blank=True, editable=False)
+
+    class Meta(ScopedModel.Meta):
+        constraints = [
+            models.CheckConstraint(
+                condition=~models.Q(rule_version="access-context/7")
+                | models.Q(
+                    audit__isnull=False,
+                    signature__regex=r"^[0-9a-f]{64}$",
+                    context_hash__regex=r"^[0-9a-f]{64}$",
+                ),
+                name="access_evaluation_v7_proof",
+            )
+        ]

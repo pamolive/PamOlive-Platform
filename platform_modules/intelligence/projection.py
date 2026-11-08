@@ -9,6 +9,11 @@ from django.utils import timezone
 
 from platform_core.tenancy import current_organization
 from platform_modules.access.models import AccessEvent, AccessIntent
+from platform_modules.access.observations import (
+    is_managed_source,
+    observation_context,
+    related_event_candidates,
+)
 from platform_modules.access.services import identity_status_at
 from platform_modules.access.temporal import overlapping_events
 from platform_modules.governance.models import ContractParticipant
@@ -218,12 +223,17 @@ def graph_for_identity(identity, *, at=None):
             placement.pk,
             f"Port {placement.port} · VLAN {placement.vlan} · {placement.evidence}",
         )
+    candidate_ids, candidates_limited = related_event_candidates(
+        identity, limit=500, start=at - timedelta(days=1), end=at + timedelta(microseconds=1)
+    )
+    truncated |= candidates_limited
     observed = list(
         overlapping_events(
             AccessEvent.objects.filter(
                 Q(identity=identity)
                 | Q(account__identity=identity)
                 | Q(credential__identity=identity)
+                | Q(pk__in=candidate_ids)
             ),
             at - timedelta(days=1),
             at + timedelta(microseconds=1),
@@ -233,6 +243,16 @@ def graph_for_identity(identity, *, at=None):
     )
     truncated |= len(observed) > 100
     for event in observed[:100]:
+        context = observation_context(event, organization=current_organization())
+        event = context.event
+        if not (
+            event.identity_id == identity.pk
+            or event.account_id
+            and event.account.identity_id == identity.pk
+            or event.credential_id
+            and event.credential.identity_id == identity.pk
+        ):
+            continue
         # An account owner's graph may include another actor, or an unresolved one.
         # Never draw owner -> resource as the actor's observed activity by default.
         origin = (
@@ -240,8 +260,8 @@ def graph_for_identity(identity, *, at=None):
         )
         edge(
             origin,
-            add_node("resource", event.resource),
-            "observed-on",
+            add_node("resource", event.resource) if event.resource_id else add_node("event", event),
+            "observed-on" if event.resource_id else "unresolved-target",
             "observation",
             event.pk,
             f"{event.occurred_at.isoformat()} · {event.method} · {event.action} · "
@@ -255,7 +275,11 @@ def graph_for_identity(identity, *, at=None):
                     f"observed-with-{kind}",
                     "observation",
                     event.pk,
-                    "Association rapportée par la source. "
+                    (
+                        "Association administrative vérifiée, pas une preuve d’authentification. "
+                        if is_managed_source(event.source)
+                        else "Association rapportée par la source. "
+                    )
                     + (
                         "Acteur renseigné séparément du propriétaire."
                         if event.identity_id

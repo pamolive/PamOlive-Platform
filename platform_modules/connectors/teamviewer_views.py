@@ -11,10 +11,13 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from platform_core.models import AuditEvent
 from platform_core.security import cipher, ensure_recent
 from platform_modules.access.ui import scoped
 
 from .scim import IntegrationFailure
+from .teamviewer_access import verify_observation
+from .teamviewer_access_models import TeamViewerAccessObservation
 from .teamviewer_collection import save_configuration, set_enabled, test_configuration
 from .teamviewer_ingestion import verify_report
 from .teamviewer_mapping import KINDS, publish_mapping, resolve_sighting, verify_mapping
@@ -251,12 +254,36 @@ def session_detail(request, session_id):
     if challenge is not None:
         return challenge
     resolution = resolve_session(session, organization=request.organization)
+    normalization = (
+        TeamViewerAccessObservation.objects.select_related(
+            "audit",
+            "event",
+            "session__audit",
+            "session__origin__run__audit",
+            "session__origin__report",
+        )
+        .filter(session=session)
+        .first()
+    )
+    if normalization and not verify_observation(normalization):
+        normalization = None
     return private_response(
         request,
         "connectors/teamviewer_session.html",
         dict(
             session=session,
             resolution=resolution,
+            normalization=normalization,
+            normalization_issue=AuditEvent.objects.filter(
+                organization=request.organization,
+                action="connectors.teamviewer.access.refused.v1",
+                object_id=str(session.pk),
+                object_type=session._meta.label_lower,
+            )
+            .order_by("-sequence")
+            .first()
+            if normalization is None
+            else None,
             dimensions=[
                 dict(
                     label=MAPPING_LABELS[kind],

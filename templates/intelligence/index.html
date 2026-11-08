@@ -23,6 +23,8 @@
   <p>Précision d’horloge déclarée : {% if row.clock_uncertainty != None %}± {{ row.clock_uncertainty }} s{% else %}inconnue{% endif %}{% if row.order_uncertain %} · <b>ordre relatif incertain</b>{% endif %}</p>
   {% if row.reference %}<p>Référence(s) déclarée(s) : {{ row.reference }}{% if not row.reference_complete %} · <b>certaines parties restent sans référence</b>{% endif %} — rapprochement métier, pas une causalité démontrée.</p>{% endif %}
   {% if row.evaluation %}<span class="verdict {{ row.evaluation.verdict }}">{{ row.evaluation.get_verdict_display }}</span>{% endif %}
+  {% if row.interpretation %}<p>Identité et cible rapprochées par des attestations administratives, distinctes des faits source. Aucune authentification indépendante ni attribution par propriété n’est supposée.</p>{% endif %}
+  {% if row.interpretation_stale %}<p class="field-error">L’interprétation a changé depuis la dernière évaluation ; sa conclusion historique n’est pas présentée comme actuelle.</p>{% endif %}
 </article></li>{% empty %}<li>Aucun événement sur cette période dans les sources collectées.</li>{% endfor %}
 </ol>
 <h2>Couverture de collecte</h2><p>Une source active n’est pas automatiquement une source qui collecte. Les rapports portent une période explicite ; un rapport plus récent peut corriger une déclaration précédente. Cette vue globale exige une couverture déclarée de l’organisation entière, pas seulement d’une ressource.</p>

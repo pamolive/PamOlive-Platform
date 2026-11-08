@@ -20,7 +20,7 @@ Créer une source depuis **Connecteurs**. Le jeton n’est affiché qu’une foi
 }
 ```
 
-`identity`, `account`, `credential`, `location`, `privilege` et `evidence` sont facultatifs. `contract` peut contenir l’UUID d’un contrat de la même organisation et `country_code` le pays observé à deux lettres fourni par la source. Une identité absente reste inconnue. Aucun mot de passe, clé privée, jeton ou secret ne doit être envoyé dans les preuves.
+`identity`, `account`, `resource`, `credential`, `location`, `privilege` et `evidence` sont facultatifs. `contract` peut contenir l’UUID d’un contrat de la même organisation et `country_code` le pays observé à deux lettres fourni par la source. Une identité ou ressource absente reste inconnue ; aucune cible d’inventaire n’est inventée. Aucun mot de passe, clé privée, jeton ou secret ne doit être envoyé dans les preuves.
 
 ## Durée observée
 
@@ -35,7 +35,7 @@ Pour une session terminée, ajouter `ended_at`, par exemple :
 
 Ces champs complètent l’événement précédent. `ended_at` absent ou `null` conserve la sémantique d’un fait instantané ; égal au début, il décrit une durée nulle. Une période positive est semi-ouverte, début inclus et fin exclue. Les dates nécessitent un fuseau explicite ; une fin antérieure au début ou à plus de cinq minutes dans le futur est refusée.
 
-`access-context/6` [évalue toute la période observée](observed-intervals.md), avec les changements de contexte et les références métier propres à chaque partie. L’export fournit `ended_at` et `duration_seconds`. Les anciens faits et évaluations ne sont pas réécrits ; un rejeu du même identifiant source conserve toujours le fait initial, même si une fin est ajoutée à la requête.
+Depuis `access-context/6`, le moteur [évalue toute la période observée](observed-intervals.md), avec les changements de contexte et les références métier propres à chaque partie. `access-context/7` ajoute une [interprétation signée distincte des faits source](observation-context.md). L’export fournit `ended_at` et `duration_seconds`. Les anciens faits et évaluations ne sont pas réécrits ; un rejeu du même identifiant source conserve toujours le fait initial, même si une fin est ajoutée à la requête.
 
 ## Acteur, compte et propriétaire : trois notions différentes
 
@@ -54,6 +54,10 @@ La source est imposée par le jeton ; aucun `organization_id` ni `source` n’es
 Les dates des API sources exigent un fuseau explicite (`Z` ou un décalage ISO 8601). Aucune heure locale sans fuseau n’est interprétée silencieusement. Un fait daté de plus de cinq minutes dans le futur est refusé : les interventions prévues appartiennent aux intentions, pas aux observations.
 
 Le détail de l’événement et son export `/api/v1/events/<uuid>/export/` nécessitent une session interactive autorisée dans l’organisation. Les sources d’ingestion ne peuvent pas lire les données ou approuver des accès.
+
+## Observations normalisées
+
+Les observations normalisées par un adaptateur interne utilisent un nom réservé `managed:` et un lien de provenance signé. L’export conserve leurs faits dans `facts` et leurs associations administratives dans `interpretation`. Une ancienne déclaration manuelle portant ce nom sans preuve n’est pas considérée comme normalisée. Le contexte de chaque analyse reste dans `evaluation.context` ; `current_interpretation_differs` indique qu’il ne décrit plus l’interprétation actuelle. Une ancienne analyse non signée n’est pas présentée comme une preuve actuelle vérifiée.
 
 ## Contexte réseau et certificat
 

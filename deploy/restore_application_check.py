@@ -188,6 +188,8 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
     )
     from platform_core.oidc.restoration import verify_evidence
     from platform_core.security import cipher
+    from platform_modules.access.evidence import verify_evaluation
+    from platform_modules.access.models import AccessEvaluation
     from platform_modules.approvals.models import ApprovalDecision
     from platform_modules.connectors.models import ProvisioningConnector
     from platform_modules.connectors.teamviewer_restoration import (
@@ -224,6 +226,12 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
     encrypted, signed = verify_teamviewer()
     result["encrypted_values_checked"] += encrypted
     result["signed_proofs_checked"] += signed
+    for evaluation in AccessEvaluation.unscoped.select_related("audit", "event", "intent").iterator(
+        chunk_size=100
+    ):
+        if not verify_evaluation(evaluation, allow_legacy=True):
+            raise RuntimeError("Restored access interpretation proof is invalid.")
+        result["signed_proofs_checked"] += bool(evaluation.signature)
     for model, field in (
         (AccountSecurity, "encrypted_secret"),
         (ProvisioningConnector, "encrypted_token"),

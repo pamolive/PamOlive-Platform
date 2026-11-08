@@ -210,7 +210,7 @@ class AccessIntervalTests(TestCase):
         evaluation = self.evaluation(event)
         self.assertEqual(evaluation.verdict, "expected")
         self.assertEqual(evaluation.intent_id, intent.pk)
-        self.assertEqual(evaluation.rule_version, "access-context/6")
+        self.assertEqual(evaluation.rule_version, "access-context/7")
         intervals = [item for item in evaluation.findings if item["code"] == "observed_interval"]
         self.assertEqual(len(intervals), 1)
         self.assertTrue(verify_chain(self.org))
@@ -620,7 +620,7 @@ class AccessIntervalTests(TestCase):
         reevaluate_event(event.pk, actor=self.admin, organization=self.org)
         self.assertEqual(AccessEvent.objects.values().get(pk=event.pk), before)
         old.refresh_from_db()
-        self.assertEqual(old.rule_version, "access-context/6")
+        self.assertEqual(old.rule_version, "access-context/7")
         self.client.force_login(self.admin)
         session = self.client.session
         session["organization_id"] = str(self.org.pk)
@@ -744,7 +744,7 @@ class ObservationIntervalUpgradeTests(TransactionTestCase):
             )
             self.assertIsNone(AccessEvent.unscoped.get(pk=event.pk).ended_at)
             self.assertEqual(
-                AccessEvaluation.unscoped.filter(pk=old_evaluation.pk).values().get(),
+                AccessEvaluation.unscoped.filter(pk=old_evaluation.pk).values(*before_evaluation).get(),
                 before_evaluation,
             )
             self.assertEqual(
@@ -756,7 +756,7 @@ class ObservationIntervalUpgradeTests(TransactionTestCase):
             )
             actor = get_user_model().objects.create_superuser("interval-upgrade-admin")
             new = reevaluate_event(event.pk, actor=actor, organization=organization)
-            self.assertEqual(new.rule_version, "access-context/6")
+            self.assertEqual(new.rule_version, "access-context/7")
             self.assertEqual(AccessEvaluation.unscoped.filter(event_id=event.pk).count(), 2)
             self.assertEqual(
                 AccessEvaluation.unscoped.get(pk=old_evaluation.pk).rule_version, "access-context/5"

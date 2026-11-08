@@ -2,6 +2,7 @@ import json
 
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.db.models import Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -11,6 +12,7 @@ from django.views.decorators.http import require_POST
 
 from platform_core.tenancy import organization_context
 from platform_modules.access.models import AccessEvent
+from platform_modules.access.observations import related_event_candidates
 from platform_modules.access.ui import scoped
 from platform_modules.connectors.services import source_from_token
 from platform_modules.identity.models import Identity
@@ -30,10 +32,16 @@ def index(request):
         data = form.cleaned_data
         context["form"] = QueryForm(initial=data)
         start, end, identity = data["start"], data["end"], data["identity"]
-        events = (
-            AccessEvent.objects.filter(identity=identity) if identity else AccessEvent.objects.all()
+        candidate_ids, limited = (
+            related_event_candidates(identity, start=start, end=end) if identity else ([], False)
         )
-        rows, truncated = event_timeline(events, start, end)
+        events = (
+            AccessEvent.objects.filter(Q(identity=identity) | Q(pk__in=candidate_ids))
+            if identity
+            else AccessEvent.objects.all()
+        )
+        rows, truncated = event_timeline(events, start, end, identity=identity)
+        truncated |= limited
         context.update(
             {
                 "rows": rows,

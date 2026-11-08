@@ -2,6 +2,8 @@
 
 from django.utils.crypto import constant_time_compare
 
+from .teamviewer_access import verify_observation
+from .teamviewer_access_models import TeamViewerAccessObservation
 from .teamviewer_collection import scan_proof, verify_activation, verify_configuration
 from .teamviewer_ingestion import verify_report, verify_run
 from .teamviewer_mapping import verify_mapping
@@ -68,5 +70,11 @@ def verify_evidence():
         # malformed tenant relations instead of filtering them out of verification.
         if not _verify_evidence_link(evidence):
             raise RuntimeError("Restored TeamViewer session observation proof is invalid.")
+        signed += 1
+    for link in TeamViewerAccessObservation.unscoped.select_related(
+        "audit", "event", "session__audit", "session__origin__run__audit", "session__origin__report"
+    ).iterator(chunk_size=100):
+        if not verify_observation(link):
+            raise RuntimeError("Restored TeamViewer normalized source link is invalid.")
         signed += 1
     return encrypted, signed

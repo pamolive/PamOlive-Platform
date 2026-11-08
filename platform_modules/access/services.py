@@ -93,6 +93,12 @@ def ingest_event(data, *, organization, actor=None, source=None):
     if source:
         require_module(organization, "connectors")
         data = {**data, "source": str(source.pk)}
+    from .observations import is_managed_source
+
+    if is_managed_source(data.get("source")):
+        raise ValidationError(
+            "Cet espace de sources est réservé aux collecteurs internes vérifiés."
+        )
     Organization.objects.select_for_update().get(pk=organization.pk)
     with organization_context(organization):
         existing = AccessEvent.objects.filter(
@@ -135,16 +141,51 @@ def ingest_event(data, *, organization, actor=None, source=None):
         return event, True
 
 
+def _scope_match(event, candidate, *, grant=False):
+    """Missing telemetry is not evidence that an observed value differs."""
+    expected = dict(
+        resource_id=candidate.resource_id,
+        method=candidate.method,
+        account_id=candidate.account_id,
+        location=candidate.location,
+        privilege=candidate.entitlement if grant else candidate.privilege,
+    )
+    if not grant and candidate.network_switch_id:
+        expected.update(
+            network_switch_id=candidate.network_switch_id,
+            network_port=candidate.network_port,
+            network_vlan=candidate.network_vlan,
+        )
+    missing = []
+    for key, value in expected.items():
+        if value in (None, ""):
+            continue
+        actual = getattr(event, key)
+        if actual in (None, ""):
+            missing.append(key)
+        elif (actual.casefold() if key == "method" else actual) != (
+            value.casefold() if key == "method" else value
+        ):
+            return False, ()
+    return not missing, tuple(missing)
+
+
 def _point_findings(event, *, organization, interval_end=None):
     if event.organization_id != organization.pk:
         raise ValidationError("Événement d’une autre organisation.")
     require_module(organization, "access")
     with organization_context(organization):
         findings, match, verdict, grants = [], None, "unknown", []
+        uncertain_scope = set()
 
         def add(code, state, detail, evidence=""):
             findings.append(
                 {"code": code, "state": state, "detail": detail, "evidence": str(evidence)}
+            )
+
+        if not event.resource_id:
+            add(
+                "resource", "unknown", "Ressource locale non résolue ; aucune cible n’est inventée."
             )
 
         # Ownership is inventory context, never attribution of an observed action.
@@ -187,7 +228,12 @@ def _point_findings(event, *, organization, interval_end=None):
             add(
                 "identity",
                 "confirmed",
-                f"Acteur rapporté par la source : {event.identity.name}. "
+                (
+                    "Acteur attribué par une attestation administrative : "
+                    if getattr(event, "_identity_attribution", "") == "administrative_attestation"
+                    else "Acteur rapporté par la source : "
+                )
+                + f"{event.identity.name}. "
                 "Le rapprochement ne constitue pas une preuve indépendante d’authentification.",
                 event.identity_id,
             )
@@ -209,22 +255,9 @@ def _point_findings(event, *, organization, interval_end=None):
 
                     if not authorized_at(candidate, event.occurred_at):
                         continue
-                if (
-                    candidate.resource_id == event.resource_id
-                    and candidate.method.casefold() == event.method.casefold()
-                    and (not candidate.account_id or candidate.account_id == event.account_id)
-                    and (not candidate.location or candidate.location == event.location)
-                    and (not candidate.privilege or candidate.privilege == event.privilege)
-                    and (
-                        not candidate.network_switch_id
-                        or (
-                            candidate.network_switch_id,
-                            candidate.network_port,
-                            candidate.network_vlan,
-                        )
-                        == (event.network_switch_id, event.network_port, event.network_vlan)
-                    )
-                ):
+                matches_scope, missing = _scope_match(event, candidate)
+                uncertain_scope.update(missing)
+                if matches_scope:
                     match = candidate
                     break
             if match:
@@ -240,19 +273,23 @@ def _point_findings(event, *, organization, interval_end=None):
             else:
                 grants = Grant.objects.filter(
                     identity=event.identity,
-                    resource=event.resource,
                     created_at__lte=event.occurred_at,
                     valid_from__lte=event.occurred_at,
                 ).filter(Q(status="active") | Q(status="revoked", revoked_at__gt=event.occurred_at))
-                grants = [
-                    g
-                    for g in grants
-                    if (not g.expires_at or g.expires_at > event.occurred_at)
-                    and (not g.account_id or g.account_id == event.account_id)
-                    and g.entitlement == event.privilege
-                    and (not g.method or g.method.casefold() == event.method.casefold())
-                    and (not g.location or g.location == event.location)
-                ]
+                grants = (
+                    grants.filter(resource_id=event.resource_id)
+                    if event.resource_id
+                    else grants.none()
+                )
+                applicable = []
+                for grant in grants:
+                    if grant.expires_at and grant.expires_at <= event.occurred_at:
+                        continue
+                    matches_scope, missing = _scope_match(event, grant, grant=True)
+                    uncertain_scope.update(missing)
+                    if matches_scope:
+                        applicable.append(grant)
+                grants = applicable
                 if grants:
                     verdict = "expected"
                     add(
@@ -263,6 +300,14 @@ def _point_findings(event, *, organization, interval_end=None):
                     )
                     add("why", "confirmed", grants[0].justification, grants[0].pk)
                     findings[-1]["business_reference"] = grants[0].reference
+                elif uncertain_scope:
+                    add(
+                        "scope_telemetry",
+                        "unknown",
+                        "Des champs nécessaires à la comparaison ne sont pas observés : "
+                        + ", ".join(sorted(uncertain_scope))
+                        + ". Aucun écart n’est déduit du vide.",
+                    )
                 elif candidates.exists():
                     verdict = "deviation"
                     add(
@@ -302,11 +347,15 @@ def _point_findings(event, *, organization, interval_end=None):
             ):
                 add(
                     "contract_required",
-                    "deviation",
-                    "Accès prestataire sans contrat applicable.",
+                    "unknown" if uncertain_scope else "deviation",
+                    "Contrat applicable non établi faute de contexte observé."
+                    if uncertain_scope
+                    else "Accès prestataire sans contrat applicable.",
                     policy.pk,
                 )
-            if contract:
+            if contract and not event.resource_id:
+                add("contract_scope", "unknown", "Ressource manquante pour vérifier le contrat.")
+            if contract and event.resource_id:
                 reference = (
                     match.reference
                     if match
@@ -337,6 +386,8 @@ def _point_findings(event, *, organization, interval_end=None):
                     end=interval_end or event.occurred_at + timedelta(microseconds=1),
                     as_of=event.occurred_at,
                 ).findings
+                if event.resource_id
+                else []
             )
 
         if event.credential_id:
@@ -401,6 +452,8 @@ def _point_findings(event, *, organization, interval_end=None):
 def evaluate_event(event, *, organization):
     from copy import copy
 
+    from .evidence import evaluation_body, evaluation_signature
+    from .observations import observation_context, sign
     from .temporal import observation_segments
 
     if event.organization_id != organization.pk:
@@ -408,8 +461,17 @@ def evaluate_event(event, *, organization):
     require_module(organization, "access")
     Organization.objects.select_for_update().get(pk=organization.pk)
     with organization_context(organization):
-        segments, limit = observation_segments(event)
-        findings, matches, verdicts = [], [], []
+        event = AccessEvent.objects.select_related(
+            "identity", "account__identity", "resource", "credential__identity"
+        ).get(pk=event.pk)
+        context = observation_context(event, organization=organization)
+        segments, limit = ([], None) if context.blocked else observation_segments(context.event)
+        findings, matches = list(context.findings), []
+        verdicts = [
+            item["state"] for item in context.findings if item["state"] in {"unknown", "deviation"}
+        ]
+        if context.blocked:
+            verdicts.append("unknown")
         if limit:
             verdicts.append("unknown")
             findings.append(
@@ -422,7 +484,7 @@ def evaluate_event(event, *, organization):
                 )
             )
         for start, end in segments:
-            observed = copy(event)
+            observed = copy(context.event)
             observed.occurred_at, observed.ended_at = start, end
             verdict, match, result = _point_findings(
                 observed, organization=organization, interval_end=end
@@ -455,10 +517,16 @@ def evaluate_event(event, *, organization):
             if matches and all(item and item.pk == matches[0].pk for item in matches)
             else None
         )
-        evaluation = AccessEvaluation.objects.create(
-            organization=organization, event=event, intent=match, verdict=verdict, findings=findings
+        evaluation = AccessEvaluation(
+            organization=organization,
+            event=event,
+            intent=match,
+            verdict=verdict,
+            findings=findings,
+            context=context.snapshot,
+            context_hash=context.fingerprint,
         )
-        record(
+        evaluation.audit = record(
             action="access.event.evaluated.v1",
             summary=f"Évaluation : {verdict}",
             organization=organization,
@@ -468,8 +536,12 @@ def evaluate_event(event, *, organization):
                 "rule_version": evaluation.rule_version,
                 "segments": len(segments),
                 "temporal_limit": limit,
+                "body_hash": sign(evaluation_body(evaluation), "evaluation-body"),
             },
         )
+        evaluation.signature = evaluation_signature(evaluation)
+        evaluation.full_clean()
+        evaluation.save()
         return evaluation
 
 

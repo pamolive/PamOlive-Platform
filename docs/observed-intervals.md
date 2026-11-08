@@ -1,6 +1,6 @@
 # Évaluation de la durée des accès observés
 
-Un accès terminé peut être décrit par son début et sa fin. L’évaluation `access-context/6` compare toute cette période aux éléments de gouvernance datés, au lieu de déclarer la session conforme après le seul contrôle de son début. Cette capacité ne crée aucun nouveau conteneur et n’ajoute pas de challenge MFA pendant un flux SSH ou RDP.
+Un accès terminé peut être décrit par son début et sa fin. Depuis `access-context/6`, l’évaluation compare toute cette période aux éléments de gouvernance datés, au lieu de déclarer la session conforme après le seul contrôle de son début. `access-context/7` conserve ce calcul et ajoute un contexte d’interprétation signé, distinct des faits source. Cette capacité ne crée aucun nouveau conteneur et n’ajoute pas de challenge MFA pendant un flux SSH ou RDP.
 
 ## Fait instantané ou période terminée
 
@@ -34,4 +34,4 @@ Une recherche temporelle inclut les périodes qui la chevauchent, même si leur 
 
 La migration ajoute une fin vide aux anciens faits. Elle ne complète pas leurs dates et ne réécrit pas les évaluations précédentes. Une réévaluation ajoute une explication versionnée ; les anciens résultats, références et preuves d’audit restent conservés. L’identifiant source continue de désigner un fait immuable : le rejouer ne permet pas de compléter sa fin après coup.
 
-Le [collecteur brut TeamViewer](teamviewer.md) conserve déjà début et fin des rapports. Leur rattachement explicite et leur normalisation en événements corrélés restent une étape distincte ; l’ajout de cette capacité générale ne les active pas implicitement.
+Le [collecteur TeamViewer](teamviewer.md) conserve les rapports et relie les sessions regroupées à un événement unique. Son interprétation utilise des correspondances explicites, sans transformer les propriétaires en intervenants ni compléter les privilèges OS manquants. Des faits contradictoires ou en attente empêchent une conclusion complète.
