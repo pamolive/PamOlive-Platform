@@ -1,4 +1,4 @@
-"""Infrastructure-only read probe. No token argument, import or activation side effect."""
+"""Connector-owned read probe; no import, activation or core dependency on TeamViewer."""
 
 import json
 import os

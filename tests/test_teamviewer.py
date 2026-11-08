@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
-from django.core.management import call_command
+from django.core.management import call_command, get_commands
 from django.core.management.base import CommandError
 from django.test import SimpleTestCase, override_settings
 
@@ -145,12 +145,13 @@ class TeamViewerReportingTests(SimpleTestCase):
         self.assertEqual(result.code, "teamviewer_http_429")
 
     def test_probe_command_is_wired_and_never_prints_notes_or_token(self):
+        self.assertEqual(get_commands()["pamolive_teamviewer_probe"], "platform_modules.connectors")
         parsed = ConnectionReport.parse(record(notes="PRIVATE SOURCE NOTE"))
         output = io.StringIO()
         with (
             patch.dict("os.environ", {"PAMOLIVE_TEAMVIEWER_PROBE_TOKEN": TOKEN}),
             patch(
-                "platform_core.management.commands.pamolive_teamviewer_probe.TeamViewerClient"
+                "platform_modules.connectors.management.commands.pamolive_teamviewer_probe.TeamViewerClient"
             ) as client,
         ):
             client.return_value.fetch_completed.return_value = ReportBatch((parsed,), 1, True, "ok")
@@ -171,7 +172,7 @@ class TeamViewerReportingTests(SimpleTestCase):
 
     def test_probe_fails_for_partial_pagination(self):
         with patch(
-            "platform_core.management.commands.pamolive_teamviewer_probe.TeamViewerClient"
+            "platform_modules.connectors.management.commands.pamolive_teamviewer_probe.TeamViewerClient"
         ) as client:
             client.return_value.fetch_completed.return_value = ReportBatch(
                 (), 1, False, "page_limit"
