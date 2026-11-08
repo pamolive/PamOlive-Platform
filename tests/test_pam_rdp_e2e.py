@@ -23,8 +23,10 @@ from platform_core.models import AccountSecurity
 from platform_core.security import cipher
 from platform_core.tenancy import organization_context
 from platform_modules.identity.bindings import current_binding, revoke_binding
+from platform_modules.pam import broker
 from platform_modules.pam.broker import Relay
 from platform_modules.pam.models import RelayConnection, SessionEndpoint, SessionLease
+from platform_modules.pam.native import NativeSession
 from platform_modules.pam.protocol import Instruction, Parser
 from platform_modules.pam.recordings import recording_page
 from platform_modules.pam.sessions import configure_endpoint, probe_endpoint, set_endpoint_enabled
@@ -109,7 +111,45 @@ class NativeRDPRelayTests(RelayHarness):
         config = None
         received = []
         state_events = []
+        exercise_started = time.monotonic()
         original_state = Relay.state
+        original_database = broker.database
+
+        def operation_event(operation, started, result):
+            event = {
+                "operation": operation,
+                "started_ms": round((started - exercise_started) * 1000),
+                "duration_ms": round((time.monotonic() - started) * 1000),
+                "result": result,
+            }
+            state_events.append(event)
+            if event["duration_ms"] >= 1500:
+                print("RDP_TEST_SLOW_OPERATION " + json.dumps(event, sort_keys=True))
+
+        async def timed_database(function, *args, **kwargs):
+            started = time.monotonic()
+            result = "ok"
+            try:
+                return await original_database(function, *args, **kwargs)
+            except BaseException as error:
+                result = type(error).__name__
+                raise
+            finally:
+                operation_event("database." + function.__name__, started, result)
+
+        def timed_phase(function, name):
+            async def wrapped(*args, **kwargs):
+                started = time.monotonic()
+                result = "ok"
+                try:
+                    return await function(*args, **kwargs)
+                except BaseException as error:
+                    result = type(error).__name__
+                    raise
+                finally:
+                    operation_event(name, started, result)
+
+            return wrapped
 
         async def timed_state(relay, function, *args, **kwargs):
             started = time.monotonic()
@@ -120,13 +160,7 @@ class NativeRDPRelayTests(RelayHarness):
                 result = type(error).__name__
                 raise
             finally:
-                state_events.append(
-                    {
-                        "operation": function.__name__,
-                        "duration_ms": round((time.monotonic() - started) * 1000),
-                        "result": result,
-                    }
-                )
+                operation_event("state." + function.__name__, started, result)
 
         async with RDPFixture(redirect=mode == "redirect") as peer:
             trap_connections = []
@@ -144,6 +178,13 @@ class NativeRDPRelayTests(RelayHarness):
                         PAM_ALLOWED_NETWORKS=("127.0.0.1/32",),
                     ),
                     patch.object(Relay, "state", timed_state),
+                    patch.object(broker, "database", timed_database),
+                    patch.object(broker, "probe_rdp", timed_phase(broker.probe_rdp, "rdp.probe")),
+                    patch.object(
+                        NativeSession,
+                        "handshake",
+                        timed_phase(NativeSession.handshake, "native.handshake"),
+                    ),
                 ):
                     endpoint_id, _, config = await sync_to_async(self.create_launch)(
                         "",

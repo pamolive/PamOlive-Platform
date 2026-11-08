@@ -138,6 +138,8 @@ La dernière commande exige une connexion PostgreSQL explicite et une base de te
 
 La signature, les chemins, les imports masqués et les fichiers supplémentaires ont des tests adverses séparés. Ces portes ne certifient pas la sûreté de n’importe quel module tiers : chaque éditeur doit ajouter les tests métier et organisationnels de son propre code.
 
+La mise à niveau du schéma intégré possède aussi une porte PostgreSQL dédiée : `python manage.py test tests.test_extension_upgrade --keepdb --noinput`. Elle part du schéma précédant les extensions signées et vérifie la conservation des organisations, appartenances, activations, paramètres MFA et compteurs anti-rejeu, ainsi que de l’audit et de ses protections append-only. La migration ne livre et n’active aucun paquet tiers implicitement. Cette porte se lance dans une image sans extension tierce, sur une base de test séparée ; elle ne doit jamais être utilisée sur une base métier.
+
 ## Frontière communautaire/commerciale
 
 Cette livraison charge uniquement les extensions déclarées **communautaires**, compatibles avec la distribution du projet. L’exemple est AGPL. Elle ne prétend pas qu’un import Python constitue une séparation juridique du noyau AGPL et elle refuse actuellement un manifeste commercial.
