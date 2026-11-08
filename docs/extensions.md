@@ -180,3 +180,5 @@ python manage.py pamolive_events process --organization mopacy --limit 10
 ```
 
 Ces commandes ne prennent ni chemin de gestionnaire ni commande à exécuter. Le traitement normal reste automatique. L’exemple possède sa propre table de reçus et ne modifie aucun modèle privé d’IAM. La CI installe sa vraie wheel, applique ses migrations et contrôle les échanges IAM → extension et extension → propre projection dans la même image. Des tests PostgreSQL distincts vérifient concurrence, rollback, preuve append-only et relations organisationnelles.
+
+Les nombres JSON sont bornés : entiers signés sur 64 bits, flottants finis de magnitude au plus `2**53 - 1`. Les flottants de valeur entière et le zéro négatif sont normalisés avant signature pour survivre à leur représentation JSONB. Pour une valeur décimale exacte ou de grande précision, utiliser une chaîne définie par le schéma métier. Conserver la `SECRET_KEY` pour relire les signatures historiques : la rotation avec trousseau de vérification reste à concevoir, sans réécriture des anciennes preuves.

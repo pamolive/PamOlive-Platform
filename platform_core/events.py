@@ -39,7 +39,7 @@ def payload_bytes(payload):
             return
         if type(value) is int and -(2**63) <= value < 2**63:
             return
-        if type(value) is float and math.isfinite(value):
+        if type(value) is float and math.isfinite(value) and abs(value) <= 2**53 - 1:
             return
         if type(value) is str and len(value) <= 8192:
             return
@@ -58,7 +58,19 @@ def payload_bytes(payload):
     if type(payload) is not dict:
         raise ValidationError("Un événement transporte un objet JSON, pas une commande.")
     check(payload)
-    result = canonical(payload)
+
+    def normalize(value):
+        # JSONB normalizes negative zero and exponent-form integral floats.
+        # Sign one stable representation before persistence.
+        if type(value) is float and value.is_integer():
+            return int(value)
+        if type(value) is dict:
+            return {key: normalize(item) for key, item in value.items()}
+        if type(value) is list:
+            return [normalize(item) for item in value]
+        return value
+
+    result = canonical(normalize(payload))
     if len(result) > 32768:
         raise ValidationError("Charge utile de plus de 32 Kio.")
     return result

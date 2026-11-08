@@ -291,6 +291,21 @@ class ModuleEventTests(TransactionTestCase):
             json.loads(payload_bytes({"nested": [True, None, 42]})), {"nested": [True, None, 42]}
         )
 
+    def test_signed_numeric_payload_survives_a_real_database_round_trip(self):
+        with recent_authentication(self.actor, self.org, time.time()):
+            event = api.publish_event(
+                actor=self.actor,
+                organization=self.org,
+                topic="example_notes.note.created.v1",
+                payload={"zero": -0.0, "large": 1e15, "fraction": 0.125, "tiny": 1e-20},
+            )
+        event.refresh_from_db()
+        self.assertIs(type(event.payload["zero"]), int)
+        self.assertIs(type(event.payload["large"]), int)
+        with patch("platform_core.events.import_string", return_value=self.project):
+            self.assertEqual(process_events(self.org), 1)
+        self.assertEqual(EventDelivery.objects.get().status, "delivered")
+
     def test_manifest_v1_hash_representation_and_v2_closed_handler_contract(self):
         old = copy.deepcopy(self.manifest.to_dict())
         old.pop("emitted_events")
