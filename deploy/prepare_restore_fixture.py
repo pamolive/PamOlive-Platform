@@ -274,6 +274,110 @@ def oidc_corpus(actor, organization):
     pending.save()
 
 
+def scim_creation_corpus(actor, requester, organization):
+    """Synthetic creation effects only; no provider is contacted by this corpus."""
+    import time
+    from datetime import timedelta
+    from unittest.mock import patch
+
+    from django.test import override_settings
+    from django.utils import timezone
+
+    from platform_core.authorization import recent_authentication
+    from platform_modules.access.services import create_record
+    from platform_modules.approvals.services import decide
+    from platform_modules.connectors.creation import process_creations, request_creation
+    from platform_modules.connectors.outbound import (
+        bind_group,
+        configure_connector,
+        set_connector_enabled,
+        test_connector,
+    )
+    from platform_modules.connectors.scim import ScimAdapter
+    from platform_modules.identity.models import ExternalAccount, Identity, Resource
+
+    identity = Identity.objects.create(
+        organization=organization, name="Synthetic SCIM joiner", kind="human"
+    )
+    account = ExternalAccount.objects.create(
+        organization=organization,
+        identity=identity,
+        username="synthetic-scim-joiner",
+        system="Offline SCIM corpus",
+    )
+    resource = Resource.objects.create(
+        organization=organization, name="Synthetic SCIM application", kind="application"
+    )
+    now = timezone.now()
+    intent = create_record(
+        "intent",
+        dict(
+            identity=identity,
+            account=account,
+            resource=resource,
+            method="SCIM",
+            privilege="synthetic-reader",
+            reason="Synthetic initial account corpus",
+            fulfillment="iam_group",
+            starts_at=now - timedelta(minutes=1),
+            ends_at=now + timedelta(hours=1),
+        ),
+        actor=requester,
+        organization=organization,
+    )
+    with (
+        recent_authentication(actor, organization, time.time()),
+        override_settings(CONNECTOR_ALLOWED_HOSTS={"unused.example.invalid:443"}),
+    ):
+        decide(
+            intent.pk,
+            actor=actor,
+            organization=organization,
+            approved=True,
+            comment="Independent synthetic joiner approval",
+        )
+        connector = configure_connector(
+            actor=actor,
+            organization=organization,
+            name="Synthetic initial SCIM creation",
+            base_url="https://unused.example.invalid/scim/v2",
+            token="not-a-real-scim-creation-token",
+        )
+        with patch.object(ScimAdapter, "test", return_value={}):
+            assert test_connector(connector.pk, actor=actor, organization=organization)[0]
+        set_connector_enabled(connector.pk, actor=actor, organization=organization, enabled=True)
+        bind_group(
+            actor=actor,
+            organization=organization,
+            connector=connector,
+            resource=resource,
+            entitlement="synthetic-reader",
+            remote_identifier="synthetic-group",
+        )
+        job = request_creation(
+            intent.pk,
+            connector.pk,
+            activate_after_grant=False,
+            actor=actor,
+            organization=organization,
+        )
+
+        def synthetic_creation(adapter, username, external_id):
+            adapter.before_write()
+            return dict(
+                remote_id="synthetic-created-user",
+                username=username,
+                external_id=external_id,
+                active=False,
+            )
+
+        with patch.object(ScimAdapter, "create_inactive_user", synthetic_creation):
+            assert process_creations(organization) == 1
+        job.refresh_from_db()
+        assert job.status == "created"
+        set_connector_enabled(connector.pk, actor=actor, organization=organization, enabled=False)
+
+
 def main():
     import django
 
@@ -333,6 +437,7 @@ def main():
                 oidc_corpus(fixture.operator, fixture.org)
                 teamviewer_corpus(fixture.admin, fixture.org)
                 business_corpus(fixture.admin, fixture.org, fixture.intent.pk)
+                scim_creation_corpus(fixture.admin, fixture.operator, fixture.org)
                 publish_domain_event(
                     organization=fixture.org,
                     emitter="identity",

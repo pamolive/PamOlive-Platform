@@ -7,6 +7,7 @@ from django.views.decorators.http import require_POST
 from platform_modules.access.ui import scoped
 from platform_modules.identity.models import ExternalAccount, Resource
 
+from .creation_models import ScimCreationJob
 from .models import AccountBinding, ExternalChange, GroupBinding, ProvisioningConnector
 from .outbound import (
     bind_account,
@@ -26,6 +27,9 @@ def index(request):
         "connectors/index.html",
         {
             "connectors": ProvisioningConnector.objects.order_by("name"),
+            "creations": ScimCreationJob.objects.select_related(
+                "account", "request__connector"
+            ).order_by("-updated_at")[:100],
             "accounts": AccountBinding.objects.select_related("account", "connector"),
             "groups": GroupBinding.objects.select_related("resource", "connector"),
             "changes": ExternalChange.objects.select_related("account", "grant").order_by(

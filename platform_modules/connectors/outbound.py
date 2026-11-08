@@ -323,6 +323,10 @@ def retry_change(change_id, *, actor, organization):
 
 def _obsolete(change):
     account = change.account
+    if change.kind == "activate_account":
+        from .creation import activation_authorized
+
+        return not activation_authorized(change)
     if change.kind == "disable_account":
         return account.active and account.identity.status == "active"
     aliases = GroupBinding.objects.filter(
@@ -382,6 +386,7 @@ def _check_dispatch(claim, organization):
                 organization=organization, module_key="connectors", enabled=True
             ).exists()
             or _obsolete(change)
+            or (change.kind == "activate_account" and not _activation_ready(change))
         ):
             raise IntegrationFailure("operation_superseded")
 
@@ -416,6 +421,11 @@ def _claim(organization):
                 change.status, change.result_code = "blocked", "connector_configuration_changed"
             elif _obsolete(change):
                 change.status, change.result_code = "cancelled", "desired_state_superseded"
+            elif change.kind == "activate_account" and not _activation_ready(change):
+                if change.result_code != "waiting_for_confirmed_initial_grant":
+                    change.result_code = "waiting_for_confirmed_initial_grant"
+                    change.save(update_fields=["result_code"])
+                continue
             elif change.attempts >= change.attempt_limit:
                 change.status, change.result_code = "failed", "attempt_limit_reached"
             else:
@@ -443,6 +453,54 @@ def _claim(organization):
         return None
 
 
+def _compensate_late_positive(claim, current, observed, organization):
+    """A stale acknowledgement cannot revive access after a completed withdrawal."""
+    binding = current.binding
+    if (
+        claim.kind not in ("activate_account", "add_membership")
+        or binding.pk != claim.binding_id
+        or binding.connector_id != claim.binding.connector_id
+        or binding.remote_id != claim.binding.remote_id
+        or binding.connector.revision != claim.connector_revision
+    ):
+        return
+    kind, grant = None, None
+    if (
+        claim.kind == "activate_account"
+        and observed.get("active") is True
+        and observed.get("remote_id") == binding.remote_id
+        and (not current.account.active or current.account.identity.status != "active")
+    ):
+        kind = "disable_account"
+    elif (
+        claim.kind == "add_membership"
+        and observed.get("member") is True
+        and observed.get("remote_account_id") == binding.remote_id
+        and observed.get("remote_group_id") == claim.group.remote_id
+        and current.group_id == claim.group_id
+        and current.group.remote_id == claim.group.remote_id
+        and _obsolete(current)
+    ):
+        kind, grant = "remove_membership", current.grant
+    if kind:
+        negative = _enqueue(
+            account=current.account,
+            grant=grant,
+            kind=kind,
+            key=f"late:{current.pk}:{claim.claim_token}:{kind}",
+            actor=None,
+            organization=organization,
+            origin="late_positive_after_withdrawal",
+        )
+        record(
+            action="connectors.external_change.compensation_queued.v1",
+            summary="Relecture et retrait après un effet positif tardif",
+            organization=organization,
+            target=negative,
+            metadata={"late_change_id": str(current.pk), "attempt": claim.attempts},
+        )
+
+
 @transaction.atomic
 def _finish(claim, *, code, observed, confirmed, retryable, organization):
     Organization.objects.select_for_update().get(pk=organization.pk)
@@ -465,6 +523,8 @@ def _finish(claim, *, code, observed, confirmed, retryable, organization):
                 organization=organization,
                 target=proof,
             )
+            if confirmed:
+                _compensate_late_positive(claim, change, observed, organization)
             return
         if binding.connector.revision != change.connector_revision or not binding.connector.enabled:
             change.status, code, confirmed = (
@@ -524,6 +584,11 @@ def process_changes(organization, *, limit=10):
             )
             if claim.kind == "disable_account":
                 observed = adapter.disable_account(claim.binding.remote_id)
+            elif claim.kind == "activate_account":
+                req = claim.creation_proof.dispatch.request
+                observed = adapter.activate_created_user(
+                    claim.binding.remote_id, req.username, req.external_id, claim.group.remote_id
+                )
             else:
                 observed = adapter.membership(
                     claim.binding.remote_id,
@@ -544,3 +609,9 @@ def process_changes(organization, *, limit=10):
         )
         processed += 1
     return processed
+
+
+def _activation_ready(change):
+    from .creation import activation_ready
+
+    return activation_ready(change)

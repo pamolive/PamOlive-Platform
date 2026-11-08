@@ -5,7 +5,7 @@ from platform_core.extensions.urls import extension_patterns
 from platform_core.oidc import views as oidc_views
 from platform_core.security import security_settings
 from platform_modules.access import ui
-from platform_modules.connectors import business_views, teamviewer_views
+from platform_modules.connectors import business_views, creation_views, teamviewer_views
 from platform_modules.connectors import views as connector_views
 from platform_modules.governance import views as governance_views
 from platform_modules.identity import binding_views as identity_views
@@ -13,6 +13,23 @@ from platform_modules.intelligence import views as intelligence_views
 from platform_modules.pam import views as pam_views
 
 urlpatterns = [
+    path("connectors/scim-accounts/new/", creation_views.configure, name="scim-creation-new"),
+    path(
+        "connectors/scim-accounts/<uuid:job_id>/",
+        creation_views.detail,
+        name="scim-creation-detail",
+    ),
+    path(
+        "connectors/scim-accounts/<uuid:job_id>/proof/",
+        creation_views.detail,
+        {"export": True},
+        name="scim-creation-export",
+    ),
+    path(
+        "connectors/scim-accounts/<uuid:job_id>/reconcile/",
+        creation_views.retry,
+        name="scim-creation-retry",
+    ),
     path(
         "access/business-associations/<uuid:association_id>/proof/",
         business_views.association_proof,

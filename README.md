@@ -12,7 +12,7 @@ L’image contient Django, l’interface, tous les modules livrés, le traitemen
 
 Les extensions signées disposent aussi de [notifications transactionnelles V2](docs/extensions.md#notifications-transactionnelles-v2) : échanges datés entre modules, destinataires isolés par organisation et traitement dans le processus de tâches existant. Une notification décrit un fait, elle ne transfère ni autorisation ni MFA. Les tâches tierces arbitraires et les effets externes ne sont pas assimilés à ces projections locales.
 
-La mise à niveau d’une installation `0.2.0a8` ou `0.2.0a9` vers `0.2.0a10` suit la [procédure de migration contrôlée](docs/controlled-upgrade.md), avec sauvegarde, vérification des anciennes données et retour arrière transactionnel avant réouverture. Les commandes d’installation ci-dessous concernent une nouvelle base.
+La mise à niveau d’une installation `0.2.0a8`, `0.2.0a9` ou `0.2.0a10` vers `0.2.0a11` suit la [procédure de migration contrôlée](docs/controlled-upgrade.md), avec sauvegarde, vérification des anciennes données et retour arrière transactionnel avant réouverture. Les commandes d’installation ci-dessous concernent une nouvelle base.
 
 PostgreSQL 16+ doit être disponible sur un serveur existant, éventuellement une autre VM. `compose.yml` contient **un seul service**, `web`. Si vous souhaitez une base locale distincte, le fichier optionnel `compose.local-db.yml` ajoute un second conteneur PostgreSQL.
 
@@ -64,6 +64,8 @@ docker compose up -d
 Dans Docker Desktop, `host.docker.internal` permet de joindre un PostgreSQL écoutant sur Windows. Sur un NAS, utiliser le DNS/IP du serveur PostgreSQL ou son réseau Docker ; `localhost` dans le conteneur désigne le conteneur lui-même.
 
 ## Premier parcours
+
+La [création initiale SCIM](docs/provisioning.md#création-initiale-et-activation) complète les arrivées : compte désactivé, relecture, puis activation facultative après confirmation du droit déjà approuvé. Le parcours natif utilise le conteneur existant et refuse les créations automatiques répétées après un résultat incertain.
 
 1. Dans **Paramètres**, ajouter un opérateur et un approbateur distincts.
 2. Dans **Identités**, créer l’identité, la ressource et les comptes liés.

@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
-CORE_VERSION = "0.2.0a10"
+CORE_VERSION = "0.2.0a11"
 API_VERSION = "2"
 BUILTIN_KEYS = frozenset(
     {

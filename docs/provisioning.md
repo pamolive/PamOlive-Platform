@@ -46,10 +46,37 @@ Le retrait d’un contrat ou d’un intervenant utilise également cette file. I
 - L’exécution est asynchrone et converge vers l’état souhaité. Elle n’est pas une transaction distribuée « exactement une fois » avec le fournisseur. Une coupure après envoi peut avoir produit un effet distant ; la reprise et la relecture servent à le vérifier.
 - Un résultat d’un ancien bail n’écrase pas le traitement courant. Les observations et décisions sont conservées comme preuves séparées et auditées.
 
-Le worker n’effectue aucune création initiale de compte dans cette version. Il sait désactiver un utilisateur existant (`active=false`) et ajouter/retirer une appartenance à un groupe existant. Les connecteurs spécifiques, la réconciliation périodique des dérives et les scénarios de création font partie de la suite.
+Le worker peut aussi créer un compte initial selon le parcours ci-dessous. Les groupes doivent déjà exister ; la synchronisation complète d’inventaire et les extensions propres à chaque fournisseur restent distinctes.
+
+## Création initiale et activation
+
+Dans **Connecteurs → Exécution externe → Créer un compte SCIM**, un administrateur prépare le compte d’une intention IAM déjà approuvée et actuellement valable. Le compte local, son identité bénéficiaire et son droit doivent correspondre exactement à cette intention. Le groupe distant associé au droit doit être configuré au préalable. La demande ne crée ni nouveau droit local ni nouvelle approbation.
+
+1. Choisir l’intention et le connecteur testé et actif. L’identifiant distant reprend celui du compte local.
+2. **Vérifier la destination et prévisualiser** vérifie les capacités de lecture, de filtrage et de PATCH et recherche un nom existant. Ce contrôle ne crée aucun utilisateur et ne prouve pas le droit d’écriture du jeton. Un nom existant demande une vérification puis une correspondance manuelle ; il n’est jamais adopté automatiquement.
+3. Examiner le périmètre et les droits implicites du fournisseur, puis confirmer avec une MFA personnelle récente. Le compte sera d’abord créé avec `active=false`, sans mot de passe, groupe ou rôle injecté dans la requête de création.
+4. L’option **Activer après confirmation du droit approuvé** reste décochée par défaut. Si elle est choisie, le worker relie uniquement le droit déjà approuvé, confirme l’appartenance sur la cible, la relit avant l’activation puis confirme `active=true`. Sans cette option, la préparation s’arrête au compte désactivé ; aucune attribution n’est envoyée par ce parcours.
+
+Le traitement utilise le processus de tâches et la base existants. L’autorisation conserve le périmètre de l’intention, la configuration exacte du connecteur, l’identifiant, le groupe et la preuve MFA personnelle. Ces éléments sont signés et liés à l’audit. Une modification du périmètre, une révocation ou une configuration différente interdit une nouvelle écriture positive. La validation personnelle n’est pas redemandée dans le worker.
+
+### Résultats incertains et doublons
+
+Avant l’envoi, PostgreSQL conserve une réservation append-only unique de la commande `POST /Users`. Une fois cette réservation créée, ce travail ne peut plus envoyer de second POST, même si le fournisseur répond `503`, si la réponse est perdue ou si l’instance tombe avant l’envoi réel. Il ne s’agit pas d’une garantie de livraison exactement une fois : une réservation peut ne jamais atteindre la cible.
+
+Les reprises recherchent uniquement la référence technique unique de la demande et le nom attendu, puis relisent l’utilisateur par son identifiant serveur. Les deux recherches doivent être complètes, uniques et concordantes, et la relecture doit confirmer le compte désactivé. Une liste partielle, un autre propriétaire, une réponse JSON ambiguë ou un fournisseur ignorant `active=false` ne produit aucune confirmation. Après cinq traitements sans conclusion, l’état reste à examiner. **Réexaminer sans second POST** permet de nouvelles lectures, jamais une nouvelle création réservée. Une configuration de destination modifiée exige une investigation manuelle.
+
+Le détail et l’export JSON distinguent l’autorisation, la réservation, la confirmation historique du compte désactivé et l’état courant du travail. La preuve historique ne garantit pas l’état actuel du fournisseur. Les preuves sont conservées lors des corrections et leur lecture nécessite une MFA personnelle récente.
+
+### Retrait des droits et départ
+
+L’expiration du droit retire l’appartenance approuvée ; elle ne désactive pas nécessairement le compte de base, qui possède son propre cycle de vie. Les droits implicites attribués par le fournisseur doivent donc être examinés avant activation. Le départ de l’identité désactive le compte et retire ses droits via la file existante. Si le départ arrive avant la confirmation de la création, les retraits déjà demandés sont reliés à la nouvelle correspondance pour être confirmés sur la cible, sans réactiver le compte.
+
+Création, attribution, activation et révocation ne constituent pas une transaction distribuée. Une révocation intervenant pendant un appel externe peut nécessiter un traitement compensatoire ultérieur ; l’interface distingue la demande locale de l’effet distant confirmé. Aucun mot de passe cible n’est généré ou envoyé par ce parcours.
+
+La dernière vérification du bail et de l’autorisation intervient après résolution DNS et négociation TLS, avant l’envoi HTTP. Un résultat positif tardif d’un ancien bail reste dans l’historique sans écraser le travail courant. Si ce résultat réintroduit une appartenance révoquée ou réactive un compte localement désactivé, une nouvelle relecture et un retrait sont demandés à périmètre cible inchangé. Un changement de destination ou de correspondance demande une investigation, sans retrait automatique sur une cible différente.
 
 ## Vérification
 
-`python manage.py test tests.test_provisioning` lance un vrai serveur SCIM HTTPS éphémère dans le processus de tests : certificat, authentification, lectures et PATCH réels. Le scénario vérifie l’approbation, la recertification, le départ, l’expiration, les pannes, la reprise sans seconde écriture et les limites réseau. Les tests PostgreSQL vérifient également les prises concurrentes, les relations inter-organisations et l’immutabilité des preuves.
+`python manage.py test tests.test_provisioning tests.test_scim_creation` utilise des serveurs SCIM HTTPS éphémères : certificat, authentification, lectures, création et PATCH réels. Les scénarios couvrent approbation, création désactivée, activation, recertification, départ, expiration, réponse perdue, préexistence, données ambiguës et limites réseau. Les tests PostgreSQL vérifient les prises concurrentes, la réservation unique, les relations organisationnelles et l’immutabilité des preuves. Ces pairs ne certifient pas un fournisseur commercial.
 
-Références de protocole : [RFC 7644, opérations PATCH](https://www.rfc-editor.org/rfc/rfc7644.html#section-3.5.2) et [RFC 7643, schéma utilisateur](https://www.rfc-editor.org/rfc/rfc7643.html#section-4.1.1).
+Références de protocole : [RFC 7644, création](https://www.rfc-editor.org/rfc/rfc7644.html#section-3.3), [opérations PATCH](https://www.rfc-editor.org/rfc/rfc7644.html#section-3.5.2) et [RFC 7643, schéma utilisateur](https://www.rfc-editor.org/rfc/rfc7643.html#section-4.1.1).

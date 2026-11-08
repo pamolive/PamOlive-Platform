@@ -1,0 +1,11 @@
+{% extends 'base.html' %}{% block content %}
+<h1>Création SCIM · {{ job.account }}</h1>
+<p>{{ job.request.connector }} · intention {{ job.request.intent }} · {{ job.get_status_display }}</p>
+<p>Résultat : {{ job.result_code|default:'En attente' }} · tentatives de traitement : {{ job.attempts }}.</p>
+<p>Autorisation signée : {{ request_verified|yesno:'Vérifiée,Invalide' }}. Activation demandée après attribution : {{ job.request.activate_after_grant|yesno:'Oui,Non' }}.</p>
+{% if dispatch %}<p>POST réservé le {{ dispatch.reserved_at }}. Une réservation ne prouve pas que l’appel a atteint la cible ; elle interdit une seconde création automatique.</p>{% else %}<p>Aucun POST de création réservé.</p>{% endif %}
+{% if proof %}<p>Compte désactivé relu le {{ proof.confirmed_at }} · identifiant distant {{ proof.remote_id }}. Cette preuve historique ne décrit pas son état actuel.</p>{% endif %}
+{% for item in changes %}<p><a href="{% url 'external-change' item.pk %}">{{ item.get_kind_display }} · {{ item.get_status_display }}</a></p>{% endfor %}
+<div class="inline-form"><a href="{% url 'scim-creation-export' job.pk %}">Exporter les preuves JSON</a><a href="{% url 'provisioning-home' %}">Exécution externe</a>
+{% if job.status != 'created' and job.status != 'running' %}<form method="post" action="{% url 'scim-creation-retry' job.pk %}">{% csrf_token %}<button class="button">Réexaminer sans second POST</button></form>{% endif %}</div>
+{% endblock %}

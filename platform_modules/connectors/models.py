@@ -85,6 +85,9 @@ class ExternalChange(ScopedModel):
     grant = models.ForeignKey("identity.Grant", null=True, blank=True, on_delete=models.PROTECT)
     binding = models.ForeignKey(AccountBinding, null=True, blank=True, on_delete=models.PROTECT)
     group = models.ForeignKey(GroupBinding, null=True, blank=True, on_delete=models.PROTECT)
+    creation_proof = models.ForeignKey(
+        "connectors.ScimCreationProof", null=True, blank=True, on_delete=models.PROTECT
+    )
     connector_revision = models.PositiveIntegerField(null=True, blank=True)
     kind = models.CharField(
         max_length=24,
@@ -92,6 +95,7 @@ class ExternalChange(ScopedModel):
             ("disable_account", "Désactiver le compte"),
             ("add_membership", "Attribuer le droit"),
             ("remove_membership", "Retirer le droit"),
+            ("activate_account", "Activer le compte initial après attribution confirmée"),
         ],
     )
     idempotency_key = models.CharField(max_length=255)
@@ -126,7 +130,14 @@ class ExternalChange(ScopedModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["organization", "idempotency_key"], name="unique_external_change"
-            )
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(kind="activate_account", creation_proof__isnull=False)
+                    | (~models.Q(kind="activate_account") & models.Q(creation_proof__isnull=True))
+                ),
+                name="activation_creation_proof_required",
+            ),
         ]
         indexes = [models.Index(fields=["organization", "status", "next_attempt_at"])]
 
@@ -149,6 +160,12 @@ from .business_models import (  # noqa: E402,F401
     BusinessReceipt,
     BusinessRecord,
     BusinessSource,
+)
+from .creation_models import (  # noqa: E402,F401
+    ScimCreationDispatch,
+    ScimCreationJob,
+    ScimCreationProof,
+    ScimCreationRequest,
 )
 from .teamviewer_access_models import (  # noqa: E402,F401
     TeamViewerAccessCursor,

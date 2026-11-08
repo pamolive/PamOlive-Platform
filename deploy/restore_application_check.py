@@ -241,6 +241,9 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
     result["encrypted_values_checked"] += encrypted
     result["signed_proofs_checked"] += signed
     result["signed_proofs_checked"] += verify_business_evidence()
+    from platform_modules.connectors.creation import verify_creations
+
+    result["signed_proofs_checked"] += verify_creations()
     for evaluation in AccessEvaluation.unscoped.select_related("audit", "event", "intent").iterator(
         chunk_size=100
     ):

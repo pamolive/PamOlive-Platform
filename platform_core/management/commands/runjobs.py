@@ -7,6 +7,7 @@ from django.db import close_old_connections, connections
 from platform_core.events import process_events
 from platform_core.models import Organization
 from platform_core.oidc.services import cleanup_expired
+from platform_modules.connectors.creation import process_creations
 from platform_modules.connectors.outbound import process_changes
 from platform_modules.connectors.teamviewer_access import process_access_observations
 from platform_modules.connectors.teamviewer_ingestion import process_collectors
@@ -22,12 +23,14 @@ def deliver(organization):
     close_old_connections()
     try:
         notifications = process_events(organization, limit=1)
+        creations = process_creations(organization, limit=1)
         changes = process_changes(organization, limit=1)
         collected = process_collectors(organization, limit=1)
         indexed = process_sightings(organization)
         sessions = process_sessions(organization)
         return (
             notifications
+            + creations
             + changes
             + collected
             + indexed
@@ -60,6 +63,7 @@ class Command(BaseCommand):
                 if options["once"]:
                     for organization in organizations:
                         process_events(organization)
+                        process_creations(organization)
                         process_changes(organization)
                         process_collectors(organization, limit=1)
                         process_sightings(organization)

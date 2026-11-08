@@ -1,0 +1,9 @@
+{% extends 'base.html' %}{% block content %}
+<h1>Créer un compte SCIM</h1>
+<p>Choisissez une intention IAM déjà approuvée. Le compte sera créé désactivé, sans mot de passe ni rôle inventé. Son activation facultative attendra la confirmation du droit approuvé sur la cible.</p>
+<p>La vérification ne fait que lire la destination ; elle ne prouve pas le droit d’écriture du jeton. Les droits implicites du fournisseur doivent être vérifiés par votre organisation.</p>
+<form method="post" class="erp-form">{% csrf_token %}{{ form.as_p }}
+<button class="button" name="command" value="preview">Vérifier la destination et prévisualiser</button>
+{% if preview %}<article class="workflow-card"><h2>Création désactivée sur {{ preview.connector }}</h2><p>Identifiant : <strong>{{ preview.username }}</strong>. Aucun utilisateur existant n’a été adopté. Une référence technique unique sera ajoutée pour les relectures.</p><pre>{{ preview.payload }}</pre><p>Une seule commande de création sera réservée. Après un résultat incertain, seules des relectures seront effectuées ; une vérification manuelle pourra être nécessaire.</p><button class="button" name="command" value="confirm">Confirmer la demande autorisée</button></article>{% endif %}
+</form><p><a href="{% url 'provisioning-home' %}">Retour à l’exécution externe</a></p>
+{% endblock %}
