@@ -7,6 +7,7 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 - Organisations, appartenances et rôles techniques distincts des identités gouvernées.
 - MFA TOTP chiffrée, codes de récupération à usage unique et refus du rejeu de code.
 - Validation récente personnelle de 2/5/10/15 minutes et reprise du formulaire conservé après challenge.
+- [OIDC multi-fournisseurs par organisation](oidc.md) : découverte et authentification HTTPS complète avant enregistrement, activation séparée, association explicite par le titulaire et secours local conservé. Les claims du fournisseur ne créent ni identité IAM ni permissions et ne remplacent pas la MFA locale. Les sessions fédérées sont limitées à leur organisation et invalidées par la révocation du domaine ou de l’association. Les tests utilisent un IdP éphémère, pas une certification des fournisseurs commerciaux.
 - Requêtes organisationnelles refusées sans contexte ; relations croisées refusées dans les modèles et par contraintes PostgreSQL.
 - Activation indépendante des huit modules livrés dans le même conteneur.
 - Extensions communautaires Python séparées : wheels signées Ed25519, inventaire des fichiers et manifeste vérifiés avant import, compatibilité du noyau et dépendances, routes HTTP propres au module avec garde du noyau. Livraison après migrations distincte de l’activation par organisation ; activation liée à l’empreinte exacte du paquet, MFA et audit. Exemple autonome sans modification du noyau, sans installation de code par l’interface et sans conteneur permanent supplémentaire.
@@ -54,6 +55,44 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 - Capture d’affichage chiffrée dans PostgreSQL avant transmission, chaîne HMAC et fin scellée dans l’audit ; lecture après MFA avec droits revérifiés par lots. Format Guacamole, pas MP4 ni preuve de logoff de l’OS distant. Quotas sans purge automatique.
 - Test natif SSH sur serveur factice éphémère : mauvaise clé refusée avant authentification, bon couple clé/identifiants accepté, aller-retour clavier et fermeture effective du canal constatés. Huit scénarios d’image traversent formulaire, WebSocket et moteur avec PostgreSQL : expiration MFA sans interruption puis déconnexion, expiration de bail, cible désactivée, entrée interdite, quota, authentification par clé Ed25519, erreur de base simulée après établissement du canal et contrôle de démarrage volontairement ralenti. L’erreur de base coupe le transport, conserve une capture partielle lisible et reste distincte d’une révocation. Les transactions d’un relais sont ordonnées sans verrou global et avec attente incluse dans la limite de quatre secondes. Diagnostic limité à l’opération et au SQLSTATE validé, sans message d’exception ni secret. Fermeture constatée sur le serveur SSH et capture relue après MFA. Aucun compte système ni shell distant n’est installé par ces fixtures.
 - Portes RDP séparées : pair FreeRDP/NLA factice, contrôle des identifiants délégués après vérification NTLM, refus natif des pins et mots de passe incorrects, clavier et pixels cibles vérifiés. Six scénarios WebSocket/PostgreSQL couvrent aussi la MFA périmée, la déconnexion, l’expiration, la désactivation et la redirection malveillante. Cette dernière exige un hook natif constaté et aucune connexion TCP vers la cible leurre. Les outils de test ne sont pas livrés dans l’image de production ; cela ne certifie pas toutes les versions Windows et politiques AD.
+
+## Couverture des huit scénarios initiaux
+
+Les scénarios proviennent de la [vision produit](product-vision.md). Les tests vérifient
+les règles internes et des pairs éphémères ; une collecte réelle depuis un produit tiers
+reste une étape distincte. Aucun des huit scénarios ne doit être présenté comme intégré
+de bout en bout à tous les systèmes cités.
+
+| Scénario | Capacité livrée et tests associés | Travail restant pour le terrain |
+|---|---|---|
+| Intervention TeamViewer | Événement, acteur, compte, intention approuvée et explication ; [attribution](../tests/test_access_attribution.py) et [périmètre](../tests/test_platform.py) | Collecteur TeamViewer, correspondances des identifiants et vérification du ticket source |
+| Chronologie physique et numérique | Ordre source/réception, arrivées tardives, incertitudes d’horloge et domaines séparés ; [chronologie](../tests/test_intelligence.py) | Collecteurs badge/PAM/vCenter et qualité des horloges sur l’installation réelle |
+| Fournisseur hors intervention | Contrat versionné, méthodes, horaires, pays inconnus et couverture de collecte ; [gouvernance](../tests/test_governance.py) et [couverture](../tests/test_intelligence.py) | Sources physiques et métier connectées, règles de risque adaptées à l’organisation |
+| Déplacement réseau d’une machine | Comparaison switch/port/VLAN et changement approuvé précisément borné ; [réseau](../tests/test_intelligence.py) | Collecteur NAC/switch et résolution fiable de l’identité machine |
+| Certificat sur un autre hôte | Références publiques, hôtes attendus et signal d’écart sans conclure à une copie de clé ; [certificats](../tests/test_intelligence.py) | Collecteur PKI/services et preuve de possession de clé lorsqu’elle est disponible |
+| Intention et activité réelle | Écart de ressource, méthode, temps, acteur et compte ; évaluations conservées ; [évaluation](../tests/test_platform.py) et [attribution](../tests/test_access_attribution.py) | Vérification du contexte métier externe et collecte opérationnelle du périmètre |
+| Contrat fournisseur | Participants, révisions, contraintes et retraits ciblés ; [gouvernance](../tests/test_governance.py), [confirmation SCIM](../tests/test_provisioning.py) | Adaptateurs des systèmes concernés, création initiale de comptes et réconciliation d’inventaire |
+| Chemins d’accès | Graphe daté, intersection physique/privilégié, fournisseur/production et investigations ; [graphe](../tests/test_intelligence.py) | Connecteurs réels, rôles métier transverses et qualification des recherches à grande échelle |
+
+## Portes de livraison restantes
+
+- [x] Publier le code du socle et sa documentation dans `pamolive/PamOlive-Platform`.
+- [x] Déployer une instance NAS avec un seul conteneur applicatif et PostgreSQL séparé.
+- [x] Qualifier le noyau sur PostgreSQL et les transports SSH/RDP sur des pairs de test.
+- [x] Tester une restauration isolée sans remplacer la base en service.
+- [ ] Valider les ADR encore proposés, notamment la place de Redis et la frontière commerciale.
+- [ ] Choisir et qualifier les connecteurs réels du premier périmètre client.
+- [ ] Vérifier les références métier auprès de leur système source.
+- [ ] Qualifier deux VM réelles, le répartiteur, les partitions réseau et la reprise PostgreSQL.
+- [ ] Qualifier la charge, la rétention des captures et la rotation des clés.
+- [ ] Livrer le contrat et la distribution des modules commerciaux séparés.
+- [ ] Qualifier la sécurité et l’exploitation avant une annonce de version stable.
+
+Une porte cochée correspond au périmètre indiqué, pas à une qualification globale du produit.
+La version OIDC `0.2.0a6` est qualifiée par la [CI PostgreSQL et image](https://github.com/pamolive/PamOlive-Platform/actions/runs/42479225455)
+sur le code `1281979`. La qualification de restauration peuplée inclut des preuves OIDC synthétiques ;
+la sauvegarde du NAS ne contient pas de fournisseur réel. Les procédures sont dans
+[OIDC](oidc.md), [actif-actif](active-active.md) et [sauvegarde](backup-restore.md).
 
 ## Travail requis pour la cible complète
 

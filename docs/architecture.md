@@ -1,7 +1,20 @@
 # Architecture cible de PAM-olive Platform
 
-> Statut : **proposition V1 à valider avant reprise du développement**.
+> Statut : **architecture cible V1, avec décisions à valider avant une livraison stable**.
 > Cette architecture ne reprend aucun code Odoo. Elle reprend seulement une expérience modulaire et une navigation familière aux utilisateurs d’un ERP.
+
+## Architecture effectivement livrée
+
+L’alpha déployée utilise **un conteneur applicatif par instance**, réunissant le Web ASGI,
+le traitement des tâches et le moteur PAM natif privé. PostgreSQL externe conserve les
+données, sessions, notifications transactionnelles et baux. Redis et le stockage objet
+du schéma cible ci-dessous ne sont pas requis par ce runtime et ne sont pas intégrés.
+Les processus Web/tâches et natifs restent séparés par leurs utilisateurs système.
+
+L’[état de l’implémentation](implementation-status.md) distingue les fonctions testées
+des intégrations manquantes. La [qualification actif-actif](active-active.md) décrit
+deux instances temporaires sur un hôte, pas deux VM de production ni une HA PostgreSQL.
+Le schéma cible ci-dessous ne constitue donc pas une liste de conteneurs à installer.
 
 ## 1. Objectif
 

@@ -1,6 +1,24 @@
 # Décisions d’architecture proposées
 
-Ces décisions doivent être acceptées ou amendées avant que le prototype devienne la base du nouveau dépôt.
+Ces décisions doivent être acceptées ou amendées avant une livraison stable.
+
+## Écart entre proposition et alpha livrée
+
+Les statuts de validation ci-dessous ne sont pas des validations acquises par la seule
+publication du code. Le dépôt et l’alpha sont désormais publiés ; les décisions encore
+ouvertes restent à arbitrer avant une livraison stable.
+
+La contrainte d’exploitation actuelle est un conteneur applicatif par instance avec
+PostgreSQL externe. L’alpha applique les principes de monolithe modulaire, d’isolation
+organisationnelle, d’installation contrôlée et d’audit PostgreSQL, mais **n’intègre pas
+Redis (ADR-003)**. Les sessions, tâches et verrous actuellement livrés utilisent PostgreSQL.
+Conserver ce fonctionnement ou ajouter Redis demande une décision explicite ; cela ne doit
+pas être déduit du schéma cible ni imposer une pile de services à l’utilisateur.
+
+L’API d’extension communautaire est livrée. La séparation juridique et la distribution
+des modules commerciaux (ADR-010) restent ouvertes : charger du Python dans le processus
+AGPL ne garantit pas à lui seul une indépendance de licence. Aucun entitlement commercial
+n’est actuellement accepté par le contrat de module.
 
 | ID | Décision | Statut proposé | Motif |
 |---|---|---|---|
@@ -19,4 +37,7 @@ Ces décisions doivent être acceptées ou amendées avant que le prototype devi
 
 ## Conséquence pour le prototype
 
-Le prototype sert de démonstrateur visuel, pas de migration de production. Après validation des ADR, le schéma local de développement peut être recréé afin d’introduire correctement UUID, organisations, compte personnalisé et frontières de modules.
+Le prototype historique reste un démonstrateur distinct. Le dépôt publié utilise désormais
+des migrations versionnées ; une mise à niveau d’une installation existante conserve ses données.
+Une recréation de base est réservée à un environnement de développement jetable explicitement
+désigné, jamais à une installation NAS ou à une procédure de mise à jour standard.
