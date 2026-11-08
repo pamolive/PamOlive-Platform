@@ -1,16 +1,19 @@
 --- a/src/protocols/rdp/rdp.c
 +++ b/src/protocols/rdp/rdp.c
-@@ -71,6 +71,17 @@
+@@ -71,6 +71,20 @@
  #include <stdlib.h>
  #include <time.h>
  
 +#include <stdio.h>
++#include <guacamole/protocol-types.h>
 +/* PAM-olive: each connection is authorized for one resolved target only.
 + * Do not let a server redirect FreeRDP to a different target or account. */
 +static BOOL pamolive_reject_rdp_redirection(freerdp* instance) {
-+    (void) instance;
++    rdp_freerdp_context* context = (rdp_freerdp_context*) instance->context;
 +    fputs("PAMOLIVE_RDP_REDIRECTION_DENIED\n", stderr);
 +    fflush(stderr);
++    guac_client_abort(context->client, GUAC_PROTOCOL_STATUS_CLIENT_FORBIDDEN,
++            "Server-directed RDP reconnect is not allowed.");
 +    return FALSE;
 +}
 +
@@ -18,7 +21,7 @@
  /**
   * Initializes and loads the necessary FreeRDP plugins based on the current
   * RDP session settings. This function is designed to work in environments
-@@ -513,6 +524,7 @@
+@@ -513,6 +527,7 @@
          rdp_inst->LoadChannels = rdp_freerdp_load_channels;
      #endif
      rdp_inst->PreConnect = rdp_freerdp_pre_connect;

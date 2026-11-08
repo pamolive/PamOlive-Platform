@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from deploy.check_guacd import inspect_plugins, run_check
 from platform_modules.pam.native import NativeSession
 from platform_modules.pam.protocol import Instruction, ProtocolFailure
+from tests.fixtures.paint import PaintProof
 from tests.fixtures.rdp import RDPFixture
 
 
@@ -21,6 +22,7 @@ async def exercise(engine_port, *, wrong_pin=False, wrong_password=False):
         )
         target = SimpleNamespace(address="127.0.0.1", port=fixture.port)
         instructions = []
+        pixels = PaintProof()
 
         async def display():
             try:
@@ -35,6 +37,7 @@ async def exercise(engine_port, *, wrong_pin=False, wrong_password=False):
                         ) from error
                     if result:
                         instructions.append(result)
+                        pixels.observe(result)
                     if instruction.opcode == "sync":
                         await native.send(Instruction("sync", (instruction.arguments[0],)))
                     elif instruction.opcode == "blob":
@@ -66,6 +69,7 @@ async def exercise(engine_port, *, wrong_pin=False, wrong_password=False):
             for pressed in ("1", "0"):
                 await native.send(Instruction("key", ("97", pressed)))
             await fixture.wait("key_a", timeout=5)
+            await pixels.wait(task)
             assert any(item.opcode in ("rect", "cfill", "img", "png") for item in instructions)
             await native.close()
             await fixture.wait("disconnected", connection=authenticated["connection"], timeout=6)

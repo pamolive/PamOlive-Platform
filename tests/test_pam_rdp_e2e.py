@@ -20,6 +20,7 @@ from platform_core.tenancy import organization_context
 from platform_modules.pam.models import RelayConnection, SessionEndpoint, SessionLease
 from platform_modules.pam.protocol import Instruction, Parser
 from platform_modules.pam.recordings import issue_recording_grant, recording_page
+from tests.fixtures.paint import PaintProof
 from tests.fixtures.rdp import BINARY as RDP_BINARY
 from tests.fixtures.rdp import RDPFixture
 from tests.test_pam_relay_e2e import RelayHarness
@@ -86,6 +87,7 @@ class NativeRDPRelayTests(RelayHarness):
                             json.dumps({"ticket": config["ticket"], "width": 1280, "height": 720})
                         )
                         received = []
+                        pixels = PaintProof()
 
                         async def display():
                             parser = Parser()
@@ -98,6 +100,7 @@ class NativeRDPRelayTests(RelayHarness):
                                             ("argv", "ready", "required", "clipboard", "file"),
                                         )
                                         received.append(instruction)
+                                        pixels.observe(instruction)
                                         if instruction.opcode == "sync":
                                             await websocket.send(
                                                 Instruction("sync", (instruction.arguments[0],))
@@ -142,6 +145,7 @@ class NativeRDPRelayTests(RelayHarness):
                                             Instruction("key", ("97", pressed)).encode().decode()
                                         )
                                     await peer.wait("key_a", timeout=5)
+                                    await pixels.wait(drain)
 
                                     def revoke():
                                         with organization_context(self.org):

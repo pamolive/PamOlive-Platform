@@ -1,0 +1,2 @@
+# Additional test-image dependency; not installed in the production image.
+Pillow==13.0.0

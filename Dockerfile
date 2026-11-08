@@ -27,5 +27,7 @@ RUN mkdir -p /opt/pamolive-test && cc -O2 -Wall -Wextra -Werror -Wno-error=depre
 
 FROM runtime AS native-test
 COPY --from=native-test-builder /opt/pamolive-test /opt/pamolive-test
+COPY requirements-native-test.lock /tmp/requirements-native-test.lock
+RUN pip install --no-cache-dir -r /tmp/requirements-native-test.lock
 
 FROM runtime AS production

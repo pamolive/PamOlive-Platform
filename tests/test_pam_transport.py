@@ -26,9 +26,17 @@ from platform_modules.pam.destination import TransportFailure, host_port, resolv
 from platform_modules.pam.native import DisplayBoundary
 from platform_modules.pam.probe import certificate_pin, probe_rdp, probe_ssh, ssh_host_key
 from platform_modules.pam.protocol import Instruction, Parser, ProtocolFailure, validate_input
+from tests.fixtures.paint import PaintProof
 
 
 class FramingTests(SimpleTestCase):
+    def test_rdp_pixel_gate_does_not_accept_an_empty_or_default_black_screen(self):
+        proof = PaintProof()
+        proof.observe(Instruction("cfill", ("12", "0", "0", "0", "0", "255")))
+        self.assertFalse(proof.matches)
+        proof.observe(Instruction("cfill", ("12", "0", "187", "216", "88", "255")))
+        self.assertTrue(proof.matches)
+
     def test_native_cursor_positions_are_bounded_display_updates(self):
         instruction = Instruction("mouse", ("640", "480"))
         self.assertEqual(DisplayBoundary().outbound(instruction), instruction)
