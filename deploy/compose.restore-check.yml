@@ -1,0 +1,26 @@
+# One short-lived offline client, never a server or a permanent deployment service.
+services:
+  checker:
+    image: ${PAMOLIVE_RESTORE_IMAGE:?Provide an existing matching application image}
+    entrypoint: [python]
+    env_file:
+      - ${PAMOLIVE_RESTORE_ENV_FILE:?Provide the private application environment}
+    user: '1000:1000'
+    read_only: true
+    mem_limit: 512m
+    pids_limit: 64
+    tmpfs: ['/tmp:size=64m,mode=1777']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      disable: true
+    volumes:
+      - type: bind
+        source: ${PAMOLIVE_RESTORE_SCRIPT_PATH:?Provide the reviewed verification script}
+        target: /qualification.py
+        read_only: true
+    networks: [database]
+networks:
+  database:
+    external: true
+    name: ${PAMOLIVE_RESTORE_DATABASE_NETWORK:?Provide the existing database network}

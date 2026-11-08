@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -11,7 +12,7 @@ from types import SimpleNamespace
 from urllib.parse import unquote, urlsplit, urlunsplit
 
 from deploy.check_active_active import validate_configuration
-from deploy.check_restore import RestoreQualification, identifier
+from deploy.check_restore import RestoreQualification, compose_client, identifier
 
 
 def write_private(path, content):
@@ -39,8 +40,23 @@ def main():
     created, source_oid, owner_oid = False, None, None
     source_name = "test_pamolive_restore_source"
 
-    def command(arguments, *, content=None):
-        return subprocess.run(arguments, input=content, check=True, capture_output=True).stdout
+    def command(arguments, *, content=None, environment=None):
+        try:
+            return subprocess.run(
+                arguments, input=content, check=True, capture_output=True, env=environment
+            ).stdout
+        except subprocess.CalledProcessError as error:
+            diagnostic = directory / ("private-error-" + secrets.token_hex(4) + ".json")
+            write_private(
+                diagnostic,
+                json.dumps(
+                    {
+                        "stdout": (error.stdout or b"").decode(errors="replace"),
+                        "stderr": (error.stderr or b"").decode(errors="replace"),
+                    }
+                ),
+            )
+            raise
 
     try:
         config = json.loads(
@@ -81,41 +97,15 @@ def main():
         admin.sql(f"REVOKE ALL ON DATABASE {identifier(source_name)} FROM PUBLIC;")
 
         def application(arguments, bind=None):
-            prefix = [
+            prefix, process_env = compose_client(
                 args.docker,
-                "run",
-                "--rm",
-                "--no-healthcheck",
-                "--memory",
-                "512m",
-                "--pids-limit",
-                "64",
-                "--read-only",
-                "--user",
-                "1000:1000",
-                "--cap-drop",
-                "ALL",
-                "--security-opt",
-                "no-new-privileges",
-                "--tmpfs",
-                "/tmp:size=64m,mode=1777",
-                "--network",
+                image,
+                environment_file,
                 network,
-                "--env-file",
-                str(environment_file),
-                "--entrypoint",
-                "python",
-            ]
-            if bind:
-                prefix.extend(
-                    [
-                        "--mount",
-                        "type=bind,source="
-                        + str(bind.resolve())
-                        + ",target=/qualification.py,readonly",
-                    ]
-                )
-            return command(prefix + [image] + arguments)
+                bind or Path(__file__).with_name("restore_application_check.py"),
+                "pamolive-restore-fixture-" + directory.name.rsplit("-", 1)[-1],
+            )
+            return command(prefix + ["checker"] + arguments, environment=process_env)
 
         application(
             [

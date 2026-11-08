@@ -56,6 +56,33 @@ def file_sha256(path):
     return digest.hexdigest()
 
 
+def compose_client(docker, image, application_env, network, script, project):
+    # Let the same Compose parser used for deployment interpret quoted values.
+    # Application values never become Docker CLI control variables in the host.
+    environment = dict(
+        os.environ,
+        PAMOLIVE_RESTORE_IMAGE=image,
+        PAMOLIVE_RESTORE_ENV_FILE=str(application_env.resolve()),
+        PAMOLIVE_RESTORE_DATABASE_NETWORK=network,
+        PAMOLIVE_RESTORE_SCRIPT_PATH=str(script.resolve()),
+    )
+    prefix = [
+        docker,
+        "compose",
+        "--env-file",
+        str(application_env.resolve()),
+        "-p",
+        project,
+        "-f",
+        str(Path(__file__).with_name("compose.restore-check.yml")),
+        "run",
+        "--rm",
+        "-T",
+        "--no-deps",
+    ]
+    return prefix, environment
+
+
 class RestoreQualification:
     def __init__(self, args):
         self.args = args
@@ -97,46 +124,23 @@ class RestoreQualification:
 
     def application_command(self, action, *, wrong_key=False, wrong_password=False, database=None):
         source = Path(__file__).with_name("restore_application_check.py").resolve(strict=True)
-        if "," in str(source):
-            raise ValueError("The qualification source path must not contain a comma.")
-        command = [
+        command, environment = compose_client(
             self.args.docker,
-            "run",
-            "--rm",
-            "-i",
-            "--no-healthcheck",
-            "--memory",
-            "512m",
-            "--pids-limit",
-            "64",
-            "--read-only",
-            "--user",
-            "1000:1000",
-            "--cap-drop",
-            "ALL",
-            "--security-opt",
-            "no-new-privileges",
-            "--tmpfs",
-            "/tmp:size=64m,mode=1777",
-            "--network",
+            self.image,
+            self.args.application_env,
             self.args.database_network,
-            "--env-file",
-            str(self.args.application_env),
-            "--mount",
-            "type=bind,source=" + str(source) + ",target=/restore_application_check.py,readonly",
-            "-e",
-            "PAMOLIVE_RESTORE_PASSWORD",
-            "--entrypoint",
-            "python",
-        ]
+            source,
+            self.database.replace("_", "-"),
+        )
+        command.extend(["-e", "PAMOLIVE_RESTORE_PASSWORD"])
         if wrong_key:
             command.extend(
                 ["-e", "PAMOLIVE_ENCRYPTION_KEY=deliberately-wrong-restoration-check-key"]
             )
         command.extend(
             [
-                self.image,
-                "/restore_application_check.py",
+                "checker",
+                "/qualification.py",
                 action,
                 "--database",
                 database or self.database,
@@ -146,11 +150,8 @@ class RestoreQualification:
                 getattr(self, "archive_hash", ""),
             ]
         )
-        environment = dict(
-            os.environ,
-            PAMOLIVE_RESTORE_PASSWORD="deliberately-wrong-login-password"
-            if wrong_password
-            else self.password,
+        environment["PAMOLIVE_RESTORE_PASSWORD"] = (
+            "deliberately-wrong-login-password" if wrong_password else self.password
         )
         return command, environment
 

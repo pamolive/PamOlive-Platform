@@ -8,7 +8,7 @@ from cryptography.fernet import InvalidToken
 from django.contrib.auth import get_user_model
 from django.test import TransactionTestCase, override_settings
 
-from deploy.check_restore import RestoreQualification, identifier, scram_verifier
+from deploy.check_restore import RestoreQualification, compose_client, identifier, scram_verifier
 from deploy.restore_application_check import (
     FORMAT,
     compare_manifest,
@@ -24,6 +24,24 @@ DATABASE = "pamolive_restore_check_0123456789abcdef"
 
 
 class RestoreGuardTests(TestCase):
+    def test_application_client_uses_deployment_env_parser_without_host_control_overrides(self):
+        from pathlib import Path
+
+        with patch.dict("os.environ", {"DOCKER_HOST": "operator-selected-daemon"}):
+            command, environment = compose_client(
+                "docker",
+                "image",
+                Path("private.env"),
+                "private-network",
+                Path("reviewed.py"),
+                "pamolive-restore-test",
+            )
+        self.assertEqual(command[:2], ["docker", "compose"])
+        self.assertIn("--env-file", command)
+        self.assertIn("compose.restore-check.yml", " ".join(command))
+        self.assertEqual(environment["DOCKER_HOST"], "operator-selected-daemon")
+        self.assertNotIn("SECRET_KEY", " ".join(command))
+
     def test_sql_identifiers_and_temporary_scram_verifiers_are_bounded(self):
         self.assertEqual(identifier(DATABASE), '"' + DATABASE + '"')
         for value in ("postgres; DROP DATABASE postgres", "test-name", "a" * 64, "../live"):
