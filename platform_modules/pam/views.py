@@ -84,7 +84,7 @@ def configure(request, endpoint_id=None):
                 label="Transport",
                 choices=[
                     ("ssh", "SSH"),
-                    ("rdp", "RDP — validation complète en cours"),
+                    ("rdp", "RDP — NLA et certificat épinglé"),
                 ],
             ),
             "hostname": forms.CharField(label="DNS ou IP autorisé au déploiement", max_length=253),

@@ -107,7 +107,7 @@ Ces fonctions exploitent les objets et événements disponibles. Elles ne branch
 
 Python 3.12+, `python -m venv .venv`, puis installer `requirements-dev.lock`. Utiliser `python manage.py test` et `ruff check .`. SQLite est réservé aux tests rapides locaux ; la CI et les contrôles de contraintes utilisent PostgreSQL réel.
 
-Le [relais PAM SSH](docs/pam-transport.md) utilise le même port applicatif et un moteur natif privé, séparé du Web par son utilisateur système. RDP reste désactivé en attendant sa qualification complète. Les cibles sont refusées tant que les listes d’autorisation du déploiement et leur identité n’ont pas été configurées.
+Les [relais PAM SSH et RDP/NLA](docs/pam-transport.md) utilisent le même port applicatif et un moteur natif privé, séparé du Web par son utilisateur système. Les cibles sont refusées tant que les listes d’autorisation du déploiement et leur identité n’ont pas été configurées. RDP exige un certificat épinglé et refuse les redirections de serveur.
 
 Pour vérifier le chargement natif et un aller-retour SSH sur un serveur factice éphémère, sous Linux, macOS, Windows ou sur le NAS :
 
@@ -117,7 +117,16 @@ docker run --rm --user 1000:1000 --network none --cap-drop ALL --security-opt no
 docker run --rm --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:check -m deploy.check_native_ssh
 ```
 
-Ces deux contrôles sont temporaires, n’accèdent à aucune base ni machine externe et n’installent pas de compte système. La CI ajoute un test complet formulaire/WebSocket/moteur SSH sur PostgreSQL, avec révocation et lecture des captures, puis vérifie la séparation des privilèges du runtime. Aucun de ces tests ne constitue une qualification de login RDP. Les fins de ligne des scripts sont conservées en LF, y compris dans un clone Windows ; le client tiers conserve ses octets et son empreinte d’origine.
+Ces deux contrôles sont temporaires, n’accèdent à aucune base ni machine externe et n’installent pas de compte système. La CI ajoute des tests complets formulaire/WebSocket/moteur SSH et RDP sur PostgreSQL, avec révocation et lecture des captures, puis vérifie la séparation des privilèges du runtime.
+
+Le peer RDP factice et son outil de contrôle des pixels se construisent seulement dans l’image de tests :
+
+```sh
+docker build --target native-test -t pamolive-platform:native-test .
+docker run --rm --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:native-test -m deploy.check_native_rdp
+```
+
+Ce contrôle prouve NLA, les pins natifs, le clavier, les pixels de la cible et la fermeture du transport sur une cible RDP éphémère sans compte système ni shell. Le peer et Pillow ne sont pas inclus dans l’image de production. La qualification de toutes les versions Windows, politiques AD/Kerberos et fermes RDS n’est pas revendiquée. Les fins de ligne des scripts sont conservées en LF, y compris dans un clone Windows ; le client tiers conserve ses octets et son empreinte d’origine.
 
 ## Documentation
 
@@ -125,7 +134,7 @@ Ces deux contrôles sont temporaires, n’accèdent à aucune base ni machine ex
 - [Architecture](docs/architecture.md), [données](docs/data-model.md) et [sécurité](docs/security-boundaries.md)
 - [API d’observation](docs/api.md), [modules](docs/modules.md), [PostgreSQL](docs/postgresql.md)
 - [Provisioning SCIM et confirmations externes](docs/provisioning.md)
-- [Transport PAM SSH, captures et configuration du proxy](docs/pam-transport.md)
+- [Transports PAM SSH/RDP, captures et configuration du proxy](docs/pam-transport.md)
 - [Roadmap](docs/implementation-roadmap.md), [décisions](docs/architecture-decisions.md), [état livré](docs/implementation-status.md)
 
 ## Licence et gestion du projet

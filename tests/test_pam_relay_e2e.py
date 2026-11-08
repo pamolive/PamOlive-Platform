@@ -172,6 +172,33 @@ class RelayHarness(TransactionTestCase):
         self.directory.cleanup()
         self.overrides.disable()
 
+    def make_endpoint(
+        self, host_key, target_port, private_key, protocol, certificate_pin, password
+    ):
+        return SessionEndpoint.objects.create(
+            organization=self.org,
+            resource=self.resource,
+            account=self.account,
+            name=f"{protocol.upper()} fixture",
+            protocol=protocol,
+            hostname="127.0.0.1",
+            port=target_port,
+            auth_method="private_key" if private_key else "password",
+            encrypted_secret=cipher()
+            .encrypt(
+                json.dumps(
+                    {"private_key": private_key} if private_key else {"password": password}
+                ).encode()
+            )
+            .decode(),
+            ssh_host_key=host_key if protocol == "ssh" else "",
+            certificate_pin=certificate_pin,
+            domain="FIXTURE" if protocol == "rdp" else "",
+            enabled=True,
+            verified_revision=1,
+            tested_at=timezone.now(),
+        )
+
     def create_launch(
         self,
         host_key,
@@ -183,28 +210,8 @@ class RelayHarness(TransactionTestCase):
         password="fixture-secret",
     ):
         with organization_context(self.org):
-            endpoint = SessionEndpoint.objects.create(
-                organization=self.org,
-                resource=self.resource,
-                account=self.account,
-                name=f"{protocol.upper()} fixture",
-                protocol=protocol,
-                hostname="127.0.0.1",
-                port=target_port,
-                auth_method="private_key" if private_key else "password",
-                encrypted_secret=cipher()
-                .encrypt(
-                    json.dumps(
-                        {"private_key": private_key} if private_key else {"password": password}
-                    ).encode()
-                )
-                .decode(),
-                ssh_host_key=host_key if protocol == "ssh" else "",
-                certificate_pin=certificate_pin,
-                domain="FIXTURE" if protocol == "rdp" else "",
-                enabled=True,
-                verified_revision=1,
-                tested_at=timezone.now(),
+            endpoint = self.make_endpoint(
+                host_key, target_port, private_key, protocol, certificate_pin, password
             )
             intent = AccessIntent.objects.create(
                 organization=self.org,

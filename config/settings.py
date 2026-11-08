@@ -47,8 +47,8 @@ PAM_TRUSTED_PROXY_NETWORKS = tuple(
 )
 PAM_NETWORK_CONTEXT = json.loads(os.environ.get("PAMOLIVE_NETWORK_CONTEXT", "[]"))
 PAM_PUBLIC_ORIGIN = os.environ.get("PAMOLIVE_PUBLIC_ORIGIN", "").rstrip("/")
-# RDP activation remains closed until its native end-to-end release gate passes.
-PAM_SESSION_PROTOCOLS = frozenset({"ssh"})
+# Both transports have mandatory native/ASGI release gates in the test image.
+PAM_SESSION_PROTOCOLS = frozenset({"ssh", "rdp"})
 PAM_MAX_CONNECTIONS_USER = 4
 PAM_MAX_CONNECTIONS_ORG = 16
 PAM_MAX_SESSION_SECONDS = 4 * 60 * 60

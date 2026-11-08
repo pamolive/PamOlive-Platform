@@ -6,6 +6,7 @@ import os
 import time
 from unittest import skipUnless
 
+import pyotp
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.contrib.sessions.backends.db import SessionStore
@@ -16,10 +17,13 @@ from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 
 from platform_core.authorization import recent_authentication
+from platform_core.models import AccountSecurity
+from platform_core.security import cipher
 from platform_core.tenancy import organization_context
 from platform_modules.pam.models import RelayConnection, SessionEndpoint, SessionLease
 from platform_modules.pam.protocol import Instruction, Parser
 from platform_modules.pam.recordings import issue_recording_grant, recording_page
+from platform_modules.pam.sessions import configure_endpoint, probe_endpoint, set_endpoint_enabled
 from tests.fixtures.paint import PaintProof
 from tests.fixtures.rdp import BINARY as RDP_BINARY
 from tests.fixtures.rdp import RDPFixture
@@ -31,6 +35,44 @@ class NativeRDPRelayTests(RelayHarness):
     def setUp(self):
         self.assertTrue(RDP_BINARY.is_file(), "PAM_REQUIRE_RDP cannot silently skip its peer")
         super().setUp()
+        self.assertIn(
+            "rdp", settings.PAM_SESSION_PROTOCOLS, "Published RDP must actually be enabled"
+        )
+        AccountSecurity.objects.create(
+            account=self.reviewer,
+            encrypted_secret=cipher().encrypt(pyotp.random_base32().encode()).decode(),
+        )
+
+    def make_endpoint(
+        self, host_key, target_port, private_key, protocol, certificate_pin, password
+    ):
+        if self.mode == "pin":
+            # An adversarial stale/misconfigured endpoint must fail again at launch.
+            return super().make_endpoint(
+                host_key, target_port, private_key, protocol, certificate_pin, password
+            )
+        with recent_authentication(self.reviewer, self.org, time.time()):
+            endpoint = configure_endpoint(
+                actor=self.reviewer,
+                organization=self.org,
+                name="Validated RDP fixture",
+                resource=self.resource,
+                account=self.account,
+                protocol="rdp",
+                hostname="127.0.0.1",
+                port=target_port,
+                domain="FIXTURE",
+                auth_method="password",
+                password=password,
+                rdp_pin=certificate_pin,
+            )
+            verified, code = probe_endpoint(endpoint.pk, actor=self.reviewer, organization=self.org)
+            self.assertTrue(verified, code)
+            set_endpoint_enabled(
+                endpoint.pk, actor=self.reviewer, organization=self.org, enabled=True
+            )
+        endpoint.refresh_from_db()
+        return endpoint
 
     async def test_rdp_mfa_expiry_does_not_interrupt_but_logout_does(self):
         await self.exercise("logout")
@@ -51,6 +93,7 @@ class NativeRDPRelayTests(RelayHarness):
         await self.exercise("password")
 
     async def exercise(self, mode):
+        self.mode = mode
         async with RDPFixture(redirect=mode == "redirect") as peer:
             trap_connections = []
 
@@ -64,7 +107,6 @@ class NativeRDPRelayTests(RelayHarness):
                 with override_settings(
                     PAM_ALLOWED_HOSTS={f"127.0.0.1:{peer.port}"},
                     PAM_ALLOWED_NETWORKS=("127.0.0.1/32",),
-                    PAM_SESSION_PROTOCOLS=frozenset({"ssh", "rdp"}),
                 ):
                     endpoint_id, _, config = await sync_to_async(self.create_launch)(
                         "",
@@ -193,6 +235,7 @@ class NativeRDPRelayTests(RelayHarness):
                                     item, self.actor, self.client.session.session_key
                                 )
                             total, sequence, previous = 0, 0, ""
+                            recorded_parser, recorded_pixels = Parser(), PaintProof()
                             while True:
                                 chunks, sequence, previous = recording_page(
                                     item.pk,
@@ -205,10 +248,15 @@ class NativeRDPRelayTests(RelayHarness):
                                 for chunk in chunks:
                                     self.assertNotIn(peer.password.encode(), chunk)
                                     self.assertNotIn(b"4.argv", chunk)
+                                    for instruction in recorded_parser.feed(chunk):
+                                        self.assertNotEqual(instruction.opcode, "argv")
+                                        recorded_pixels.observe(instruction)
                                 total += sum(map(len, chunks))
                                 if not chunks:
                                     break
                             self.assertEqual(total, item.recording_bytes)
+                            if mode not in ("password", "redirect"):
+                                self.assertTrue(recorded_pixels.matches)
 
                     await sync_to_async(verify_capture)()
                     self.assertEqual(trap_connections, [], "RDP attempted an unauthorized target")
