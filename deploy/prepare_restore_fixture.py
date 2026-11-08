@@ -25,6 +25,7 @@ def teamviewer_corpus(actor, organization):
     from platform_modules.connectors.teamviewer_ingestion import process_collectors
     from platform_modules.connectors.teamviewer_mapping import publish_mapping
     from platform_modules.connectors.teamviewer_mapping_models import TeamViewerSighting
+    from platform_modules.connectors.teamviewer_sessions import index_sessions
     from platform_modules.identity.models import ExternalAccount, Identity, Resource
 
     now = timezone.now().replace(microsecond=0)
@@ -95,6 +96,7 @@ def teamviewer_corpus(actor, organization):
                 verification_reference="Synthetic offline assignment; not a real provider check",
                 sighting_id=sighting.pk,
             )
+        index_sessions(organization)
         set_enabled(collector.pk, False, actor=actor, organization=organization)
 
 
@@ -277,7 +279,8 @@ def main():
     print(
         "Synthetic restore corpus prepared: MFA, counter, recovery hash, M2M, "
         "SCIM token, target secret, OIDC secret/link/draft/flow, signed mandate, "
-        "signed notification, TeamViewer token/report/run/sighting/mappings and sealed capture."
+        "signed notification, TeamViewer token/report/run/sighting/mappings/session "
+        "and sealed capture."
     )
 
 

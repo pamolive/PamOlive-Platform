@@ -150,3 +150,7 @@ from .teamviewer_models import (  # noqa: E402,F401
     TeamViewerReport,
     TeamViewerRun,
 )
+from .teamviewer_session_models import (  # noqa: E402,F401
+    TeamViewerSession,
+    TeamViewerSessionEvidence,
+)

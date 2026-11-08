@@ -578,6 +578,16 @@ class TeamViewerViewTests(TeamViewerFixtureData, TransactionTestCase):
             self.assertNotEqual(preview["actor"].target.pk, operator_account.identity_id)
             self.assertEqual(preview["account"].target.pk, operator_account.pk)
             self.assertEqual(preview["device"].target.pk, endpoint.pk)
+            from platform_modules.connectors.teamviewer_session_models import TeamViewerSession
+
+            physical = TeamViewerSession.objects.get(remote_id=report.remote_id)
+            combined = client.get(reverse("teamviewer-session", args=[physical.pk]))
+            self.assertEqual(combined.status_code, 200)
+            resolution = combined.context["resolution"]
+            self.assertEqual(resolution.state, "resolved")
+            self.assertEqual(resolution.dimensions["actor"].target.pk, declared_actor.pk)
+            self.assertEqual(resolution.dimensions["account"].target.pk, operator_account.pk)
+            self.assertEqual(resolution.dimensions["device"].target.pk, endpoint.pk)
             self.assertFalse(AccessEvent.objects.exists())
             self.assertContains(response, "&lt;script&gt;")
             self.assertNotContains(response, note)

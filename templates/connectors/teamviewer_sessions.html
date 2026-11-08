@@ -1,0 +1,8 @@
+{% extends 'base.html' %}{% block content %}
+<nav class="domain-tabs"><a href="{% url 'teamviewer-home' %}">← Collecte TeamViewer</a></nav>
+<h1>Sessions TeamViewer regroupées</h1>
+<p>Une session par identifiant TeamViewer et par organisation, même si plusieurs collecteurs ou relectures la rapportent. Les observations et corrections sont conservées séparément.</p>
+<p>Le regroupement ne prouve ni la visibilité de tous les accès, ni l’intervenant, ni un privilège Windows. Les correspondances explicites s’examinent dans chaque détail.</p>
+<div class="table-wrap"><table><thead><tr><th>Session source</th><th>Observations</th><th>Premier regroupement</th><th>Détail</th></tr></thead><tbody>{% for session in sessions %}<tr><td>{{ session.remote_id }}</td><td>{{ session.observation_count }}</td><td>{{ session.registered_at }}</td><td><a href="{% url 'teamviewer-session' session.pk %}">Examiner les preuves →</a></td></tr>{% empty %}<tr><td colspan="4">Aucune session regroupée. Le traitement de tâches existant indexe progressivement les observations collectées.</td></tr>{% endfor %}</tbody></table></div>
+<p>100 derniers regroupements. Aucune preuve historique n’est purgée automatiquement.</p>
+{% endblock %}

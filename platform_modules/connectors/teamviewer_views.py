@@ -6,6 +6,7 @@ from cryptography.fernet import InvalidToken
 from django import forms
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.db.models import Count
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
@@ -19,6 +20,8 @@ from .teamviewer_ingestion import verify_report
 from .teamviewer_mapping import KINDS, publish_mapping, resolve_sighting, verify_mapping
 from .teamviewer_mapping_models import TeamViewerMapping, TeamViewerSighting
 from .teamviewer_models import TeamViewerCollector, TeamViewerReport, TeamViewerRun
+from .teamviewer_session_models import TeamViewerSession, TeamViewerSessionEvidence
+from .teamviewer_sessions import resolve_session
 
 MAPPING_LABELS = {
     "account": "Compte opérateur TeamViewer",
@@ -221,6 +224,47 @@ def report_detail(request, report_id):
             sightings=sightings[:20],
             preview=preview,
             preview_error=preview_error,
+            session_evidence=TeamViewerSessionEvidence.objects.filter(sighting=sighting)
+            .select_related("session")
+            .first()
+            if sighting
+            else None,
+        ),
+    )
+
+
+@scoped("connectors", roles=("admin",))
+def sessions(request):
+    rows = TeamViewerSession.objects.annotate(observation_count=Count("observations")).order_by(
+        "-registered_at"
+    )[:100]
+    return private_response(request, "connectors/teamviewer_sessions.html", dict(sessions=rows))
+
+
+@scoped("connectors", roles=("admin",))
+def session_detail(request, session_id):
+    session = get_object_or_404(
+        TeamViewerSession.objects.select_related("audit", "origin__report", "origin__run__audit"),
+        pk=session_id,
+    )
+    challenge = ensure_recent(request)
+    if challenge is not None:
+        return challenge
+    resolution = resolve_session(session, organization=request.organization)
+    return private_response(
+        request,
+        "connectors/teamviewer_session.html",
+        dict(
+            session=session,
+            resolution=resolution,
+            dimensions=[
+                dict(
+                    label=MAPPING_LABELS[kind],
+                    result=resolution.dimensions[kind],
+                    state_label=MAPPING_STATES[resolution.dimensions[kind].state],
+                )
+                for kind in KINDS
+            ],
         ),
     )
 

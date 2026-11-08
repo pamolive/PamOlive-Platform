@@ -2,7 +2,7 @@
 {% block content %}
 <h1>Collecte TeamViewer</h1>
 <p>Rapports de sessions terminées, lus depuis l’API officielle. Les identifiants externes restent des références source : aucune personne, aucun privilège et aucun ticket vérifié ne sont déduits automatiquement.</p>
-<nav class="domain-tabs"><a href="{% url 'teamviewer-new' %}">Nouveau collecteur</a><a href="{% url 'connectors-home' %}">Sources d’observation</a><a href="{% url 'provisioning-home' %}">Provisioning SCIM</a></nav>
+<nav class="domain-tabs"><a href="{% url 'teamviewer-new' %}">Nouveau collecteur</a><a href="{% url 'teamviewer-sessions' %}">Sessions regroupées</a><a href="{% url 'connectors-home' %}">Sources d’observation</a><a href="{% url 'provisioning-home' %}">Provisioning SCIM</a></nav>
 {% for collector in collectors %}
 <article class="workflow-card"><h2>{{ collector.name }}</h2><p>{{ collector.enabled|yesno:'Activé,Inactif' }} · révision {{ collector.revision }} · test {{ collector.tested_at }} · notes {{ collector.collect_notes|yesno:'conservées,non collectées' }}</p>
 <p>Dernier résultat : {{ collector.last_code|default:'Aucun passage' }}. Prochain passage : {{ collector.next_run_at }}{% if collector.scan_until %}. Parcours en cours jusqu’au {{ collector.scan_until }}{% endif %}.</p>

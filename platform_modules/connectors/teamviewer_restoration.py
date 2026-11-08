@@ -7,6 +7,8 @@ from .teamviewer_ingestion import verify_report, verify_run
 from .teamviewer_mapping import verify_mapping
 from .teamviewer_mapping_models import TeamViewerMapping, TeamViewerSighting
 from .teamviewer_models import TeamViewerCollector, TeamViewerReport, TeamViewerRun
+from .teamviewer_session_models import TeamViewerSession, TeamViewerSessionEvidence
+from .teamviewer_sessions import _verify_evidence_link, verify_session
 from .teamviewer_sightings import _verify_sighting_link
 
 
@@ -46,5 +48,25 @@ def verify_evidence():
     ):
         if not verify_mapping(mapping, check_target=False):
             raise RuntimeError("Restored TeamViewer mapping proof is invalid.")
+        signed += 1
+    for session in TeamViewerSession.unscoped.select_related(
+        "audit", "origin__run__audit", "origin__report"
+    ).iterator(chunk_size=100):
+        if not verify_session(session):
+            raise RuntimeError("Restored TeamViewer physical session proof is invalid.")
+        if not TeamViewerSessionEvidence.unscoped.filter(
+            session_id=session.pk,
+            sighting_id=session.origin_id,
+            organization_id=session.organization_id,
+        ).exists():
+            raise RuntimeError("Restored TeamViewer session origin link is missing.")
+        signed += 1
+    for evidence in TeamViewerSessionEvidence.unscoped.select_related(
+        "audit", "session", "sighting__run__audit", "sighting__report"
+    ).iterator(chunk_size=100):
+        # All sessions/runs were checked above; still inspect every link, including
+        # malformed tenant relations instead of filtering them out of verification.
+        if not _verify_evidence_link(evidence):
+            raise RuntimeError("Restored TeamViewer session observation proof is invalid.")
         signed += 1
     return encrypted, signed

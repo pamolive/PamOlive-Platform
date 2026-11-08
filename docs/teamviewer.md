@@ -2,7 +2,7 @@
 
 Le module Connecteurs lit les rapports de sessions TeamViewer terminées et conserve leurs preuves source par organisation. Il fonctionne dans le conteneur applicatif existant : aucun worker Compose, Redis ou conteneur TeamViewer supplémentaire n’est nécessaire.
 
-Ce parcours livre la collecte brute, les correspondances explicites et leur lecture dans le détail d’un rapport. La normalisation en événements d’accès corrélés reste à implémenter : une association affichée ne constitue pas encore une explication d’accès. Les rapports ne sont pas des captures vidéo de sessions.
+Ce parcours livre la collecte brute, les correspondances explicites et le regroupement des observations d’une session. La normalisation en événements d’accès corrélés reste à implémenter : une association affichée ne constitue pas encore une explication d’accès. Les rapports ne sont pas des captures vidéo de sessions.
 
 ## Préparer la destination et le jeton
 
@@ -43,6 +43,26 @@ La publication la plus récente applicable l’emporte sur sa période. Pour cor
 
 Le détail affiche les périodes et leurs preuves. Une identité n’est attribuée à toute la session que si son association couvre toute la durée. Des cibles différentes ou une couverture partielle restent signalées, sans choix arbitraire du propriétaire du compte. Une résolution complexe est bornée à 64 attestations chevauchantes ; une nouvelle attestation vérifiable couvrant toute la période peut remplacer les précédentes sans les supprimer.
 
+## Regroupement des sessions
+
+Ouvrir **Connecteurs → Collecte TeamViewer → Sessions regroupées**, puis choisir une session. Le détail demande une MFA personnelle récente et affiche les observations source, leurs révisions et les attestations d’affectation. Depuis un rapport déjà indexé, le lien **Examiner la session regroupée et ses autres sources** mène au même dossier.
+
+Le traitement de tâches existant regroupe progressivement les observations par identifiant de session TeamViewer, à l’intérieur d’une organisation. Plusieurs collecteurs, une relecture identique ou une correction de note ne créent pas plusieurs sessions. Chaque observation conserve cependant son propre lien signé vers le dossier ; aucune date de lecture, note ou version source n’est remplacée. Un identifiant identique dans une autre organisation reste un dossier distinct.
+
+Le rapprochement distingue les faits source des associations administratives. Des références de compte ou de machine différentes, ou des horaires différents, constituent un conflit. Une référence absente reste inconnue dans son périmètre, sans être traitée comme la preuve d’un autre compte ou d’une autre machine. Si les versions se contredisent, le dossier les conserve sans désigner automatiquement la bonne. Une correction structurelle n’efface donc pas le conflit antérieur ; son arbitrage reste un parcours à livrer.
+
+Pour chaque dimension — compte opérateur, identité attribuée et machine — toutes les révisions source examinées doivent disposer de correspondances concordantes. Une affectation connue pour un collecteur ne remplit pas celle qui manque chez un autre, ni celle d’une révision utilisant un nouveau jeton. Le propriétaire du compte n’est jamais utilisé pour compléter l’intervenant.
+
+| État du dossier | Interprétation |
+|---|---|
+| `resolved` | Les trois correspondances concordent sur la période dans chaque périmètre examiné ; cela n’accorde aucun droit et ne signifie pas « accès autorisé » |
+| `unresolved` | Les faits source concordent, mais une association manque, est partielle, retirée ou contradictoire ; chaque dimension garde son état propre |
+| `pending` | Des observations déjà collectées attendent leur indexation ; les seules anciennes données ne sont pas présentées comme un résultat complet |
+| `conflict` | Les versions divergent sur les références source ou les horaires ; aucune attribution consolidée n’est affichée |
+| `invalid` ou `limit` | Une preuve n’est pas vérifiable ou la résolution dépasse sa borne ; aucun résultat complet n’est déclaré |
+
+La résolution examine au maximum 64 variantes distinctes de rapport et de révision de configuration. Les relectures identiques ne consomment pas cette borne, même si toutes leurs preuves restent conservées et vérifiées pendant une restauration. L’indexation traite au plus dix observations par passage ; elle n’ajoute ni service Docker ni processus de tâches supplémentaire. La liste montre les 100 derniers dossiers créés, sans purge automatique.
+
 ## Fenêtres et reprises de collecte
 
 L’API est interrogée en lecture seule sur `GET /api/v1/reports/connections`. Le paramètre `from_date` filtre le début des sessions : le collecteur l’omet pour conserver une session longue ayant commencé avant la fenêtre. Il fige `to_date`, parcourt les pages par `offset_id` et applique localement la borne de fin minimale. Le contrat est décrit dans la [documentation officielle TeamViewer](https://webapi.teamviewer.com/api/v1/docs/index) et le [client officiel TeamViewerPS](https://github.com/teamviewer/TeamViewerPS/blob/a15ec4e55af7d17ce338aa9b4dbcce4db9e81eeb/Cmdlets/Public/Get-TeamViewerConnectionReport.ps1).
@@ -57,7 +77,7 @@ Les erreurs transitoires, dont HTTP 429, libèrent le bail et prévoient une rep
 
 Chaque version sémantique d’un rapport conserve l’identifiant source, les références de compte et de machine, le début, la fin, la réception et sa signature. Les notes sont chiffrées seulement si leur collecte est activée. Une relecture identique est dédupliquée ; une correction crée une nouvelle version. Lorsque les notes sont désactivées, une modification des seules notes ne crée pas une nouvelle preuve.
 
-Les passages disposent d’un manifeste signé des rapports, relié à l’audit chaîné. Les liens d’observation et les attestations de correspondance sont également signés. PostgreSQL refuse les modifications et suppressions de ces preuves et impose des références dans la même organisation et le même collecteur. Le périmètre d’un collecteur ne peut pas être déplacé vers une autre organisation. La qualification de restauration vérifie hors ligne les secrets et preuves historiques, y compris ceux des collecteurs inactifs, sans contacter TeamViewer.
+Les passages disposent d’un manifeste signé des rapports, relié à l’audit chaîné. Les liens d’observation, attestations de correspondance, dossiers de session et liens de regroupement sont également signés. PostgreSQL refuse les modifications et suppressions de ces preuves et impose des références dans la même organisation. Les observations restent liées à leur collecteur et les liens de regroupement au même identifiant de session source. Le périmètre d’un collecteur ne peut pas être déplacé vers une autre organisation. La qualification de restauration vérifie hors ligne les secrets et preuves historiques, y compris ceux des collecteurs inactifs, sans contacter TeamViewer.
 
 Les limites d’interprétation sont importantes :
 
