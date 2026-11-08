@@ -449,6 +449,16 @@ def claim_session(connection_id, *, actor, session_key, client_ip, ticket, insta
         return item.pk, organization.pk, item.owner_token
 
 
+def _startup_read_only_supported():
+    if database_connection.vendor != "postgresql":
+        return False
+    # Optimistic fence re-reads require a new snapshot for each statement.
+    # A deployment using stronger isolation keeps the original locked write path.
+    with database_connection.cursor() as cursor:
+        cursor.execute("SHOW transaction_isolation")
+        return cursor.fetchone()[0] == "read committed"
+
+
 @transaction.atomic
 def check_session(
     connection_id,
@@ -468,6 +478,9 @@ def check_session(
             cursor.execute("SET LOCAL statement_timeout = '2s'")
     if type(write_heartbeat) is not bool or (not write_heartbeat and target_snapshot is not None):
         raise ValueError("Opening evidence requires the durable session check.")
+    startup_recheck = not write_heartbeat
+    if startup_recheck and not _startup_read_only_supported():
+        write_heartbeat = True
     if target_snapshot is not None:
         Organization.objects.select_for_update().get(pk=organization.pk)
     with organization_context(organization):
@@ -477,7 +490,7 @@ def check_session(
         item = _related(queryset).get(pk=connection_id)
         if item.owner_token != owner_token or item.status not in ("connecting", "active"):
             raise PermissionDenied
-        if not write_heartbeat and item.status != "connecting":
+        if startup_recheck and item.status != "connecting":
             raise PermissionDenied("The read-only recheck is restricted to startup.")
         _check_authority(item, session_key=session_key, client_ip=client_ip)
         if not write_heartbeat:

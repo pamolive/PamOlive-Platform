@@ -14,6 +14,15 @@ from platform_modules.pam.sessions import finish_session
 
 
 class BrokerDatabaseErrorTests(SimpleTestCase):
+    def test_startup_optimization_is_not_assumed_for_other_database_engines(self):
+        from platform_modules.pam.sessions import _startup_read_only_supported
+
+        with patch(
+            "platform_modules.pam.sessions.database_connection",
+            SimpleNamespace(vendor="sqlite"),
+        ):
+            self.assertFalse(_startup_read_only_supported())
+
     async def test_transactions_of_one_relay_are_serialized_without_a_global_lock(self):
         active, peak = 0, 0
 

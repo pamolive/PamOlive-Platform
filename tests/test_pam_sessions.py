@@ -1,6 +1,7 @@
 import json
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from unittest import skipUnless
 from unittest.mock import AsyncMock, patch
@@ -10,8 +11,8 @@ import pyotp
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import DatabaseError, connection, transaction
-from django.test import TestCase, override_settings
+from django.db import DatabaseError, close_old_connections, connection, connections, transaction
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
@@ -52,8 +53,7 @@ from platform_modules.pam.sessions import (
 from .person_fixtures import bind_person
 
 
-@override_settings(PAM_ALLOWED_HOSTS={"ssh.example.test:22"})
-class PamSessionTests(TestCase):
+class PamSessionFixtureMixin:
     @classmethod
     def setUpTestData(cls):
         users = get_user_model()
@@ -183,7 +183,11 @@ class PamSessionTests(TestCase):
         )
         return item, owner
 
-    def test_startup_recheck_is_read_only_but_rechecks_endpoint_authority(self):
+
+@override_settings(PAM_ALLOWED_HOSTS={"ssh.example.test:22"})
+class PamSessionTests(PamSessionFixtureMixin, TestCase):
+    @patch("platform_modules.pam.sessions._startup_read_only_supported", return_value=True)
+    def test_startup_recheck_is_read_only_but_rechecks_endpoint_authority(self, _supported):
         item, owner = self.claimed()
         before = RelayConnection.objects.filter(pk=item.pk).values().get()
         with CaptureQueriesContext(connection) as queries:
@@ -202,7 +206,8 @@ class PamSessionTests(TestCase):
                 item.pk, self.org, owner, session_key=self.session_key, client_ip="127.0.0.1"
             )
 
-    def test_startup_recheck_does_not_reuse_a_logged_out_portal_session(self):
+    @patch("platform_modules.pam.sessions._startup_read_only_supported", return_value=True)
+    def test_startup_recheck_does_not_reuse_a_logged_out_portal_session(self, _supported):
         item, owner = self.claimed()
         Session.objects.filter(session_key=self.session_key).delete()
         with self.assertRaises(PermissionDenied):
@@ -227,7 +232,49 @@ class PamSessionTests(TestCase):
         if connection.vendor == "postgresql":
             self.assertTrue(any("FOR UPDATE" in query["sql"].upper() for query in queries))
 
-    def test_startup_recheck_revalidates_fence_after_authority_reads(self):
+    def test_startup_recheck_uses_durable_fallback_for_stronger_isolation(self):
+        item, owner = self.claimed()
+        item.refresh_from_db()
+        next_heartbeat = item.heartbeat_at + timedelta(seconds=2)
+        with (
+            patch("platform_modules.pam.sessions._startup_read_only_supported", return_value=False),
+            patch("platform_modules.pam.sessions.timezone.now", return_value=next_heartbeat),
+            CaptureQueriesContext(connection) as queries,
+        ):
+            check_startup_session(
+                item.pk, self.org, owner, session_key=self.session_key, client_ip="127.0.0.1"
+            )
+        item.refresh_from_db()
+        self.assertEqual(item.heartbeat_at, next_heartbeat)
+        if connection.vendor == "postgresql":
+            self.assertTrue(any("FOR UPDATE" in query["sql"].upper() for query in queries))
+        RelayConnection.objects.filter(pk=item.pk).update(status="active")
+        with (
+            patch("platform_modules.pam.sessions._startup_read_only_supported", return_value=False),
+            self.assertRaises(PermissionDenied),
+        ):
+            check_startup_session(
+                item.pk, self.org, owner, session_key=self.session_key, client_ip="127.0.0.1"
+            )
+
+    @skipUnless(connection.vendor == "postgresql", "PostgreSQL isolation gate")
+    def test_startup_read_only_gate_checks_actual_transaction_isolation(self):
+        from platform_modules.pam.sessions import _startup_read_only_supported
+
+        with connection.cursor() as cursor:
+            cursor.execute("SHOW transaction_isolation")
+            expected = cursor.fetchone()[0] == "read committed"
+        self.assertEqual(_startup_read_only_supported(), expected)
+        for isolation in ("repeatable read", "serializable", "unrecognized"):
+            with self.subTest(isolation=isolation), patch.object(connection, "cursor") as cursor:
+                cursor.return_value.__enter__.return_value.fetchone.return_value = (isolation,)
+                self.assertFalse(_startup_read_only_supported())
+                cursor.return_value.__enter__.return_value.execute.assert_called_once_with(
+                    "SHOW transaction_isolation"
+                )
+
+    @patch("platform_modules.pam.sessions._startup_read_only_supported", return_value=True)
+    def test_startup_recheck_revalidates_fence_after_authority_reads(self, _supported):
         from platform_modules.pam.sessions import _check_authority
 
         item, owner = self.claimed()
@@ -584,3 +631,50 @@ class PamSessionTests(TestCase):
                     )
                 ]
             )
+
+
+@skipUnless(connection.vendor == "postgresql", "PostgreSQL concurrent startup fence")
+@override_settings(PAM_ALLOWED_HOSTS={"ssh.example.test:22"})
+class StartupFenceConcurrencyTests(PamSessionFixtureMixin, TransactionTestCase):
+    def setUp(self):
+        type(self).setUpTestData()
+        super().setUp()
+
+    def test_committed_owner_change_in_another_transaction_invalidates_the_recheck(self):
+        from platform_modules.pam.sessions import _check_authority, _startup_read_only_supported
+
+        self.assertTrue(_startup_read_only_supported(), "This gate requires READ COMMITTED")
+        item, owner = self.claimed()
+        replacement = uuid.uuid4()
+
+        def change_owner():
+            close_old_connections()
+            try:
+                with organization_context(self.org), transaction.atomic():
+                    RelayConnection.objects.filter(pk=item.pk).update(owner_token=replacement)
+            finally:
+                connections.close_all()
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+
+            def changed_after_validation(checked, **kwargs):
+                _check_authority(checked, **kwargs)
+                executor.submit(change_owner).result(timeout=5)
+
+            with (
+                patch(
+                    "platform_modules.pam.sessions._check_authority",
+                    side_effect=changed_after_validation,
+                ),
+                self.assertRaises(PermissionDenied),
+            ):
+                check_startup_session(
+                    item.pk,
+                    self.org,
+                    owner,
+                    session_key=self.session_key,
+                    client_ip="127.0.0.1",
+                )
+        # The other connection's commit survives our rejected read transaction.
+        item.refresh_from_db()
+        self.assertEqual(item.owner_token, replacement)
