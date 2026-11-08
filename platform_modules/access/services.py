@@ -107,6 +107,9 @@ def ingest_event(data, *, organization, actor=None, source=None):
         if existing:
             return existing, False
         data = dict(data)
+        # Capture at the service boundary, not from a caller or a bound model
+        # default. Managed collectors use their separately verified source receipt.
+        data["received_at"] = timezone.now()
         for field in ("occurred_at", "ended_at"):
             value = data.get(field)
             if value is None:

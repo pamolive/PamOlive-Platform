@@ -124,6 +124,26 @@ class TeamViewerAccessTests(SessionFixtureData, TeamViewerFixture):
         self.assertTrue(verify_evaluation(self.latest()))
         self.assertTrue(verify_chain(self.org))
 
+    def test_public_ingestion_captures_server_receipt_not_a_callers_timestamp(self):
+        received = self.source.ended_at + timedelta(seconds=2)
+        with patch("django.utils.timezone.now", return_value=received):
+            event, _ = ingest_event(
+                dict(
+                    source="ordinary-receipt-fixture",
+                    external_id="receipt-1",
+                    occurred_at=self.source.started_at,
+                    ended_at=self.source.ended_at,
+                    received_at=self.before,
+                    resource=self.device,
+                    method="TeamViewer",
+                    action="remote_session",
+                ),
+                organization=self.org,
+                actor=self.admin,
+            )
+        event.refresh_from_db()
+        self.assertEqual(event.received_at, received)
+
     def test_explicit_assignments_explain_scope_without_rewriting_source_or_claiming_authentication(
         self,
     ):
