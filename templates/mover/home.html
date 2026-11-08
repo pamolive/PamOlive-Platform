@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Mobilité interne</h1>
+<p>Depuis la fiche d’une personne, préparez un changement de poste et de rôles. La décision retire seulement les accès issus des affectations remplacées ; les nouveaux accès restent à approuver.</p>
+<nav class="domain-tabs"><a href="{% url 'identity-home' %}">Choisir une identité</a><a href="{% url 'mover-catalog' %}">Catalogue des rôles métier</a>{% if can_publish %}<a href="{% url 'mover-role-new' %}">Nouveau rôle métier</a>{% endif %}</nav>
+<div class="table-wrap"><table><thead><tr><th>Personne</th><th>Poste proposé</th><th>Référence</th><th>État</th></tr></thead><tbody>
+{% for proposal in proposals %}<tr><td><a href="{% url 'mover-detail' proposal.pk %}">{{ proposal.identity }}</a></td><td>{{ proposal.body.department }}</td><td>{{ proposal.body.reference }}</td><td>{% if proposal.movedecision %}{{ proposal.movedecision.applied|yesno:'Appliqué,Refusé' }}{% else %}À examiner{% endif %}</td></tr>{% empty %}<tr><td colspan="4">Aucune demande.</td></tr>{% endfor %}
+</tbody></table></div>
+<p>{% if proposals.has_previous %}<a href="?page={{ proposals.previous_page_number }}">Précédent</a>{% endif %} Page {{ proposals.number }} / {{ proposals.paginator.num_pages }} {% if proposals.has_next %}<a href="?page={{ proposals.next_page_number }}">Suivant</a>{% endif %}</p>
+{% endblock %}

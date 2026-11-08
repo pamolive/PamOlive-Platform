@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block extra_head %}<script src="{% static 'platform_core/mover-formset.js' %}" defer></script>{% endblock %}
+{% block content %}
+<p><a href="{% url 'mover-catalog' %}">← Rôles métier</a></p><h1>{% if role %}Publier une révision de {{ role }}{% else %}Créer un rôle métier{% endif %}</h1>
+<p>Chaque publication demande une MFA récente. Décochez la disponibilité pour bloquer les nouvelles affectations et les nouvelles approbations de ce rôle, sans retirer les droits déjà accordés.</p>
+<form method="post" class="erp-form" data-role-form>{% csrf_token %}{{ form.as_p }}{{ entries.management_form }}{{ entries.non_form_errors }}
+<div data-role-entries>{% for entry in entries %}<fieldset class="workflow-card"><legend>Accès {{ forloop.counter }}</legend>{{ entry.as_p }}</fieldset>{% endfor %}</div>
+<template data-role-entry><fieldset class="workflow-card"><legend>Nouvel accès</legend>{{ entries.empty_form.as_p }}</fieldset></template>
+<p><button type="button" class="button subtle" data-role-add hidden>Ajouter un accès au rôle</button></p>
+<button class="button">Publier la révision</button></form>
+{% endblock %}

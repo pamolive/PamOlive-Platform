@@ -3,5 +3,6 @@
 {% block content %}
 <h1>{{ title }}</h1><nav class="domain-tabs"><a href="{% url 'record-list' 'identity' %}">Identités</a><a href="{% url 'record-list' 'account' %}">Comptes</a><a href="{% url 'record-list' 'resource' %}">Ressources</a><a href="{% url 'record-list' 'credential' %}">Certificats et badges</a><a href="{% url 'record-list' 'grant' %}">Droits</a><a href="{% url 'record-list' 'intent' %}">Intentions</a><a href="{% url 'record-list' 'event' %}">Observations</a></nav>
 {% if kind == 'identity' and can_manage_bindings %}<p><a href="{% url 'identity-login-bindings' %}">Administration · Lier les comptes PAM-olive aux personnes →</a></p>{% endif %}
+{% if kind == 'identity' %}<p><a href="{% url 'mover-home' %}">Mobilité interne et rôles métier →</a></p>{% endif %}
 <div class="table-wrap"><table><thead><tr><th>Enregistrement</th><th>Type / méthode</th><th>État</th><th></th></tr></thead><tbody>{% for obj in rows %}<tr><td>{{ obj }}</td><td>{{ obj.display_type }}</td><td>{{ obj.display_status }}</td><td><a href="{% url 'record-detail' kind obj.pk %}">Ouvrir →</a></td></tr>{% empty %}<tr><td colspan="4">Aucun enregistrement. Créez le premier avec « Nouveau ».</td></tr>{% endfor %}</tbody></table></div><p class="help-note">Les données affichées appartiennent à {{ current_organization }}.</p>
 {% endblock %}

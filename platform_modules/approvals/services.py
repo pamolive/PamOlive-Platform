@@ -28,10 +28,18 @@ def decide(intent_id, *, actor, organization, approved, comment):
         if ApprovalDecision.objects.filter(intent=intent, reviewer=actor).exists():
             raise ValidationError("Vous avez déjà voté sur cette demande.")
         from platform_modules.governance.policy import approval_requirements, enforce_authorization
+        from platform_modules.identity.mover import authorize_move_intent
 
-        binding = None
+        _, binding = authorize_move_intent(
+            intent,
+            actor=actor,
+            organization=organization,
+            approved=approved,
+        )
         assurance = None
-        if intent.fulfillment == "pam":
+        if binding:
+            assurance = require_recent_authentication(actor, organization)
+        elif intent.fulfillment == "pam":
             from platform_modules.identity.bindings import current_binding
             from platform_modules.pam.mandates import validate_request
 
@@ -42,10 +50,13 @@ def decide(intent_id, *, actor, organization, approved, comment):
             binding = current_binding(actor, organization=organization)
             if binding.identity_id == intent.identity_id:
                 raise ValidationError("L’intervenant ne peut pas approuver avec un autre compte.")
-            if ApprovalDecision.objects.filter(
+        if (
+            binding
+            and ApprovalDecision.objects.filter(
                 intent=intent, reviewer_identity_id=binding.identity_id
-            ).exists():
-                raise ValidationError("Cette personne a déjà voté, même avec un autre compte.")
+            ).exists()
+        ):
+            raise ValidationError("Cette personne a déjà voté, même avec un autre compte.")
         if approved:
             enforce_authorization(intent, organization=organization, remaining=True)
         if not comment.strip():

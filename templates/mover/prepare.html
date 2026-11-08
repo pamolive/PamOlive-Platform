@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block content %}
+<p><a href="{% url 'mover-home' %}">← Mobilité interne</a></p><h1>Préparer le changement de {{ identity }}</h1>
+<p>Équipe actuelle : {{ identity.department|default:'non renseignée' }}. Sélectionnez les rôles à conserver et les nouveaux rôles. Un rôle omis sera retiré après approbation ; une sélection vide retire tous les rôles métier suivis.</p>
+{% if form %}
+<form method="post" class="erp-form">{% csrf_token %}{{ form.as_p }}<button class="button">Soumettre à un approbateur</button></form>
+<p><a href="{% url 'mover-prepare' identity.pk %}">Revoir les rôles choisis</a></p>
+{% else %}
+<form method="get" class="erp-form">{{ picker.as_p }}<button class="button" name="choose" value="1">Continuer vers les comptes et le motif</button></form>
+{% endif %}
+{% endblock %}

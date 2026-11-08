@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block content %}
+<p><a href="{% url 'mover-home' %}">← Mobilité interne</a></p><h1>Rôles métier</h1>
+<p>Un rôle définit des accès à demander. Sa publication n’attribue aucun droit. Une nouvelle révision ne modifie pas les anciennes affectations.</p>
+{% if can_publish %}<p><a class="button" href="{% url 'mover-role-new' %}">Nouveau rôle métier</a></p>{% endif %}
+<div class="table-wrap"><table><thead><tr><th>Rôle</th><th>Identifiant</th><th>État</th><th>Accès proposés</th></tr></thead><tbody>
+{% for role in roles %}<tr><td>{% if can_publish %}<a href="{% url 'mover-role-edit' role.key %}">{{ role }}</a>{% else %}{{ role }}{% endif %}</td><td>{{ role.key }}</td><td>{{ role.body.enabled|yesno:'Disponible,Retiré du catalogue' }}</td><td>{{ role.body.entries|length }}</td></tr>{% empty %}<tr><td colspan="4">Aucun rôle publié.</td></tr>{% endfor %}
+</tbody></table></div>
+<p>{% if roles.has_previous %}<a href="?page={{ roles.previous_page_number }}">Précédent</a>{% endif %} Page {{ roles.number }} / {{ roles.paginator.num_pages }} {% if roles.has_next %}<a href="?page={{ roles.next_page_number }}">Suivant</a>{% endif %}</p>
+{% endblock %}

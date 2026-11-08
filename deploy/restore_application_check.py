@@ -247,6 +247,9 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
     from platform_modules.recertification.evidence import verify_recertification
 
     result["signed_proofs_checked"] += verify_recertification()
+    from platform_modules.identity.mover import verify_mover
+
+    result["signed_proofs_checked"] += verify_mover()
     for evaluation in AccessEvaluation.unscoped.select_related("audit", "event", "intent").iterator(
         chunk_size=100
     ):

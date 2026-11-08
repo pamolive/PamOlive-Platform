@@ -8,6 +8,14 @@ from django.utils import timezone
 
 from platform_core.tenancy import ScopedModel
 
+from .mover_models import (  # noqa: F401
+    MoveAccess,
+    MoveDecision,
+    MoveGrant,
+    MoveProposal,
+    RoleRevision,
+)
+
 
 class Identity(ScopedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

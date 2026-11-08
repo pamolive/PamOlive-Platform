@@ -1,5 +1,6 @@
 {% extends 'base.html' %}{% block content %}
 {% if kind == 'identity' and intelligence_enabled %}<nav class="domain-tabs"><a href="{% url 'intelligence-home' %}?identity={{ obj.pk }}">Graphe et chronologie de cette identité →</a></nav>{% endif %}
+{% if kind == 'identity' and obj.status == 'active' %}{% if obj.kind == 'human' or obj.kind == 'external' %}<nav class="domain-tabs"><a href="{% url 'mover-prepare' obj.pk %}">Préparer un changement de poste →</a></nav>{% endif %}{% endif %}
 {% if kind == 'event' %}<form method="post" action="{% url 'event-reevaluate' obj.pk %}">{% csrf_token %}<button class="button subtle">Réévaluer sans modifier le fait source</button></form><details><summary>Historique des 20 dernières évaluations</summary><ul>{% for item in evaluation_history %}<li>{{ item.evaluated_at }} · {{ item.rule_version }} · {{ item.get_verdict_display }} · preuve {{ item.pk }}</li>{% endfor %}</ul></details>{% endif %}
 <p class="eyebrow">{{ title }}</p><h1>{{ obj }}</h1><dl class="record-details">{% for label,value in details %}<div><dt>{{ label }}</dt><dd>{{ value|default:'Non renseigné' }}</dd></div>{% endfor %}</dl>
 {% if kind == 'intent' %}<p><a href="{% url 'intent-business-context' obj.pk %}">Références métier, sources et historique →</a> — consultation des preuves après MFA personnelle.</p>{% endif %}

@@ -468,6 +468,88 @@ def recertification_corpus(actor, organization):
     assert verify_recertification() >= 7
 
 
+def mover_corpus(actor, requester, organization):
+    """Restore a withdrawn role grant and its full provenance, with no remote calls."""
+    import time
+
+    from platform_core.authorization import recent_authentication
+    from platform_modules.approvals.services import decide
+    from platform_modules.identity.models import ExternalAccount, Identity, Resource
+    from platform_modules.identity.mover import (
+        decide_move,
+        propose_move,
+        publish_role,
+        verify_mover,
+    )
+    from platform_modules.identity.mover_models import MoveAccess, MoveGrant
+
+    person = Identity.objects.create(
+        organization=organization, name="Mobility fixture", kind="human"
+    )
+    account = ExternalAccount.objects.create(
+        organization=organization,
+        identity=person,
+        username="synthetic-mover",
+        system="Offline",
+    )
+    resource = Resource.objects.create(
+        organization=organization,
+        name="Offline role resource",
+        kind="application",
+    )
+    with recent_authentication(actor, organization, time.time()):
+        role = publish_role(
+            key="offline-mobility",
+            name="Offline mobility",
+            enabled=True,
+            expected_revision=0,
+            entries=[dict(resource=resource.pk, method="SSO", privilege="reader", days=30)],
+            actor=actor,
+            organization=organization,
+        )
+
+    def propose(department, assignments):
+        with recent_authentication(requester, organization, time.time()):
+            return propose_move(
+                identity_id=person.pk,
+                department=department,
+                assignments=assignments,
+                reason="Synthetic role transfer",
+                reference="OFFLINE-HR",
+                actor=requester,
+                organization=organization,
+            )
+
+    first = propose("Support", {role.pk: [account.pk]})
+    with recent_authentication(actor, organization, time.time()):
+        applied = decide_move(
+            first.pk,
+            approved=True,
+            comment="Synthetic approval",
+            actor=actor,
+            organization=organization,
+        )
+        intent = MoveAccess.objects.get(decision=applied).intent
+        decide(
+            intent.pk,
+            approved=True,
+            comment="Synthetic IAM approval",
+            actor=actor,
+            organization=organization,
+        )
+    second = propose("Operations", {})
+    with recent_authentication(actor, organization, time.time()):
+        decide_move(
+            second.pk,
+            approved=True,
+            comment="Synthetic withdrawal",
+            actor=actor,
+            organization=organization,
+        )
+    assert MoveGrant.objects.get(access__intent=intent).grant.status == "revoked"
+    assert verify_mover() == 7
+
+
 def main():
     import django
 
@@ -529,6 +611,7 @@ def main():
                 business_corpus(fixture.admin, fixture.org, fixture.intent.pk)
                 scim_creation_corpus(fixture.admin, fixture.operator, fixture.org)
                 recertification_corpus(fixture.admin, fixture.org)
+                mover_corpus(fixture.admin, fixture.operator, fixture.org)
                 publish_domain_event(
                     organization=fixture.org,
                     emitter="identity",

@@ -80,6 +80,17 @@ def grant_from_approval(intent, *, actor, organization):
     if not ApprovalDecision.objects.filter(intent=intent, reviewer=actor, approved=True).exists():
         raise ValidationError("La preuve d’approbation correspondante est requise.")
     Organization.objects.select_for_update().get(pk=organization.pk)
+    from .mover import attest_grant, authorize_move_intent
+
+    link, _ = authorize_move_intent(intent, actor=actor, organization=organization)
+    if link:
+        from platform_modules.governance.policy import approval_requirements
+
+        if link.intent.status != "approved" or not approval_requirements(link.intent)["complete"]:
+            raise ValidationError(
+                "Les approbations requises pour cet accès métier sont incomplètes."
+            )
+        intent = link.intent
     if intent.provisioned_grant_id:
         return intent.provisioned_grant
     grant = Grant(
@@ -102,6 +113,8 @@ def grant_from_approval(intent, *, actor, organization):
 
     enforce_authorization(grant, organization=organization)
     grant.save()
+    if link:
+        attest_grant(link, grant, actor=actor, organization=organization)
     queue_grant_state(grant, actor=actor, organization=organization, origin="approvals.approved")
     record(
         action="identity.grant.approved.v1",

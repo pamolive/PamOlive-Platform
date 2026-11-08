@@ -9,11 +9,27 @@ from platform_modules.connectors import business_views, creation_views, teamview
 from platform_modules.connectors import views as connector_views
 from platform_modules.governance import views as governance_views
 from platform_modules.identity import binding_views as identity_views
+from platform_modules.identity import mover_views
 from platform_modules.intelligence import views as intelligence_views
 from platform_modules.pam import views as pam_views
 from platform_modules.recertification import views as recertification_views
 
 urlpatterns = [
+    path("identities/mobility/", mover_views.home, name="mover-home"),
+    path("identities/business-roles/", mover_views.catalog, name="mover-catalog"),
+    path("identities/business-roles/new/", mover_views.role_config, name="mover-role-new"),
+    path(
+        "identities/business-roles/<slug:key>/edit/",
+        mover_views.role_config,
+        name="mover-role-edit",
+    ),
+    path("identities/<uuid:identity_id>/move/", mover_views.prepare, name="mover-prepare"),
+    path("identities/mobility/<uuid:proposal_id>/", mover_views.detail, name="mover-detail"),
+    path(
+        "identities/mobility/<uuid:proposal_id>/decision/",
+        mover_views.decision,
+        name="mover-decision",
+    ),
     path("connectors/scim-accounts/new/", creation_views.configure, name="scim-creation-new"),
     path(
         "connectors/scim-accounts/<uuid:job_id>/",

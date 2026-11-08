@@ -12,9 +12,11 @@ L’image contient Django, l’interface, tous les modules livrés, le traitemen
 
 Les extensions signées disposent aussi de [notifications transactionnelles V2](docs/extensions.md#notifications-transactionnelles-v2) : échanges datés entre modules, destinataires isolés par organisation et traitement dans le processus de tâches existant. Une notification décrit un fait, elle ne transfère ni autorisation ni MFA. Les tâches tierces arbitraires et les effets externes ne sont pas assimilés à ces projections locales.
 
-La mise à niveau d’une installation `0.2.0a8` à `0.2.0a11` vers `0.2.0a12` suit la [procédure de migration contrôlée](docs/controlled-upgrade.md), avec sauvegarde, vérification des anciennes données et retour arrière transactionnel avant réouverture. Les commandes d’installation ci-dessous concernent une nouvelle base.
+La mise à niveau d’une installation `0.2.0a8` à `0.2.0a12` vers `0.2.0a13` suit la [procédure de migration contrôlée](docs/controlled-upgrade.md), avec sauvegarde, vérification des anciennes données et retour arrière transactionnel avant réouverture. Les commandes d’installation ci-dessous concernent une nouvelle base.
 
 La [recertification périodique](docs/recertification.md) configure des règles indépendantes par organisation, des campagnes à périmètre figé et des décisions liées à l’audit. Chaque règle reste inactive jusqu’à son activation explicite avec MFA ; confirmer une revue ne prolonge pas le droit.
+
+La [mobilité interne](docs/mobility.md) relie les changements de poste aux rôles métier versionnés. Elle retire les accès attribués par les rôles remplacés, préserve les droits indépendants et fait approuver les nouveaux accès par le circuit IAM.
 
 PostgreSQL 16+ doit être disponible sur un serveur existant, éventuellement une autre VM. `compose.yml` contient **un seul service**, `web`. Si vous souhaitez une base locale distincte, le fichier optionnel `compose.local-db.yml` ajoute un second conteneur PostgreSQL.
 
