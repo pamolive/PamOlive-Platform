@@ -30,6 +30,7 @@ from .sessions import (
 )
 
 logger = logging.getLogger(__name__)
+DATABASE_DEADLINE_SECONDS = 4
 
 
 async def database(function, *args, **kwargs):
@@ -53,7 +54,9 @@ async def database(function, *args, **kwargs):
         finally:
             connections.close_all()
 
-    return await asyncio.wait_for(sync_to_async(call, thread_sensitive=False)(), timeout=4)
+    return await asyncio.wait_for(
+        sync_to_async(call, thread_sensitive=False)(), timeout=DATABASE_DEADLINE_SECONDS
+    )
 
 
 def admission(session_key):
@@ -72,10 +75,19 @@ class Relay:
         self.session_key = self.client_ip = ""
         self.started = time.monotonic()
         self.tasks = []
+        self.database_lock = asyncio.Lock()
+
+    async def state(self, function, *args, **kwargs):
+        # One relay must not make its heartbeat, startup and capture transactions
+        # compete for its own row. PostgreSQL locks/fencing still coordinate other
+        # actors and instances. Waiting for this local queue shares the same deadline.
+        async with asyncio.timeout(DATABASE_DEADLINE_SECONDS):
+            async with self.database_lock:
+                return await database(function, *args, **kwargs)
 
     async def monitor(self):
         while True:
-            await database(
+            await self.state(
                 check_session,
                 self.connection_id,
                 self.organization,
@@ -86,7 +98,7 @@ class Relay:
             await asyncio.sleep(1)
 
     async def start(self, width, height):
-        item = await database(
+        item = await self.state(
             check_session,
             self.connection_id,
             self.organization,
@@ -100,7 +112,7 @@ class Relay:
         else:
             target = await probe_rdp(endpoint.hostname, endpoint.port, endpoint.certificate_pin)
         # A revision, role, session or contract may have changed during the network probe.
-        item = await database(
+        item = await self.state(
             check_session,
             self.connection_id,
             self.organization,
@@ -116,7 +128,7 @@ class Relay:
             item.endpoint, item.lease.intent.account, target, credentials, width, height
         )
         del credentials
-        await database(
+        await self.state(
             check_session,
             self.connection_id,
             self.organization,
@@ -163,7 +175,7 @@ class Relay:
     async def flush(self, batch):
         elapsed = max(0, int((time.monotonic() - self.started) * 1000))
         for offset in range(0, len(batch), 65536):
-            await database(
+            await self.state(
                 append_recording,
                 self.connection_id,
                 self.organization,

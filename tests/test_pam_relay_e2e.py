@@ -273,6 +273,24 @@ class NativeRelayTests(RelayHarness):
     async def test_database_failure_cuts_the_real_ssh_connection_without_claiming_revocation(self):
         await self.exercise("database_failure")
 
+    async def test_startup_and_monitor_do_not_compete_for_their_own_database_row(self):
+        from platform_modules.pam import sessions
+
+        original = sessions._check_authority
+        delayed = threading.Event()
+
+        def slow_authority(item, **kwargs):
+            # check_session already holds the relay row. Without local ordering,
+            # the second startup/monitor query exceeds its unchanged 1s lock timeout.
+            if item.status == "connecting" and not delayed.is_set():
+                delayed.set()
+                time.sleep(1.25)
+            return original(item, **kwargs)
+
+        with patch("platform_modules.pam.sessions._check_authority", side_effect=slow_authority):
+            await self.exercise("logout")
+        self.assertTrue(delayed.is_set())
+
     async def exercise(self, termination, private_key=False):
         opened, echoed, lost = asyncio.Event(), asyncio.Event(), asyncio.Event()
         processes = []
