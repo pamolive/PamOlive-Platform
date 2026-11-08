@@ -78,3 +78,5 @@ jobs:
           python -m deploy.check_active_active --env-file /tmp/pamolive-ha-ci.env
       - name: Restore a populated archive with restricted credentials and intact proofs
         run: python -m deploy.check_restore_ci --postgres-container '${{ job.services.postgres.id }}' --ha-env-file /tmp/pamolive-ha-ci.env
+      - name: Verify controlled historical upgrade, rollback and exact old-column preservation
+        run: python -m deploy.check_upgrade_ci --postgres-container '${{ job.services.postgres.id }}' --ha-env-file /tmp/pamolive-ha-ci.env

@@ -12,6 +12,8 @@ L’image contient Django, l’interface, tous les modules livrés, le traitemen
 
 Les extensions signées disposent aussi de [notifications transactionnelles V2](docs/extensions.md#notifications-transactionnelles-v2) : échanges datés entre modules, destinataires isolés par organisation et traitement dans le processus de tâches existant. Une notification décrit un fait, elle ne transfère ni autorisation ni MFA. Les tâches tierces arbitraires et les effets externes ne sont pas assimilés à ces projections locales.
 
+La mise à niveau d’une installation `0.2.0a8` vers `0.2.0a9` suit la [procédure de migration contrôlée](docs/controlled-upgrade.md), avec sauvegarde, vérification des anciennes données et retour arrière transactionnel avant réouverture. Les commandes d’installation ci-dessous concernent une nouvelle base.
+
 PostgreSQL 16+ doit être disponible sur un serveur existant, éventuellement une autre VM. `compose.yml` contient **un seul service**, `web`. Si vous souhaitez une base locale distincte, le fichier optionnel `compose.local-db.yml` ajoute un second conteneur PostgreSQL.
 
 ## Installation Linux, macOS ou NAS Synology
