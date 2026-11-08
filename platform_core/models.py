@@ -4,6 +4,8 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from .tenancy import ScopedModel, TenantManager
+
 
 class TimestampedModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
@@ -199,3 +201,119 @@ class AuditEvent(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Les événements d'audit ne peuvent pas être supprimés.")
+
+
+class ImmutableTenantManager(TenantManager.from_queryset(AuditQuerySet)):
+    pass
+
+
+class ModuleEvent(ScopedModel):
+    """A signed notification, never an authorization or executable command."""
+
+    objects = ImmutableTenantManager()
+    unscoped = AuditQuerySet.as_manager()
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    emitter = models.CharField(max_length=40)
+    emitter_release = models.CharField(max_length=64, blank=True)
+    topic = models.CharField(max_length=120)
+    occurred_at = models.DateTimeField()
+    actor_account_id = models.PositiveBigIntegerField(null=True)
+    aggregate_type = models.CharField(max_length=120, blank=True)
+    aggregate_id = models.CharField(max_length=120, blank=True)
+    correlation_id = models.UUIDField()
+    causation_id = models.UUIDField(null=True)
+    depth = models.PositiveSmallIntegerField(default=0)
+    payload = models.JSONField(default=dict)
+    signature = models.CharField(max_length=64)
+    audit = models.OneToOneField(AuditEvent, on_delete=models.PROTECT)
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("Les événements de module sont immuables.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Les événements de module sont immuables.")
+
+
+class DeliveryQuerySet(models.QuerySet):
+    def delete(self):
+        raise ValidationError("Les destinataires d’un événement sont conservés.")
+
+    def update(self, **kwargs):
+        if set(kwargs) - {"status", "attempts", "available_at", "completed_at"}:
+            raise ValidationError("Le périmètre d’une livraison est immuable.")
+        return super().update(**kwargs)
+
+
+class DeliveryManager(TenantManager.from_queryset(DeliveryQuerySet)):
+    pass
+
+
+class EventDelivery(ScopedModel):
+    objects = DeliveryManager()
+    unscoped = DeliveryQuerySet.as_manager()
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event = models.ForeignKey(ModuleEvent, on_delete=models.PROTECT)
+    consumer = models.CharField(max_length=40)
+    handler_name = models.CharField(max_length=60)
+    contract_hash = models.CharField(max_length=64)
+    signature = models.CharField(max_length=64)
+    status = models.CharField(max_length=12, default="pending")
+    attempts = models.PositiveSmallIntegerField(default=0)
+    available_at = models.DateTimeField()
+    completed_at = models.DateTimeField(null=True)
+
+    class Meta(ScopedModel.Meta):
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "event", "consumer", "handler_name"],
+                name="unique_module_event_recipient",
+            )
+        ]
+        indexes = [models.Index(fields=["organization", "status", "available_at"])]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            fields = (
+                "organization_id",
+                "event_id",
+                "consumer",
+                "handler_name",
+                "contract_hash",
+                "signature",
+            )
+            previous = type(self).unscoped.filter(pk=self.pk).values(*fields).get()
+            if any(previous[field] != getattr(self, field) for field in fields):
+                raise ValidationError("Le périmètre d’une livraison est immuable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Les destinataires d’un événement sont conservés.")
+
+
+class EventAttempt(ScopedModel):
+    objects = ImmutableTenantManager()
+    unscoped = AuditQuerySet.as_manager()
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    delivery = models.ForeignKey(EventDelivery, on_delete=models.PROTECT)
+    number = models.PositiveSmallIntegerField()
+    outcome = models.CharField(max_length=12)
+    error_code = models.CharField(max_length=80, blank=True)
+    consumer_release = models.CharField(max_length=64)
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta(ScopedModel.Meta):
+        constraints = [
+            models.UniqueConstraint(
+                fields=["delivery", "number"], name="unique_module_event_attempt"
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("Les preuves de traitement sont immuables.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Les preuves de traitement sont immuables.")

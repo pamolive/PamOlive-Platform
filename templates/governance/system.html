@@ -5,4 +5,8 @@
 <h2>Membres de cette organisation</h2><table><thead><tr><th>Compte PAM-olive</th><th>Rôle</th><th>Actif</th></tr></thead><tbody>{% for member in members %}<tr><td>{{ member.account }}</td><td>{{ member.get_role_display }}</td><td>{{ member.active|yesno:'Oui,Non' }}</td></tr>{% endfor %}</tbody></table>
 <h2>Ajouter ou modifier une appartenance</h2><form method="post" class="erp-form">{% csrf_token %}{{ form.as_p }}<button class="button">Enregistrer</button></form>
 <p>Le mot de passe initial s’applique uniquement à un nouveau compte. Un compte de connexion PAM-olive est distinct des identités gouvernées dans le module IAM.</p>
+<h2>Notifications entre modules</h2>
+<p>Traitement durable dans le conteneur applicatif. Une notification décrit un fait ; elle ne donne aucun droit d’accès. Les modules désactivés conservent leurs destinataires en attente.</p>
+<div class="metrics">{% for state in notification_states %}<article><b>{{ state.count }}</b><span>{{ state.status }}</span></article>{% empty %}<p>Aucune notification destinée à une extension dans cette organisation.</p>{% endfor %}</div>
+<table><thead><tr><th>Événement</th><th>Module destinataire</th><th>Gestionnaire</th><th>État</th><th>Tentatives</th></tr></thead><tbody>{% for notification in notifications %}<tr><td>{{ notification.event.topic }}</td><td>{{ notification.consumer }}</td><td>{{ notification.handler_name }}</td><td>{{ notification.status }}</td><td>{{ notification.attempts }}</td></tr>{% endfor %}</tbody></table>
 {% endblock %}

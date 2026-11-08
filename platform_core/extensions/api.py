@@ -87,3 +87,31 @@ def audit(*, actor, organization, permission_code, action, summary, target=None,
         target=target,
         metadata=metadata,
     )
+
+
+def publish_event(*, actor, organization, topic, payload, target=None, correlation_id=None):
+    """Publish a declared fact in the caller's database transaction, not a command."""
+    key = topic.partition(".")[0]
+    release = release_for(key)
+    declaration = (
+        next((item for item in release.manifest.emitted_events if item.topic == topic), None)
+        if release
+        else None
+    )
+    if declaration is None:
+        raise PermissionDenied("Événement non déclaré par cette extension.")
+    if target is not None and target._meta.app_label != key:
+        raise PermissionDenied("L’agrégat publié doit appartenir à l’extension.")
+    authorize(actor, organization, declaration.permission)
+    from platform_core.events import publish_domain_event
+
+    return publish_domain_event(
+        actor=actor,
+        organization=organization,
+        emitter=key,
+        emitter_release=release.release_hash,
+        topic=topic,
+        payload=payload,
+        target=target,
+        correlation_id=correlation_id,
+    )

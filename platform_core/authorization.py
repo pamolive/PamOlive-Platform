@@ -22,6 +22,16 @@ class MutationAssurance:
 _assurance = ContextVar("pamolive_mutation_assurance", default=None)
 
 
+@contextmanager
+def without_interactive_authentication():
+    """A background notification never inherits a publishing user's MFA."""
+    token = _assurance.set(None)
+    try:
+        yield
+    finally:
+        _assurance.reset(token)
+
+
 def assurance_datetime(verified_at):
     """Conservatively quantize float evidence to PostgreSQL/Django microseconds.
 

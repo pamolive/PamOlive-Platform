@@ -66,6 +66,17 @@ def create_record(kind, data, *, actor, organization):
             organization=organization,
             target=obj,
         )
+        if kind == "identity":
+            from platform_core.events import publish_domain_event
+
+            publish_domain_event(
+                organization=organization,
+                actor=actor,
+                emitter="identity",
+                topic="identity.identity.created.v1",
+                target=obj,
+                payload={"identity_id": str(obj.pk), "kind": obj.kind, "status": obj.status},
+            )
         return obj
 
 
@@ -366,6 +377,7 @@ def revoke_identity(identity_id, *, actor, organization, reason):
     Organization.objects.select_for_update().get(pk=organization.pk)
     with organization_context(organization):
         identity = Identity.objects.select_for_update().get(pk=identity_id)
+        newly_departed = identity.status != "departed"
         from platform_modules.identity.models import IdentityStateChange
 
         now = timezone.now()
@@ -424,6 +436,17 @@ def revoke_identity(identity_id, *, actor, organization, reason):
                 "external_execution": "requires_connector_confirmation",
             },
         )
+        if newly_departed:
+            from platform_core.events import publish_domain_event
+
+            publish_domain_event(
+                organization=organization,
+                actor=actor,
+                emitter="identity",
+                topic="identity.identity.departed.v1",
+                target=identity,
+                payload={"identity_id": str(identity.pk), "status": "departed"},
+            )
         return identity
 
 

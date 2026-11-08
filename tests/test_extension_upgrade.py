@@ -9,7 +9,15 @@ from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase
 
 from platform_core.audit import record, verify_chain
-from platform_core.models import AuditEvent, ExtensionDeployment, ModuleActivation, Organization
+from platform_core.models import (
+    AuditEvent,
+    EventAttempt,
+    EventDelivery,
+    ExtensionDeployment,
+    ModuleActivation,
+    ModuleEvent,
+    Organization,
+)
 from platform_core.security import cipher
 from platform_core.services import require_module
 
@@ -19,6 +27,34 @@ from platform_core.services import require_module
     "Built-in-only PostgreSQL extension-schema upgrade gate",
 )
 class ExtensionSchemaUpgradeTests(TransactionTestCase):
+    def test_event_schema_adds_no_backfill_and_preserves_existing_evidence(self):
+        latest = MigrationExecutor(connection).loader.graph.leaf_nodes()
+        previous = [
+            (label, "0006_extension_deployment") if label == "platform_core" else (label, name)
+            for label, name in latest
+        ]
+        try:
+            MigrationExecutor(connection).migrate(previous)
+            org = Organization.objects.create(key="event-upgrade", name="Existing organization")
+            proof = record(
+                action="upgrade.event_fixture.v1",
+                summary="Before notification schema",
+                organization=org,
+                metadata={"retained": True},
+            )
+            before = AuditEvent.objects.filter(pk=proof.pk).values().get()
+            org_before = Organization.objects.filter(pk=org.pk).values().get()
+            MigrationExecutor(connection).migrate(latest)
+            self.assertEqual(AuditEvent.objects.filter(pk=proof.pk).values().get(), before)
+            self.assertEqual(Organization.objects.filter(pk=org.pk).values().get(), org_before)
+            self.assertFalse(ModuleEvent.unscoped.exists())
+            self.assertFalse(EventDelivery.unscoped.exists())
+            self.assertFalse(EventAttempt.unscoped.exists())
+            self.assertTrue(verify_chain(org))
+            self.assert_audit_protected(proof.pk)
+        finally:
+            MigrationExecutor(connection).migrate(latest)
+
     def assert_audit_protected(self, event_id):
         with self.assertRaises(ValidationError):
             AuditEvent.objects.filter(pk=event_id).update(summary="forbidden upgrade fixture")

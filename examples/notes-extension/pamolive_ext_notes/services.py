@@ -24,4 +24,11 @@ def create_note(*, actor, organization, title, body):
         summary="Note créée dans l’organisation",
         target=note,
     )
+    api.publish_event(
+        actor=actor,
+        organization=organization,
+        topic="example_notes.note.created.v1",
+        payload={"note_id": str(note.pk)},
+        target=note,
+    )
     return note

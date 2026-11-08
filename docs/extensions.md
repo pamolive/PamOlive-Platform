@@ -4,7 +4,7 @@ Le catalogue distingue désormais trois opérations : **livrer du code**, **vali
 
 Les huit modules intégrés restent disponibles sans configuration supplémentaire. Une extension est une distribution Python séparée, ajoutée à la même image applicative. Elle n’ajoute aucun conteneur permanent. L’exemple `examples/notes-extension/` n’est ni installé ni activé automatiquement, et aucune donnée de démonstration n’est créée dans une installation cliente.
 
-## Contrat HTTP V1 effectivement disponible
+## Contrats effectivement disponibles : HTTP V1 et notifications V2
 
 Une extension expose un point d’entrée de distribution `pamolive.modules`, un manifeste JSON et un `AppConfig` Django :
 
@@ -23,9 +23,9 @@ Distribution wheel py3-none-any
     static/<package>/
 ```
 
-Consulter le [manifeste complet de l’exemple](../examples/notes-extension/pamolive_ext_notes/manifest.json). Le contrat impose une clé propre, une version canonique PEP 440 de 30 caractères maximum, une plage de compatibilité du noyau, la version d’API `1`, le package, l’AppConfig, les dépendances, les permissions et les routes. Les objets de contrat Python sont immuables.
+Consulter le [manifeste complet de l’exemple](../examples/notes-extension/pamolive_ext_notes/manifest.json). Le contrat impose une clé propre, une version canonique PEP 440 de 30 caractères maximum, une plage de compatibilité du noyau, la version d’API (`1` pour les anciens contrats HTTP, `2` pour les notifications), le package, l’AppConfig, les dépendances, les permissions et les routes. Les objets de contrat Python sont immuables.
 
-Les clés des modules intégrés sont réservées. Le package d’une extension commence par `pamolive_ext_`. Ses vues sont montées uniquement sous `/extensions/<clé>/`, dans leur espace de noms `ext-<clé>`. Le noyau construit les routes depuis le manifeste et ajoute son contrôle d’accès ; l’extension ne fournit pas une racine URL libre. GET/HEAD et POST sont pris en charge ; une route POST exige une permission sensible. Les WebSockets et hooks d’outbox ne sont pas encore des contrats d’extension livrés.
+Les clés des modules intégrés sont réservées. Le package d’une extension commence par `pamolive_ext_`. Ses vues sont montées uniquement sous `/extensions/<clé>/`, dans leur espace de noms `ext-<clé>`. Le noyau construit les routes depuis le manifeste et ajoute son contrôle d’accès ; l’extension ne fournit pas une racine URL libre. GET/HEAD et POST sont pris en charge ; une route POST exige une permission sensible. Le contrat HTTP V1 reste accepté avec la même représentation de manifeste signé. Les notifications nécessitent `api_version: "2"` et les deux listes d’événements explicites décrites ci-dessous. Les WebSockets et tâches tierces libres ne sont pas des contrats livrés.
 
 Une permission s’écrit `module.ressource.action`. Elle déclare les rôles techniques autorisés dans l’organisation et son caractère sensible. Le contrôle vérifie aussi le paquet livré, son empreinte et l’activation organisationnelle. Les actions sensibles passent par la MFA personnelle existante, avec reprise du formulaire après challenge.
 
@@ -144,4 +144,39 @@ La mise à niveau du schéma intégré possède aussi une porte PostgreSQL dédi
 
 Cette livraison charge uniquement les extensions déclarées **communautaires**, compatibles avec la distribution du projet. L’exemple est AGPL. Elle ne prétend pas qu’un import Python constitue une séparation juridique du noyau AGPL et elle refuse actuellement un manifeste commercial.
 
-La distribution de modules propriétaires dans le même processus, leur licence adaptée, les entitlements et les éventuels services distants restent un chantier explicite. Une signature ne transforme pas une licence de code et ne rend pas un projet open source non modifiable. Les contrats d’outbox/consommation et de tâches tierces sont également à livrer séparément ; aucun champ de manifeste ne simule ces fonctions.
+La distribution de modules propriétaires dans le même processus, leur licence adaptée, les entitlements et les éventuels services distants restent un chantier explicite. Une signature ne transforme pas une licence de code et ne rend pas un projet open source non modifiable. Le contrat de notifications ci-dessous n’est pas un contrat de commandes ou de tâches tierces arbitraires.
+
+## Notifications transactionnelles V2
+
+L’extension peut publier et recevoir des **faits**, sans Redis ni worker Compose supplémentaire. Le processus `runjobs` du conteneur les traite dans PostgreSQL. Le manifeste signé de l’exemple déclare :
+
+```json
+"emitted_events": [
+  {"topic": "example_notes.note.created.v1", "permission": "example_notes.note.create"}
+],
+"consumed_events": [
+  {"name": "identity_receipt_v1", "topic": "identity.identity.created.v1",
+   "handler": "pamolive_ext_notes.events.record_receipt"}
+]
+```
+
+Une publication utilise `api.publish_event(actor=..., organization=..., topic=..., payload=..., target=...)` dans la transaction qui crée le fait métier. Le nom doit être déclaré, appartenir au module et être versionné. La permission de publication est sensible : rôle, organisation, livraison exacte et MFA personnelle récente sont revérifiés côté service. Le payload est un objet JSON de 32 Kio maximum, avec profondeur et cardinalité bornées ; l’éditeur reste responsable de son schéma métier versionné et doit exclure secrets, tokens, mots de passe et captures. L’exemple publie seulement l’UUID de la note, pas son contenu.
+
+La création et le départ d’une identité publient respectivement `identity.identity.created.v1` et `identity.identity.departed.v1`, avec identifiant et état. Ce sont des notifications locales : un départ publié ne constitue pas une preuve de désactivation sur un annuaire distant. Les autres événements du produit ne sont pas automatiquement tous exposés par ce premier contrat.
+
+L’enveloppe porte UUID, organisation, topic, date UTC, compte acteur éventuel, agrégat, corrélation, causalité et payload. Elle est signée HMAC avec séparation de domaine et ancrée dans l’audit ; les destinataires sont également signés. L’identifiant d’acteur est historique : il ne transporte ni session, ni MFA, ni mandat.
+
+Les destinataires sont fixés **lors de la publication**, parmi les extensions livrées et actives dans la même organisation. Activer un nouveau module ne rejoue pas automatiquement le passé. Désactiver un destinataire suspend ses notifications existantes sans les supprimer ; réactiver une livraison valide permet de les reprendre. Un changement de nom, topic ou chemin du gestionnaire change son contrat : les anciens destinataires restent suspendus, sans exécution d’un nouveau gestionnaire par approximation. Une mise à niveau compatible conserve le contrat ; un changement incompatible exige une migration explicite de l’éditeur. Les déploiements multi-version simultanés ne sont pas qualifiés.
+
+Le worker ne lit **aucun chemin Python dans la file** : seul le manifeste signé installé fournit le gestionnaire. Il reçoit une `EventEnvelope` immuable dans un contexte organisationnel explicite, sans assurance MFA interactive. Ses effets locaux, la tentative et l’accusé de traitement se valident ensemble ; une exception annule ses écritures avant la reprise. Les workers concurrents se coordonnent par verrous PostgreSQL. Cette atomicité concerne la base locale, pas un appel HTTP, un e-mail ou un effet externe. Les intégrations externes doivent utiliser leur propre outbox idempotente et leurs contrôles d’autorisation ; ne pas les exécuter directement dans ce gestionnaire.
+
+Le contrat actuel attend des projections locales courtes, sans I/O réseau bloquante. Les requêtes PostgreSQL du gestionnaire ont un budget de trois secondes et les attentes de verrou une seconde ; Python tiers reste du code de confiance, pas une sandbox avec préemption. Les boucles causales sont bornées à 16 niveaux. Cinq échecs espacés conduisent à `dead` ; une enveloppe falsifiée conduit à `invalid` sans import du gestionnaire. Aucun texte brut d’exception n’est conservé. Il n’existe pas de bouton qui remet automatiquement ces cas à zéro : ils nécessitent diagnostic et livraison corrective, sans effacer les preuves.
+
+Dans **Paramètres**, un administrateur voit les états et les 20 dernières livraisons de son organisation, sans payload. Depuis un terminal d’exploitation autorisé, dans le même environnement applicatif :
+
+```sh
+python manage.py pamolive_events status --organization mopacy
+python manage.py pamolive_events process --organization mopacy --limit 10
+```
+
+Ces commandes ne prennent ni chemin de gestionnaire ni commande à exécuter. Le traitement normal reste automatique. L’exemple possède sa propre table de reçus et ne modifie aucun modèle privé d’IAM. La CI installe sa vraie wheel, applique ses migrations et contrôle les échanges IAM → extension et extension → propre projection dans la même image. Des tests PostgreSQL distincts vérifient concurrence, rollback, preuve append-only et relations organisationnelles.

@@ -539,6 +539,10 @@ def audit(request):
 
 @scoped(roles=("admin",))
 def system(request):
+    from django.db.models import Count
+
+    from platform_core.models import EventDelivery
+
     form = forms.Form(request.POST or None)
     form.fields["username"] = forms.CharField(label="Compte PAM-olive", max_length=150)
     form.fields["role"] = forms.ChoiceField(
@@ -585,6 +589,12 @@ def system(request):
             ).select_related("account"),
             "database_vendor": connection.vendor,
             "audit_valid": verify_chain(request.organization),
+            "notification_states": EventDelivery.objects.values("status").annotate(
+                count=Count("pk")
+            ),
+            "notifications": EventDelivery.objects.select_related("event").order_by(
+                "-available_at"
+            )[:20],
             "identity_enabled": ModuleActivation.objects.filter(
                 organization=request.organization, module_key="identity", enabled=True
             ).exists(),

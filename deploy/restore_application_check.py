@@ -178,7 +178,14 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
     from django.utils.crypto import constant_time_compare
 
     from platform_core.audit import verify_chain
-    from platform_core.models import AccountSecurity, AuditEvent, Organization
+    from platform_core.events import delivery_signature, event_signature
+    from platform_core.models import (
+        AccountSecurity,
+        AuditEvent,
+        EventDelivery,
+        ModuleEvent,
+        Organization,
+    )
     from platform_core.security import cipher
     from platform_modules.approvals.models import ApprovalDecision
     from platform_modules.connectors.models import ProvisioningConnector
@@ -219,6 +226,8 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
     for model, sign in (
         (LoginIdentityBinding, binding_signature),
         (ApprovalDecision, decision_signature),
+        (ModuleEvent, event_signature),
+        (EventDelivery, delivery_signature),
     ):
         for item in model._base_manager.exclude(signature="").iterator(chunk_size=100):
             if not constant_time_compare(item.signature, sign(item)):

@@ -7,8 +7,8 @@ from dataclasses import asdict, dataclass
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
-CORE_VERSION = "0.2.0a4"
-API_VERSION = "1"
+CORE_VERSION = "0.2.0a5"
+API_VERSION = "2"
 BUILTIN_KEYS = frozenset(
     {
         "identity",
@@ -92,6 +92,19 @@ class Route:
 
 
 @dataclass(frozen=True)
+class EmittedEvent:
+    topic: str
+    permission: str
+
+
+@dataclass(frozen=True)
+class ConsumedEvent:
+    name: str
+    topic: str
+    handler: str
+
+
+@dataclass(frozen=True)
 class ModuleManifest:
     key: str
     name: str
@@ -106,16 +119,24 @@ class ModuleManifest:
     dependencies: tuple[Dependency, ...]
     permissions: tuple[Permission, ...]
     routes: tuple[Route, ...]
+    emitted_events: tuple[EmittedEvent, ...] = ()
+    consumed_events: tuple[ConsumedEvent, ...] = ()
 
     def to_dict(self):
         # A JSON round trip turns the immutable tuple fields into contract arrays.
         import json
 
-        return json.loads(json.dumps(asdict(self)))
+        result = json.loads(json.dumps(asdict(self)))
+        if self.api_version == "1":
+            # Retain the byte-equivalent signed V1 manifest representation.
+            result.pop("emitted_events")
+            result.pop("consumed_events")
+        return result
 
     @classmethod
     def from_dict(cls, value):
-        fields(value, cls.__dataclass_fields__)
+        event_fields = {"emitted_events", "consumed_events"}
+        fields(value, set(cls.__dataclass_fields__) - event_fields, event_fields)
         key = text(value["key"], 40)
         if not KEY.fullmatch(key) or keyword.iskeyword(key) or key in BUILTIN_KEYS:
             raise ExtensionError("Clé d’extension réservée ou invalide.")
@@ -125,8 +146,12 @@ class ModuleManifest:
         app = text(value["django_app"], 200)
         if not DOTTED.fullmatch(app) or not app.startswith(root + ".apps."):
             raise ExtensionError("AppConfig doit appartenir au package de l’extension.")
-        if value["api_version"] != API_VERSION:
+        if value["api_version"] not in ("1", API_VERSION):
             raise ExtensionError("Version d’API d’extension non prise en charge.")
+        if value["api_version"] == "1" and event_fields & set(value):
+            raise ExtensionError("Les événements exigent le contrat d’extension V2.")
+        if value["api_version"] == "2" and event_fields - set(value):
+            raise ExtensionError("Le contrat V2 déclare explicitement ses événements.")
         if value["license_kind"] != "community":
             raise ExtensionError(
                 "Seules les extensions communautaires sont chargeables par ce contrat. "
@@ -163,6 +188,42 @@ class ModuleManifest:
                 raise ExtensionError("Le caractère sensible est un booléen explicite.")
             permissions.append(Permission(code, tuple(roles), permission["sensitive"]))
         by_permission = {permission.code: permission for permission in permissions}
+        emitted, consumed = [], []
+        for name in event_fields:
+            if not isinstance(value.get(name, []), list) or len(value.get(name, [])) > 32:
+                raise ExtensionError("Liste d’événements invalide ou trop grande.")
+        topic_pattern = r"[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\.v[1-9][0-9]{0,3}"
+        for item in value.get("emitted_events", []):
+            fields(item, ("topic", "permission"))
+            topic = text(item["topic"], 120)
+            permission = by_permission.get(item["permission"])
+            if (
+                not re.fullmatch(topic_pattern, topic)
+                or not topic.startswith(key + ".")
+                or not permission
+                or not permission.sensitive
+            ):
+                raise ExtensionError("Publication hors module ou permission sensible absente.")
+            emitted.append(EmittedEvent(topic, permission.code))
+        for item in value.get("consumed_events", []):
+            fields(item, ("name", "topic", "handler"))
+            name, topic, handler = (
+                text(item["name"], 60),
+                text(item["topic"], 120),
+                text(item["handler"], 200),
+            )
+            if (
+                not re.fullmatch(r"[a-z][a-z0-9_]*_v[1-9][0-9]{0,3}", name)
+                or not re.fullmatch(topic_pattern, topic)
+                or not DOTTED.fullmatch(handler)
+                or not handler.startswith(root + ".")
+            ):
+                raise ExtensionError("Consommateur versionné ou chemin de gestionnaire invalide.")
+            consumed.append(ConsumedEvent(name, topic, handler))
+        if len({item.topic for item in emitted}) != len(emitted) or len(
+            {item.name for item in consumed}
+        ) != len(consumed):
+            raise ExtensionError("Déclaration d’événement dupliquée.")
         routes = []
         for route in value["routes"]:
             fields(route, ("name", "path", "view", "permission", "methods"))
@@ -213,11 +274,13 @@ class ModuleManifest:
             text(value["summary"], 500),
             text(value["category"], 80),
             core_spec,
-            API_VERSION,
+            value["api_version"],
             "community",
             root,
             app,
             tuple(dependencies),
             tuple(permissions),
             tuple(routes),
+            tuple(emitted),
+            tuple(consumed),
         )

@@ -89,6 +89,38 @@ class ExtensionRuntimeTests(TestCase):
         self.assertIn("example_notes 1.0.0", output.getvalue())
         self.assertFalse(ExtensionDeployment.objects.exists())
 
+    def test_installed_wheel_consumes_builtin_and_own_events_in_the_same_runtime(self):
+        from pamolive_ext_notes.models import EventReceipt
+
+        from platform_core.events import process_events
+        from platform_core.models import EventAttempt, EventDelivery
+        from platform_modules.access.services import create_record
+
+        self.enabled()
+        identity = create_record(
+            "identity",
+            {"name": "Source identity", "kind": "human"},
+            actor=self.admin,
+            organization=self.org,
+        )
+        with recent_authentication(self.operator, self.org, time.time()):
+            note = self.services.create_note(
+                actor=self.operator,
+                organization=self.org,
+                title="Event source",
+                body="not in event payload",
+            )
+        self.assertEqual(EventDelivery.objects.count(), 2)
+        self.assertEqual(process_events(self.org), 2)
+        self.assertEqual(process_events(self.org), 0)
+        self.assertEqual(
+            set(EventReceipt.objects.values_list("aggregate_id", flat=True)),
+            {str(identity.pk), str(note.pk)},
+        )
+        self.assertTrue(all(item.outcome == "delivered" for item in EventAttempt.objects.all()))
+        self.assertTrue(verify_chain(self.org))
+        self.assertEqual(process_events(self.other), 0)
+
     def test_package_cannot_activate_before_reviewed_delivery(self):
         with self.assertRaises(ValidationError):
             self.activate()

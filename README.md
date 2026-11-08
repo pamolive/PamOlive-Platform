@@ -10,6 +10,8 @@ PAM-olive rapproche une identité, ses comptes et ressources, une autorisation o
 
 L’image contient Django, l’interface, tous les modules livrés, le traitement des expirations et le moteur natif privé de sessions PAM. Aucun conteneur worker, scheduler, Redis ou proxy n’est nécessaire à cette version. Les tâches durables et verrous utilisent PostgreSQL. Plusieurs instances applicatives peuvent partager la même base ; la validation HA complète reste à effectuer, et une session SSH ne migre pas entre instances en cas de panne.
 
+Les extensions signées disposent aussi de [notifications transactionnelles V2](docs/extensions.md#notifications-transactionnelles-v2) : échanges datés entre modules, destinataires isolés par organisation et traitement dans le processus de tâches existant. Une notification décrit un fait, elle ne transfère ni autorisation ni MFA. Les tâches tierces arbitraires et les effets externes ne sont pas assimilés à ces projections locales.
+
 PostgreSQL 16+ doit être disponible sur un serveur existant, éventuellement une autre VM. `compose.yml` contient **un seul service**, `web`. Si vous souhaitez une base locale distincte, le fichier optionnel `compose.local-db.yml` ajoute un second conteneur PostgreSQL.
 
 ## Installation Linux, macOS ou NAS Synology

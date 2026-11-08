@@ -56,11 +56,21 @@ def main():
             profile.freshness_minutes = 10
             profile.recovery_hashes = [make_password("synthetic-not-a-real-recovery-code")]
             profile.save()
+            from platform_core.events import publish_domain_event
+            from platform_core.tenancy import organization_context
+
+            with organization_context(fixture.org):
+                publish_domain_event(
+                    organization=fixture.org,
+                    emitter="identity",
+                    topic="identity.identity.created.v1",
+                    payload={"identity_id": str(fixture.identity.pk), "kind": "human"},
+                )
         finally:
             fixture.doCleanups()
     print(
         "Synthetic restore corpus prepared: MFA, counter, recovery hash, M2M, "
-        "SCIM token, target secret, signed mandate and sealed capture."
+        "SCIM token, target secret, signed mandate, signed notification and sealed capture."
     )
 
 

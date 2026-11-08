@@ -14,3 +14,13 @@ class Note(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class EventReceipt(models.Model):
+    """Local projection only: a notification never provisions or authorizes access."""
+
+    event_id = models.UUIDField(primary_key=True)
+    organization = models.ForeignKey("platform_core.Organization", on_delete=models.PROTECT)
+    topic = models.CharField(max_length=120)
+    aggregate_id = models.CharField(max_length=120)
+    occurred_at = models.DateTimeField()

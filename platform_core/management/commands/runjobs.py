@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from django.core.management.base import BaseCommand
 from django.db import close_old_connections, connections
 
+from platform_core.events import process_events
 from platform_core.models import Organization
 from platform_modules.connectors.outbound import process_changes
 from platform_modules.governance.reconcile import reconcile_contracts
@@ -15,7 +16,8 @@ from platform_modules.pam.sessions import reap_connections
 def deliver(organization):
     close_old_connections()
     try:
-        return process_changes(organization, limit=1)
+        notifications = process_events(organization, limit=1)
+        return notifications + process_changes(organization, limit=1)
     finally:
         connections.close_all()
 
@@ -40,6 +42,7 @@ class Command(BaseCommand):
                     reconcile_contracts(organization)
                 if options["once"]:
                     for organization in organizations:
+                        process_events(organization)
                         process_changes(organization)
                     return
                 for key, future in list(pending.items()):
