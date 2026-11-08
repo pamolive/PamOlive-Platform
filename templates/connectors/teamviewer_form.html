@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block content %}
+<nav class="domain-tabs"><a href="{% url 'teamviewer-home' %}">← Collecte TeamViewer</a></nav>
+<section class="form-sheet">
+  <h1>{% if collector %}Modifier{% else %}Configurer{% endif %} TeamViewer</h1>
+  <p>1. Tester une lecture API · 2. Enregistrer la configuration testée inactive · 3. Activer séparément.</p>
+  <p>Le test ne modifie pas la collecte existante et n’importe aucun rapport. La destination HTTPS doit être autorisée par l’exploitant.</p>
+  {% if capsule %}
+    <div class="message"><h2>Lecture API vérifiée</h2><p>{{ result.reports_in_recent_window }} rapport(s) dans la fenêtre récente examinée. Aucun rapport importé, aucun collecteur activé. Ce test ne prouve pas que le jeton peut voir toute l’organisation.</p></div>
+    <form method="post" class="erp-form">{% csrf_token %}<input type="hidden" name="action" value="save"><input type="hidden" name="capsule" value="{{ capsule }}"><button class="button">Enregistrer cette configuration testée — inactive</button></form>
+    <p>Le résultat est valable 15 minutes, pour votre compte, cette organisation et ce navigateur seulement.</p>
+    <a href="{% if collector %}{% url 'teamviewer-edit' collector.pk %}{% else %}{% url 'teamviewer-new' %}{% endif %}">Revenir au formulaire sans enregistrer</a>
+  {% else %}
+    <form method="post" class="erp-form">{% csrf_token %}{{ form.as_p }}<button class="button" name="action" value="test">Tester la connexion avant d’enregistrer</button></form>
+  {% endif %}
+</section>
+{% endblock %}

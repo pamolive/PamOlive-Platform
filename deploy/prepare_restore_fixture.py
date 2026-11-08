@@ -4,6 +4,66 @@ import os
 import unittest
 
 
+def teamviewer_corpus(actor, organization):
+    """Offline synthetic reports only; no TeamViewer account or API is contacted."""
+    import time
+    import uuid
+    from datetime import timedelta
+    from unittest.mock import patch
+
+    from django.test import override_settings
+    from django.utils import timezone
+
+    from platform_core.authorization import recent_authentication
+    from platform_core.services import install_module
+    from platform_modules.connectors.teamviewer import ConnectionReport, ReportBatch, ReportPage
+    from platform_modules.connectors.teamviewer_collection import (
+        save_configuration,
+        set_enabled,
+        test_configuration,
+    )
+    from platform_modules.connectors.teamviewer_ingestion import process_collectors
+
+    now = timezone.now().replace(microsecond=0)
+    with (
+        override_settings(CONNECTOR_ALLOWED_HOSTS=["webapi.teamviewer.com:443"]),
+        recent_authentication(actor, organization, time.time()),
+        patch(
+            "platform_modules.connectors.teamviewer.TeamViewerClient.fetch_completed",
+            return_value=ReportBatch((), 1, True, "pagination_finished"),
+        ),
+    ):
+        install_module("connectors", actor=actor, organization=organization)
+        browser = "offline-synthetic-teamviewer-browser"
+        capsule, _ = test_configuration(
+            actor=actor,
+            organization=organization,
+            browser_key=browser,
+            name="Offline TeamViewer corpus",
+            token="not-a-real-teamviewer-token",
+            start_at=now - timedelta(days=1),
+            collect_notes=True,
+        )
+        collector = save_configuration(
+            capsule, actor=actor, organization=organization, browser_key=browser
+        )
+        set_enabled(collector.pk, True, actor=actor, organization=organization)
+        source = ConnectionReport(
+            str(uuid.uuid4()),
+            "synthetic-account",
+            "synthetic-device",
+            now - timedelta(hours=1),
+            now - timedelta(minutes=1),
+            "Synthetic source note, not a verified ticket",
+        )
+        with patch(
+            "platform_modules.connectors.teamviewer.TeamViewerClient.read_page",
+            return_value=ReportPage((source,), None, source.ended_at, True),
+        ):
+            process_collectors(organization)
+        set_enabled(collector.pk, False, actor=actor, organization=organization)
+
+
 def oidc_corpus(actor, organization):
     """Synthetic signed corpus only; deliberately does not contact or impersonate a real IdP."""
     import hashlib
@@ -171,6 +231,7 @@ def main():
 
             with organization_context(fixture.org):
                 oidc_corpus(fixture.operator, fixture.org)
+                teamviewer_corpus(fixture.admin, fixture.org)
                 publish_domain_event(
                     organization=fixture.org,
                     emitter="identity",
@@ -182,7 +243,7 @@ def main():
     print(
         "Synthetic restore corpus prepared: MFA, counter, recovery hash, M2M, "
         "SCIM token, target secret, OIDC secret/link/draft/flow, signed mandate, "
-        "signed notification and sealed capture."
+        "signed notification, TeamViewer token/report/run and sealed capture."
     )
 
 

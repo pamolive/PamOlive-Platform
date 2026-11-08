@@ -142,3 +142,10 @@ class ExecutionEvidence(ScopedModel):
     confirmed = models.BooleanField(default=False)
     observed = models.JSONField(default=dict)
     recorded_at = models.DateTimeField(auto_now_add=True)
+
+
+from .teamviewer_models import (  # noqa: E402,F401
+    TeamViewerCollector,
+    TeamViewerReport,
+    TeamViewerRun,
+)

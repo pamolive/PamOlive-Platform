@@ -19,6 +19,7 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 - Intention datée avec méthode, ressource, compte, origine, privilège et justification.
 - Approbations indépendantes configurables, responsable de contrat, séparation demandeur/approbateur et votes conservés.
 - Ingestion authentifiée par source, déduplication, conservation des faits source.
+- [Collecte brute TeamViewer](teamviewer.md) : lecture HTTPS, test avant enregistrement, configuration chiffrée inactive puis activation séparée, MFA personnelle, reprises par page avec curseur signé, rapports versionnés immuables et passages liés à l’audit. Les identifiants inconnus restent conservés sans attribution automatique ; les correspondances et la normalisation en événements corrélés restent à implémenter. Aucun compte TeamViewer réel n’est qualifié par les fixtures.
 - Acteur rapporté séparé du propriétaire du compte ou du credential : comptes partagés et certificats techniques observables sans attribuer leur activité à leur propriétaire. Acteur inconnu conservé ; aucune intention personnelle déduite par propriété. Intention d’observation bornée à l’intervenant et au compte précis, export et graphe distinguant activité rapportée et rattachement actuel d’inventaire. Départ d’un intervenant sans désactivation du compte partagé d’une autre identité ; retrait du propriétaire désactivant ses comptes et les intentions qui les utilisent.
 - Comparaison à une intention approuvée ou à un droit applicable ; résultats conformes, écarts ou contexte insuffisant.
 - Détail des preuves et export JSON par événement.
@@ -67,7 +68,7 @@ de bout en bout à tous les systèmes cités.
 
 | Scénario | Capacité livrée et tests associés | Travail restant pour le terrain |
 |---|---|---|
-| Intervention TeamViewer | Événement, acteur, compte, intention approuvée et explication ; [attribution](../tests/test_access_attribution.py) et [périmètre](../tests/test_platform.py) | Collecteur TeamViewer, correspondances des identifiants et vérification du ticket source |
+| Intervention TeamViewer | Événement, acteur, compte, intention approuvée et explication ; collecte brute indépendante avec [configuration et reprises](../tests/test_teamviewer_collection.py), [attribution](../tests/test_access_attribution.py) et [périmètre](../tests/test_platform.py) | Correspondances explicites, normalisation des rapports en événements corrélés, vérification du ticket source et qualification du jeton réel |
 | Chronologie physique et numérique | Ordre source/réception, arrivées tardives, incertitudes d’horloge et domaines séparés ; [chronologie](../tests/test_intelligence.py) | Collecteurs badge/PAM/vCenter et qualité des horloges sur l’installation réelle |
 | Fournisseur hors intervention | Contrat versionné, méthodes, horaires, pays inconnus et couverture de collecte ; [gouvernance](../tests/test_governance.py) et [couverture](../tests/test_intelligence.py) | Sources physiques et métier connectées, règles de risque adaptées à l’organisation |
 | Déplacement réseau d’une machine | Comparaison switch/port/VLAN et changement approuvé précisément borné ; [réseau](../tests/test_intelligence.py) | Collecteur NAC/switch et résolution fiable de l’identité machine |

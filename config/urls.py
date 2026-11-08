@@ -5,6 +5,7 @@ from platform_core.extensions.urls import extension_patterns
 from platform_core.oidc import views as oidc_views
 from platform_core.security import security_settings
 from platform_modules.access import ui
+from platform_modules.connectors import teamviewer_views
 from platform_modules.connectors import views as connector_views
 from platform_modules.governance import views as governance_views
 from platform_modules.identity import binding_views as identity_views
@@ -132,6 +133,23 @@ urlpatterns = [
     path("access/", ui.access_home, name="access-home"),
     path("approvals/", ui.approvals_home, name="approvals-home"),
     path("connectors/", ui.connectors_home, name="connectors-home"),
+    path("connectors/teamviewer/", teamviewer_views.index, name="teamviewer-home"),
+    path("connectors/teamviewer/new/", teamviewer_views.configure, name="teamviewer-new"),
+    path(
+        "connectors/teamviewer/<uuid:collector_id>/",
+        teamviewer_views.configure,
+        name="teamviewer-edit",
+    ),
+    path(
+        "connectors/teamviewer/<uuid:collector_id>/activation/",
+        teamviewer_views.activation,
+        name="teamviewer-activation",
+    ),
+    path(
+        "connectors/teamviewer/reports/<uuid:report_id>/",
+        teamviewer_views.report_detail,
+        name="teamviewer-report",
+    ),
     path("connectors/provisioning/", connector_views.index, name="provisioning-home"),
     path("connectors/provisioning/new/", connector_views.configure, name="connector-create"),
     path(

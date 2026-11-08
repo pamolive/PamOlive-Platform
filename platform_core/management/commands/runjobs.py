@@ -8,6 +8,7 @@ from platform_core.events import process_events
 from platform_core.models import Organization
 from platform_core.oidc.services import cleanup_expired
 from platform_modules.connectors.outbound import process_changes
+from platform_modules.connectors.teamviewer_ingestion import process_collectors
 from platform_modules.governance.reconcile import reconcile_contracts
 from platform_modules.identity.services import expire_grants
 from platform_modules.pam.services import expire_leases
@@ -18,7 +19,8 @@ def deliver(organization):
     close_old_connections()
     try:
         notifications = process_events(organization, limit=1)
-        return notifications + process_changes(organization, limit=1)
+        changes = process_changes(organization, limit=1)
+        return notifications + changes + process_collectors(organization, limit=1)
     finally:
         connections.close_all()
 
@@ -46,6 +48,7 @@ class Command(BaseCommand):
                     for organization in organizations:
                         process_events(organization)
                         process_changes(organization)
+                        process_collectors(organization, limit=1)
                     return
                 for key, future in list(pending.items()):
                     if future.done():

@@ -2,6 +2,7 @@ import io
 import json
 import tempfile
 import threading
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -105,6 +106,13 @@ class TeamViewerReportingTests(SimpleTestCase):
         for pages in cases:
             with self.subTest(pages=len(pages)):
                 self.assertFalse(self.batch(pages).pagination_complete)
+
+    def test_falsey_non_string_cursor_is_invalid_not_a_complete_page(self):
+        for cursor in (False, 0, [], {}):
+            with self.subTest(cursor=cursor):
+                result = self.batch([dict(records=[record()], next_offset=cursor)])
+                self.assertFalse(result.pagination_complete)
+                self.assertEqual(result.code, "teamviewer_invalid_page")
 
     def test_inconsistent_order_and_window_do_not_claim_completeness(self):
         for values in (
@@ -242,7 +250,11 @@ class TeamViewerTLSTests(SimpleTestCase):
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
-                self.wfile.write(body)
+                time.sleep(getattr(self.server, "body_delay", 0))
+                try:
+                    self.wfile.write(body)
+                except OSError:
+                    pass
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Peer)
         self.server.socket = tls.wrap_socket(self.server.socket, server_side=True)
@@ -282,3 +294,12 @@ class TeamViewerTLSTests(SimpleTestCase):
         self.assertFalse(result.pagination_complete)
         self.assertEqual(result.code, "tls_verification_failed")
         self.assertEqual(self.observed, [])
+
+    def test_whole_response_deadline_interrupts_real_tls_body_read(self):
+        self.server.body_delay = 0.3
+        started = time.monotonic()
+        with patch("platform_modules.connectors.teamviewer.RESPONSE_DEADLINE", 0.05):
+            result = self.client.fetch_completed(SINCE, UNTIL)
+        self.assertLess(time.monotonic() - started, 2)
+        self.assertFalse(result.pagination_complete)
+        self.assertEqual(result.code, "teamviewer_response_deadline")

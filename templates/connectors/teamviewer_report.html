@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block content %}
+<nav class="domain-tabs"><a href="{% url 'teamviewer-home' %}">← Collecte TeamViewer</a></nav>
+<article class="form-sheet"><h1>Rapport source TeamViewer</h1>
+<p>Intégrité : {% if valid %}vérifiée avec la clé applicative{% else %}<strong>invalide — ne pas utiliser comme preuve</strong>{% endif %}.</p>
+<dl><dt>ID source</dt><dd>{{ report.remote_id }}</dd><dt>Compte source</dt><dd>{{ report.account_ref|default:'Non rapporté' }}</dd><dt>Machine source</dt><dd>{{ report.device_ref|default:'Non rapportée' }}</dd><dt>Début de session</dt><dd>{{ report.started_at }}</dd><dt>Fin de session</dt><dd>{{ report.ended_at }}</dd><dt>Reçu le</dt><dd>{{ report.observed_at }}</dd></dl>
+<h2>Note déclarée par la source</h2>{% if notes != None %}<p style="white-space:pre-wrap;overflow-wrap:anywhere">{{ notes }}</p>{% else %}<p>Non conservée, ou preuve invalide.</p>{% endif %}
+<p>Cette note n’atteste pas l’existence d’un ticket, sa validation ou les privilèges utilisés. L’acteur humain et la ressource locale doivent être reliés explicitement avant corrélation.</p></article>
+{% endblock %}

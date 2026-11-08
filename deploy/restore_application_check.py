@@ -190,6 +190,9 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
     from platform_core.security import cipher
     from platform_modules.approvals.models import ApprovalDecision
     from platform_modules.connectors.models import ProvisioningConnector
+    from platform_modules.connectors.teamviewer_restoration import (
+        verify_evidence as verify_teamviewer,
+    )
     from platform_modules.identity.bindings import binding_signature
     from platform_modules.identity.models import LoginIdentityBinding
     from platform_modules.pam.mandates import decision_signature
@@ -216,6 +219,9 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
         "signed_proofs_checked": 0,
     }
     encrypted, signed = verify_evidence()
+    result["encrypted_values_checked"] += encrypted
+    result["signed_proofs_checked"] += signed
+    encrypted, signed = verify_teamviewer()
     result["encrypted_values_checked"] += encrypted
     result["signed_proofs_checked"] += signed
     for model, field in (

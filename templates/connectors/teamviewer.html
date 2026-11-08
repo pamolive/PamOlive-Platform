@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Collecte TeamViewer</h1>
+<p>Rapports de sessions terminées, lus depuis l’API officielle. Les identifiants externes restent des références source : aucune personne, aucun privilège et aucun ticket vérifié ne sont déduits automatiquement.</p>
+<nav class="domain-tabs"><a href="{% url 'teamviewer-new' %}">Nouveau collecteur</a><a href="{% url 'connectors-home' %}">Sources d’observation</a><a href="{% url 'provisioning-home' %}">Provisioning SCIM</a></nav>
+{% for collector in collectors %}
+<article class="workflow-card"><h2>{{ collector.name }}</h2><p>{{ collector.enabled|yesno:'Activé,Inactif' }} · révision {{ collector.revision }} · test {{ collector.tested_at }} · notes {{ collector.collect_notes|yesno:'conservées,non collectées' }}</p>
+<p>Dernier résultat : {{ collector.last_code|default:'Aucun passage' }}. Prochain passage : {{ collector.next_run_at }}{% if collector.scan_until %}. Parcours en cours jusqu’au {{ collector.scan_until }}{% endif %}.</p>
+<div class="inline-form"><a href="{% url 'teamviewer-edit' collector.pk %}">Modifier et tester</a><form method="post" action="{% url 'teamviewer-activation' collector.pk %}">{% csrf_token %}<button class="button" name="action" value="{% if collector.enabled %}disable{% else %}enable{% endif %}">{% if collector.enabled %}Désactiver{% else %}Activer la collecte{% endif %}</button></form></div></article>
+{% empty %}<p>Aucun collecteur enregistré.</p>{% endfor %}
+<h2>Derniers passages (100 maximum)</h2>
+<p>« complete » signifie que la pagination de cette fenêtre est terminée, pas que tous les accès de l’organisation ont été observés. Une désactivation ou un résultat tardif produit « discarded » sans importer ses rapports.</p>
+<div class="table-wrap"><table><thead><tr><th>Collecteur</th><th>Date</th><th>État</th><th>Code</th></tr></thead><tbody>{% for run in runs %}<tr><td>{{ run.collector.name }}</td><td>{{ run.finished_at }}</td><td>{{ run.status }}</td><td>{{ run.code }}</td></tr>{% empty %}<tr><td colspan="4">Aucun passage.</td></tr>{% endfor %}</tbody></table></div>
+<h2>Rapports source conservés (100 dernières versions)</h2>
+<p>Ces preuves brutes ne sont pas encore des événements d’accès corrélés. Les corrections de la source sont conservées en nouvelles versions, sans réécriture de l’historique.</p>
+<div class="table-wrap"><table><thead><tr><th>Collecteur</th><th>Compte source</th><th>Machine source</th><th>Fin de session</th><th>Preuve</th></tr></thead><tbody>{% for report in reports %}<tr><td>{{ report.collector.name }}</td><td>{{ report.account_ref|default:'Inconnu' }}</td><td>{{ report.device_ref|default:'Inconnue' }}</td><td>{{ report.ended_at }}</td><td><a href="{% url 'teamviewer-report' report.pk %}">Examiner →</a></td></tr>{% empty %}<tr><td colspan="5">Aucun rapport collecté.</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}
