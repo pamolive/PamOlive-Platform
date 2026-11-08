@@ -54,6 +54,7 @@ class ModuleActivation(TimestampedModel):
     organization = models.ForeignKey(Organization, on_delete=models.PROTECT)
     module_key = models.SlugField(max_length=80)
     version = models.CharField(max_length=30)
+    release_hash = models.CharField(max_length=64, blank=True, default="")
     enabled = models.BooleanField(default=False)
 
     class Meta:
@@ -101,6 +102,18 @@ class InstalledModule(TimestampedModel):
 
     def __str__(self):
         return self.module_key
+
+
+class ExtensionDeployment(models.Model):
+    """Infra delivery of code, separate from an organization's activation of features."""
+
+    module_key = models.SlugField(primary_key=True, max_length=40)
+    version = models.CharField(max_length=40)
+    release_hash = models.CharField(max_length=64)
+    manifest_hash = models.CharField(max_length=64)
+    wheel_hash = models.CharField(max_length=64)
+    delivered_at = models.DateTimeField()
+    delivered_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
 
 
 class BusinessRole(TimestampedModel):

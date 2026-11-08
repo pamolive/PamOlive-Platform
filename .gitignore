@@ -14,3 +14,8 @@ staticfiles/
 .ruff_cache/
 coverage.xml
 .coverage
+*.whl
+*.egg-info/
+*-private.pem
+examples/**/build/
+examples/**/dist/

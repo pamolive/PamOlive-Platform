@@ -30,6 +30,8 @@ jobs:
       - run: ruff check .
       - run: python manage.py makemigrations --check --dry-run
       - run: python manage.py test --noinput
+      - name: Verify a separately installed signed module on PostgreSQL
+        run: python -m deploy.check_extensions --postgres
       - name: Verify that local credentials cannot enter the image
         run: |
           printf 'must-not-enter-the-image' > .bootstrap-admin
@@ -37,6 +39,14 @@ jobs:
           docker run --rm --entrypoint python pamolive-platform:ci -c "from pathlib import Path; from importlib.util import find_spec; assert not Path('/app/.bootstrap-admin').exists(); assert not Path('/app/.env').exists(); assert not Path('/opt/pamolive-test').exists(); assert find_spec('PIL') is None"
       - name: Verify native SSH/RDP plugins without contacting a target
         run: docker run --rm --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:ci -m deploy.check_guacd
+      - name: Prepare a separately signed extension wheel
+        run: python -m deploy.prepare_extension_fixture /tmp/pamolive-extension-image-context
+      - name: Build and verify the single-container extension image
+        run: |
+          docker build --build-arg PAMOLIVE_BASE_IMAGE=pamolive-platform:ci -t pamolive-platform:extension-ci /tmp/pamolive-extension-image-context
+          docker run --rm --network none --entrypoint python pamolive-platform:extension-ci -c "from pathlib import Path; from importlib.util import find_spec; assert not Path('/app/.env').exists(); assert not Path('/app/publisher-private.pem').exists(); assert not Path('/opt/pamolive-test').exists(); assert find_spec('PIL') is None; assert not Path('/app/db.sqlite3').exists()"
+      - name: Verify installed extension routes, permissions and isolation in the built image
+        run: docker run --rm --user 1000:1000 --network host --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 -e DATABASE_URL -e SECRET_KEY -e PAMOLIVE_TEST_DATABASE_NAME=test_pamolive_extensions --entrypoint python pamolive-platform:extension-ci manage.py test tests.test_extensions_runtime --keepdb --noinput
       - name: Verify native SSH pinning and keyboard round-trip on a disposable fixture
         run: docker run --rm --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:ci -m deploy.check_native_ssh
       - name: Build test-only headless RDP peer

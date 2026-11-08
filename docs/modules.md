@@ -1,6 +1,6 @@
 # Contrat des modules PAM-olive V1
 
-> Statut : proposition à valider avant le développement du premier module.
+> Statut : contrat cible d’architecture. Le [contrat HTTP communautaire effectivement implémenté dans l’alpha](extensions.md) fournit la découverte par points d’entrée, les paquets signés, les migrations contrôlées et l’activation organisationnelle. Les événements/outbox, tâches tierces et entitlements décrits ci-dessous ne sont pas encore une API d’extension livrée. Utiliser l’exemple exécutable et son manifeste plutôt que ce pseudocode cible pour construire un paquet actuel.
 
 ## 1. Deux opérations distinctes
 

@@ -1,6 +1,7 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
+from platform_core.extensions.urls import extension_patterns
 from platform_core.security import MFALoginForm, security_settings
 from platform_modules.access import ui
 from platform_modules.connectors import views as connector_views
@@ -171,3 +172,5 @@ urlpatterns = [
     path("api/v1/events/", ui.api_events, name="api-events"),
     path("api/v1/events/<uuid:object_id>/export/", ui.export_event, name="event-export"),
 ]
+
+urlpatterns += extension_patterns()

@@ -1,9 +1,12 @@
 import json
 import os
+import re
 import socket
 from pathlib import Path
 
 import dj_database_url
+
+from platform_core.extensions.releases import load_catalog, load_trust_keys
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get("SECRET_KEY", "insecure-development-key-change-me")
@@ -86,6 +89,16 @@ INSTALLED_APPS = [
     "platform_modules.governance.apps.GovernanceConfig",
     "platform_modules.intelligence.apps.IntelligenceConfig",
 ]
+# Deployment configuration only. No request, database field or uploaded code can add an app.
+PAMOLIVE_EXTENSIONS = load_catalog(
+    os.environ.get("PAMOLIVE_EXTENSION_CATALOG", ""),
+    load_trust_keys(
+        os.environ.get("PAMOLIVE_EXTENSION_TRUST_KEYS", ""),
+        os.environ.get("PAMOLIVE_EXTENSION_TRUST_KEYS_FILE", ""),
+    ),
+)
+INSTALLED_APPS.extend(release.manifest.django_app for release in PAMOLIVE_EXTENSIONS)
+INSTALLED_APPS.append("platform_core.extensions.apps.ExtensionRegistryConfig")
 MIDDLEWARE = [
     "platform_core.middleware.TrustedProxyMiddleware",
     "django.middleware.security.SecurityMiddleware",
@@ -127,6 +140,12 @@ else:
     DATABASES = {
         "default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}
     }
+
+test_database_name = os.environ.get("PAMOLIVE_TEST_DATABASE_NAME", "")
+if test_database_name:
+    if not re.fullmatch(r"test_pamolive_[a-z0-9_]{1,50}", test_database_name):
+        raise ValueError("Le nom de base de tests doit être explicitement préfixé test_pamolive_.")
+    DATABASES["default"]["TEST"] = {"NAME": test_database_name}
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

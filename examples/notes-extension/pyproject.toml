@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=80,<81"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pamolive-example-notes"
+version = "1.0.0"
+description = "Community extension example for PAM-olive"
+requires-python = ">=3.12"
+license = {text = "AGPL-3.0-or-later"}
+dependencies = ["Django>=5.2,<5.3"]
+
+[project.entry-points."pamolive.modules"]
+example_notes = "pamolive_ext_notes.manifest:module"
+
+[tool.setuptools.package-data]
+pamolive_ext_notes = ["manifest.json", "templates/pamolive_ext_notes/*.html"]

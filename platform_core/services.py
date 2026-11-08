@@ -23,10 +23,17 @@ def authorize(actor, organization, *, roles=("admin", "operator")):
 
 
 def require_module(organization, key):
+    definition = get_module(key)
+    if not definition:
+        raise PermissionDenied("Le paquet de ce module est absent du déploiement.")
     if not ModuleActivation.objects.filter(
         organization=organization, module_key=key, enabled=True
     ).exists():
         raise PermissionDenied("Ce module n’est pas activé pour cette organisation.")
+    if definition.metadata.get("extension_release"):
+        from .extensions.api import require_delivery
+
+        require_delivery(organization, key)
 
 
 def module_catalog(organization=None):
@@ -34,7 +41,49 @@ def module_catalog(organization=None):
     states = {
         item.module_key: item for item in ModuleActivation.objects.filter(organization=organization)
     }
-    return [(definition, states.get(definition.key)) for definition in all_modules()]
+    definitions = all_modules()
+    extensions = [d for d in definitions if d.metadata.get("extension_release")]
+    if extensions:
+        from dataclasses import replace
+
+        from .extensions.api import release_for
+        from .models import ExtensionDeployment
+
+        deliveries = {
+            item.module_key: item
+            for item in ExtensionDeployment.objects.filter(
+                module_key__in=[d.key for d in extensions]
+            )
+        }
+        annotated = []
+        for definition in definitions:
+            if definition.metadata.get("extension_release"):
+                release = release_for(definition.key)
+                delivered = deliveries.get(definition.key)
+                ready = bool(
+                    release
+                    and delivered
+                    and delivered.version == release.manifest.version
+                    and delivered.release_hash == release.release_hash
+                    and delivered.manifest_hash == release.manifest_hash
+                    and delivered.wheel_hash == release.wheel_sha256
+                )
+                definition = replace(
+                    definition,
+                    metadata={
+                        **definition.metadata,
+                        "delivery_ready": ready,
+                        "activation_current": bool(
+                            states.get(definition.key)
+                            and states[definition.key].enabled
+                            and states[definition.key].version == definition.version
+                            and states[definition.key].release_hash == release.release_hash
+                        ),
+                    },
+                )
+            annotated.append(definition)
+        definitions = annotated
+    return [(definition, states.get(definition.key)) for definition in definitions]
 
 
 @transaction.atomic
@@ -47,12 +96,53 @@ def install_module(module_key, *, actor, organization=None, request=None):
         raise ValidationError("Module inconnu ou paquet absent de ce déploiement.")
     if definition.is_paid:
         raise ValidationError("Une extension commerciale requiert son paquet et son entitlement.")
+    activation_hash = ""
+    activation_proof = {}
+    if definition.metadata.get("extension_release"):
+        from .authorization import require_recent_authentication
+        from .extensions.api import release_for
+        from .models import ExtensionDeployment
+
+        assurance = require_recent_authentication(actor, organization)
+        release = release_for(module_key)
+        if (
+            not release
+            or not ExtensionDeployment.objects.filter(
+                module_key=module_key,
+                release_hash=release.release_hash,
+                manifest_hash=release.manifest_hash,
+                wheel_hash=release.wheel_sha256,
+                version=release.manifest.version,
+            ).exists()
+        ):
+            raise ValidationError(
+                "Validez les migrations et la livraison du paquet avant activation."
+            )
+        from packaging.specifiers import SpecifierSet
+
+        activation_hash = release.release_hash
+        activation_proof = {
+            "release_hash": release.release_hash,
+            "wheel_hash": release.wheel_sha256,
+            "manifest_hash": release.manifest_hash,
+            "mfa_verified_at": assurance.verified_at,
+            "mfa_window_minutes": assurance.freshness_minutes,
+        }
+
+        for dependency in release.manifest.dependencies:
+            state = ModuleActivation.objects.filter(
+                organization=organization, module_key=dependency.key, enabled=True
+            ).first()
+            if not state or not SpecifierSet(dependency.version_spec).contains(
+                state.version, prereleases=True
+            ):
+                raise ValidationError("Version de dépendance non activée ou incompatible.")
     for dependency in definition.dependencies:
         require_module(organization, dependency)
     module, _ = ModuleActivation.objects.update_or_create(
         organization=organization,
         module_key=module_key,
-        defaults={"version": definition.version, "enabled": True},
+        defaults={"version": definition.version, "release_hash": activation_hash, "enabled": True},
     )
     record(
         action="core.module.enabled.v1",
@@ -61,6 +151,7 @@ def install_module(module_key, *, actor, organization=None, request=None):
         organization=organization,
         target=module,
         request=request,
+        metadata=activation_proof,
     )
     return module
 
@@ -69,6 +160,11 @@ def install_module(module_key, *, actor, organization=None, request=None):
 def disable_module(module_key, *, actor, organization=None, request=None):
     organization = organization or current_organization()
     authorize(actor, organization, roles=("admin",))
+    definition = get_module(module_key)
+    if definition and definition.metadata.get("extension_release"):
+        from .authorization import require_recent_authentication
+
+        require_recent_authentication(actor, organization)
     Organization.objects.select_for_update().get(pk=organization.pk)
     dependents = [
         d.name

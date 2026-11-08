@@ -1,0 +1,5 @@
+{% extends 'base.html' %}{% block content %}
+<h1>Journal · {{ current_organization }}</h1><p>Extension communautaire d’exemple. Les notes restent propres à cette organisation ; elles ne sont pas des autorisations d’accès.</p>
+<section class="workflow-card"><h2>Ajouter une note</h2><form method="post" action="{% url 'ext-example_notes:create' %}">{% csrf_token %}{{ form.as_p }}<button class="button">Enregistrer après validation MFA</button></form></section>
+{% for note in notes %}<article class="workflow-card"><h2>{{ note.title }}</h2><p>{{ note.body|linebreaksbr }}</p><small>{{ note.author }} · {{ note.created_at }}</small></article>{% empty %}<p>Aucune note dans cette organisation.</p>{% endfor %}
+{% endblock %}

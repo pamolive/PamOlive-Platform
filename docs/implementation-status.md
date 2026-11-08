@@ -9,6 +9,7 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 - Validation récente personnelle de 2/5/10/15 minutes et reprise du formulaire conservé après challenge.
 - Requêtes organisationnelles refusées sans contexte ; relations croisées refusées dans les modèles et par contraintes PostgreSQL.
 - Activation indépendante des huit modules livrés dans le même conteneur.
+- Extensions communautaires Python séparées : wheels signées Ed25519, inventaire des fichiers et manifeste vérifiés avant import, compatibilité du noyau et dépendances, routes HTTP propres au module avec garde du noyau. Livraison après migrations distincte de l’activation par organisation ; activation liée à l’empreinte exacte du paquet, MFA et audit. Exemple autonome sans modification du noyau, sans installation de code par l’interface et sans conteneur permanent supplémentaire.
 - Identités humaines, externes, machines, services, applications, workloads et API.
 - Comptes externes séparés, ressources physiques/numériques, références publiques de certificats et badges, droits motivés.
 - Intention datée avec méthode, ressource, compte, origine, privilège et justification.
@@ -62,7 +63,7 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 - Résolution automatique des identifiants externes, groupes/roles métier transverses, preuves cryptographiques de possession de clé, ticketing vérifié et analyse de risque spécialisée. La chronologie rapproche des faits, pas des causes démontrées.
 - Délégations avancées et élévation fine : les mandats livrés ouvrent les droits natifs du compte choisi (`native_full_account`), sans filtrage de commandes, sudo/JEA ou profil OS « lecture seule ». L’emprunt de comptes personnels et le provisioning IAM pour une autre identité ne sont pas pris en charge.
 - Parcours de grand graphe et pagination haute volumétrie. La projection actuelle limite le contexte à deux sauts, 120 nœuds et 400 relations ; chronologie à 500 événements, investigations à 1000 droits examinés, couverture à 100 périmètres et 500 rapports par périmètre. Les limites sont signalées ; une couverture tronquée n’est jamais déclarée complète.
-- Installation de paquets tiers par entry points, signature et entitlement commercial.
+- Extensions commerciales : choix de licence adapté à leur distribution, entitlements et canal privé. L’API d’extension livrée est communautaire ; les contrats d’événements/outbox et de tâches tierces restent à implémenter. Les modules Python restent du code de confiance, pas des sandboxes.
 - Vérifications de restauration, mise à niveau, charge et actif-actif à plusieurs instances.
 
 Une révocation interne n’est jamais présentée comme la preuve d’une révocation exécutée sur un système externe. Une confirmation SCIM cite une relecture datée ; elle ne garantit pas l’absence d’une modification ultérieure faite hors plateforme. Une absence d’intention dans les données collectées n’est pas présentée comme la preuve que l’accès est illégitime.

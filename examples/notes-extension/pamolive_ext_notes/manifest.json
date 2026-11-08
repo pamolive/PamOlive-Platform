@@ -1,0 +1,21 @@
+{
+  "key": "example_notes",
+  "name": "Journal d’organisation",
+  "version": "1.0.0",
+  "summary": "Exemple communautaire : notes privées à chaque organisation, permissions et audit.",
+  "category": "Extensions",
+  "core_spec": ">=0.2.0a4,<0.3",
+  "api_version": "1",
+  "license_kind": "community",
+  "package": "pamolive_ext_notes",
+  "django_app": "pamolive_ext_notes.apps.NotesConfig",
+  "dependencies": [{"key": "identity", "version_spec": ">=0.1,<0.2"}],
+  "permissions": [
+    {"code": "example_notes.note.view", "roles": ["admin", "operator", "reviewer", "auditor"], "sensitive": false},
+    {"code": "example_notes.note.create", "roles": ["admin", "operator"], "sensitive": true}
+  ],
+  "routes": [
+    {"name": "home", "path": "", "view": "pamolive_ext_notes.views.index", "permission": "example_notes.note.view", "methods": ["GET"]},
+    {"name": "create", "path": "new/", "view": "pamolive_ext_notes.views.create", "permission": "example_notes.note.create", "methods": ["POST"]}
+  ]
+}

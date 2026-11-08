@@ -138,6 +138,7 @@ Ce contrôle prouve NLA, les pins natifs, le clavier, les pixels de la cible et 
 - [Provisioning SCIM et confirmations externes](docs/provisioning.md)
 - [Transports PAM SSH/RDP, captures et configuration du proxy](docs/pam-transport.md)
 - [Mandats PAM liés à une personne et comptes techniques partagés](docs/pam-person-mandates.md)
+- [Installer un module communautaire séparé dans la même image](docs/extensions.md)
 - [Roadmap](docs/implementation-roadmap.md), [décisions](docs/architecture-decisions.md), [état livré](docs/implementation-status.md)
 
 ## Licence et gestion du projet
