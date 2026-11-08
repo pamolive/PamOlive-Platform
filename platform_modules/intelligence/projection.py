@@ -70,6 +70,11 @@ def graph_for_identity(identity, *, at=None):
     def add_node(kind, obj):
         key = f"{kind}:{obj.pk}"
         if key not in nodes:
+            label = (
+                f"Acteur non résolu · {obj}"
+                if kind == "event" and not obj.identity_id
+                else str(obj)
+            )
             url = (
                 reverse("record-detail", args=[kind, obj.pk])
                 if kind
@@ -91,8 +96,8 @@ def graph_for_identity(identity, *, at=None):
                 }[kind],
                 "subtype": getattr(obj, "kind", ""),
                 "subtype_label": obj.get_kind_display() if hasattr(obj, "get_kind_display") else "",
-                "label": str(obj),
-                "short_label": str(obj)[:26] + ("…" if len(str(obj)) > 26 else ""),
+                "label": label,
+                "short_label": label[:26] + ("…" if len(label) > 26 else ""),
                 "url": url,
             }
         return key

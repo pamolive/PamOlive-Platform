@@ -272,6 +272,8 @@ class AccessAttributionTests(TestCase):
         graph = graph_for_identity(self.service)
         origins = {e["source"] for e in graph["edges"] if e["evidence"] == str(unknown.pk)}
         self.assertEqual(origins, {f"event:{unknown.pk}"})
+        node = next(n for n in graph["nodes"] if n["id"] == f"event:{unknown.pk}")
+        self.assertIn("Acteur non résolu", node["short_label"])
 
     def test_api_accepts_independent_actor_and_preserves_unknown_actor_on_replay(self):
         _, token = create_source("Remote support", actor=self.admin, organization=self.org)
