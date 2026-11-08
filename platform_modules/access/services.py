@@ -113,13 +113,39 @@ def evaluate_event(event, *, organization):
                 {"code": code, "state": state, "detail": detail, "evidence": str(evidence)}
             )
 
+        # Ownership is inventory context, never attribution of an observed action.
+        # Capture the context in this immutable evaluation, not in the source fact.
+        for relation in ("account", "credential"):
+            subject = getattr(event, relation)
+            if subject is not None:
+                owner = subject.identity
+                add(
+                    f"{relation}_owner_context",
+                    "observed",
+                    f"Rattachement d’inventaire lors de cette évaluation : {subject} → "
+                    f"{owner} ({owner.pk}). Ce rattachement actuel ne prouve ni l’acteur "
+                    "de l’accès ni la propriété à la date source.",
+                    subject.pk,
+                )
+
         if not event.identity_id:
-            add("identity", "unknown", "Identité non résolue ; aucune attribution supposée.")
+            add(
+                "identity",
+                "unknown",
+                "Acteur non rapporté par la source ; aucune attribution au propriétaire "
+                "du compte ou du credential n’est supposée.",
+            )
         elif identity_status_at(event.identity, event.occurred_at) != "active":
             verdict = "deviation"
             add("lifecycle", "deviation", "Identité suspendue ou partie.", event.identity_id)
         else:
-            add("identity", "confirmed", f"Identité : {event.identity.name}", event.identity_id)
+            add(
+                "identity",
+                "confirmed",
+                f"Acteur rapporté par la source : {event.identity.name}. "
+                "Le rapprochement ne constitue pas une preuve indépendante d’authentification.",
+                event.identity_id,
+            )
             candidates = (
                 AccessIntent.objects.filter(
                     identity=event.identity,
@@ -345,6 +371,9 @@ def revoke_identity(identity_id, *, actor, organization, reason):
         identity.save(update_fields=["status"])
         accounts = ExternalAccount.objects.filter(identity=identity, active=True)
         account_ids = list(accounts.values_list("id", flat=True))
+        owned_account_ids = list(
+            ExternalAccount.objects.filter(identity=identity).values_list("id", flat=True)
+        )
         from platform_modules.connectors.outbound import queue_account_disable
         from platform_modules.identity.services import revoke_grant
 
@@ -357,14 +386,16 @@ def revoke_identity(identity_id, *, actor, organization, reason):
             )
         for grant in Grant.objects.filter(identity=identity, status="active"):
             revoke_grant(grant, actor=actor, organization=organization, origin="identity.departed")
-        AccessIntent.objects.filter(identity=identity, status__in=["pending", "approved"]).update(
-            status="revoked", revoked_at=now
-        )
+        AccessIntent.objects.filter(
+            Q(identity=identity) | Q(account_id__in=owned_account_ids),
+            status__in=["pending", "approved"],
+        ).update(status="revoked", revoked_at=now)
         from platform_modules.pam.models import SessionLease
 
-        SessionLease.objects.filter(intent__identity=identity, status="active").update(
-            status="revoked", ended_at=timezone.now()
-        )
+        SessionLease.objects.filter(
+            Q(intent__identity=identity) | Q(intent__account_id__in=owned_account_ids),
+            status="active",
+        ).update(status="revoked", ended_at=now)
         record(
             action="identity.departed.v1",
             summary=f"Départ : {identity.name}",

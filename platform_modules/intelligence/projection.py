@@ -111,6 +111,20 @@ def graph_for_identity(identity, *, at=None):
         )
 
     focus = add_node("identity", identity)
+
+    def inventory_owner(kind, subject):
+        key = add_node(kind, subject)
+        edge(
+            key,
+            add_node("identity", subject.identity),
+            "account-of" if kind == "account" else "credential-of",
+            "context",
+            subject.pk,
+            "Rattachement actuel d’inventaire, pas attribution de l’action "
+            "ni preuve de propriété historique.",
+        )
+        return key
+
     for account in bounded(ExternalAccount.objects.filter(identity=identity)):
         edge(
             focus,
@@ -165,6 +179,15 @@ def graph_for_identity(identity, *, at=None):
             f"{intent.starts_at.isoformat()} → {intent.ends_at.isoformat()} · "
             f"{intent.method} · {intent.reference}",
         )
+        if intent.account_id:
+            edge(
+                key,
+                inventory_owner("account", intent.account),
+                "declared-account",
+                "intention",
+                intent.pk,
+                "Compte prévu dans cette intention ; aucun transfert de propriété.",
+            )
     participants = (
         ContractParticipant.objects.filter(identity=identity, valid_from__lte=at)
         .filter(Q(valid_until__isnull=True) | Q(valid_until__gt=at))
@@ -191,15 +214,22 @@ def graph_for_identity(identity, *, at=None):
         )
     observed = list(
         AccessEvent.objects.filter(
-            identity=identity, occurred_at__gte=at - timedelta(days=1), occurred_at__lte=at
+            Q(identity=identity) | Q(account__identity=identity) | Q(credential__identity=identity),
+            occurred_at__gte=at - timedelta(days=1),
+            occurred_at__lte=at,
         )
-        .select_related("resource")
+        .select_related("identity", "resource", "account__identity", "credential__identity")
         .order_by("-occurred_at")[:101]
     )
     truncated |= len(observed) > 100
     for event in observed[:100]:
+        # An account owner's graph may include another actor, or an unresolved one.
+        # Never draw owner -> resource as the actor's observed activity by default.
+        origin = (
+            add_node("identity", event.identity) if event.identity_id else add_node("event", event)
+        )
         edge(
-            focus,
+            origin,
             add_node("resource", event.resource),
             "observed-on",
             "observation",
@@ -207,6 +237,21 @@ def graph_for_identity(identity, *, at=None):
             f"{event.occurred_at.isoformat()} · {event.method} · {event.action} · "
             f"résultat {event.result} · source {event.source}",
         )
+        for kind, subject in (("account", event.account), ("credential", event.credential)):
+            if subject:
+                edge(
+                    origin,
+                    inventory_owner(kind, subject),
+                    f"observed-with-{kind}",
+                    "observation",
+                    event.pk,
+                    "Association rapportée par la source. "
+                    + (
+                        "Acteur renseigné séparément du propriétaire."
+                        if event.identity_id
+                        else "Acteur inconnu ; le propriétaire n’est pas supposé avoir agi."
+                    ),
+                )
     seen_links = set()
     for _ in range(2):
         selection = Q(pk__in=[])

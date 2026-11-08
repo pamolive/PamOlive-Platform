@@ -70,6 +70,8 @@ Dans Docker Desktop, `host.docker.internal` permet de joindre un PostgreSQL éco
 
 Les droits permanents motivés peuvent justifier un accès sans ticket. Un fait insuffisamment documenté reste « contexte insuffisant ». Les révocations locales ne valent pas confirmation de retrait sur un système externe.
 
+L’acteur d’une observation peut être différent du propriétaire du compte utilisé : par exemple un humain utilisant un compte de service. Sans attribution fournie par la source, l’acteur reste inconnu. Le formulaire, l’explication et le graphe distinguent ces rôles ; une intention d’observation peut préciser ce compte partagé, sans autoriser pour autant une délégation de session PAM ou de provisioning IAM. Voir le [contrat d’attribution de l’API](docs/api.md#acteur-compte-et-propriétaire--trois-notions-différentes).
+
 ## Contrats fournisseurs et politiques
 
 Le module optionnel **Contrats et politiques** s’active dans le catalogue de l’organisation. Il est livré dans la même image, sans autre conteneur.

@@ -25,6 +25,7 @@ def open_lease(intent_id, *, actor, organization):
             or intent.identity.status != "active"
             or not intent.account_id
             or not intent.account.active
+            or intent.account.identity_id != intent.identity_id
             or intent.account.kind != "privileged"
             or intent.method.casefold() not in ("ssh", "rdp")
         ):

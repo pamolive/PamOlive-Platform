@@ -9,7 +9,12 @@ from platform_core.tenancy import ScopedModel
 
 class AccessIntent(ScopedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    identity = models.ForeignKey("identity.Identity", on_delete=models.PROTECT)
+    identity = models.ForeignKey(
+        "identity.Identity",
+        on_delete=models.PROTECT,
+        verbose_name="Identité intervenante",
+        help_text="L’acteur prévu, distinct du propriétaire éventuel du compte utilisé.",
+    )
     resource = models.ForeignKey("identity.Resource", on_delete=models.PROTECT)
     account = models.ForeignKey(
         "identity.ExternalAccount", null=True, blank=True, on_delete=models.PROTECT
@@ -72,8 +77,16 @@ class AccessIntent(ScopedModel):
             raise ValidationError("Une attribution IAM nécessite un compte et un droit précis.")
         if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
             raise ValidationError("La fin doit suivre le début.")
-        if self.account_id and self.account.identity_id != self.identity_id:
-            raise ValidationError("Le compte ne correspond pas à l’identité.")
+        if (
+            self.account_id
+            and self.account.identity_id != self.identity_id
+            and self.fulfillment != "observe"
+        ):
+            raise ValidationError(
+                "L’observation peut distinguer intervenant et propriétaire du compte. "
+                "Le provisioning IAM et le relais PAM exigent encore un compte de cette identité ; "
+                "ils ne prennent pas en charge la délégation de compte partagé."
+            )
         if self.network_switch_id or self.network_port or self.network_vlan:
             if self.fulfillment != "observe":
                 raise ValidationError(
@@ -96,14 +109,32 @@ class AccessEvent(ScopedModel):
     occurred_at = models.DateTimeField("Date source")
     received_at = models.DateTimeField(auto_now_add=True)
     identity = models.ForeignKey(
-        "identity.Identity", null=True, blank=True, on_delete=models.PROTECT
+        "identity.Identity",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        verbose_name="Acteur rapporté par la source",
+        help_text=(
+            "Laissez vide si la source ne connaît pas l’acteur. "
+            "Le propriétaire d’un compte ou d’un certificat n’est pas déduit comme acteur."
+        ),
     )
     account = models.ForeignKey(
-        "identity.ExternalAccount", null=True, blank=True, on_delete=models.PROTECT
+        "identity.ExternalAccount",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        verbose_name="Compte observé",
+        help_text="Peut appartenir à une autre identité de cette organisation (compte partagé).",
     )
     resource = models.ForeignKey("identity.Resource", on_delete=models.PROTECT)
     credential = models.ForeignKey(
-        "identity.Credential", null=True, blank=True, on_delete=models.PROTECT
+        "identity.Credential",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        verbose_name="Certificat / badge observé",
+        help_text="Son propriétaire reste distinct de l’acteur rapporté ; aucun secret à fournir.",
     )
     method = models.CharField("Méthode", max_length=80)
     action = models.CharField("Action", max_length=180)
@@ -165,10 +196,6 @@ class AccessEvent(ScopedModel):
 
     def clean(self):
         super().clean()
-        if self.account_id and self.identity_id != self.account.identity_id:
-            raise ValidationError("Le compte observé ne correspond pas à l’identité.")
-        if self.credential_id and self.identity_id != self.credential.identity_id:
-            raise ValidationError("Le credential ne correspond pas à l’identité.")
         if self.network_switch_id and self.network_switch.kind != "network":
             raise ValidationError("Le switch observé doit être une ressource réseau.")
 
@@ -188,6 +215,6 @@ class AccessEvaluation(ScopedModel):
             ("unknown", "Contexte insuffisant"),
         ],
     )
-    rule_version = models.CharField(max_length=30, default="access-context/3")
+    rule_version = models.CharField(max_length=30, default="access-context/4")
     findings = models.JSONField(default=list)
     evaluated_at = models.DateTimeField(auto_now_add=True)

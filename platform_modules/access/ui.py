@@ -270,6 +270,14 @@ def record_detail(request, kind, object_id):
     elif kind == "intent" and obj.provisioned_grant_id:
         changes = ExternalChange.objects.filter(grant_id=obj.provisioned_grant_id)
     details = [(model._meta.get_field(f).verbose_name, getattr(obj, f)) for f in fields]
+    if kind == "event":
+        for relation, label in (
+            ("account", "Propriétaire actuel du compte — contexte, pas acteur déduit"),
+            ("credential", "Propriétaire actuel du credential — contexte, pas acteur déduit"),
+        ):
+            subject = getattr(obj, relation)
+            if subject:
+                details.append((label, subject.identity))
     return render(
         request,
         "governance/detail.html",
@@ -563,6 +571,7 @@ def export_event(request, object_id):
             "evidence": event.evidence,
             "facts": {
                 "identity_id": str(event.identity_id) if event.identity_id else None,
+                "identity_attribution": "source_reported" if event.identity_id else "unresolved",
                 "account_id": str(event.account_id) if event.account_id else None,
                 "resource_id": str(event.resource_id),
                 "domain": event.domain or None,
@@ -573,6 +582,17 @@ def export_event(request, object_id):
                 else None,
                 "network_port": event.network_port or None,
                 "network_vlan": event.network_vlan or None,
+            },
+            "inventory_context": {
+                "as_of": timezone.now().isoformat(),
+                "account_owner_identity_id": str(event.account.identity_id)
+                if event.account_id
+                else None,
+                "credential_owner_identity_id": str(event.credential.identity_id)
+                if event.credential_id
+                else None,
+                "provenance": "current_inventory_not_historical_ownership",
+                "actor_inferred_from_ownership": False,
             },
             "evaluation": {
                 "verdict": evaluation.verdict,

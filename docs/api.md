@@ -22,6 +22,16 @@ Créer une source depuis **Connecteurs**. Le jeton n’est affiché qu’une foi
 
 `identity`, `account`, `credential`, `location`, `privilege` et `evidence` sont facultatifs. `contract` peut contenir l’UUID d’un contrat de la même organisation et `country_code` le pays observé à deux lettres fourni par la source. Une identité absente reste inconnue. Aucun mot de passe, clé privée, jeton ou secret ne doit être envoyé dans les preuves.
 
+### Acteur, compte et propriétaire : trois notions différentes
+
+`identity` désigne **l’acteur rapporté par la source**, pas le propriétaire que PAM-olive retrouverait dans l’inventaire. `account` et `credential` peuvent appartenir à d’autres identités de la même organisation. Exemple : une source d’assistance rapporte Cyriel comme intervenant, `svc-radiology` comme compte utilisé et un certificat détenu par l’identité technique « Service radiologie ». Ces trois références restent séparées ; le rattachement du compte au service n’est pas modifié.
+
+Si la source ne connaît que le compte ou le certificat, omettre `identity` : le fait est accepté, l’acteur reste inconnu et aucune intention personnelle n’est rapprochée par simple propriété du compte. L’identification d’un compte n’est pas une preuve qu’un humain, son responsable ou son propriétaire l’a utilisé. La source doit conserver sa preuve d’attribution dans `evidence` ; l’API ne certifie pas elle-même l’authentification rapportée.
+
+Une intention de type **Justification et observation** peut déclarer séparément l’intervenant et le compte partagé précis. Le rapprochement exige l’acteur, le compte, la ressource, la méthode et la fenêtre applicables ; l’intention d’une autre personne utilisant le même compte ne vaut pas autorisation. Ce parcours d’observation ne permet ni provisioning IAM sur un compte d’une autre identité ni délégation du relais PAM. Ces actions nécessitent un contrat d’exécution distinct encore à implémenter.
+
+L’export garde les identifiants reçus dans `facts`, dont `identity_attribution` (`source_reported` ou `unresolved`). Le bloc `inventory_context` fournit séparément les propriétaires **actuellement** renseignés, son heure `as_of` et la provenance `current_inventory_not_historical_ownership`. Il ne prétend pas reconstituer la propriété au moment de l’accès. Chaque évaluation `access-context/4` conserve son propre contexte d’inventaire daté ; une réévaluation ajoute un résultat sans réécrire le fait ou les anciennes explications.
+
 Le pays déclaré dans une intention n’est jamais recopié comme pays observé. Si un contrat exige un pays et que la source ne le fournit pas, l’évaluation garde cette incertitude. Le contrat applicable est sa révision publiée à `occurred_at`, pas nécessairement sa révision actuelle. Une intention approuvée après `occurred_at` ne justifie pas rétroactivement cet événement. L’heure de la source doit donc être fiable et synchronisée.
 
 La source est imposée par le jeton ; aucun `organization_id` ni `source` n’est accepté du client. Une nouvelle observation renvoie HTTP 201 ; son rejeu avec le même identifiant source renvoie HTTP 200 et le même UUID. Le fait initial n’est pas modifié.

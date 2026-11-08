@@ -14,6 +14,7 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 - Intention datée avec méthode, ressource, compte, origine, privilège et justification.
 - Approbations indépendantes configurables, responsable de contrat, séparation demandeur/approbateur et votes conservés.
 - Ingestion authentifiée par source, déduplication, conservation des faits source.
+- Acteur rapporté séparé du propriétaire du compte ou du credential : comptes partagés et certificats techniques observables sans attribuer leur activité à leur propriétaire. Acteur inconnu conservé ; aucune intention personnelle déduite par propriété. Intention d’observation bornée à l’intervenant et au compte précis, export et graphe distinguant activité rapportée et rattachement actuel d’inventaire. Départ d’un intervenant sans désactivation du compte partagé d’une autre identité ; retrait du propriétaire désactivant ses comptes et les intentions qui les utilisent.
 - Comparaison à une intention approuvée ou à un droit applicable ; résultats conformes, écarts ou contexte insuffisant.
 - Détail des preuves et export JSON par événement.
 - Campagnes de recertification et révocation des droits locaux.
@@ -57,6 +58,7 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 - Vérification des tickets/contrats dans leurs systèmes sources, catalogue de pays de confiance, gestion des délégations et escalades d’approbation. Les horaires sont vérifiés sur la fenêtre d’autorisation entière, pas appliqués nativement à chaque application SCIM.
 - Étendre les matrices de compatibilité SSH et Windows/RDP, les politiques AD/Kerberos, les scénarios de panne et la charge. Les fermes RDS à redirection et RD Gateway ne sont pas prises en charge. Le bail seul reste une autorisation ; les sondes testent le serveur, pas les identifiants. Ajouter rétention contrôlée des captures, quotas configurables, restauration et rotation de clé sans perte de preuves.
 - Résolution automatique des identifiants externes, groupes/roles métier transverses, preuves cryptographiques de possession de clé, ticketing vérifié et analyse de risque spécialisée. La chronologie rapproche des faits, pas des causes démontrées.
+- Délégation exécutable des comptes partagés : lien vérifié entre compte de connexion PAM-olive et identité intervenante, mandat d’usage daté, approbateurs indépendants de l’intervenant et contrôles continus. L’observation de ces comptes est possible ; le provisioning IAM et le relais PAM conservent encore l’exigence d’un compte appartenant à l’identité de la demande.
 - Parcours de grand graphe et pagination haute volumétrie. La projection actuelle limite le contexte à deux sauts, 120 nœuds et 400 relations ; chronologie à 500 événements, investigations à 1000 droits examinés, couverture à 100 périmètres et 500 rapports par périmètre. Les limites sont signalées ; une couverture tronquée n’est jamais déclarée complète.
 - Installation de paquets tiers par entry points, signature et entitlement commercial.
 - Vérifications de restauration, mise à niveau, charge et actif-actif à plusieurs instances.
