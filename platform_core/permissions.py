@@ -5,9 +5,13 @@ from django.core.exceptions import PermissionDenied
 
 
 def has_permission(user, code):
-    if user.is_superuser:
-        return True
-    return user.pamolive_business_roles.filter(permission_grants__code=code).exists()
+    """Retired prototype API: global role rows never authorize tenant operations.
+
+    Use platform_core.services.authorize for built-ins and extensions.api.authorize
+    for signed extension permissions. Neither can infer an organization from a
+    historical global BusinessRole.
+    """
+    return False
 
 
 def require_permission(code):

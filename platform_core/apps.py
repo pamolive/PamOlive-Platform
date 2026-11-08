@@ -9,7 +9,7 @@ class PlatformCoreConfig(AppConfig):
     def ready(self):
         import logging
 
-        from . import signals  # noqa: F401
+        from . import checks, signals  # noqa: F401
         from .oidc.logging import OIDCQueryRedactor
 
         for name in ("uvicorn.access", "django.server"):
