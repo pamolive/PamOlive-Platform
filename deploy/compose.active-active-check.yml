@@ -1,0 +1,41 @@
+# Disposable qualification only. No production service, port or volume is targeted.
+x-node: &node
+  image: ${PAMOLIVE_HA_IMAGE:?Provide the already-built application image}
+  environment: &environment
+    DATABASE_URL: ${PAMOLIVE_HA_DATABASE_URL:?Provide a dedicated test_pamolive_ha database}
+    SECRET_KEY: qualification-only-shared-session-signing-key-never-for-production
+    PAMOLIVE_ENCRYPTION_KEY: qualification-only-shared-encryption-key-never-for-production
+    PAMOLIVE_HA_QUALIFICATION: '1'
+    DEBUG: 'false'
+    ALLOWED_HOSTS: ha.pamolive.test,localhost,127.0.0.1
+    SECURE_COOKIES: 'false'
+    SECURE_SSL_REDIRECT: 'false'
+    WEB_WORKERS: '1'
+  ports:
+    - '127.0.0.1::8000'
+  extra_hosts:
+    - 'host.docker.internal:host-gateway'
+  networks: [default, database]
+  restart: 'no'
+  init: true
+  read_only: true
+  tmpfs: [/tmp:size=64m,mode=1777]
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  cap_add: [SETUID, SETGID, KILL]
+  stop_grace_period: 20s
+services:
+  node-a:
+    <<: *node
+    environment:
+      <<: *environment
+      PAMOLIVE_INSTANCE_ID: qualification-a
+  node-b:
+    <<: *node
+    environment:
+      <<: *environment
+      PAMOLIVE_INSTANCE_ID: qualification-b
+networks:
+  database:
+    external: true
+    name: ${PAMOLIVE_HA_DATABASE_NETWORK:?Provide the existing private database network}

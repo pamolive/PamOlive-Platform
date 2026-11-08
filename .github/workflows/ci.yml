@@ -67,3 +67,9 @@ jobs:
             sleep 1
           done
           docker exec pamolive-platform-runtime-ci python -m deploy.check_runtime
+      - name: Verify two active application nodes and abrupt HTTP failover
+        run: |
+          python -c "import os, psycopg; connection=psycopg.connect(os.environ['DATABASE_URL'], autocommit=True); connection.execute('CREATE DATABASE test_pamolive_ha OWNER pamolive'); connection.close()"
+          ha_network=$(docker inspect '${{ job.services.postgres.id }}' --format '{{json .NetworkSettings.Networks}}' | python -c "import json,sys; print(next(iter(json.load(sys.stdin))))")
+          python -m deploy.prepare_active_active_environment /tmp/pamolive-ha-ci.env --image pamolive-platform:ci --network "$ha_network" --host postgres
+          python -m deploy.check_active_active --env-file /tmp/pamolive-ha-ci.env
