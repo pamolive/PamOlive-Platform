@@ -224,7 +224,7 @@ def ingest_report(data, *, source, organization):
         return report, True
 
 
-def context_findings(event, *, organization, matched_intent=None):
+def context_findings(event, *, organization, matched_intent=None, matched_grant=None):
     """Evidence enriches an explanation; topological familiarity never grants a right."""
     findings = []
     with organization_context(organization):
@@ -246,14 +246,27 @@ def context_findings(event, *, organization, matched_intent=None):
                 else "Horloge de précision inconnue : comparaison selon la date source déclarée.",
                 report_id or event.pk,
             )
-            if (
-                matched_intent
-                and uncertainty is not None
-                and (
-                    event.occurred_at - timedelta(seconds=uncertainty) < matched_intent.starts_at
-                    or event.occurred_at + timedelta(seconds=uncertainty) >= matched_intent.ends_at
+            authorization = matched_intent or matched_grant
+            if authorization and uncertainty is not None:
+                opening = (
+                    max(matched_intent.starts_at, matched_intent.approved_at)
+                    if matched_intent
+                    else max(matched_grant.valid_from, matched_grant.created_at)
                 )
-            ):
+                closing = matched_intent.ends_at if matched_intent else matched_grant.expires_at
+                revoked = authorization.revoked_at
+                if revoked and (closing is None or revoked < closing):
+                    closing = revoked
+                interval = event.ended_at and event.ended_at > event.occurred_at
+                right = (event.ended_at if interval else event.occurred_at) + timedelta(
+                    seconds=uncertainty
+                )
+                ambiguous = event.occurred_at - timedelta(seconds=uncertainty) < opening or bool(
+                    closing and (right > closing if interval else right >= closing)
+                )
+            else:
+                ambiguous = False
+            if ambiguous:
                 add(
                     "time_boundary",
                     "unknown",

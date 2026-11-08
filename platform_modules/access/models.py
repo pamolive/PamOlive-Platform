@@ -3,6 +3,7 @@ import uuid
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 from platform_core.tenancy import ScopedModel
 
@@ -124,6 +125,12 @@ class AccessEvent(ScopedModel):
     source = models.CharField("Source", max_length=180)
     external_id = models.CharField("Identifiant source", max_length=180)
     occurred_at = models.DateTimeField("Date source")
+    ended_at = models.DateTimeField(
+        "Fin de la période observée",
+        null=True,
+        blank=True,
+        help_text="Vide pour un fait instantané ; sinon intervalle début inclus, fin exclue.",
+    )
     received_at = models.DateTimeField(auto_now_add=True)
     identity = models.ForeignKey(
         "identity.Identity",
@@ -201,9 +208,14 @@ class AccessEvent(ScopedModel):
 
     class Meta(ScopedModel.Meta):
         constraints = [
+            models.CheckConstraint(
+                condition=models.Q(ended_at__isnull=True)
+                | models.Q(ended_at__gte=models.F("occurred_at")),
+                name="access_event_time_order",
+            ),
             models.UniqueConstraint(
                 fields=["organization", "source", "external_id"], name="unique_access_source_event"
-            )
+            ),
         ]
 
     def save(self, *args, **kwargs):
@@ -213,6 +225,13 @@ class AccessEvent(ScopedModel):
 
     def clean(self):
         super().clean()
+        if any(
+            value is not None and timezone.is_naive(value)
+            for value in (self.occurred_at, self.ended_at)
+        ):
+            raise ValidationError("Les dates source doivent comporter un fuseau horaire.")
+        if self.ended_at and self.occurred_at and self.ended_at < self.occurred_at:
+            raise ValidationError("La fin observée ne peut pas précéder le début.")
         if self.network_switch_id and self.network_switch.kind != "network":
             raise ValidationError("Le switch observé doit être une ressource réseau.")
 
@@ -232,6 +251,6 @@ class AccessEvaluation(ScopedModel):
             ("unknown", "Contexte insuffisant"),
         ],
     )
-    rule_version = models.CharField(max_length=30, default="access-context/5")
+    rule_version = models.CharField(max_length=30, default="access-context/6")
     findings = models.JSONField(default=list)
     evaluated_at = models.DateTimeField(auto_now_add=True)

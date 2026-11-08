@@ -5,6 +5,7 @@ from datetime import timedelta
 from django.db.models import Q
 
 from platform_core.tenancy import current_organization
+from platform_modules.access.temporal import overlapping_events
 
 from .models import DOMAINS, CollectionReport, CollectionScope
 
@@ -132,9 +133,7 @@ def event_timeline(queryset, start, end):
 
     validate_window(start, end)
     events = list(
-        queryset.filter(
-            organization=current_organization(), occurred_at__gte=start, occurred_at__lt=end
-        )
+        overlapping_events(queryset.filter(organization=current_organization()), start, end)
         .select_related("identity", "account", "resource", "credential")
         .prefetch_related("evaluations__intent")
         .order_by("occurred_at", "pk")[:501]
@@ -150,18 +149,41 @@ def event_timeline(queryset, start, end):
             or event.occurred_at - timedelta(seconds=uncertainty)
             <= previous[0] + timedelta(seconds=previous[1])
         )
-        reference = evaluation.intent.reference if evaluation and evaluation.intent_id else ""
+        whys = [item for item in evaluation.findings if item["code"] == "why"] if evaluation else []
+        references = list(
+            dict.fromkeys(
+                item.get("business_reference") for item in whys if item.get("business_reference")
+            )
+        )
+        segment_count = (
+            sum(item["code"] == "observed_interval" for item in evaluation.findings) or 1
+            if evaluation
+            else 1
+        )
+        reference_complete = (
+            bool(whys)
+            and len(whys) == segment_count
+            and all(
+                item["state"] == "confirmed" and item.get("business_reference") for item in whys
+            )
+        )
+        reference = " · ".join(references)
+        if evaluation and evaluation.rule_version != "access-context/6":
+            reference = evaluation.intent.reference if evaluation.intent_id else ""
+            reference_complete = bool(reference)
+        completed_at = event.ended_at or event.occurred_at
         rows.append(
             {
                 "event": event,
                 "evaluation": evaluation,
                 "reference": reference,
+                "reference_complete": reference_complete,
                 "clock_uncertainty": uncertainty,
                 "clock_report": report_id,
                 "order_uncertain": overlap,
-                "arrived_late": event.received_at - event.occurred_at > timedelta(minutes=5),
-                "delay_seconds": round((event.received_at - event.occurred_at).total_seconds(), 1),
+                "arrived_late": event.received_at - completed_at > timedelta(minutes=5),
+                "delay_seconds": round((event.received_at - completed_at).total_seconds(), 1),
             }
         )
-        previous = event.occurred_at, uncertainty
+        previous = completed_at, uncertainty
     return rows, len(events) > 500

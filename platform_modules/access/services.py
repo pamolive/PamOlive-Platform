@@ -1,7 +1,10 @@
+from datetime import datetime
+
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from platform_core.audit import record
 from platform_core.models import Organization
@@ -97,11 +100,26 @@ def ingest_event(data, *, organization, actor=None, source=None):
         ).first()
         if existing:
             return existing, False
+        data = dict(data)
+        for field in ("occurred_at", "ended_at"):
+            value = data.get(field)
+            if value is None:
+                continue
+            if isinstance(value, str):
+                try:
+                    value = parse_datetime(value)
+                except ValueError:
+                    value = None
+            if not isinstance(value, datetime) or not timezone.is_aware(value):
+                raise ValidationError("Les dates source doivent comporter un fuseau horaire.")
+            data[field] = value
         event = AccessEvent(organization=organization, **data)
         event.full_clean()
         from datetime import timedelta
 
-        if event.occurred_at > timezone.now() + timedelta(minutes=5):
+        if max(event.occurred_at, event.ended_at or event.occurred_at) > timezone.now() + timedelta(
+            minutes=5
+        ):
             raise ValidationError(
                 "Un événement observé ne peut pas être daté de plus de cinq minutes dans le futur."
             )
@@ -117,7 +135,7 @@ def ingest_event(data, *, organization, actor=None, source=None):
         return event, True
 
 
-def evaluate_event(event, *, organization):
+def _point_findings(event, *, organization, interval_end=None):
     if event.organization_id != organization.pk:
         raise ValidationError("Événement d’une autre organisation.")
     require_module(organization, "access")
@@ -144,6 +162,9 @@ def evaluate_event(event, *, organization):
                     subject.pk,
                 )
 
+        status = (
+            identity_status_at(event.identity, event.occurred_at) if event.identity_id else None
+        )
         if not event.identity_id:
             add(
                 "identity",
@@ -151,7 +172,15 @@ def evaluate_event(event, *, organization):
                 "Acteur non rapporté par la source ; aucune attribution au propriétaire "
                 "du compte ou du credential n’est supposée.",
             )
-        elif identity_status_at(event.identity, event.occurred_at) != "active":
+        elif status == "unknown":
+            add(
+                "lifecycle",
+                "unknown",
+                "Aucun état de cycle de vie connu à cette date ; "
+                "la date d’enregistrement dans la plateforme ne prouve pas un départ antérieur.",
+                event.identity_id,
+            )
+        elif status != "active":
             verdict = "deviation"
             add("lifecycle", "deviation", "Identité suspendue ou partie.", event.identity_id)
         else:
@@ -207,6 +236,7 @@ def evaluate_event(event, *, organization):
                     match.pk,
                 )
                 add("why", "confirmed", match.reason, match.reference or match.pk)
+                findings[-1]["business_reference"] = match.reference
             else:
                 grants = Grant.objects.filter(
                     identity=event.identity,
@@ -232,6 +262,7 @@ def evaluate_event(event, *, organization):
                         grants[0].pk,
                     )
                     add("why", "confirmed", grants[0].justification, grants[0].pk)
+                    findings[-1]["business_reference"] = grants[0].reference
                 elif candidates.exists():
                     verdict = "deviation"
                     add(
@@ -292,6 +323,7 @@ def evaluate_event(event, *, organization):
                         country_code=event.country_code,
                         reference=reference,
                         start=event.occurred_at,
+                        end=interval_end,
                     ).findings
                 )
             from datetime import timedelta
@@ -302,7 +334,7 @@ def evaluate_event(event, *, organization):
                     resource=event.resource,
                     entitlement=event.privilege,
                     start=event.occurred_at,
-                    end=event.occurred_at + timedelta(microseconds=1),
+                    end=interval_end or event.occurred_at + timedelta(microseconds=1),
                     as_of=event.occurred_at,
                 ).findings
             )
@@ -338,7 +370,14 @@ def evaluate_event(event, *, organization):
                 )
         from platform_modules.intelligence.services import context_findings
 
-        findings.extend(context_findings(event, organization=organization, matched_intent=match))
+        findings.extend(
+            context_findings(
+                event,
+                organization=organization,
+                matched_intent=match,
+                matched_grant=grants[0] if grants and not match and verdict == "expected" else None,
+            )
+        )
         if event.result != "success":
             add(
                 "result",
@@ -355,6 +394,67 @@ def evaluate_event(event, *, organization):
             verdict = "deviation"
         elif any(f["state"] == "unknown" for f in findings):
             verdict = "unknown"
+        return verdict, match, findings
+
+
+@transaction.atomic
+def evaluate_event(event, *, organization):
+    from copy import copy
+
+    from .temporal import observation_segments
+
+    if event.organization_id != organization.pk:
+        raise ValidationError("Événement d’une autre organisation.")
+    require_module(organization, "access")
+    Organization.objects.select_for_update().get(pk=organization.pk)
+    with organization_context(organization):
+        segments, limit = observation_segments(event)
+        findings, matches, verdicts = [], [], []
+        if limit:
+            verdicts.append("unknown")
+            findings.append(
+                dict(
+                    code=limit,
+                    state="unknown",
+                    detail="La période dépasse les limites de l’évaluation temporelle "
+                    "(31 jours ou 32 segments). Aucune conformité globale n’est déclarée.",
+                    evidence=str(event.pk),
+                )
+            )
+        for start, end in segments:
+            observed = copy(event)
+            observed.occurred_at, observed.ended_at = start, end
+            verdict, match, result = _point_findings(
+                observed, organization=organization, interval_end=end
+            )
+            verdicts.append(verdict)
+            matches.append(match)
+            if end is not None:
+                findings.append(
+                    dict(
+                        code="observed_interval",
+                        state="observed",
+                        detail=f"Période examinée : [{start.isoformat()}, {end.isoformat()}).",
+                        evidence=str(event.pk),
+                    )
+                )
+                result = [
+                    dict(item, interval_start=start.isoformat(), interval_end=end.isoformat())
+                    for item in result
+                ]
+            findings.extend(result)
+        verdict = (
+            "deviation"
+            if "deviation" in verdicts
+            else "unknown"
+            if "unknown" in verdicts
+            else "expected"
+        )
+        match = (
+            matches[0]
+            if matches and all(item and item.pk == matches[0].pk for item in matches)
+            else None
+        )
         evaluation = AccessEvaluation.objects.create(
             organization=organization, event=event, intent=match, verdict=verdict, findings=findings
         )
@@ -363,7 +463,12 @@ def evaluate_event(event, *, organization):
             summary=f"Évaluation : {verdict}",
             organization=organization,
             target=evaluation,
-            metadata={"event_id": str(event.pk), "rule_version": evaluation.rule_version},
+            metadata={
+                "event_id": str(event.pk),
+                "rule_version": evaluation.rule_version,
+                "segments": len(segments),
+                "temporal_limit": limit,
+            },
         )
         return evaluation
 

@@ -611,7 +611,10 @@ class IntelligenceTests(TestCase):
             action="login",
         )
         intent = SimpleNamespace(
-            starts_at=at - timedelta(seconds=10), ends_at=at + timedelta(minutes=15)
+            starts_at=at - timedelta(seconds=10),
+            ends_at=at + timedelta(minutes=15),
+            approved_at=at - timedelta(minutes=1),
+            revoked_at=None,
         )
         findings = services.context_findings(event, organization=self.org, matched_intent=intent)
         self.assertTrue(

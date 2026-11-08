@@ -10,6 +10,7 @@ from django.utils import timezone
 from platform_core.tenancy import current_organization
 from platform_modules.access.models import AccessEvent, AccessIntent
 from platform_modules.access.services import identity_status_at
+from platform_modules.access.temporal import overlapping_events
 from platform_modules.governance.models import ContractParticipant
 from platform_modules.governance.policy import assess_contract
 from platform_modules.identity.models import Credential, ExternalAccount, Grant, Resource
@@ -218,10 +219,14 @@ def graph_for_identity(identity, *, at=None):
             f"Port {placement.port} · VLAN {placement.vlan} · {placement.evidence}",
         )
     observed = list(
-        AccessEvent.objects.filter(
-            Q(identity=identity) | Q(account__identity=identity) | Q(credential__identity=identity),
-            occurred_at__gte=at - timedelta(days=1),
-            occurred_at__lte=at,
+        overlapping_events(
+            AccessEvent.objects.filter(
+                Q(identity=identity)
+                | Q(account__identity=identity)
+                | Q(credential__identity=identity)
+            ),
+            at - timedelta(days=1),
+            at + timedelta(microseconds=1),
         )
         .select_related("identity", "resource", "account__identity", "credential__identity")
         .order_by("-occurred_at")[:101]
@@ -449,7 +454,7 @@ def investigate(kind, *, at, start, end, zone=None):
         rows, limited = event_timeline(AccessEvent.objects.all(), start, end)
         truncated |= limited
         for row in rows:
-            if not row["reference"]:
+            if not row["reference_complete"]:
                 event = row["event"]
                 results.append(
                     {

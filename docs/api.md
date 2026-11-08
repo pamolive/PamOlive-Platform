@@ -22,7 +22,22 @@ Créer une source depuis **Connecteurs**. Le jeton n’est affiché qu’une foi
 
 `identity`, `account`, `credential`, `location`, `privilege` et `evidence` sont facultatifs. `contract` peut contenir l’UUID d’un contrat de la même organisation et `country_code` le pays observé à deux lettres fourni par la source. Une identité absente reste inconnue. Aucun mot de passe, clé privée, jeton ou secret ne doit être envoyé dans les preuves.
 
-### Acteur, compte et propriétaire : trois notions différentes
+## Durée observée
+
+Pour une session terminée, ajouter `ended_at`, par exemple :
+
+```json
+{
+  "occurred_at": "2026-11-07T14:32:00Z",
+  "ended_at": "2026-11-07T14:47:00Z"
+}
+```
+
+Ces champs complètent l’événement précédent. `ended_at` absent ou `null` conserve la sémantique d’un fait instantané ; égal au début, il décrit une durée nulle. Une période positive est semi-ouverte, début inclus et fin exclue. Les dates nécessitent un fuseau explicite ; une fin antérieure au début ou à plus de cinq minutes dans le futur est refusée.
+
+`access-context/6` [évalue toute la période observée](observed-intervals.md), avec les changements de contexte et les références métier propres à chaque partie. L’export fournit `ended_at` et `duration_seconds`. Les anciens faits et évaluations ne sont pas réécrits ; un rejeu du même identifiant source conserve toujours le fait initial, même si une fin est ajoutée à la requête.
+
+## Acteur, compte et propriétaire : trois notions différentes
 
 `identity` désigne **l’acteur rapporté par la source**, pas le propriétaire que PAM-olive retrouverait dans l’inventaire. `account` et `credential` peuvent appartenir à d’autres identités de la même organisation. Exemple : une source d’assistance rapporte Cyriel comme intervenant, `svc-radiology` comme compte utilisé et un certificat détenu par l’identité technique « Service radiologie ». Ces trois références restent séparées ; le rattachement du compte au service n’est pas modifié.
 

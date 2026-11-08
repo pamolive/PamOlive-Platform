@@ -22,15 +22,15 @@ from platform_core.security import cipher
 from platform_core.services import require_module
 
 
-def historical_targets(executor, core_migration):
-    """Exclude cross-app descendants of later core migrations from the old state.
+def historical_targets(executor, historical_migration, *, app_label="platform_core"):
+    """Exclude cross-app descendants of later migrations from the old state.
 
     Replacing only the core leaf while retaining a newer dependent connector
     leaf produces an impossible project state: its dependency adds the new core
     columns back into the historical model even though the DB was rolled back.
     """
     graph = executor.loader.graph
-    target = ("platform_core", core_migration)
+    target = (app_label, historical_migration)
     excluded = set(graph.backwards_plan(target)) - {target}
     return [
         key

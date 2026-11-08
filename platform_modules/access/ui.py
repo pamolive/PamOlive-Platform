@@ -102,6 +102,7 @@ CATALOG = {
             "source",
             "external_id",
             "occurred_at",
+            "ended_at",
             "identity",
             "account",
             "credential",
@@ -627,6 +628,10 @@ def export_event(request, object_id):
             "what": str(event.resource),
             "where": event.location or None,
             "when": event.occurred_at.isoformat(),
+            "ended_at": event.ended_at.isoformat() if event.ended_at else None,
+            "duration_seconds": (event.ended_at - event.occurred_at).total_seconds()
+            if event.ended_at
+            else None,
             "how": event.method,
             "source": event.source,
             "external_id": event.external_id,
@@ -690,6 +695,10 @@ def api_events(request):
         )
         if occurred is None or not timezone.is_aware(occurred):
             raise ValueError
+        if data.get("ended_at") is not None:
+            ended = parse_datetime(data["ended_at"]) if isinstance(data["ended_at"], str) else None
+            if ended is None or not timezone.is_aware(ended):
+                raise ValueError
         with organization_context(source.organization):
             form = model_form(
                 AccessEvent,

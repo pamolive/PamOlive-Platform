@@ -100,7 +100,7 @@ Les objets suivants appartiennent à leurs domaines métier, jamais aux tables d
 | `GraphNode` | référence à l’objet propriétaire, type (identité, compte, certificat, appareil, ressource, fournisseur, contexte métier), organisation |
 | `GraphRelation` | source et destination, relation typée, période de validité, provenance, confiance, organisation ; projection des données propriétaires |
 | `AccessIntent` | acteur et compte éventuel, ressources, méthode, privilèges, contexte métier, validité, état, référence d’approbation |
-| `AccessEvent` | identifiant externe dédupliqué par source/organisation, heure source et réception, acteur résolu ou inconnu, compte/certificat, ressource, action, lieu, méthode, résultat, référence de preuve |
+| `AccessEvent` | identifiant externe dédupliqué par source/organisation, début source, fin observée facultative et réception, acteur résolu ou inconnu, compte/certificat, ressource, action, lieu, méthode, résultat, référence de preuve |
 | `BusinessContext` | ticket, incident, changement, maintenance, projet ou urgence ; justification, source, propriétaire, statut et période de validité |
 | `SupplierContract` | fournisseur, sponsor, intervenants, période, ressources, méthodes, horaires/fuseau, zones et restrictions |
 | `AccessEvaluation` | événement, intention(s) rapprochée(s), politique et versions, constats, preuves, incertitude, risque et statut de traitement |
@@ -117,9 +117,9 @@ Les événements d’accès ne remplacent pas le journal d’audit du noyau : l�
 - module `recertification` : campagnes, attestations et révocations ;
 - module `reporting` : projections et exports sans devenir source de vérité.
 
-## Écarts du prototype actuel
+## Écarts du prototype historique
 
-Le prototype local doit être refactorisé avant publication :
+Le prototype initial présentait les écarts suivants. Ils décrivent son état avant la refonte organisationnelle, pas les limites actuelles du code publié ; voir l’[état réel de l’implémentation](implementation-status.md).
 
 1. ses clés primaires sont numériques au lieu d’UUID ;
 2. il ne possède pas d’organisation ;
