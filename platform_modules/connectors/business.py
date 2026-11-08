@@ -10,7 +10,7 @@ from uuid import UUID
 from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.validators import URLValidator
-from django.db import transaction
+from django.db import connection, transaction
 from django.utils import timezone
 from django.utils.crypto import constant_time_compare, salted_hmac
 from django.utils.dateparse import parse_datetime
@@ -210,6 +210,16 @@ def source_from_business_token(token):
     return source
 
 
+def business_rate_bucket():
+    # Shared PostgreSQL time prevents separate application VM clocks from
+    # resetting a publisher's budget into different minute buckets.
+    if connection.vendor == "postgresql":
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT date_trunc('minute', clock_timestamp())")
+            return cursor.fetchone()[0]
+    return timezone.now().replace(second=0, microsecond=0)
+
+
 @transaction.atomic
 def consume_business_budget(token):
     source = source_from_business_token(token)
@@ -227,7 +237,7 @@ def consume_business_budget(token):
             )
         ):
             raise PermissionDenied
-        bucket = timezone.now().replace(second=0, microsecond=0)
+        bucket = business_rate_bucket()
         count = source.rate_count if source.rate_bucket == bucket else 0
         if count >= 60:
             raise BusinessRateLimited("Limite de 60 appels par minute pour cette source.")
@@ -386,12 +396,19 @@ def ingest_business_record(data, *, token, organization):
     return receipt, True
 
 
+@transaction.atomic
 def receipt_public(receipt):
-    if current_organization().pk != receipt.organization_id:
+    organization = current_organization()
+    if organization.pk != receipt.organization_id:
         raise PermissionDenied
+    lock_organization(organization)
+    require_module(organization, "connectors")
     if not verify_business_receipt(receipt):
         raise ValidationError("Preuve métier invalide.")
-    source, now = receipt.record.source, timezone.now()
+    # Do not reuse a related-object cache from ingestion or a prior display:
+    # an administrator may have revoked/rotated this source in the meantime.
+    source = BusinessSource.objects.select_related("audit").get(pk=receipt.record.source_id)
+    now = timezone.now()
     observed = parse_datetime(receipt.payload["observed_at"])
     fresh = (
         0 <= (now - min(observed, receipt.received_at)).total_seconds() <= source.freshness_seconds
@@ -412,6 +429,7 @@ def receipt_public(receipt):
         source_revision=receipt.source_revision,
         payload=receipt.payload,
         received_at=receipt.received_at.isoformat(timespec="microseconds"),
+        as_of=now.isoformat(timespec="microseconds"),
         proof_verified=True,
         source_configuration_current=bool(current),
         source_read_recent=bool(fresh),

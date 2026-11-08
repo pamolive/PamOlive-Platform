@@ -18,6 +18,7 @@ from platform_core.tenancy import organization_context
 from platform_modules.access.models import AccessIntent
 from platform_modules.connectors.business import (
     FORMAT,
+    business_rate_bucket,
     canonical,
     configure_business_source,
     create_business_source,
@@ -167,6 +168,20 @@ class BusinessAPITests(TestCase):
             with self.assertRaises(PermissionDenied):
                 receipt_public(original)
 
+    def test_cached_configuration_cannot_hide_a_source_revocation(self):
+        self.assertEqual(self.post().status_code, 201)
+        original = BusinessReceipt.objects.select_related("record__source__audit").get()
+        self.assertTrue(receipt_public(original)["current_source_assertion"])
+        with recent_authentication(self.admin, self.org, time.time()):
+            configure_business_source(
+                self.publisher.pk, actor=self.admin, organization=self.org, active=False
+            )
+        self.assertTrue(original.record.source.active)  # Deliberately stale ORM cache.
+        proof = receipt_public(original)
+        self.assertFalse(proof["source_configuration_current"])
+        self.assertFalse(proof["current_source_assertion"])
+        self.assertIn("as_of", proof)
+
     def test_sequence_collision_and_old_source_clock_do_not_overwrite_history(self):
         self.assertEqual(self.post().status_code, 201)
         self.assertEqual(self.post({**self.data, "state": "approved"}).status_code, 409)
@@ -264,7 +279,8 @@ class BusinessAPITests(TestCase):
 
     def test_rate_limit_is_per_authenticated_source_and_counts_bad_requests(self):
         with patch(
-            "platform_modules.connectors.business.timezone.now", return_value=timezone.now()
+            "platform_modules.connectors.business.business_rate_bucket",
+            return_value=timezone.now().replace(second=0, microsecond=0),
         ):
             for _ in range(60):
                 response = self.post({})
@@ -369,15 +385,37 @@ class BusinessAPITests(TestCase):
             previous_hash="0" * 64,
             event_hash="0" * 64,
         )
+        from uuid import uuid4
+
+        # Bypass ScopedModel.clean: an ORM refusal alone does not establish
+        # PostgreSQL's independent cross-organization foreign-key protection.
         with self.assertRaises(DatabaseError) as error:
-            with transaction.atomic():
-                BusinessReceipt.unscoped.create(
-                    organization=self.org,
-                    record=receipt.record,
-                    sequence=2,
-                    source_revision=1,
-                    audit=foreign_audit,
-                    signature="0" * 64,
-                    content_hash="0" * 64,
+            with transaction.atomic(), connection.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO connectors_businessreceipt "
+                    "(id,organization_id,record_id,sequence,source_revision,payload,"
+                    "content_hash,received_at,audit_id,signature) "
+                    "VALUES (%s,%s,%s,2,1,'{}'::jsonb,%s,%s,%s,%s)",
+                    [
+                        uuid4(),
+                        self.org.pk,
+                        receipt.record_id,
+                        "0" * 64,
+                        timezone.now(),
+                        foreign_audit.pk,
+                        "0" * 64,
+                    ],
                 )
         self.assertEqual(error.exception.__cause__.sqlstate, "23503")
+
+    @skipUnless(connection.vendor == "postgresql", "Shared PostgreSQL rate window")
+    def test_rate_window_uses_the_shared_database_not_an_application_vm_clock(self):
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT date_trunc('minute', clock_timestamp())")
+            before = cursor.fetchone()[0]
+        skewed = timezone.now() + timedelta(days=3)
+        with patch("platform_modules.connectors.business.timezone.now", return_value=skewed):
+            bucket = business_rate_bucket()
+        self.assertGreaterEqual(bucket, before)
+        self.assertLessEqual(bucket, before + timedelta(minutes=1))
+        self.assertNotEqual(bucket.date(), skewed.date())

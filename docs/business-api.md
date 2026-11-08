@@ -64,9 +64,9 @@ La réponse contient les identifiants de preuve, le contenu reçu, sa date de r�
 - `latest_for_record` : aucune séquence supérieure n’a remplacé cette lecture ;
 - `current_source_assertion` : les trois conditions précédentes sont réunies. Ce champ ne signifie toujours pas que l’accès est autorisé dans PAM-olive.
 
-La fraîcheur n’est ni une garantie de vérité ni une réservation de validité sur le système distant. Un rejeu ne la renouvelle pas. Une source désactivée perd son accès API ; ses preuves historiques restent consultables dans l’organisation. Les réponses portent `Cache-Control: no-store` et ne contiennent jamais le hash du jeton.
+Les indicateurs sont calculés ensemble sous le verrou de l’organisation, à l’instant `as_of`, avec une configuration source relue en base plutôt qu’un cache ORM ancien. La fraîcheur n’est ni une garantie de vérité ni une réservation de validité sur le système distant. Un rejeu ne la renouvelle pas. Une source désactivée perd son accès API ; ses preuves historiques restent consultables dans l’organisation. Les réponses portent `Cache-Control: no-store` et ne contiennent jamais le hash du jeton.
 
-La limite de 60 appels par minute s’applique séparément à chaque source authentifiée, y compris aux corps refusés. `429` indique d’attendre, avec `Retry-After: 60`. Cette limite applicative ne remplace pas une protection réseau contre le déni de service.
+La limite de 60 appels par minute s’applique séparément à chaque source authentifiée, y compris aux corps refusés. La minute est celle de PostgreSQL commun, pas celle de chaque VM applicative. `429` indique d’attendre, avec `Retry-After: 60`. Cette limite applicative ne remplace pas une protection réseau contre le déni de service.
 
 ## Exemples de transport
 
