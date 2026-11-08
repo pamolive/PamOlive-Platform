@@ -13,6 +13,9 @@ def legacy_targets(executor):
             ("connectors", "0004_teamviewercollector_teamviewerrun_teamviewerreport")
         )
     )
+    excluded.update(
+        graph.backwards_plan(("recertification", "0002_periodic_campaigns_and_review_evidence"))
+    )
     return [
         key
         for key, node in graph.node_map.items()

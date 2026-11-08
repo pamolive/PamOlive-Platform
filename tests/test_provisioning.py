@@ -398,12 +398,13 @@ class ProvisioningTests(TestCase):
         self.configured()
         self.grant()
         process_changes(self.org)
-        start_campaign(
-            actor=self.reviewer,
-            organization=self.org,
-            name="Q4",
-            due_at=timezone.now() + timedelta(days=2),
-        )
+        with self.assurance(self.reviewer):
+            start_campaign(
+                actor=self.reviewer,
+                organization=self.org,
+                name="Q4",
+                due_at=timezone.now() + timedelta(days=2),
+            )
         with self.assurance(self.reviewer):
             review_grant(
                 Review.objects.get().pk,

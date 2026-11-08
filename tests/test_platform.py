@@ -241,20 +241,27 @@ class PlatformTests(TestCase):
             entitlement="admin",
             justification="Fonction",
         )
-        start_campaign(
-            actor=self.reviewer,
-            organization=self.org,
-            name="Q4",
-            due_at=self.now + timedelta(days=5),
+        AccountSecurity.objects.get_or_create(
+            account=self.reviewer,
+            defaults={
+                "encrypted_secret": cipher().encrypt(pyotp.random_base32().encode()).decode()
+            },
         )
-        review = Review.objects.get()
-        review_grant(
-            review.pk,
-            actor=self.reviewer,
-            organization=self.org,
-            keep=False,
-            comment="Plus nécessaire",
-        )
+        with recent_authentication(self.reviewer, self.org, time.time()):
+            start_campaign(
+                actor=self.reviewer,
+                organization=self.org,
+                name="Q4",
+                due_at=self.now + timedelta(days=5),
+            )
+            review = Review.objects.get()
+            review_grant(
+                review.pk,
+                actor=self.reviewer,
+                organization=self.org,
+                keep=False,
+                comment="Plus nécessaire",
+            )
         self.assertEqual(Grant.objects.get().status, "revoked")
         intent = self.intent(fulfillment="pam")
         with recent_authentication(self.reviewer, self.org, time.time()):

@@ -1,0 +1,12 @@
+{% extends 'base.html' %}{% block content %}
+<p><a href="{% url 'recertification-home' %}">← Recertification</a></p><h1>{{ publication.name }}</h1>
+<p>{{ schedule.key }} · Révision {{ publication.revision }} · {{ publication.active|yesno:'Active,Inactive' }} · Preuve {{ proof_valid|yesno:'vérifiée,INVALIDE' }}</p>
+<dl><dt>Responsable</dt><dd>{{ publication.owner }}</dd><dt>Première échéance</dt><dd>{{ publication.first_at }}</dd><dt>Période</dt><dd>{{ publication.interval_days }} jours de 24 heures</dd><dt>Délai de revue</dt><dd>{{ publication.review_window_days }} jours après la capture réelle</dd><dt>Périmètre</dt><dd><pre>{{ publication.scope }}</pre></dd></dl>
+{% if schedule.last_error %}<p role="alert">Planification bloquée : {{ schedule.last_error }}. Nouvelle tentative après {{ schedule.retry_after }}. Aucun périmètre partiel n’est publié.</p>{% endif %}
+{% if can_configure %}<p><a class="button subtle" href="{% url 'recertification-schedule-edit' schedule.pk %}">Modifier (nouvelle révision inactive)</a></p>
+{% if proof_valid %}<form method="post" action="{% url 'recertification-schedule-toggle' schedule.pk %}">{% csrf_token %}<input type="hidden" name="expected_revision" value="{{ publication.revision }}">{% if publication.active %}<button class="button" name="command" value="disable">Désactiver les prochaines campagnes</button>{% else %}<button class="button" name="command" value="enable">Activer cette révision</button>{% endif %}</form>{% endif %}{% endif %}
+<p>Désactiver n’efface pas les campagnes existantes. Une interruption ne produit pas de faux instantanés historiques : seule la période courante est capturée, avec les périodes manquées indiquées.</p>
+<h2>Dernières campagnes</h2><ul>{% for run in runs %}<li><a href="{% url 'recertification-run' run.pk %}">{{ run.name }}</a> · {{ run.review_count }} droits</li>{% empty %}<li>Aucune campagne.</li>{% endfor %}</ul>
+<h2>Révisions conservées</h2><ul>{% for p in history %}<li>r{{ p.revision }} · {{ p.published_at }} · {{ p.active|yesno:'Active lors de la publication,Inactive lors de la publication' }} · {{ p.published_by }}</li>{% endfor %}</ul>
+<p>{% if history.has_previous %}<a href="?history={{ history.previous_page_number }}">Précédent</a>{% endif %} {{ history.number }} / {{ history.paginator.num_pages }} {% if history.has_next %}<a href="?history={{ history.next_page_number }}">Suivant</a>{% endif %}</p>
+{% endblock %}

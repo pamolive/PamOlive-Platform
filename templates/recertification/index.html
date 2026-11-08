@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Recertification des accès</h1>
+<p>Une campagne fige les droits à examiner. Confirmer ne renouvelle jamais un accès ; retirer déclenche la révocation locale et, si configurée, sa transmission au connecteur.</p>
+{% if can_configure %}<p><a class="button" href="{% url 'recertification-schedule-new' %}">Nouvelle règle périodique</a></p>{% endif %}
+<h2>Règles périodiques</h2>
+<table><thead><tr><th>Règle</th><th>État</th><th>Responsable</th><th>Période</th></tr></thead><tbody>
+{% for p in plans %}<tr><td><a href="{% url 'recertification-schedule' p.schedule_id %}">{{ p.name }}</a> · r{{ p.revision }}</td><td>{{ p.active|yesno:'Active,Inactive' }}</td><td>{{ p.owner }}</td><td>{{ p.interval_days }} jours</td></tr>{% empty %}<tr><td colspan="4">Aucune règle. Aucune planification n’est activée automatiquement.</td></tr>{% endfor %}
+</tbody></table>
+<p>{% if plans.has_previous %}<a href="?plans={{ plans.previous_page_number }}&amp;runs={{ runs.number }}">Précédent</a>{% endif %} Page {{ plans.number }} / {{ plans.paginator.num_pages }} {% if plans.has_next %}<a href="?plans={{ plans.next_page_number }}&amp;runs={{ runs.number }}">Suivant</a>{% endif %}</p>
+<h2>Campagnes à périmètre figé</h2>
+<table><thead><tr><th>Campagne</th><th>Capture</th><th>Responsable</th><th>Échéance</th><th>Droits</th></tr></thead><tbody>
+{% for run in runs %}<tr><td><a href="{% url 'recertification-run' run.pk %}">{{ run.name }}</a></td><td>{{ run.snapshot_at }}</td><td>{{ run.owner }}</td><td>{{ run.due_at }}</td><td>{{ run.review_count }}</td></tr>{% empty %}<tr><td colspan="5">Aucune campagne.</td></tr>{% endfor %}
+</tbody></table>
+<p>{% if runs.has_previous %}<a href="?runs={{ runs.previous_page_number }}&amp;plans={{ plans.number }}">Précédent</a>{% endif %} Page {{ runs.number }} / {{ runs.paginator.num_pages }} {% if runs.has_next %}<a href="?runs={{ runs.next_page_number }}&amp;plans={{ plans.number }}">Suivant</a>{% endif %}</p>
+{% if can_launch %}<h2>Lancer une revue ponctuelle</h2><p>Tous les droits au statut actif seront capturés ; une MFA personnelle récente est nécessaire.</p><form method="post" class="inline-form">{% csrf_token %}{{ form.as_p }}<button class="button">Créer la campagne</button></form>{% endif %}
+{% if legacy %}<h2>Historique antérieur au périmètre figé</h2><p>Ces campagnes restent conservées en lecture seule. Aucun instantané historique n’a été fabriqué. Les 25 plus récentes :</p><ul>{% for c in legacy %}<li>{{ c.name }} · {{ c.due_at }}</li>{% endfor %}</ul>{% endif %}
+{% endblock %}

@@ -33,8 +33,6 @@ from platform_modules.connectors.services import create_source, source_from_toke
 from platform_modules.identity.models import Credential, ExternalAccount, Grant, Identity, Resource
 from platform_modules.pam.models import SessionLease
 from platform_modules.pam.services import open_lease
-from platform_modules.recertification.models import Campaign, Review
-from platform_modules.recertification.services import review_grant, start_campaign
 
 from .evidence import verify_evaluation
 from .models import AccessEvent, AccessIntent
@@ -501,46 +499,6 @@ def connectors_home(request):
         "governance/connectors.html",
         {"form": form, "sources": EventSource.objects.all(), "token": token},
     )
-
-
-@scoped("recertification")
-def recertification_home(request):
-    form = forms.Form(request.POST or None)
-    form.fields["name"] = forms.CharField(label="Campagne", max_length=180)
-    form.fields["due_at"] = forms.DateTimeField(
-        label="Échéance", widget=forms.DateTimeInput(attrs={"type": "datetime-local"})
-    )
-    if request.method == "POST" and form.is_valid():
-        start_campaign(actor=request.user, organization=request.organization, **form.cleaned_data)
-        return redirect("recertification-home")
-    return render(
-        request,
-        "governance/recertification.html",
-        {
-            "form": form,
-            "campaigns": Campaign.objects.order_by("-created_at"),
-            "reviews": Review.objects.select_related("grant", "campaign").order_by(
-                "campaign__due_at"
-            )[:200],
-        },
-    )
-
-
-@scoped("recertification", roles=("admin", "reviewer"))
-@require_POST
-def review(request, object_id):
-    get_object_or_404(Review.objects, pk=object_id)
-    try:
-        review_grant(
-            object_id,
-            actor=request.user,
-            organization=request.organization,
-            keep=request.POST.get("decision") == "keep",
-            comment=request.POST.get("comment", ""),
-        )
-    except ValidationError as error:
-        messages.error(request, "; ".join(error.messages))
-    return redirect("recertification-home")
 
 
 @scoped("pam")

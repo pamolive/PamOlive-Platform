@@ -11,6 +11,7 @@ from platform_modules.governance import views as governance_views
 from platform_modules.identity import binding_views as identity_views
 from platform_modules.intelligence import views as intelligence_views
 from platform_modules.pam import views as pam_views
+from platform_modules.recertification import views as recertification_views
 
 urlpatterns = [
     path("connectors/scim-accounts/new/", creation_views.configure, name="scim-creation-new"),
@@ -268,14 +269,49 @@ urlpatterns = [
         connector_views.retry,
         name="external-change-retry",
     ),
-    path("recertification/", ui.recertification_home, name="recertification-home"),
+    path("recertification/", recertification_views.index, name="recertification-home"),
+    path(
+        "recertification/schedules/new/",
+        recertification_views.configure,
+        name="recertification-schedule-new",
+    ),
+    path(
+        "recertification/schedules/<uuid:schedule_id>/",
+        recertification_views.schedule_detail,
+        name="recertification-schedule",
+    ),
+    path(
+        "recertification/schedules/<uuid:schedule_id>/edit/",
+        recertification_views.configure,
+        name="recertification-schedule-edit",
+    ),
+    path(
+        "recertification/schedules/<uuid:schedule_id>/toggle/",
+        recertification_views.toggle,
+        name="recertification-schedule-toggle",
+    ),
+    path(
+        "recertification/runs/<uuid:run_id>/",
+        recertification_views.run_detail,
+        name="recertification-run",
+    ),
+    path(
+        "recertification/runs/<uuid:run_id>/proof/",
+        recertification_views.run_detail,
+        {"export": True},
+        name="recertification-export",
+    ),
     path("pam/", ui.pam_home, name="pam-home"),
     path("records/<slug:kind>/", ui.record_list, name="record-list"),
     path("records/<slug:kind>/new/", ui.record_create, name="record-create"),
     path("records/<slug:kind>/<uuid:object_id>/", ui.record_detail, name="record-detail"),
     path("identities/<uuid:object_id>/depart/", ui.depart, name="identity-depart"),
     path("approvals/<uuid:object_id>/decide/", ui.decision, name="intent-decide"),
-    path("recertification/<uuid:object_id>/review/", ui.review, name="grant-review"),
+    path(
+        "recertification/<uuid:object_id>/review/",
+        recertification_views.review,
+        name="grant-review",
+    ),
     path("pam/<uuid:object_id>/lease/", ui.lease, name="pam-lease"),
     path("audit/", ui.audit, name="audit-log"),
     path("system/", ui.system, name="system-status"),

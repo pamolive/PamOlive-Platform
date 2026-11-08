@@ -17,12 +17,14 @@ from platform_modules.governance.reconcile import reconcile_contracts
 from platform_modules.identity.services import expire_grants
 from platform_modules.pam.services import expire_leases
 from platform_modules.pam.sessions import reap_connections
+from platform_modules.recertification.schedules import process_schedules
 
 
 def deliver(organization):
     close_old_connections()
     try:
         notifications = process_events(organization, limit=1)
+        campaigns = process_schedules(organization, limit=1)
         creations = process_creations(organization, limit=1)
         changes = process_changes(organization, limit=1)
         collected = process_collectors(organization, limit=1)
@@ -30,6 +32,7 @@ def deliver(organization):
         sessions = process_sessions(organization)
         return (
             notifications
+            + campaigns
             + creations
             + changes
             + collected
@@ -63,6 +66,7 @@ class Command(BaseCommand):
                 if options["once"]:
                     for organization in organizations:
                         process_events(organization)
+                        process_schedules(organization, limit=10)
                         process_creations(organization)
                         process_changes(organization)
                         process_collectors(organization, limit=1)

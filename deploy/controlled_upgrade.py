@@ -26,6 +26,7 @@ REVIEWED = {
     ("connectors", "0008_business_reference_sources"),
     ("connectors", "0009_business_intent_associations"),
     ("connectors", "0010_scim_initial_accounts"),
+    ("recertification", "0002_periodic_campaigns_and_review_evidence"),
 }
 NEW_DEFAULTS = {
     "connectors_externalchange": {"creation_proof_id": None},

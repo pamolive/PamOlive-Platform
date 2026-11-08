@@ -378,6 +378,96 @@ def scim_creation_corpus(actor, requester, organization):
         set_connector_enabled(connector.pk, actor=actor, organization=organization, enabled=False)
 
 
+def recertification_corpus(actor, organization):
+    """Frozen scopes and signed decisions, without any network side effect."""
+    import time
+    from datetime import timedelta
+    from unittest.mock import patch
+
+    from django.utils import timezone
+
+    from platform_core.authorization import recent_authentication
+    from platform_core.models import OrganizationMembership
+    from platform_core.services import install_module
+    from platform_modules.identity.models import Grant, Identity, Resource
+    from platform_modules.recertification.evidence import verify_recertification
+    from platform_modules.recertification.models import CampaignRun, Review
+    from platform_modules.recertification.schedules import (
+        process_schedules,
+        publish_schedule,
+        set_schedule_enabled,
+    )
+    from platform_modules.recertification.services import review_grant, start_campaign
+
+    install_module("recertification", actor=actor, organization=organization)
+    OrganizationMembership.objects.get_or_create(
+        organization=organization, account=actor, defaults={"role": "admin"}
+    )
+    identity = Identity.objects.create(
+        organization=organization, name="Review subject", kind="human"
+    )
+    resource = Resource.objects.create(
+        organization=organization, name="Offline review", kind="application"
+    )
+    grant = Grant.objects.create(
+        organization=organization,
+        identity=identity,
+        resource=resource,
+        entitlement="reader",
+        justification="Synthetic review corpus",
+    )
+    with recent_authentication(actor, organization, time.time()):
+        campaign = start_campaign(
+            actor=actor,
+            organization=organization,
+            name="Manual restore review",
+            due_at=timezone.now() + timedelta(days=1),
+        )
+        review_grant(
+            Review.objects.get(campaign=campaign, grant=grant).pk,
+            actor=actor,
+            organization=organization,
+            keep=False,
+            comment="Synthetic withdrawal",
+        )
+        draft = publish_schedule(
+            dict(
+                name="Periodic restore review",
+                first_at=timezone.now() - timedelta(days=1),
+                interval_days=30,
+                review_window_days=7,
+                scope={},
+                owner=actor,
+            ),
+            key="restore-review",
+            actor=actor,
+            organization=organization,
+        )
+        active = set_schedule_enabled(
+            draft.schedule_id,
+            True,
+            expected_revision=draft.revision,
+            actor=actor,
+            organization=organization,
+        )
+    clock = active.published_at + timedelta(seconds=1)
+    with (
+        patch("platform_modules.identity.review_contract.database_now", return_value=clock),
+        patch("platform_modules.recertification.schedules.database_now", return_value=clock),
+    ):
+        assert process_schedules(organization) == 1
+    assert CampaignRun.objects.count() == 2
+    with recent_authentication(actor, organization, time.time()):
+        set_schedule_enabled(
+            active.schedule_id,
+            False,
+            expected_revision=active.revision,
+            actor=actor,
+            organization=organization,
+        )
+    assert verify_recertification() >= 7
+
+
 def main():
     import django
 
@@ -438,6 +528,7 @@ def main():
                 teamviewer_corpus(fixture.admin, fixture.org)
                 business_corpus(fixture.admin, fixture.org, fixture.intent.pk)
                 scim_creation_corpus(fixture.admin, fixture.operator, fixture.org)
+                recertification_corpus(fixture.admin, fixture.org)
                 publish_domain_event(
                     organization=fixture.org,
                     emitter="identity",

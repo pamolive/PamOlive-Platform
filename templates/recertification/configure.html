@@ -1,0 +1,6 @@
+{% extends 'base.html' %}{% block content %}
+<p><a href="{% url 'recertification-home' %}">← Recertification</a></p><h1>{% if schedule %}Modifier la règle {{ schedule.key }}{% else %}Nouvelle règle périodique{% endif %}</h1>
+<p>Chaque enregistrement crée une révision inactive. L’activation est une action séparée avec MFA personnelle. Une nouvelle révision activée peut ouvrir une nouvelle campagne dans la période courante.</p>
+<p>Les périodes sont des durées de 24 heures, pas des jours calendaires locaux. Une sélection vide inclut tous les droits au statut actif ; les filtres se combinent par intersection.</p>
+<form method="post" class="inline-form">{% csrf_token %}{{ form.as_p }}<button class="button">Enregistrer inactive</button></form>
+{% endblock %}

@@ -31,3 +31,12 @@ class Review(ScopedModel):
                 fields=["organization", "campaign", "grant"], name="unique_campaign_grant"
             )
         ]
+
+
+from .evidence_models import (  # noqa: E402,F401
+    CampaignRun,
+    ReviewDecision,
+    ReviewScope,
+    Schedule,
+    SchedulePublication,
+)

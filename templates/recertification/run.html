@@ -1,0 +1,20 @@
+{% extends 'base.html' %}{% block content %}
+<p><a href="{% url 'recertification-home' %}">← Recertification</a></p><h1>{{ run.name }}</h1>
+<p>Manifeste {{ manifest_valid|yesno:'vérifié,INVALIDE' }} · {{ run.review_count }} droits · Responsable : {{ run.owner }}</p>
+<p>Capture entre {{ run.capture_started_at }} et {{ run.snapshot_at }} · Échéance : {{ run.due_at }}{% if run.scheduled_for %} · Période prévue : {{ run.scheduled_for }}{% endif %}</p>
+{% if run.missed_periods %}<p role="alert">{{ run.missed_periods }} période(s) manquée(s). Aucun droit historique n’a été reconstitué pour ces périodes.</p>{% endif %}
+<p>Les libellés et droits ci-dessous sont ceux de la capture, pas des autorisations actuelles. Confirmer ne prolonge pas la durée du droit. Une décision locale ne prouve pas sa réalisation chez le fournisseur ; une échéance dépassée ne révoque pas automatiquement les droits.</p>
+<p><a href="{% url 'recertification-export' run.pk %}?page={{ page.number }}">Exporter les preuves JSON de cette page</a> · Export paginé ({{ page.paginator.num_pages }} page(s))</p>
+{% for row in rows %}<article class="workflow-card">
+<h2>{{ row.scope.snapshot.labels.identity }} → {{ row.scope.snapshot.labels.resource }}</h2>
+<p>{{ row.scope.snapshot.authority.entitlement }} · Compte : {{ row.scope.snapshot.context.account_username|default:'sans compte lié' }} · {{ row.scope.snapshot.context.account_system|default:'' }}</p>
+<p>Justification : {{ row.scope.snapshot.authority.justification }} · Référence : {{ row.scope.snapshot.authority.reference|default:'aucune' }}</p>
+<p>Validité figée : {{ row.scope.snapshot.authority.valid_from|default:'non précisée' }} → {{ row.scope.snapshot.authority.expires_at|default:'sans échéance' }} · Identifiant droit : {{ row.scope.grant_id }}</p>
+{% if not row.proof_valid %}<p role="alert">Preuve de périmètre invalide : aucune décision depuis cet écran.</p>{% endif %}
+{% if not row.cache_consistent %}<p role="alert">Le résumé opérationnel et les preuves ne concordent pas. Examiner l’intégrité avant toute action.</p>{% endif %}
+{% if row.decision %}<p>Décision signée : {{ row.decision.keep|yesno:'Confirmer,Retirer' }} · {{ row.decision.local_outcome }} · {{ row.decision.decided_at }} · {{ row.decision.decided_by }}</p><p>{{ row.decision.comment }}</p><p>Preuve de décision {{ row.decision_valid|yesno:'vérifiée,INVALIDE' }}.</p>
+{% elif row.proof_valid and row.cache_consistent and can_decide %}<form method="post" action="{% url 'grant-review' row.scope.review_id %}" class="inline-form">{% csrf_token %}<label>Motif de la décision <textarea name="comment" maxlength="2000" required></textarea></label><button class="button" name="decision" value="keep">Confirmer sans prolonger</button><button class="button subtle" name="decision" value="revoke">Retirer le droit</button></form>
+{% else %}<p>En attente du responsable ou d’un administrateur de l’organisation.</p>{% endif %}
+</article>{% empty %}<p>Cette campagne n’a capturé aucun droit.</p>{% endfor %}
+<p>{% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">Précédent</a>{% endif %} Page {{ page.number }} / {{ page.paginator.num_pages }} {% if page.has_next %}<a href="?page={{ page.next_page_number }}">Suivant</a>{% endif %}</p>
+{% endblock %}

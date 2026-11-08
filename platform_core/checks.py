@@ -19,3 +19,21 @@ def reject_retired_routes(app_configs=None, **kwargs):
                 )
 
     return list(visit(get_resolver().url_patterns))
+
+
+@register(Tags.security)
+def recertification_capture_limits(app_configs=None, **kwargs):
+    from django.conf import settings
+
+    if not (
+        1 <= settings.RECERTIFICATION_MAX_GRANTS <= 50000
+        and 65536 <= settings.RECERTIFICATION_MAX_BYTES <= 67108864
+    ):
+        return [
+            Error(
+                "Limites de capture de recertification invalides.",
+                hint="PAMOLIVE_RECERTIFICATION_MAX_GRANTS : 1–50000 ; MAX_BYTES : 65536–67108864.",
+                id="pamolive.E011",
+            )
+        ]
+    return []
