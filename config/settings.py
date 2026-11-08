@@ -50,6 +50,18 @@ PAM_TRUSTED_PROXY_NETWORKS = tuple(
 )
 PAM_NETWORK_CONTEXT = json.loads(os.environ.get("PAMOLIVE_NETWORK_CONTEXT", "[]"))
 PAM_PUBLIC_ORIGIN = os.environ.get("PAMOLIVE_PUBLIC_ORIGIN", "").rstrip("/")
+OIDC_PUBLIC_ORIGIN = os.environ.get("PAMOLIVE_OIDC_PUBLIC_ORIGIN", "").rstrip("/")
+OIDC_ALLOWED_HOSTS = frozenset(
+    value.strip().lower()
+    for value in os.environ.get("PAMOLIVE_OIDC_HOSTS", "").split(",")
+    if value.strip()
+)
+OIDC_ALLOWED_NETWORKS = tuple(
+    value.strip()
+    for value in os.environ.get("PAMOLIVE_OIDC_NETWORKS", "").split(",")
+    if value.strip()
+)
+OIDC_CA_BUNDLE = os.environ.get("PAMOLIVE_OIDC_CA_BUNDLE", "")
 # Both transports have mandatory native/ASGI release gates in the test image.
 PAM_SESSION_PROTOCOLS = frozenset({"ssh", "rdp"})
 PAM_MAX_CONNECTIONS_USER = 4

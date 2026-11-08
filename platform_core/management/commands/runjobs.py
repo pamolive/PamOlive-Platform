@@ -6,6 +6,7 @@ from django.db import close_old_connections, connections
 
 from platform_core.events import process_events
 from platform_core.models import Organization
+from platform_core.oidc.services import cleanup_expired
 from platform_modules.connectors.outbound import process_changes
 from platform_modules.governance.reconcile import reconcile_contracts
 from platform_modules.identity.services import expire_grants
@@ -33,6 +34,7 @@ class Command(BaseCommand):
         with ThreadPoolExecutor(max_workers=4) as executor:
             while True:
                 close_old_connections()
+                cleanup_expired()
                 organizations = list(Organization.objects.filter(active=True))
                 for organization in Organization.objects.all():
                     reap_connections(organization)

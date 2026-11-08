@@ -4,10 +4,11 @@ from django.db import transaction
 from .audit import record
 from .models import ModuleActivation, Organization, OrganizationMembership
 from .registry import all_modules, get_module
-from .tenancy import current_organization
+from .tenancy import current_organization, enforce_federated_scope
 
 
 def authorize(actor, organization, *, roles=("admin", "operator")):
+    enforce_federated_scope(actor, organization)
     if not actor or not actor.is_active or not organization.active:
         raise PermissionDenied
     if actor.is_superuser:

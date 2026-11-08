@@ -7,4 +7,10 @@ class PlatformCoreConfig(AppConfig):
     verbose_name = "PAM-olive Core"
 
     def ready(self):
+        import logging
+
         from . import signals  # noqa: F401
+        from .oidc.logging import OIDCQueryRedactor
+
+        for name in ("uvicorn.access", "django.server"):
+            logging.getLogger(name).addFilter(OIDCQueryRedactor())

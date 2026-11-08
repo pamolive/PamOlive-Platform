@@ -2,7 +2,8 @@ from django.contrib.auth import views as auth_views
 from django.urls import path
 
 from platform_core.extensions.urls import extension_patterns
-from platform_core.security import MFALoginForm, security_settings
+from platform_core.oidc import views as oidc_views
+from platform_core.security import security_settings
 from platform_modules.access import ui
 from platform_modules.connectors import views as connector_views
 from platform_modules.governance import views as governance_views
@@ -11,6 +12,27 @@ from platform_modules.intelligence import views as intelligence_views
 from platform_modules.pam import views as pam_views
 
 urlpatterns = [
+    path("system/oidc/", oidc_views.providers, name="oidc-providers"),
+    path("system/oidc/new/", oidc_views.configure, name="oidc-provider-new"),
+    path("system/oidc/<uuid:provider_id>/", oidc_views.configure, name="oidc-provider-edit"),
+    path(
+        "system/oidc/<uuid:provider_id>/activation/",
+        oidc_views.activation,
+        name="oidc-provider-activation",
+    ),
+    path("system/oidc/drafts/<uuid:draft_id>/test/", oidc_views.test_start, name="oidc-test-start"),
+    path("accounts/oidc/links/", oidc_views.my_links, name="oidc-my-links"),
+    path("accounts/oidc/links/<uuid:link_id>/revoke/", oidc_views.revoke, name="oidc-link-revoke"),
+    path("accounts/oidc/link/<uuid:provider_id>/", oidc_views.link_start, name="oidc-link-start"),
+    path(
+        "accounts/oidc/login/<uuid:provider_id>/", oidc_views.login_start, name="oidc-login-start"
+    ),
+    path("accounts/oidc/mfa/", oidc_views.mfa, name="oidc-mfa"),
+    path(
+        "accounts/oidc/<uuid:organization_id>/<slug:slug>/callback/",
+        oidc_views.callback,
+        name="oidc-callback",
+    ),
     path(
         "identities/login-bindings/", identity_views.login_bindings, name="identity-login-bindings"
     ),
@@ -85,9 +107,7 @@ urlpatterns = [
     path("health/", ui.health, name="health"),
     path(
         "accounts/login/",
-        auth_views.LoginView.as_view(
-            template_name="registration/login.html", authentication_form=MFALoginForm
-        ),
+        oidc_views.PortalLogin.as_view(),
         name="login",
     ),
     path("accounts/logout/", auth_views.LogoutView.as_view(), name="logout"),

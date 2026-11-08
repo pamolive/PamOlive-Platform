@@ -138,6 +138,7 @@ Ce contrôle prouve NLA, les pins natifs, le clavier, les pixels de la cible et 
 - [Architecture](docs/architecture.md), [données](docs/data-model.md) et [sécurité](docs/security-boundaries.md)
 - [API d’observation](docs/api.md), [modules](docs/modules.md), [PostgreSQL](docs/postgresql.md)
 - [Provisioning SCIM et confirmations externes](docs/provisioning.md)
+- [Connexion OIDC multi-fournisseurs, test avant enregistrement et secours local](docs/oidc.md)
 - [Transports PAM SSH/RDP, captures et configuration du proxy](docs/pam-transport.md)
 - [Mandats PAM liés à une personne et comptes techniques partagés](docs/pam-person-mandates.md)
 - [Installer un module communautaire séparé dans la même image](docs/extensions.md)

@@ -18,3 +18,4 @@ uvicorn==0.54.0
 websockets==17.4
 click==8.5.1
 h11==0.16.0
+PyJWT==2.15.1

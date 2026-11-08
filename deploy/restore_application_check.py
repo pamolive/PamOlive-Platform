@@ -186,6 +186,7 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
         ModuleEvent,
         Organization,
     )
+    from platform_core.oidc.restoration import verify_evidence
     from platform_core.security import cipher
     from platform_modules.approvals.models import ApprovalDecision
     from platform_modules.connectors.models import ProvisioningConnector
@@ -214,6 +215,9 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
         "encrypted_values_checked": 0,
         "signed_proofs_checked": 0,
     }
+    encrypted, signed = verify_evidence()
+    result["encrypted_values_checked"] += encrypted
+    result["signed_proofs_checked"] += signed
     for model, field in (
         (AccountSecurity, "encrypted_secret"),
         (ProvisioningConnector, "encrypted_token"),

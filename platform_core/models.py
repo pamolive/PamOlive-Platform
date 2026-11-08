@@ -317,3 +317,6 @@ class EventAttempt(ScopedModel):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Les preuves de traitement sont immuables.")
+
+
+from .oidc.models import OIDCAttempt, OIDCDraft, OIDCLink, OIDCProvider  # noqa: E402,F401

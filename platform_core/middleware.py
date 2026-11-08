@@ -31,8 +31,11 @@ class ResponseSecurityMiddleware:
             "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; "
             "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
         )
-        response["Referrer-Policy"] = "same-origin"
+        oidc_path = request.path.startswith("/accounts/oidc/") or request.path.startswith(
+            "/system/oidc/"
+        )
+        response["Referrer-Policy"] = "no-referrer" if oidc_path else "same-origin"
         response["Cross-Origin-Resource-Policy"] = "same-origin"
-        if getattr(request, "user", None) and request.user.is_authenticated:
+        if oidc_path or (getattr(request, "user", None) and request.user.is_authenticated):
             response["Cache-Control"] = "no-store"
         return response

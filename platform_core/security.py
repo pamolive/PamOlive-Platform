@@ -60,7 +60,7 @@ def verify_mfa(account, code):
 
 
 @transaction.atomic
-def throttle(username, *, failure=False, success=False):
+def throttle(username, *, failure=False, success=False, limit=10):
     key = hashlib.sha256(username.casefold().encode()).hexdigest()
     row, _ = LoginThrottle.objects.get_or_create(
         key=key, defaults={"window_started": timezone.now()}
@@ -68,7 +68,7 @@ def throttle(username, *, failure=False, success=False):
     row = LoginThrottle.objects.select_for_update().get(pk=key)
     if timezone.now() - row.window_started > timedelta(minutes=5):
         row.failures, row.window_started = 0, timezone.now()
-    blocked = row.failures >= 10
+    blocked = row.failures >= limit
     if failure:
         row.failures += 1
     if success:

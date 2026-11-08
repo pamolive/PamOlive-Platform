@@ -4,6 +4,116 @@ import os
 import unittest
 
 
+def oidc_corpus(actor, organization):
+    """Synthetic signed corpus only; deliberately does not contact or impersonate a real IdP."""
+    import hashlib
+    import json
+    import secrets
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from platform_core.oidc.models import OIDCAttempt, OIDCDraft, OIDCLink, OIDCProvider
+    from platform_core.oidc.services import (
+        attempt_binding,
+        draft_proof,
+        link_signature,
+        pending_proof,
+        provider_proof,
+        tag,
+    )
+    from platform_core.security import cipher
+
+    now = timezone.now()
+    issuer = "https://no-network-restore-idp.example.invalid"
+    config = dict(
+        slug="synthetic-restore",
+        name="Offline OIDC corpus",
+        issuer=issuer,
+        client_id="not-a-real-oidc-client",
+        client_secret="not-a-real-oidc-secret",
+        algorithm="RS256",
+        auth_method="client_secret_basic",
+        redirect_uri=f"https://no-network-portal.example.invalid/accounts/oidc/{organization.pk}"
+        "/synthetic-restore/callback/",
+    )
+    metadata = dict(
+        issuer=issuer,
+        authorization_endpoint=issuer + "/authorize",
+        token_endpoint=issuer + "/token",
+        jwks_uri=issuer + "/jwks",
+    )
+    contract = tag(dict(config=config, metadata=metadata))
+    provider = OIDCProvider(
+        organization=organization,
+        metadata=metadata,
+        config_hash=contract,
+        verified_at=now,
+        encrypted_secret=cipher().encrypt(config["client_secret"].encode()).decode(),
+        **{field: value for field, value in config.items() if field != "client_secret"},
+    )
+    provider.verification_proof = provider_proof(provider)
+    provider.save()
+    link = OIDCLink(
+        organization=organization,
+        account=actor,
+        provider=provider,
+        subject="synthetic-explicit-subject",
+        created_at=now,
+        mfa_verified_at=now - timedelta(seconds=1),
+        mfa_window_minutes=5,
+    )
+    link.signature = link_signature(link)
+    link.save()
+    browser_hash = hashlib.sha256(secrets.token_bytes(32)).hexdigest()
+    draft = OIDCDraft(
+        organization=organization,
+        owner=actor,
+        session_hash=browser_hash,
+        encrypted_config=cipher().encrypt(json.dumps(config).encode()).decode(),
+        config_hash=contract,
+        metadata=metadata,
+        expires_at=now + timedelta(minutes=15),
+        verified_at=now,
+        encrypted_result=cipher().encrypt(b'{"subject":"synthetic"}').decode(),
+    )
+    draft.verification_proof = draft_proof(draft)
+    draft.save()
+    attempt = OIDCAttempt(
+        organization=organization,
+        provider=provider,
+        purpose="login",
+        session_hash=browser_hash,
+        state_hash=hashlib.sha256(secrets.token_bytes(32)).hexdigest(),
+        config_hash=contract,
+        expires_at=now + timedelta(minutes=5),
+    )
+    flow = dict(
+        config,
+        metadata=metadata,
+        binding=attempt_binding(attempt),
+        nonce=secrets.token_urlsafe(32),
+        verifier=secrets.token_urlsafe(32),
+    )
+    attempt.encrypted_flow = cipher().encrypt(json.dumps(flow).encode()).decode()
+    attempt.save()
+    pending = OIDCAttempt(
+        organization=organization,
+        provider=provider,
+        purpose="login",
+        session_hash=browser_hash,
+        state_hash=hashlib.sha256(secrets.token_bytes(32)).hexdigest(),
+        config_hash=contract,
+        expires_at=now + timedelta(minutes=5),
+        used_at=now,
+        encrypted_flow="",
+        pending_link=link,
+        pending_until=now + timedelta(minutes=2),
+    )
+    pending.pending_proof = pending_proof(pending)
+    pending.save()
+
+
 def main():
     import django
 
@@ -60,6 +170,7 @@ def main():
             from platform_core.tenancy import organization_context
 
             with organization_context(fixture.org):
+                oidc_corpus(fixture.operator, fixture.org)
                 publish_domain_event(
                     organization=fixture.org,
                     emitter="identity",
@@ -70,7 +181,8 @@ def main():
             fixture.doCleanups()
     print(
         "Synthetic restore corpus prepared: MFA, counter, recovery hash, M2M, "
-        "SCIM token, target secret, signed mandate, signed notification and sealed capture."
+        "SCIM token, target secret, OIDC secret/link/draft/flow, signed mandate, "
+        "signed notification and sealed capture."
     )
 
 

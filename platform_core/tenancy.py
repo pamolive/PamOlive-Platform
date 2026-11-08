@@ -7,6 +7,27 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import models
 
 _organization = ContextVar("pamolive_organization", default=None)
+_federated_scope = ContextVar("pamolive_federated_scope", default=None)
+
+
+@contextmanager
+def federation_context(account_id, organization_id):
+    token = _federated_scope.set((account_id, organization_id))
+    try:
+        yield
+    finally:
+        _federated_scope.reset(token)
+
+
+def enforce_federated_scope(actor, organization):
+    scope = _federated_scope.get()
+    if (
+        scope
+        and scope[1]
+        and scope[0] == getattr(actor, "pk", None)
+        and scope[1] != organization.pk
+    ):
+        raise PermissionDenied("La session fédérée est limitée à son organisation.")
 
 
 def current_organization():
@@ -38,8 +59,23 @@ class OrganizationMiddleware:
         from .models import Organization
 
         request.organization = None
+        federated_org = None
         if request.user.is_authenticated:
+            if request.session.get("oidc") is not None:
+                from django.contrib.auth import logout
+
+                from .oidc.services import federation
+
+                try:
+                    federated_org = federation(request.session, request.user)
+                except PermissionDenied:
+                    logout(request)
+                    request.organizations = Organization.objects.none()
+                    with organization_context(None):
+                        return self.get_response(request)
             available = Organization.objects.filter(active=True)
+            if federated_org:
+                available = available.filter(pk=federated_org)
             if not request.user.is_superuser:
                 available = available.filter(
                     memberships__account=request.user, memberships__active=True
@@ -48,7 +84,12 @@ class OrganizationMiddleware:
             request.organization = available.filter(pk=selected).first() if selected else None
             request.organization = request.organization or available.order_by("name").first()
             request.organizations = available
-        with organization_context(request.organization):
+        with (
+            organization_context(request.organization),
+            federation_context(
+                request.user.pk if request.user.is_authenticated else None, federated_org
+            ),
+        ):
             return self.get_response(request)
 
 

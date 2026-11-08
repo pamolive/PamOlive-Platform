@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block extra_head %}<script src="{% static 'platform_core/oidc.js' %}" defer></script>{% endblock %}
+{% block content %}
+<h1>{% if provider %}{{ provider.name }}{% else %}Nouveau domaine OIDC{% endif %}</h1>
+<p>1. Choisir l’identifiant et copier le callback chez le fournisseur.
+2. Tester la découverte et une authentification réelle sans enregistrer de domaine.
+3. Enregistrer inactif, puis activer séparément. Les tests ne modifient pas le domaine en service.</p>
+<article class="workflow-card">
+  <h2>URL de redirection à enregistrer chez le fournisseur</h2>
+  {% if callback_pattern %}
+  <code class="token" id="oidc-callback-preview" data-pattern="{{ callback_pattern }}">{% if callback %}{{ callback }}{% else %}Saisissez l’identifiant du domaine ci-dessous pour afficher son callback exact.{% endif %}</code>
+  <p>Cette URL est disponible avant le Client ID et le secret. Copiez-la entièrement, en HTTPS,
+  avec le slash final. Sans JavaScript, saisissez l’identifiant puis soumettez le formulaire
+  pour afficher l’URL ; aucun domaine n’est créé par cette étape.</p>
+  {% else %}
+  <p>L’origine HTTPS publique doit d’abord être configurée côté déploiement.
+  Aucun callback HTTP ou calculé depuis le navigateur n’est utilisé comme remplacement.</p>
+  {% endif %}
+  <p>Créer un client confidentiel compatible Authorization Code et PKCE S256.
+  Scopes demandés : <code>openid email profile</code>. Un jeton API personnel n’est pas un secret client OIDC.</p>
+</article>
+<form method="post" class="erp-form">
+  {% csrf_token %}{{ form.as_p }}
+  <button class="button" name="action" value="probe">Tester la découverte avant d’enregistrer</button>
+  {% if draft.verified_at %}<button class="button" name="action" value="save">Enregistrer le domaine testé</button>{% endif %}
+</form>
+{% if draft %}
+<article class="workflow-card">
+  <h2>Brouillon privé : découverte vérifiée</h2>
+  <p>Le brouillon expire à {{ draft.expires_at }}. La découverte seule ne prouve pas que le client et son secret sont acceptés.</p>
+  <a class="button" href="{% url 'oidc-test-start' draft.pk %}">Tester la connexion complète</a>
+  {% if result %}<p>Authentification réelle validée. Sujet retourné pour votre test :
+  <code>{{ result.subject }}</code>. Votre session locale est conservée et aucune association n’est créée.</p>{% endif %}
+</article>
+{% endif %}
+<p>Modifier le contrat d’un domaine existant le remet en mode inactif après retest ;
+ses anciennes sessions ne sont pas conservées artificiellement.
+L’identifiant, l’émetteur et le Client ID sont immuables : créer un autre domaine pour les remplacer.</p>
+{% endblock %}

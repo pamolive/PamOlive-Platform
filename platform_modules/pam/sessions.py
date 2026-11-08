@@ -40,7 +40,7 @@ def browser_hash(key):
     return salted_hmac("pamolive.pam.browser.v1", key, algorithm="sha256").hexdigest()
 
 
-def session_actor(session_key):
+def session_actor(session_key, *, organization=None):
     if not isinstance(session_key, str) or not re.fullmatch(r"[a-z0-9]{32}", session_key):
         raise PermissionDenied
     session = Session.objects.filter(
@@ -60,6 +60,12 @@ def session_actor(session_key):
     hashes = [actor.get_session_auth_hash(), *actor.get_session_auth_fallback_hash()]
     if not any(constant_time_compare(data.get(HASH_SESSION_KEY, ""), value) for value in hashes):
         raise PermissionDenied
+    if data.get("oidc") is not None:
+        from platform_core.oidc.services import federation
+
+        scope = federation(data, actor)
+        if organization is not None and scope != organization.pk:
+            raise PermissionDenied
     return actor
 
 
@@ -260,8 +266,8 @@ def authority_seal(item):
 
 def _check_authority(item, *, session_key, client_ip):
     now, lease, endpoint = timezone.now(), item.lease, item.endpoint
-    actor = session_actor(session_key)
     organization = item.organization
+    actor = session_actor(session_key, organization=organization)
     authorize(actor, organization)
     require_module(organization, "pam")
     intent = lease.intent
@@ -339,7 +345,7 @@ def _related(queryset):
 def launch_session(intent_id, *, actor, organization, session_key, client_ip):
     authorize(actor, organization)
     assurance = require_recent_authentication(actor, organization)
-    if session_actor(session_key).pk != actor.pk:
+    if session_actor(session_key, organization=organization).pk != actor.pk:
         raise PermissionDenied
     Organization.objects.select_for_update().get(pk=organization.pk)
     with organization_context(organization):

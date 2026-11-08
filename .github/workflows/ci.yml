@@ -30,6 +30,8 @@ jobs:
       - run: ruff check .
       - run: python manage.py makemigrations --check --dry-run
       - run: python manage.py test --noinput
+      - name: Verify real HTTPS OIDC round-trip, local MFA and tenant boundaries
+        run: python manage.py test tests.test_oidc tests.test_oidc_tls --noinput
       - name: Verify a separately installed signed module on PostgreSQL
         run: python -m deploy.check_extensions --postgres
       - name: Verify that local credentials cannot enter the image
