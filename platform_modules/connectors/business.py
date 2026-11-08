@@ -449,7 +449,9 @@ def verify_business_evidence():
             raise RuntimeError("Invalid restored business-source configuration")
         count += 1
     for item in BusinessRecord.unscoped.select_related("source").iterator():
-        if item.organization_id != item.source.organization_id or not item.receipts.exists():
+        if item.organization_id != item.source.organization_id or not (
+            BusinessReceipt.unscoped.filter(record_id=item.pk).exists()
+        ):
             raise RuntimeError("Invalid restored business-record scope or empty dossier")
     for receipt in BusinessReceipt.unscoped.select_related("record__source", "audit").iterator():
         if not verify_business_receipt(receipt):

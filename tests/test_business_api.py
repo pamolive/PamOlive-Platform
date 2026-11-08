@@ -24,6 +24,7 @@ from platform_modules.connectors.business import (
     create_business_source,
     ingest_business_record,
     receipt_public,
+    verify_business_evidence,
     verify_business_receipt,
     verify_source,
 )
@@ -181,6 +182,15 @@ class BusinessAPITests(TestCase):
         self.assertFalse(proof["source_configuration_current"])
         self.assertFalse(proof["current_source_assertion"])
         self.assertIn("as_of", proof)
+
+    def test_offline_restore_checks_all_business_proofs_without_a_request_organization(self):
+        self.assertEqual(self.post().status_code, 201)
+        with recent_authentication(self.admin, self.org, time.time()):
+            configure_business_source(
+                self.publisher.pk, actor=self.admin, organization=self.org, active=False
+            )
+        with organization_context(None):
+            self.assertEqual(verify_business_evidence(), 2)
 
     def test_sequence_collision_and_old_source_clock_do_not_overwrite_history(self):
         self.assertEqual(self.post().status_code, 201)
