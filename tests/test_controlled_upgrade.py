@@ -61,6 +61,25 @@ class PreservationPrimitiveTests(SimpleTestCase):
             upgrade.upgrade("pamolive_platform", {}, offline=False)
         guard.assert_not_called()
 
+    def test_normal_schema_operations_do_not_escape_an_atomic_migration(self):
+        from django.db import migrations
+
+        migration = SimpleNamespace(
+            app_label="access",
+            name="0010_observed_intervals",
+            atomic=True,
+            operations=[migrations.AddField("accessevent", "example", None)],
+            __module__="platform_modules.access.migrations.0010_observed_intervals",
+        )
+        self.assertFalse(migration.operations[0].atomic)
+        executor = SimpleNamespace(
+            loader=SimpleNamespace(graph=SimpleNamespace(leaf_nodes=lambda: [])),
+            migration_plan=lambda _: [(migration, False)],
+        )
+        plan = upgrade.reviewed_plan(executor, "pamolive_platform")
+        self.assertEqual(plan["migrations"][0]["migration"], migration.name)
+        self.assertEqual(len(plan["migrations"][0]["sha256"]), 64)
+
 
 @skipUnless(connection.vendor == "postgresql", "Transactional PostgreSQL DDL and preservation")
 class ControlledUpgradeTests(TransactionTestCase):

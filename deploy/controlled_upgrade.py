@@ -236,12 +236,10 @@ def reviewed_plan(executor, expected):
     entries = []
     for migration, backwards in planned:
         key = (migration.app_label, migration.name)
-        if (
-            backwards
-            or key not in REVIEWED
-            or not migration.atomic
-            or any(operation.atomic is False for operation in migration.operations)
-        ):
+        # Operation.atomic=False is Django's default for AddField/CreateModel,
+        # not an escape from PostgreSQL's enclosing transactional schema editor.
+        # The fixed reviewed files and migration.atomic gate define this release.
+        if backwards or key not in REVIEWED or not migration.atomic:
             raise UpgradeRefused("unreviewed_or_nontransactional_migration")
         module = importlib.import_module(migration.__module__)
         entries.append(
