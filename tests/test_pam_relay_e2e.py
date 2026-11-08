@@ -58,7 +58,7 @@ def unused_port():
 
 
 @skipUnless(BINARY.is_file() or os.environ.get("PAM_REQUIRE_NATIVE"), "native image gate")
-class NativeRelayTests(TransactionTestCase):
+class RelayHarness(TransactionTestCase):
     def setUp(self):
         self.assertTrue(BINARY.is_file(), "PAM_REQUIRE_NATIVE cannot silently skip this gate")
         self.directory = tempfile.TemporaryDirectory(prefix="pamolive-relay-e2e-")
@@ -172,27 +172,36 @@ class NativeRelayTests(TransactionTestCase):
         self.directory.cleanup()
         self.overrides.disable()
 
-    def create_launch(self, host_key, target_port, private_key=None):
+    def create_launch(
+        self,
+        host_key,
+        target_port,
+        private_key=None,
+        *,
+        protocol="ssh",
+        certificate_pin="",
+        password="fixture-secret",
+    ):
         with organization_context(self.org):
             endpoint = SessionEndpoint.objects.create(
                 organization=self.org,
                 resource=self.resource,
                 account=self.account,
-                name="SSH fixture",
-                protocol="ssh",
+                name=f"{protocol.upper()} fixture",
+                protocol=protocol,
                 hostname="127.0.0.1",
                 port=target_port,
                 auth_method="private_key" if private_key else "password",
                 encrypted_secret=cipher()
                 .encrypt(
                     json.dumps(
-                        {"private_key": private_key}
-                        if private_key
-                        else {"password": "fixture-secret"}
+                        {"private_key": private_key} if private_key else {"password": password}
                     ).encode()
                 )
                 .decode(),
-                ssh_host_key=host_key,
+                ssh_host_key=host_key if protocol == "ssh" else "",
+                certificate_pin=certificate_pin,
+                domain="FIXTURE" if protocol == "rdp" else "",
                 enabled=True,
                 verified_revision=1,
                 tested_at=timezone.now(),
@@ -202,7 +211,7 @@ class NativeRelayTests(TransactionTestCase):
                 identity=self.identity,
                 account=self.account,
                 resource=self.resource,
-                method="SSH",
+                method=protocol.upper(),
                 reason="Fixture test",
                 fulfillment="pam",
                 starts_at=timezone.now() - timedelta(seconds=15),
@@ -228,10 +237,12 @@ class NativeRelayTests(TransactionTestCase):
             re.DOTALL,
         )
         self.assertIsNotNone(match)
-        self.assertNotIn(b"fixture-secret", response.content)
+        self.assertNotIn(password.encode(), response.content)
         config = json.loads(match[1])
         return endpoint.pk, intent.pk, config
 
+
+class NativeRelayTests(RelayHarness):
     async def test_real_websocket_roundtrip_recording_and_logout_disconnect(self):
         await self.exercise("logout")
 

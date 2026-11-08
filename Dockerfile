@@ -21,4 +21,11 @@ EXPOSE 8000
 HEALTHCHECK --interval=20s --timeout=5s --start-period=20s CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/', timeout=4)"
 CMD ["python", "deploy/runtime.py"]
 
+FROM guacd-builder AS native-test-builder
+COPY tests/fixtures/rdp_fixture.c /tmp/rdp_fixture.c
+RUN mkdir -p /opt/pamolive-test && cc -O2 -Wall -Wextra -Werror -Wno-error=deprecated-declarations -pthread /tmp/rdp_fixture.c -o /opt/pamolive-test/rdp-fixture $(pkg-config --cflags --libs freerdp3 winpr3)
+
+FROM runtime AS native-test
+COPY --from=native-test-builder /opt/pamolive-test /opt/pamolive-test
+
 FROM runtime AS production

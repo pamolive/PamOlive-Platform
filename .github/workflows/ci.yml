@@ -34,13 +34,19 @@ jobs:
         run: |
           printf 'must-not-enter-the-image' > .bootstrap-admin
           docker build -t pamolive-platform:ci .
-          docker run --rm --entrypoint python pamolive-platform:ci -c "from pathlib import Path; assert not Path('/app/.bootstrap-admin').exists(); assert not Path('/app/.env').exists()"
+          docker run --rm --entrypoint python pamolive-platform:ci -c "from pathlib import Path; assert not Path('/app/.bootstrap-admin').exists(); assert not Path('/app/.env').exists(); assert not Path('/opt/pamolive-test').exists()"
       - name: Verify native SSH/RDP plugins without contacting a target
         run: docker run --rm --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:ci -m deploy.check_guacd
       - name: Verify native SSH pinning and keyboard round-trip on a disposable fixture
         run: docker run --rm --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:ci -m deploy.check_native_ssh
+      - name: Build test-only headless RDP peer
+        run: docker build --target native-test -t pamolive-platform:native-test .
+      - name: Verify native RDP NLA, certificate pin and keyboard round-trip
+        run: docker run --rm --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:native-test -m deploy.check_native_rdp
       - name: Verify real WebSocket SSH transport and recording on PostgreSQL
         run: docker run --rm --user 1000:1000 --network host --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 -e DATABASE_URL -e SECRET_KEY -e PAM_REQUIRE_NATIVE=1 --entrypoint python pamolive-platform:ci manage.py test tests.test_pam_relay_e2e --noinput
+      - name: Verify real WebSocket RDP NLA, revocation, capture and redirection defense
+        run: docker run --rm --user 1000:1000 --network host --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 -e DATABASE_URL -e SECRET_KEY -e PAM_REQUIRE_NATIVE=1 -e PAM_REQUIRE_RDP=1 --entrypoint python pamolive-platform:native-test manage.py test tests.test_pam_rdp_e2e --noinput
       - name: Verify single-container runtime privilege separation
         run: |
           docker run --rm --network host -e DATABASE_URL -e SECRET_KEY --entrypoint python pamolive-platform:ci manage.py migrate --noinput

@@ -9,7 +9,7 @@ from .protocol import Instruction, Parser, ProtocolFailure, validate_input
 
 def _number(value, *, minimum=0, maximum=2**31 - 1):
     try:
-        if len(value) > 12 or not value.isascii() or str(int(value)) != value:
+        if len(value) > 16 or not value.isascii() or str(int(value)) != value:
             raise ValueError
         number = int(value)
         if not minimum <= number <= maximum:
@@ -93,6 +93,16 @@ class DisplayBoundary:
         elif opcode == "error":
             # Backend errors may quote untrusted server strings or parameters.
             return Instruction("error", ("Connexion distante interrompue.", "512"))
+        elif opcode == "mouse":
+            # Remote cursor position, not a browser-originated input command.
+            if len(args) not in (2, 4):
+                raise ProtocolFailure("invalid_native_cursor")
+            for value in args[:2]:
+                _number(value, maximum=8192)
+            if len(args) == 4:
+                _number(args[2], maximum=31)
+                _number(args[3], maximum=2**53 - 1)
+            return Instruction("mouse", args[:2])
         elif opcode in ("ack", "name", "log"):
             return None
         elif opcode not in self.DRAWING | {"sync", "nop", "disconnect"}:
@@ -141,6 +151,9 @@ class NativeSession:
             values = {
                 "hostname": target.address,
                 "port": str(target.port),
+                "width": str(width),
+                "height": str(height),
+                "dpi": "96",
                 "username": account.username,
                 "enable-sftp": "false",
                 "enable-agent": "false",

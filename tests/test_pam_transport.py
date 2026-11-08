@@ -29,6 +29,19 @@ from platform_modules.pam.protocol import Instruction, Parser, ProtocolFailure, 
 
 
 class FramingTests(SimpleTestCase):
+    def test_native_cursor_positions_are_bounded_display_updates(self):
+        instruction = Instruction("mouse", ("640", "480"))
+        self.assertEqual(DisplayBoundary().outbound(instruction), instruction)
+        self.assertEqual(
+            DisplayBoundary().outbound(
+                Instruction("mouse", ("640", "480", "0", "1794096000000"))
+            ),
+            instruction,
+        )
+        for arguments in (("9000", "0"), ("0", "0", "0"), ("0",)):
+            with self.assertRaises(ProtocolFailure):
+                DisplayBoundary().outbound(Instruction("mouse", arguments))
+
     def test_native_connection_parameter_streams_never_reach_display_or_recording(self):
         boundary = DisplayBoundary()
         self.assertIsNone(boundary.outbound(Instruction("argv", ("1", "text/plain", "password"))))
