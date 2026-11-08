@@ -23,7 +23,11 @@ Une demande reste applicable pendant 48 heures. Si un poste, un rôle choisi, un
 
 Supposons que la personne quitte **Support** pour **Exploitation**, tout en gardant le rôle **Commun**. Le changement retire les demandes et droits issus de l’affectation **Support**, conserve **Commun** à sa révision actuelle et crée des demandes pour **Exploitation**. Un droit de support accordé indépendamment reste actif, même s’il désigne le même compte, la même ressource et le même privilège.
 
-L’application du changement, les retraits locaux et la création des nouvelles demandes sont atomiques. Si une demande nouvelle enfreint une règle IAM, le changement entier est refusé. Le provisioning SCIM reste asynchrone. La révocation locale ne vaut pas confirmation de retrait à distance, et la séparation des tâches locale ne certifie pas l’état des droits sur le système externe. Vérifiez les confirmations des connecteurs avant de considérer le transfert comme terminé. Lorsqu’un autre droit autorise toujours la même appartenance externe, le connecteur ne retire pas cette appartenance.
+L’application du changement, les retraits locaux et la création des nouvelles demandes sont atomiques. Si une demande nouvelle enfreint une règle IAM, le changement entier est refusé. Le provisioning SCIM reste asynchrone : une révocation locale ne vaut pas confirmation du retrait à distance.
+
+Si un ancien droit métier a fait l’objet d’une tentative SCIM, l’approbation du nouveau droit attend une relecture confirmant l’absence de l’ancienne appartenance, sur le connecteur, la destination, le compte et le groupe exacts. Le traitement vérifie de nouveau cette condition avant l’envoi. Une confirmation sur une autre destination ou un état « confirmé » sans preuve ne suffit pas. Si un autre droit actif autorise toujours la même appartenance externe, le connecteur la conserve.
+
+Si le retrait bloque, ouvrez son opération dans **Connecteurs**. Rétablissez les correspondances vers la destination d’origine, puis relancez le retrait ou choisissez **Revérifier un retrait sur sa destination d’origine** si l’opération est déjà terminée. Cette vérification crée une nouvelle opération sans réécrire la preuve précédente. Une relecture reste datée : elle ne certifie pas les changements ultérieurs effectués hors plateforme.
 
 La mobilité ne désactive ni le compte du portail ni les comptes externes. Elle ne retire pas les accès indépendants ou anciens dont l’origine métier n’est pas attestée. Le départ complet reste un autre parcours.
 

@@ -154,6 +154,8 @@ def binding_create(request, kind):
 
 @scoped("connectors")
 def change_detail(request, change_id):
+    from .mover_handover import is_role_effect
+
     change = get_object_or_404(
         ExternalChange.objects.select_related("account", "grant", "binding__connector", "group"),
         pk=change_id,
@@ -161,7 +163,11 @@ def change_detail(request, change_id):
     return render(
         request,
         "connectors/change.html",
-        {"change": change, "proofs": change.proofs.order_by("recorded_at")},
+        {
+            "change": change,
+            "proofs": change.proofs.order_by("recorded_at"),
+            "role_removal": change.kind == "remove_membership" and is_role_effect(change),
+        },
     )
 
 
@@ -170,8 +176,9 @@ def change_detail(request, change_id):
 def retry(request, change_id):
     get_object_or_404(ExternalChange.objects, pk=change_id)
     try:
-        retry_change(change_id, actor=request.user, organization=request.organization)
+        result = retry_change(change_id, actor=request.user, organization=request.organization)
         messages.success(request, "Opération réexaminée avec les correspondances actuelles.")
+        return redirect("external-change", change_id=result.pk)
     except ValidationError as error:
         messages.error(request, str(error))
     return redirect("external-change", change_id=change_id)

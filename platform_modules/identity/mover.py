@@ -520,6 +520,13 @@ def authorize_move_intent(intent, *, actor, organization, approved=True):
         or link.body["account"] != _account_scope(intent.account)
     ):
         raise ValidationError("Cette affectation métier n’est plus active.")
+    from platform_modules.connectors.mover_handover import withdrawals_ready
+
+    if not withdrawals_ready(intent.identity_id):
+        raise ValidationError(
+            "Un ancien retrait SCIM reste à confirmer sur sa destination. "
+            "Consultez les opérations du connecteur avant d’approuver ce nouvel accès."
+        )
     return link, binding
 
 

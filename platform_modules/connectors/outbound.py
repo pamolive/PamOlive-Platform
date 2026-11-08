@@ -297,10 +297,43 @@ def _enqueue(*, account, grant, kind, key, actor, organization, origin):
 
 @transaction.atomic
 def retry_change(change_id, *, actor, organization):
+    from .mover_handover import can_reconcile, is_role_effect
+
     _operator(actor, organization)
     Organization.objects.select_for_update().get(pk=organization.pk)
     with organization_context(organization):
         change = ExternalChange.objects.get(pk=change_id)
+        if change.status in ("succeeded", "cancelled") and (
+            change.kind == "remove_membership" and is_role_effect(change)
+        ):
+            if ExternalChange.objects.filter(
+                grant=change.grant,
+                kind="remove_membership",
+                status__in=("queued", "retry", "running"),
+            ).exists():
+                raise ValidationError("Un retrait de ce droit est déjà en cours.")
+            candidate = ExternalChange(
+                organization=organization,
+                account=change.account,
+                grant=change.grant,
+                kind=change.kind,
+                authorized_by=actor,
+                idempotency_key=f"mover-reconcile:{change.grant_id}:{uuid.uuid4()}",
+            )
+            _route(candidate, actor=actor, organization=organization)
+            if candidate.status != "queued" or not can_reconcile(candidate):
+                raise ValidationError("Aucun retrait non confirmé sur cette destination exacte.")
+            candidate.full_clean()
+            candidate.save()
+            record(
+                action="connectors.external_change.queued.v1",
+                summary=str(candidate),
+                actor=actor,
+                organization=organization,
+                target=candidate,
+                metadata={"origin": "mover_reconciliation", "previous_change_id": str(change.pk)},
+            )
+            return candidate
         if change.status in ("running", "succeeded", "cancelled"):
             raise ValidationError("Cette opération ne peut pas être relancée dans cet état.")
         _route(change, actor=actor, organization=organization)
@@ -367,6 +400,15 @@ def _obsolete(change):
 
 
 def _check_dispatch(claim, organization):
+    from .mover_handover import (
+        TARGET_CHANGED,
+        WAITING,
+        is_role_effect,
+        membership_scope,
+        needs_handover,
+        removal_problem,
+    )
+
     with organization_context(organization):
         change = ExternalChange.objects.select_related(
             "binding__connector", "account__identity", "grant", "group"
@@ -389,10 +431,25 @@ def _check_dispatch(claim, organization):
             or (change.kind == "activate_account" and not _activation_ready(change))
         ):
             raise IntegrationFailure("operation_superseded")
+        if needs_handover(change):
+            raise IntegrationFailure(WAITING, retryable=True)
+        if is_role_effect(change) and membership_scope(claim) != membership_scope(change):
+            raise IntegrationFailure(TARGET_CHANGED)
+        problem = removal_problem(change)
+        if problem:
+            raise IntegrationFailure(problem)
 
 
 @transaction.atomic
 def _claim(organization):
+    from .mover_handover import (
+        NEVER_ATTEMPTED,
+        WAITING,
+        effect_metadata,
+        needs_handover,
+        removal_problem,
+    )
+
     Organization.objects.select_for_update().get(pk=organization.pk)
     with organization_context(organization):
         now = timezone.now()
@@ -421,6 +478,14 @@ def _claim(organization):
                 change.status, change.result_code = "blocked", "connector_configuration_changed"
             elif _obsolete(change):
                 change.status, change.result_code = "cancelled", "desired_state_superseded"
+            elif problem := removal_problem(change):
+                change.status = "cancelled" if problem == NEVER_ATTEMPTED else "blocked"
+                change.result_code = problem
+            elif needs_handover(change):
+                change.status, change.result_code = "retry", WAITING
+                change.next_attempt_at = now + timedelta(seconds=15)
+                change.save(update_fields=["status", "result_code", "next_attempt_at"])
+                continue
             elif change.kind == "activate_account" and not _activation_ready(change):
                 if change.result_code != "waiting_for_confirmed_initial_grant":
                     change.result_code = "waiting_for_confirmed_initial_grant"
@@ -440,7 +505,7 @@ def _claim(organization):
                     summary=str(change),
                     organization=organization,
                     target=change,
-                    metadata={"attempt": change.attempts},
+                    metadata={"attempt": change.attempts, **effect_metadata(change)},
                 )
                 return change
             change.save()
@@ -503,6 +568,8 @@ def _compensate_late_positive(claim, current, observed, organization):
 
 @transaction.atomic
 def _finish(claim, *, code, observed, confirmed, retryable, organization):
+    from .mover_handover import WAITING, effect_metadata, needs_handover
+
     Organization.objects.select_for_update().get(pk=organization.pk)
     with organization_context(organization):
         change = ExternalChange.objects.select_related("binding", "account__identity", "grant").get(
@@ -522,6 +589,7 @@ def _finish(claim, *, code, observed, confirmed, retryable, organization):
                 summary="Résultat tardif écarté",
                 organization=organization,
                 target=proof,
+                metadata={"change_id": str(change.pk), **effect_metadata(claim)},
             )
             if confirmed:
                 _compensate_late_positive(claim, change, observed, organization)
@@ -534,6 +602,9 @@ def _finish(claim, *, code, observed, confirmed, retryable, organization):
             )
         elif _obsolete(change):
             change.status, code, confirmed = "cancelled", "desired_state_superseded", False
+        elif confirmed and needs_handover(change):
+            change.status, code, confirmed = "retry", WAITING, False
+            change.next_attempt_at = timezone.now() + timedelta(seconds=15)
         elif confirmed:
             change.status = "succeeded"
         elif retryable and change.attempts < change.attempt_limit:
@@ -564,6 +635,7 @@ def _finish(claim, *, code, observed, confirmed, retryable, organization):
                 "change_id": str(change.pk),
                 "confirmed": confirmed,
                 "attempt": change.attempts,
+                **effect_metadata(claim),
             },
         )
 

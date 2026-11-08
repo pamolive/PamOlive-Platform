@@ -119,6 +119,103 @@ class ScimHandler(BaseHTTPRequestHandler):
 
 
 class ProvisioningTests(TestCase):
+    def test_mover_requires_confirmed_scim_withdrawal_before_approving_new_role(self):
+        from platform_modules.identity.mover import decide_move, propose_move, publish_role
+        from platform_modules.identity.mover_models import MoveAccess, MoveGrant
+        from tests.person_fixtures import bind_person
+
+        connector = self.configured()
+        for actor, role in ((self.operator, "operator"), (self.reviewer, "reviewer")):
+            bind_person(actor, organization=self.org, administrator=self.admin, role=role)
+
+        def move(key, department):
+            with self.assurance():
+                role = publish_role(
+                    key=key,
+                    name=department,
+                    enabled=True,
+                    expected_revision=0,
+                    entries=[
+                        dict(resource=self.resource.pk, method="SCIM", privilege="reader", days=30)
+                    ],
+                    actor=self.admin,
+                    organization=self.org,
+                )
+            with self.assurance(self.operator):
+                proposal = propose_move(
+                    identity_id=self.identity.pk,
+                    department=department,
+                    assignments={role.pk: [self.account.pk]},
+                    reason="Approved transfer",
+                    reference="HR-4",
+                    actor=self.operator,
+                    organization=self.org,
+                )
+            with self.assurance(self.reviewer):
+                applied = decide_move(
+                    proposal.pk,
+                    approved=True,
+                    comment="Reviewed",
+                    actor=self.reviewer,
+                    organization=self.org,
+                )
+            return MoveAccess.objects.get(decision=applied).intent
+
+        def approve(intent):
+            with self.assurance(self.reviewer):
+                decide(
+                    intent.pk,
+                    actor=self.reviewer,
+                    organization=self.org,
+                    approved=True,
+                    comment="IAM review",
+                )
+
+        previous = move("old", "Support")
+        approve(previous)
+        self.assertEqual(process_changes(self.org), 1)
+        self.assertEqual(self.server.state["members"], {"user-1"})
+        replacement = move("new", "Operations")
+        removal = ExternalChange.objects.get(kind="remove_membership")
+        with self.assertRaisesMessage(ValidationError, "ancien retrait SCIM"):
+            approve(replacement)
+        self.assertEqual(MoveGrant.objects.count(), 1)
+        self.server.state["ignore_patch"] = True
+        self.assertEqual(process_changes(self.org), 1)
+        with self.assertRaisesMessage(ValidationError, "ancien retrait SCIM"):
+            approve(replacement)
+        self.server.state["ignore_patch"] = False
+        # A changed destination must not receive the old withdrawal.
+        ProvisioningConnector.objects.filter(pk=connector.pk).update(base_url=self.url + "/other")
+        with self.assurance():
+            retry_change(removal.pk, actor=self.admin, organization=self.org)
+        self.assertEqual(process_changes(self.org), 0)
+        self.assertEqual(self.server.state["members"], {"user-1"})
+        removal.refresh_from_db()
+        self.assertEqual(removal.result_code, "mover_withdrawal_target_changed")
+        # A cached terminal status without the exact read-back is not proof.
+        ExternalChange.objects.filter(pk=removal.pk).update(status="succeeded")
+        with self.assertRaisesMessage(ValidationError, "ancien retrait SCIM"):
+            approve(replacement)
+        ProvisioningConnector.objects.filter(pk=connector.pk).update(base_url=self.url)
+        with self.assurance():
+            rechecked = retry_change(removal.pk, actor=self.admin, organization=self.org)
+        self.assertNotEqual(rechecked.pk, removal.pk)
+        self.assertEqual(process_changes(self.org), 1)
+        self.assertEqual(self.server.state["members"], set())
+        approve(replacement)
+        self.assertEqual(process_changes(self.org), 1)
+        self.assertEqual(self.server.state["members"], {"user-1"})
+        independent = self.grant()
+        self.assertEqual(process_changes(self.org), 1)
+        next_role = move("third", "Production")
+        approve(next_role)
+        self.assertEqual(process_changes(self.org), 1)
+        independent.refresh_from_db()
+        self.assertEqual(independent.status, "active")
+        self.assertEqual(self.server.state["members"], {"user-1"})
+        self.assertTrue(verify_chain(self.org))
+
     def test_contract_withdrawal_reaches_scim_and_is_confirmed_on_target(self):
         from platform_modules.governance import services as governance
 
