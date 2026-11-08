@@ -4,6 +4,9 @@
 .bootstrap-admin
 *.tgz
 *.tar.gz
+*.dump
+*.backup
+*.pgdump
 deploy/bootstrap-nas.sh
 .env.*
 !.env.example

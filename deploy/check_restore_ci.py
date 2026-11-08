@@ -1,0 +1,181 @@
+"""Populated restore qualification from the already validated private HA environment."""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from types import SimpleNamespace
+from urllib.parse import unquote, urlsplit, urlunsplit
+
+from deploy.check_active_active import validate_configuration
+from deploy.check_restore import RestoreQualification, identifier
+
+
+def write_private(path, content):
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        stream.write(content)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--docker", default="docker")
+    parser.add_argument("--postgres-container", required=True)
+    parser.add_argument("--ha-env-file", type=Path, required=True)
+    parser.add_argument(
+        "--compose-file",
+        type=Path,
+        default=Path(__file__).with_name("compose.active-active-check.yml"),
+    )
+    args = parser.parse_args()
+    directory = Path(tempfile.mkdtemp(prefix="pamolive-populated-restore-"))
+    environment_file, archive = (directory / name for name in ("application.env", "source.dump"))
+    admin = RestoreQualification(
+        SimpleNamespace(docker=args.docker, postgres_container=args.postgres_container)
+    )
+    created, source_oid, owner_oid = False, None, None
+    source_name = "test_pamolive_restore_source"
+
+    def command(arguments, *, content=None):
+        return subprocess.run(arguments, input=content, check=True, capture_output=True).stdout
+
+    try:
+        config = json.loads(
+            command(
+                [
+                    args.docker,
+                    "compose",
+                    "--env-file",
+                    str(args.ha_env_file.resolve()),
+                    "-f",
+                    str(args.compose_file.resolve()),
+                    "config",
+                    "--format",
+                    "json",
+                ]
+            )
+        )
+        validate_configuration(config)
+        service = config["services"]["node-a"]
+        values = service["environment"]
+        parsed = urlsplit(values["DATABASE_URL"])
+        owner = unquote(parsed.username)
+        identifier(owner)
+        image = service["image"]
+        network = config["networks"]["database"]["name"]
+        source_url = urlunsplit(parsed._replace(path="/" + source_name))
+        source_env = {key: values[key] for key in ("SECRET_KEY", "PAMOLIVE_ENCRYPTION_KEY")}
+        source_env.update(DATABASE_URL=source_url, PAMOLIVE_RESTORE_FIXTURE="1", DEBUG="false")
+        if any(any(character in value for character in "'\r\n\\") for value in source_env.values()):
+            raise RuntimeError("Unsupported synthetic environment value.")
+        write_private(
+            environment_file, "".join(f"{key}='{value}'\n" for key, value in source_env.items())
+        )
+        owner_oid = int(admin.sql(f"SELECT oid FROM pg_roles WHERE rolname='{owner}';"))
+        admin.sql(f"CREATE DATABASE {identifier(source_name)} OWNER {identifier(owner)};")
+        created = True
+        source_oid = int(admin.sql(f"SELECT oid FROM pg_database WHERE datname='{source_name}';"))
+        admin.sql(f"REVOKE ALL ON DATABASE {identifier(source_name)} FROM PUBLIC;")
+
+        def application(arguments, bind=None):
+            prefix = [
+                args.docker,
+                "run",
+                "--rm",
+                "--no-healthcheck",
+                "--memory",
+                "512m",
+                "--pids-limit",
+                "64",
+                "--read-only",
+                "--user",
+                "1000:1000",
+                "--cap-drop",
+                "ALL",
+                "--security-opt",
+                "no-new-privileges",
+                "--tmpfs",
+                "/tmp:size=64m,mode=1777",
+                "--network",
+                network,
+                "--env-file",
+                str(environment_file),
+                "--entrypoint",
+                "python",
+            ]
+            if bind:
+                prefix.extend(
+                    [
+                        "--mount",
+                        "type=bind,source="
+                        + str(bind.resolve())
+                        + ",target=/qualification.py,readonly",
+                    ]
+                )
+            return command(prefix + [image] + arguments)
+
+        application(
+            [
+                "-c",
+                "import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings'); "
+                "import django; django.setup(); from django.db import connection; "
+                "assert connection.settings_dict['NAME']=='test_pamolive_restore_source'; "
+                "cursor=connection.cursor(); cursor.execute('SELECT current_database()'); "
+                "assert cursor.fetchone()[0]=='test_pamolive_restore_source'; "
+                "from django.core.management import call_command; "
+                "call_command('migrate',interactive=False)",
+            ]
+        )
+        # Use -c/runpy so /app remains on sys.path in an older matching image.
+        application(
+            ["-c", "import runpy; runpy.run_path('/qualification.py',run_name='__main__')"],
+            Path(__file__).with_name("prepare_restore_fixture.py"),
+        )
+        report = command(
+            [
+                sys.executable,
+                "-m",
+                "deploy.check_restore",
+                "--docker",
+                args.docker,
+                "--postgres-container",
+                args.postgres_container,
+                "--database-network",
+                network,
+                "--application-image",
+                image,
+                "--application-env",
+                str(environment_file),
+                "--archive",
+                str(archive),
+                "--source-database",
+                source_name,
+                "--report-directory",
+                str(directory / "result"),
+                "--require-populated",
+            ]
+        )
+        print(report.decode().strip())
+    finally:
+        # No termination/force or broad cleanup. Refuse a reused source or changed owner.
+        if created:
+            identity = admin.sql(
+                f"SELECT oid || ':' || datdba FROM pg_database WHERE datname='{source_name}';"
+            )
+            sessions = int(
+                admin.sql(f"SELECT count(*) FROM pg_stat_activity WHERE datname='{source_name}';")
+            )
+            if source_oid is None or identity != f"{source_oid}:{owner_oid}" or sessions:
+                raise RuntimeError(
+                    "Synthetic source is still active or changed; retained for inspection."
+                )
+            admin.sql(f"DROP DATABASE {identifier(source_name)};")
+        if environment_file.exists():
+            environment_file.unlink()
+
+
+if __name__ == "__main__":
+    main()

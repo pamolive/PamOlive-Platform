@@ -140,6 +140,7 @@ Ce contrôle prouve NLA, les pins natifs, le clavier, les pixels de la cible et 
 - [Mandats PAM liés à une personne et comptes techniques partagés](docs/pam-person-mandates.md)
 - [Installer un module communautaire séparé dans la même image](docs/extensions.md)
 - [Deux instances actives : topologie et qualification HTTP](docs/active-active.md)
+- [Sauvegarde et qualification de restauration isolée](docs/backup-restore.md)
 - [Roadmap](docs/implementation-roadmap.md), [décisions](docs/architecture-decisions.md), [état livré](docs/implementation-status.md)
 
 ## Licence et gestion du projet

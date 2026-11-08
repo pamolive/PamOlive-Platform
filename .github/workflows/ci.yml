@@ -35,8 +35,9 @@ jobs:
       - name: Verify that local credentials cannot enter the image
         run: |
           printf 'must-not-enter-the-image' > .bootstrap-admin
+          cp .bootstrap-admin .image-private-check.dump
           docker build -t pamolive-platform:ci .
-          docker run --rm --entrypoint python pamolive-platform:ci -c "from pathlib import Path; from importlib.util import find_spec; assert not Path('/app/.bootstrap-admin').exists(); assert not Path('/app/.env').exists(); assert not Path('/opt/pamolive-test').exists(); assert find_spec('PIL') is None"
+          docker run --rm --entrypoint python pamolive-platform:ci -c "from pathlib import Path; from importlib.util import find_spec; assert not Path('/app/.bootstrap-admin').exists(); assert not Path('/app/.env').exists(); assert not Path('/app/.image-private-check.dump').exists(); assert not Path('/opt/pamolive-test').exists(); assert find_spec('PIL') is None"
       - name: Verify native SSH/RDP plugins without contacting a target
         run: docker run --rm --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:ci -m deploy.check_guacd
       - name: Prepare a separately signed extension wheel
@@ -73,3 +74,5 @@ jobs:
           ha_network=$(docker inspect '${{ job.services.postgres.id }}' --format '{{json .NetworkSettings.Networks}}' | python -c "import json,sys; print(next(iter(json.load(sys.stdin))))")
           python -m deploy.prepare_active_active_environment /tmp/pamolive-ha-ci.env --image pamolive-platform:ci --network "$ha_network" --host postgres
           python -m deploy.check_active_active --env-file /tmp/pamolive-ha-ci.env
+      - name: Restore a populated archive with restricted credentials and intact proofs
+        run: python -m deploy.check_restore_ci --postgres-container '${{ job.services.postgres.id }}' --ha-env-file /tmp/pamolive-ha-ci.env

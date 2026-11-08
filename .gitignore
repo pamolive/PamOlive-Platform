@@ -1,4 +1,7 @@
 .env
+*.dump
+*.backup
+*.pgdump
 .env.*
 !.env.example
 .bootstrap-admin
