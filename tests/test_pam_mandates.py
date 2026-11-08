@@ -1,6 +1,7 @@
 import time
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from unittest import skipUnless
+from unittest.mock import patch
 
 import pyotp
 from django.contrib.auth import get_user_model
@@ -215,6 +216,38 @@ class PersonMandateTests(TestCase):
         self.assertFalse(binding_valid(fake))
         self.assertTrue(binding_valid(binding))
         self.assertTrue(account.is_active)
+
+    def test_submicrosecond_mfa_rounding_cannot_sign_an_invalid_person_attestation(self):
+        # Windows can report the same clock tick across several calls. A float
+        # converted with nearest-microsecond rounding may then be one us ahead
+        # of Django's truncated datetime, even though MFA occurred first.
+        stamp = float(int(time.time()) - 5) + 0.0000006
+        truncated = datetime.fromtimestamp(int(stamp), UTC)
+        self.assertGreater(datetime.fromtimestamp(stamp, UTC), truncated)
+        field = LoginIdentityBinding._meta.get_field("created_at")
+        with (
+            patch("platform_core.authorization.time.time", return_value=stamp),
+            patch.object(field, "_get_default", return_value=truncated),
+        ):
+            _, binding = self.linked_user("precision-person")
+        from platform_modules.identity.bindings import binding_valid
+
+        self.assertLessEqual(binding.mfa_verified_at, binding.created_at)
+        self.assertTrue(binding_valid(binding))
+
+    def test_submicrosecond_mfa_rounding_does_not_invalidate_a_signed_pam_vote(self):
+        intent = self.request()
+        stamp = float(int(time.time()) + 5) + 0.0000006
+        truncated = datetime.fromtimestamp(int(stamp), UTC)
+        field = ApprovalDecision._meta.get_field("decided_at")
+        with (
+            patch("platform_core.authorization.time.time", return_value=stamp),
+            patch("django.utils.timezone.now", return_value=truncated),
+            patch.object(field, "_get_default", return_value=truncated),
+        ):
+            decision = self.approve(intent)
+        self.assertLessEqual(decision.mfa_verified_at, decision.decided_at)
+        self.assertEqual(intent.status, "approved")
 
     def test_link_requires_admin_mfa_and_does_not_guess_by_identical_email(self):
         person = Identity.objects.create(

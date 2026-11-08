@@ -4,6 +4,8 @@
 
 Le serveur ne nécessite pas une pile de dix conteneurs : chaque VM exécute **la même image PAM-olive**, avec son Web, son traitement des tâches et son moteur PAM privé. PostgreSQL reste externe. Le répartiteur TLS existant envoie des requêtes aux deux VM ; il n'est pas nécessaire d'ajouter Redis, un worker ou un moteur Guacamole en conteneurs séparés pour le runtime actuellement livré.
 
+La cible d'architecture prévoit également Redis pour les données éphémères et les futurs contrats de tâches. Le runtime qualifié ici utilise encore PostgreSQL pour ses sessions, transactions et baux ; ce test ne clôt pas le travail d'intégration Redis ni la qualification de son éventuelle topologie HA.
+
 ```mermaid
 flowchart TB
   U[Navigateur / API] --> P[Répartiteur TLS existant]

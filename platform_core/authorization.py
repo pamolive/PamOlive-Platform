@@ -4,6 +4,7 @@ import time
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from django.core.exceptions import PermissionDenied
 
@@ -19,6 +20,22 @@ class MutationAssurance:
 
 
 _assurance = ContextVar("pamolive_mutation_assurance", default=None)
+
+
+def assurance_datetime(verified_at):
+    """Conservatively quantize float evidence to PostgreSQL/Django microseconds.
+
+    datetime.fromtimestamp(float) rounds to nearest microsecond whereas a
+    datetime clock sample may truncate the same tick. Never manufacture a
+    future proof by rounding up. This conversion does not authorize anything;
+    the original float's strict future/expiry checks remain authoritative.
+    """
+    if isinstance(verified_at, bool) or not isinstance(verified_at, (int, float)):
+        raise ValueError("Invalid assurance timestamp.")
+    numerator, denominator = verified_at.as_integer_ratio()
+    # Exact integer arithmetic also avoids a second float multiplication rounding.
+    seconds, microseconds = divmod(numerator * 1_000_000 // denominator, 1_000_000)
+    return datetime.fromtimestamp(seconds, UTC).replace(microsecond=microseconds)
 
 
 @contextmanager

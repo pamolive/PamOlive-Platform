@@ -1,11 +1,9 @@
-from datetime import UTC, datetime
-
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
 from platform_core.audit import record
-from platform_core.authorization import require_recent_authentication
+from platform_core.authorization import assurance_datetime, require_recent_authentication
 from platform_core.models import Organization
 from platform_core.services import authorize, require_module
 from platform_core.tenancy import organization_context
@@ -60,9 +58,7 @@ def decide(intent_id, *, actor, organization, approved, comment):
             comment=comment,
             reviewer_binding=binding,
             reviewer_identity=binding.identity if binding else None,
-            mfa_verified_at=datetime.fromtimestamp(assurance.verified_at, UTC)
-            if assurance
-            else None,
+            mfa_verified_at=assurance_datetime(assurance.verified_at) if assurance else None,
             mfa_window_minutes=assurance.freshness_minutes if assurance else 0,
         )
         if intent.fulfillment == "pam":

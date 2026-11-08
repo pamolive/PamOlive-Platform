@@ -1,7 +1,7 @@
 """Explicit, tenant-local linkage of authenticated accounts to governed people."""
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.utils.crypto import constant_time_compare, salted_hmac
 
 from platform_core.audit import record
-from platform_core.authorization import require_recent_authentication
+from platform_core.authorization import assurance_datetime, require_recent_authentication
 from platform_core.models import Organization, OrganizationMembership
 from platform_core.services import authorize, require_module
 from platform_core.tenancy import organization_context
@@ -95,7 +95,7 @@ def create_binding(*, login_account, identity, verification_reference, actor, or
             identity=identity,
             verification_reference=verification_reference.strip(),
             created_by=actor,
-            mfa_verified_at=datetime.fromtimestamp(assurance.verified_at, UTC),
+            mfa_verified_at=assurance_datetime(assurance.verified_at),
             mfa_window_minutes=assurance.freshness_minutes,
         )
         binding.signature = binding_signature(binding)
