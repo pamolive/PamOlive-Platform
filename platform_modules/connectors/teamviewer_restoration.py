@@ -4,7 +4,10 @@ from django.utils.crypto import constant_time_compare
 
 from .teamviewer_collection import scan_proof, verify_activation, verify_configuration
 from .teamviewer_ingestion import verify_report, verify_run
+from .teamviewer_mapping import verify_mapping
+from .teamviewer_mapping_models import TeamViewerMapping, TeamViewerSighting
 from .teamviewer_models import TeamViewerCollector, TeamViewerReport, TeamViewerRun
+from .teamviewer_sightings import _verify_sighting_link
 
 
 def verify_evidence():
@@ -28,5 +31,20 @@ def verify_evidence():
     for run in TeamViewerRun.unscoped.select_related("audit").iterator(chunk_size=100):
         if not verify_run(run):
             raise RuntimeError("Restored TeamViewer collection run proof is invalid.")
+        signed += 1
+        for sighting in (
+            TeamViewerSighting.unscoped.filter(run=run, organization_id=run.organization_id)
+            .select_related("report")
+            .iterator(chunk_size=100)
+        ):
+            sighting.run = run
+            if not _verify_sighting_link(sighting):
+                raise RuntimeError("Restored TeamViewer sighting proof is invalid.")
+            signed += 1
+    for mapping in TeamViewerMapping.unscoped.select_related("audit", "collector").iterator(
+        chunk_size=100
+    ):
+        if not verify_mapping(mapping, check_target=False):
+            raise RuntimeError("Restored TeamViewer mapping proof is invalid.")
         signed += 1
     return encrypted, signed

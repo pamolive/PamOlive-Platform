@@ -2,7 +2,7 @@
 
 Le module Connecteurs lit les rapports de sessions TeamViewer terminées et conserve leurs preuves source par organisation. Il fonctionne dans le conteneur applicatif existant : aucun worker Compose, Redis ou conteneur TeamViewer supplémentaire n’est nécessaire.
 
-Ce parcours livre la collecte brute et sa consultation. Les correspondances avec les comptes, intervenants et ressources PAM-olive, puis la normalisation en événements corrélés, restent à implémenter. Les rapports ne constituent pas des captures vidéo de sessions.
+Ce parcours livre la collecte brute, les correspondances explicites et leur lecture dans le détail d’un rapport. La normalisation en événements d’accès corrélés reste à implémenter : une association affichée ne constitue pas encore une explication d’accès. Les rapports ne sont pas des captures vidéo de sessions.
 
 ## Préparer la destination et le jeton
 
@@ -23,6 +23,26 @@ Le jeton doit permettre la lecture des rapports de connexions, avec les droits m
 
 Une modification exige un nouveau test et remet le collecteur inactif. Un jeton laissé vide lors du test d’une configuration existante conserve le secret enregistré. Un échec de test ne modifie pas le collecteur en service. Pour interrompre les passages, utiliser **Désactiver** ; les preuves historiques restent conservées.
 
+## Associer les identifiants aux objets gouvernés
+
+Les trois associations sont distinctes :
+
+| Identifiant source | Association explicite | Ce qui ne doit pas être supposé |
+|---|---|---|
+| `userid` | Compte externe dont le système est `TeamViewer` | Ce n’est pas le compte Windows distant |
+| `userid` | Identité humaine ou non humaine attestée par l’administrateur | Le propriétaire du compte n’est pas automatiquement l’intervenant |
+| `deviceid` | Ressource serveur ou appareil | Son propriétaire, son emplacement et ses privilèges ne sont pas des faits observés |
+
+Créer les objets nécessaires dans IAM, puis ouvrir un rapport et choisir **Publier ou corriger cette association**. Le formulaire reprend l’identifiant exact et la période de la session. Il nécessite le rôle administrateur et une MFA personnelle récente. Renseigner une référence non secrète permettant de vérifier l’affectation ; cette référence administrative ne certifie pas l’authentification TeamViewer et ne vérifie pas un ticket externe.
+
+Une publication concerne le collecteur, sa révision de configuration et une période début inclus, fin exclue. Elle ne change ni le propriétaire du compte, ni le cycle de vie de l’identité, ni ses droits. Une identité inactive peut donc être associée pour l’analyse d’un rapport historique sans être réactivée. Les identités de services et de machines ne sont pas transformées en personnes.
+
+Les observations signées relient chaque version de rapport au passage précis qui l’a lue. Une modification de configuration, y compris du jeton, crée une autre révision : ses identifiants ne réutilisent pas automatiquement les correspondances de la précédente. Le détail permet de sélectionner une observation antérieure et de publier une association pour sa révision source exacte. L’indexation des passages historiques utilise le traitement de tâches existant sans modifier leurs dates ou données.
+
+La publication la plus récente applicable l’emporte sur sa période. Pour corriger une erreur, publier une nouvelle association ; pour retirer une affectation, cocher le retrait et laisser la cible vide. Les attestations et rapports précédents restent conservés. Un retrait débutant aujourd’hui n’efface pas une affectation antérieure ; corriger une attribution historique exige une période portant explicitement sur cette histoire, sans approbation rétroactive d’un accès.
+
+Le détail affiche les périodes et leurs preuves. Une identité n’est attribuée à toute la session que si son association couvre toute la durée. Des cibles différentes ou une couverture partielle restent signalées, sans choix arbitraire du propriétaire du compte. Une résolution complexe est bornée à 64 attestations chevauchantes ; une nouvelle attestation vérifiable couvrant toute la période peut remplacer les précédentes sans les supprimer.
+
 ## Fenêtres et reprises de collecte
 
 L’API est interrogée en lecture seule sur `GET /api/v1/reports/connections`. Le paramètre `from_date` filtre le début des sessions : le collecteur l’omet pour conserver une session longue ayant commencé avant la fenêtre. Il fige `to_date`, parcourt les pages par `offset_id` et applique localement la borne de fin minimale. Le contrat est décrit dans la [documentation officielle TeamViewer](https://webapi.teamviewer.com/api/v1/docs/index) et le [client officiel TeamViewerPS](https://github.com/teamviewer/TeamViewerPS/blob/a15ec4e55af7d17ce338aa9b4dbcce4db9e81eeb/Cmdlets/Public/Get-TeamViewerConnectionReport.ps1).
@@ -37,7 +57,7 @@ Les erreurs transitoires, dont HTTP 429, libèrent le bail et prévoient une rep
 
 Chaque version sémantique d’un rapport conserve l’identifiant source, les références de compte et de machine, le début, la fin, la réception et sa signature. Les notes sont chiffrées seulement si leur collecte est activée. Une relecture identique est dédupliquée ; une correction crée une nouvelle version. Lorsque les notes sont désactivées, une modification des seules notes ne crée pas une nouvelle preuve.
 
-Les passages disposent d’un manifeste signé des rapports, relié à l’audit chaîné. PostgreSQL refuse les modifications et suppressions des rapports et passages ; le périmètre d’un collecteur ne peut pas être déplacé vers une autre organisation. La qualification de restauration vérifie hors ligne les secrets et preuves, y compris ceux des collecteurs inactifs, sans contacter TeamViewer.
+Les passages disposent d’un manifeste signé des rapports, relié à l’audit chaîné. Les liens d’observation et les attestations de correspondance sont également signés. PostgreSQL refuse les modifications et suppressions de ces preuves et impose des références dans la même organisation et le même collecteur. Le périmètre d’un collecteur ne peut pas être déplacé vers une autre organisation. La qualification de restauration vérifie hors ligne les secrets et preuves historiques, y compris ceux des collecteurs inactifs, sans contacter TeamViewer.
 
 Les limites d’interprétation sont importantes :
 
@@ -45,6 +65,6 @@ Les limites d’interprétation sont importantes :
 - Les identifiants inconnus restent conservés pour un rattachement ultérieur ; ils ne créent aucune identité IAM.
 - Une note est une déclaration de la source, pas un ticket vérifié, une approbation ou une preuve de privilèges Windows.
 - L’état `complete` signifie seulement que la pagination de la fenêtre est terminée. Il ne déclare pas une couverture complète de l’organisation.
-- L’interface montre les 100 derniers passages et les 100 dernières versions de rapports, sans purge automatique des preuves.
+- L’interface montre les 100 derniers passages, les 100 dernières versions de rapports et les 100 dernières publications de correspondances par collecteur, sans purge automatique des preuves. Le détail d’une version propose ses 20 dernières observations.
 
-Les tests incluent un serveur HTTPS éphémère et le parcours formulaire avec CSRF, MFA, activation et tâche de collecte. La qualification d’un compte TeamViewer réel et de son périmètre de visibilité reste une étape d’intégration distincte.
+Les tests incluent un serveur HTTPS éphémère et le parcours formulaire avec CSRF, MFA, activation, collecte, publication des trois associations et lecture de leur résolution. Ils distinguent l’intervenant du propriétaire du compte partagé. La qualification d’un compte TeamViewer réel et de son périmètre de visibilité reste une étape d’intégration distincte.

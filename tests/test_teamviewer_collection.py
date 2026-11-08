@@ -532,8 +532,53 @@ class TeamViewerViewTests(TeamViewerFixtureData, TransactionTestCase):
                 self.assertEqual(authorization, "Bearer " + token)
                 self.assertNotIn(token, path)
                 self.assertNotIn("from_date=", path)
+            from platform_modules.access.models import AccessEvent
+            from platform_modules.connectors.teamviewer_mapping_models import TeamViewerSighting
+            from platform_modules.identity.models import ExternalAccount, Identity, Resource
+
+            sighting = TeamViewerSighting.objects.get(report=report)
+            declared_actor = Identity.objects.create(
+                organization=self.org, name="Declared operator", kind="human"
+            )
+            service_owner = Identity.objects.create(
+                organization=self.org, name="Separate service owner", kind="service"
+            )
+            operator_account = ExternalAccount.objects.create(
+                organization=self.org,
+                identity=service_owner,
+                username="tv-shared",
+                system="TeamViewer",
+                kind="service",
+            )
+            endpoint = Resource.objects.create(
+                organization=self.org, name="Explicit endpoint", kind="device"
+            )
+            for kind, remote_ref, target in (
+                ("actor", "remote-user", declared_actor),
+                ("account", "remote-user", operator_account),
+                ("device", "remote-device", endpoint),
+            ):
+                response = client.post(
+                    reverse("teamviewer-mapping-new", args=[collector.pk, kind]),
+                    dict(
+                        source_sighting=str(sighting.pk),
+                        remote_ref=remote_ref,
+                        target=str(target.pk),
+                        valid_from=report.started_at.isoformat(),
+                        valid_until=report.ended_at.isoformat(),
+                        verification_reference="Fixture verified assignment",
+                        csrfmiddlewaretoken=csrf,
+                    ),
+                )
+                self.assertEqual(response.status_code, 302, response.content)
             url = reverse("teamviewer-report", args=[report.pk])
             response = client.get(url)
+            preview = {item["kind"]: item["result"] for item in response.context["preview"]}
+            self.assertEqual(preview["actor"].target.pk, declared_actor.pk)
+            self.assertNotEqual(preview["actor"].target.pk, operator_account.identity_id)
+            self.assertEqual(preview["account"].target.pk, operator_account.pk)
+            self.assertEqual(preview["device"].target.pk, endpoint.pk)
+            self.assertFalse(AccessEvent.objects.exists())
             self.assertContains(response, "&lt;script&gt;")
             self.assertNotContains(response, note)
             self.assertEqual(response["Cache-Control"], "no-store")

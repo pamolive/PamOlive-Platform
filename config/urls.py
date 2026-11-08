@@ -136,6 +136,16 @@ urlpatterns = [
     path("connectors/teamviewer/", teamviewer_views.index, name="teamviewer-home"),
     path("connectors/teamviewer/new/", teamviewer_views.configure, name="teamviewer-new"),
     path(
+        "connectors/teamviewer/<uuid:collector_id>/mappings/",
+        teamviewer_views.mappings,
+        name="teamviewer-mappings",
+    ),
+    path(
+        "connectors/teamviewer/<uuid:collector_id>/mappings/<slug:kind>/new/",
+        teamviewer_views.mapping_create,
+        name="teamviewer-mapping-new",
+    ),
+    path(
         "connectors/teamviewer/<uuid:collector_id>/",
         teamviewer_views.configure,
         name="teamviewer-edit",

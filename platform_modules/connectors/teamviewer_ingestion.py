@@ -143,15 +143,24 @@ def verify_run(run):
             or not constant_time_compare(run.manifest_hash, tag(run.report_manifest, "manifest"))
         ):
             return False
-        for item in run.report_manifest:
-            if set(item) != {"id", "signature"}:
-                return False
-            report = TeamViewerReport.unscoped.filter(
-                pk=item["id"], organization_id=run.organization_id, collector_id=run.collector_id
-            ).first()
-            if report is None or report.signature != item["signature"] or not verify_report(report):
-                return False
-        return True
+        if not isinstance(run.report_manifest, list) or len(run.report_manifest) > 1000:
+            return False
+        if any(set(item) != {"id", "signature"} for item in run.report_manifest):
+            return False
+        entries = {item["id"]: item["signature"] for item in run.report_manifest}
+        if len(entries) != len(run.report_manifest):
+            return False
+        reports = list(
+            TeamViewerReport.unscoped.filter(
+                pk__in=entries,
+                organization_id=run.organization_id,
+                collector_id=run.collector_id,
+            )
+        )
+        return len(reports) == len(entries) and all(
+            report.signature == entries[str(report.pk)] and verify_report(report)
+            for report in reports
+        )
     except (ValueError, TypeError, AttributeError, KeyError, ValidationError):
         return False
 
@@ -191,6 +200,9 @@ def _retain_run(claim, *, status, code, page=None, reports=()):
     )
     run.signature = run_signature(run)
     run.save()
+    from .teamviewer_sightings import _retain_sightings
+
+    _retain_sightings(run, reports)
     return run
 
 

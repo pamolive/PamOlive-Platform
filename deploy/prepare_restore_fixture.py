@@ -23,6 +23,9 @@ def teamviewer_corpus(actor, organization):
         test_configuration,
     )
     from platform_modules.connectors.teamviewer_ingestion import process_collectors
+    from platform_modules.connectors.teamviewer_mapping import publish_mapping
+    from platform_modules.connectors.teamviewer_mapping_models import TeamViewerSighting
+    from platform_modules.identity.models import ExternalAccount, Identity, Resource
 
     now = timezone.now().replace(microsecond=0)
     with (
@@ -61,6 +64,37 @@ def teamviewer_corpus(actor, organization):
             return_value=ReportPage((source,), None, source.ended_at, True),
         ):
             process_collectors(organization)
+        sighting = TeamViewerSighting.objects.get(report__remote_id=source.id)
+        identity = Identity.objects.create(
+            organization=organization, name="Synthetic TeamViewer service", kind="service"
+        )
+        account = ExternalAccount.objects.create(
+            organization=organization,
+            identity=identity,
+            username="synthetic-tv-operator",
+            system="TeamViewer",
+            kind="service",
+        )
+        device = Resource.objects.create(
+            organization=organization, name="Synthetic TeamViewer device", kind="device"
+        )
+        for kind, remote_ref, target in (
+            ("actor", "synthetic-account", identity),
+            ("account", "synthetic-account", account),
+            ("device", "synthetic-device", device),
+        ):
+            publish_mapping(
+                actor=actor,
+                organization=organization,
+                collector_id=collector.pk,
+                kind=kind,
+                remote_ref=remote_ref,
+                target=target,
+                valid_from=source.started_at,
+                valid_until=source.ended_at,
+                verification_reference="Synthetic offline assignment; not a real provider check",
+                sighting_id=sighting.pk,
+            )
         set_enabled(collector.pk, False, actor=actor, organization=organization)
 
 
@@ -243,7 +277,7 @@ def main():
     print(
         "Synthetic restore corpus prepared: MFA, counter, recovery hash, M2M, "
         "SCIM token, target secret, OIDC secret/link/draft/flow, signed mandate, "
-        "signed notification, TeamViewer token/report/run and sealed capture."
+        "signed notification, TeamViewer token/report/run/sighting/mappings and sealed capture."
     )
 
 

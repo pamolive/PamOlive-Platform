@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block content %}
+<nav class="domain-tabs"><a href="{% url 'teamviewer-mappings' collector.pk %}">← Correspondances</a><a href="{% url 'record-create' 'identity' %}">Créer une identité IAM</a><a href="{% url 'record-create' 'account' %}">Créer un compte externe</a><a href="{% url 'record-create' 'resource' %}">Créer une ressource</a></nav>
+<section class="form-sheet"><h1>{{ label }}</h1>
+<p>Collecteur {{ collector.name }}. {% if source_sighting %}Révision observée {{ source_sighting.run.revision }} · rapport {{ source_sighting.report.remote_id }}.{% else %}Révision courante {{ collector.revision }}.{% endif %} Une modification de configuration n’hérite pas automatiquement de ces associations.</p>
+<p>L’identité intervenante est une attestation explicite, jamais le propriétaire déduit du compte. Le compte référencé est l’opérateur TeamViewer, pas le compte Windows distant. Aucun privilège Windows n’est déduit.</p>
+<p>Une publication plus récente l’emporte sur sa période d’application. Une correction peut porter sur le passé, sans réécrire le rapport ou accorder rétroactivement un droit. Pour un retrait, cochez la case et ne choisissez aucune cible.</p>
+<form method="post" class="erp-form">{% csrf_token %}{{ form.as_p }}<button class="button">Publier cette attestation datée</button></form></section>
+{% endblock %}

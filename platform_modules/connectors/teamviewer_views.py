@@ -1,9 +1,12 @@
-"""Native configuration and raw evidence UI; never an implicit identity mapping."""
+"""Native configuration, explicit mappings and raw evidence UI."""
+
+import uuid
 
 from cryptography.fernet import InvalidToken
 from django import forms
 from django.contrib import messages
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -13,7 +16,34 @@ from platform_modules.access.ui import scoped
 from .scim import IntegrationFailure
 from .teamviewer_collection import save_configuration, set_enabled, test_configuration
 from .teamviewer_ingestion import verify_report
+from .teamviewer_mapping import KINDS, publish_mapping, resolve_sighting, verify_mapping
+from .teamviewer_mapping_models import TeamViewerMapping, TeamViewerSighting
 from .teamviewer_models import TeamViewerCollector, TeamViewerReport, TeamViewerRun
+
+MAPPING_LABELS = {
+    "account": "Compte opérateur TeamViewer",
+    "actor": "Identité explicitement attribuée",
+    "device": "Machine cible",
+}
+MAPPING_STATES = {
+    "mapped": "Correspondance sur toute la période",
+    "unmapped": "Aucune correspondance",
+    "withdrawn": "Correspondance retirée",
+    "partial": "Période partiellement couverte",
+    "ambiguous": "Affectation différente pendant la session",
+    "invalid": "Preuve ou classification à examiner",
+    "limit": "Historique trop complexe pour une résolution complète",
+}
+
+
+def _sighting(queryset, value):
+    if not value:
+        return None
+    try:
+        identifier = uuid.UUID(str(value))
+    except (ValueError, TypeError):
+        raise Http404 from None
+    return get_object_or_404(queryset, pk=identifier)
 
 
 class CollectorForm(forms.Form):
@@ -154,11 +184,157 @@ def report_detail(request, report_id):
     if challenge is not None:
         return challenge
     valid = verify_report(report)
+    sightings = (
+        TeamViewerSighting.objects.filter(report=report)
+        .select_related("run__audit", "report")
+        .order_by("-run__audit__sequence")
+    )
+    sighting = _sighting(sightings, request.GET.get("sighting")) or sightings.first()
+    preview, preview_error = [], ""
+    if valid and sighting:
+        try:
+            resolved = resolve_sighting(sighting, organization=request.organization)
+            preview = [
+                dict(
+                    kind=kind,
+                    label=MAPPING_LABELS[kind],
+                    result=resolved[kind],
+                    state_label=MAPPING_STATES[resolved[kind].state],
+                )
+                for kind in KINDS
+            ]
+        except ValidationError:
+            preview_error = "L’observation n’est pas vérifiable. Aucune identité n’est attribuée."
     notes = (
         cipher().decrypt(report.encrypted_notes.encode()).decode()
         if valid and report.notes_included
         else None
     )
     return private_response(
-        request, "connectors/teamviewer_report.html", dict(report=report, valid=valid, notes=notes)
+        request,
+        "connectors/teamviewer_report.html",
+        dict(
+            report=report,
+            valid=valid,
+            notes=notes,
+            sighting=sighting,
+            sightings=sightings[:20],
+            preview=preview,
+            preview_error=preview_error,
+        ),
+    )
+
+
+@scoped("connectors", roles=("admin",))
+def mappings(request, collector_id):
+    collector = get_object_or_404(TeamViewerCollector.objects, pk=collector_id)
+    rows = []
+    for item in (
+        TeamViewerMapping.objects.filter(collector=collector)
+        .select_related("audit", "collector", "account", "identity", "resource")
+        .order_by("-published_at")[:100]
+    ):
+        valid = verify_mapping(item)
+        rows.append(
+            dict(
+                statement=item,
+                verified=valid,
+                target=item.target if valid and not item.withdrawn else None,
+            )
+        )
+    return private_response(
+        request, "connectors/teamviewer_mappings.html", dict(collector=collector, rows=rows)
+    )
+
+
+@scoped("connectors", roles=("admin",))
+def mapping_create(request, collector_id, kind):
+    if kind not in KINDS:
+        raise Http404
+    collector = get_object_or_404(TeamViewerCollector.objects, pk=collector_id)
+    sighting_query = TeamViewerSighting.objects.filter(collector=collector).select_related(
+        "run__audit", "report"
+    )
+    selected = _sighting(sighting_query, request.GET.get("sighting"))
+    initial = {}
+    if selected:
+        initial = dict(
+            source_sighting=selected.pk,
+            remote_ref=selected.report.device_ref
+            if kind == "device"
+            else selected.report.account_ref,
+            valid_from=selected.report.started_at.isoformat(),
+            valid_until=selected.report.ended_at.isoformat()
+            if selected.report.ended_at > selected.report.started_at
+            else "",
+        )
+    targets = KINDS[kind].objects.all()
+    if kind == "account":
+        targets = targets.filter(system__iexact="TeamViewer")
+    if kind == "device":
+        targets = targets.filter(kind__in=["device", "server"])
+    form = forms.Form(request.POST or None, initial=initial)
+    form.fields["source_sighting"] = forms.ModelChoiceField(
+        queryset=sighting_query, required=False, widget=forms.HiddenInput
+    )
+    form.fields["remote_ref"] = forms.CharField(
+        label="Identifiant exact dans TeamViewer", max_length=180
+    )
+    form.fields["target"] = forms.ModelChoiceField(
+        label=MAPPING_LABELS[kind],
+        queryset=targets,
+        required=False,
+        empty_label="Aucune cible (retrait explicite)",
+    )
+    form.fields["withdrawn"] = forms.BooleanField(
+        label="Retirer l’affectation sur cette période", required=False
+    )
+    form.fields["valid_from"] = forms.CharField(
+        label="Début de validité avec fuseau (ISO 8601)", max_length=50
+    )
+    form.fields["valid_until"] = forms.CharField(
+        label="Fin exclue avec fuseau (facultative)", required=False, max_length=50
+    )
+    form.fields["verification_reference"] = forms.CharField(
+        label="Référence de vérification de l’affectation",
+        max_length=255,
+        help_text="Référence non secrète de ticket ou de document. "
+        "Elle reste une attestation administrative, pas une preuve d’authentification TeamViewer.",
+    )
+    if request.method == "POST" and form.is_valid():
+        values = form.cleaned_data.copy()
+        source = values.pop("source_sighting")
+        values["valid_until"] = values["valid_until"] or None
+        try:
+            publish_mapping(
+                actor=request.user,
+                organization=request.organization,
+                collector_id=collector.pk,
+                kind=kind,
+                sighting_id=source.pk if source else None,
+                **values,
+            )
+            messages.success(
+                request,
+                "Correspondance publiée. Les preuves et les anciennes affectations "
+                "sont conservées.",
+            )
+            return redirect("teamviewer-mappings", collector_id=collector.pk)
+        except ValidationError as error:
+            form.add_error(None, error)
+        except PermissionDenied:
+            challenge = ensure_recent(request)
+            if challenge is not None:
+                return challenge
+            raise
+    return private_response(
+        request,
+        "connectors/teamviewer_mapping_form.html",
+        dict(
+            form=form,
+            collector=collector,
+            kind=kind,
+            label=MAPPING_LABELS[kind],
+            source_sighting=selected,
+        ),
     )

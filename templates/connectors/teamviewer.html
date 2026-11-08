@@ -6,7 +6,7 @@
 {% for collector in collectors %}
 <article class="workflow-card"><h2>{{ collector.name }}</h2><p>{{ collector.enabled|yesno:'Activé,Inactif' }} · révision {{ collector.revision }} · test {{ collector.tested_at }} · notes {{ collector.collect_notes|yesno:'conservées,non collectées' }}</p>
 <p>Dernier résultat : {{ collector.last_code|default:'Aucun passage' }}. Prochain passage : {{ collector.next_run_at }}{% if collector.scan_until %}. Parcours en cours jusqu’au {{ collector.scan_until }}{% endif %}.</p>
-<div class="inline-form"><a href="{% url 'teamviewer-edit' collector.pk %}">Modifier et tester</a><form method="post" action="{% url 'teamviewer-activation' collector.pk %}">{% csrf_token %}<button class="button" name="action" value="{% if collector.enabled %}disable{% else %}enable{% endif %}">{% if collector.enabled %}Désactiver{% else %}Activer la collecte{% endif %}</button></form></div></article>
+<div class="inline-form"><a href="{% url 'teamviewer-edit' collector.pk %}">Modifier et tester</a><a href="{% url 'teamviewer-mappings' collector.pk %}">Correspondances datées</a><form method="post" action="{% url 'teamviewer-activation' collector.pk %}">{% csrf_token %}<button class="button" name="action" value="{% if collector.enabled %}disable{% else %}enable{% endif %}">{% if collector.enabled %}Désactiver{% else %}Activer la collecte{% endif %}</button></form></div></article>
 {% empty %}<p>Aucun collecteur enregistré.</p>{% endfor %}
 <h2>Derniers passages (100 maximum)</h2>
 <p>« complete » signifie que la pagination de cette fenêtre est terminée, pas que tous les accès de l’organisation ont été observés. Une désactivation ou un résultat tardif produit « discarded » sans importer ses rapports.</p>
