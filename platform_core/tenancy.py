@@ -30,6 +30,17 @@ def enforce_federated_scope(actor, organization):
         raise PermissionDenied("La session fédérée est limitée à son organisation.")
 
 
+def is_platform_administrator(actor):
+    """Federation grants organization scope, never installation-global authority."""
+    scope = _federated_scope.get()
+    return bool(
+        actor
+        and actor.is_active
+        and actor.is_superuser
+        and not (scope and scope[0] == actor.pk and scope[1])
+    )
+
+
 def current_organization():
     organization = _organization.get()
     if organization is None:

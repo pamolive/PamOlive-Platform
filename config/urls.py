@@ -12,6 +12,7 @@ from platform_modules.intelligence import views as intelligence_views
 from platform_modules.pam import views as pam_views
 
 urlpatterns = [
+    path("system/members/<int:member_id>/", ui.system, name="membership-edit"),
     path("system/oidc/", oidc_views.providers, name="oidc-providers"),
     path("system/oidc/new/", oidc_views.configure, name="oidc-provider-new"),
     path("system/oidc/<uuid:provider_id>/", oidc_views.configure, name="oidc-provider-edit"),

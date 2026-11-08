@@ -3,11 +3,9 @@ from functools import wraps
 
 from django import forms
 from django.contrib import messages
-from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import connection, transaction
+from django.db import IntegrityError, connection
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -15,8 +13,9 @@ from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from platform_core.audit import record, verify_chain
+from platform_core.audit import verify_chain
 from platform_core.authorization import recent_authentication
+from platform_core.memberships import set_membership
 from platform_core.models import AuditEvent, ModuleActivation, OrganizationMembership
 from platform_core.security import ensure_recent
 from platform_core.services import (
@@ -538,52 +537,66 @@ def audit(request):
 
 
 @scoped(roles=("admin",))
-def system(request):
+def system(request, member_id=None):
     from django.db.models import Count
 
     from platform_core.models import EventDelivery
 
-    form = forms.Form(request.POST or None)
-    form.fields["username"] = forms.CharField(label="Compte PAM-olive", max_length=150)
+    editing_member = (
+        get_object_or_404(
+            OrganizationMembership.objects.select_related("account"),
+            organization=request.organization,
+            pk=member_id,
+        )
+        if member_id is not None
+        else None
+    )
+    initial = (
+        {
+            "username": editing_member.account.username,
+            "role": editing_member.role,
+            "active": editing_member.active,
+        }
+        if editing_member
+        else {"active": True}
+    )
+    form = forms.Form(request.POST or None, initial=initial)
+    form.fields["username"] = forms.CharField(
+        label="Compte PAM-olive", max_length=150, disabled=editing_member is not None
+    )
     form.fields["role"] = forms.ChoiceField(
         label="Rôle dans l’organisation",
         choices=OrganizationMembership._meta.get_field("role").choices,
+        initial="auditor",
     )
     form.fields["password"] = forms.CharField(
-        label="Mot de passe initial (nouveau compte)", required=False, widget=forms.PasswordInput
+        label="Mot de passe initial (nouveau compte)",
+        required=False,
+        max_length=4096,
+        widget=forms.PasswordInput,
+        disabled=editing_member is not None,
+    )
+    form.fields["active"] = forms.BooleanField(
+        label="Accès du compte à cette organisation actif", required=False, initial=True
     )
     if request.method == "POST" and form.is_valid():
         try:
-            with transaction.atomic():
-                account = (
-                    get_user_model().objects.filter(username=form.cleaned_data["username"]).first()
-                )
-                if not account:
-                    password = form.cleaned_data["password"]
-                    validate_password(password)
-                    account = get_user_model().objects.create_user(
-                        form.cleaned_data["username"], password=password
-                    )
-                member, _ = OrganizationMembership.objects.update_or_create(
-                    organization=request.organization,
-                    account=account,
-                    defaults={"role": form.cleaned_data["role"], "active": True},
-                )
-                record(
-                    action="core.membership.changed.v1",
-                    summary=f"Appartenance : {account.username}",
-                    actor=request.user,
-                    organization=request.organization,
-                    target=member,
-                )
+            set_membership(
+                actor=request.user, organization=request.organization, **form.cleaned_data
+            )
             return redirect("system-status")
         except ValidationError as error:
             form.add_error(None, error)
+        except IntegrityError:
+            form.add_error(
+                None, "Ce compte ne peut pas être créé ou ajouté. Rechargez le formulaire."
+            )
     return render(
         request,
         "governance/system.html",
         {
             "form": form,
+            "editing_member": editing_member,
             "members": OrganizationMembership.objects.filter(
                 organization=request.organization
             ).select_related("account"),

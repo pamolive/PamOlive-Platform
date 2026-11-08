@@ -5,6 +5,7 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 ## Fonctionnel et testé
 
 - Organisations, appartenances et rôles techniques distincts des identités gouvernées.
+- Appartenances administrées dans les formulaires natifs de Paramètres : modification et désactivation limitées à l’organisation, service protégé par rôle/MFA récente et verrou PostgreSQL empêchant le retrait du dernier administrateur. Le rattachement d’un compte existant extérieur à l’organisation est réservé à l’administrateur de plateforme local ; une session OIDC n’hérite pas de cette autorité globale. Aucune réinitialisation de mot de passe ni désactivation globale n’est effectuée par ce formulaire.
 - MFA TOTP chiffrée, codes de récupération à usage unique et refus du rejeu de code.
 - Validation récente personnelle de 2/5/10/15 minutes et reprise du formulaire conservé après challenge.
 - [OIDC multi-fournisseurs par organisation](oidc.md) : découverte et authentification HTTPS complète avant enregistrement, activation séparée, association explicite par le titulaire et secours local conservé. Les claims du fournisseur ne créent ni identité IAM ni permissions et ne remplacent pas la MFA locale. Les sessions fédérées sont limitées à leur organisation et invalidées par la révocation du domaine ou de l’association. Les tests utilisent un IdP éphémère, pas une certification des fournisseurs commerciaux.
