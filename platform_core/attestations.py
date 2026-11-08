@@ -44,7 +44,9 @@ def signature(namespace, purpose, body):
 
 def anchor_signature(obj, namespace, purpose, body):
     return signature(
-        namespace, purpose, dict(body=body, audit_id=obj.audit_id, audit_hash=obj.audit.event_hash)
+        namespace,
+        purpose,
+        dict(body=body, audit_id=str(obj.audit_id), audit_hash=obj.audit.event_hash),
     )
 
 

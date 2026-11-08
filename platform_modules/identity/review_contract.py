@@ -143,7 +143,7 @@ def apply_review(organization, grant_id, snapshot, *, actor, keep):
     require_module(organization, "identity")
     Organization.objects.select_for_update().get(pk=organization.pk, active=True)
     grant = (
-        Grant.objects.select_for_update()
+        Grant.objects.select_for_update(of=("self",))
         .select_related("identity", "account", "resource")
         .get(pk=grant_id)
     )
