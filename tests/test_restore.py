@@ -141,6 +141,32 @@ class RestoreGuardTests(TestCase):
 
 
 class RestoreManifestTests(TransactionTestCase):
+    def test_missing_signature_on_new_module_fact_is_not_a_legacy_unsigned_record(self):
+        import uuid
+
+        from django.utils import timezone
+
+        from platform_core.audit import record
+        from platform_core.models import ModuleEvent, Organization
+
+        org = Organization.objects.create(key="unsigned-module-event", name="Restore fixture")
+        proof = record(organization=org, action="restore.fixture.v1", summary="Fixture")
+        ModuleEvent.unscoped.create(
+            organization=org,
+            emitter="identity",
+            topic="identity.identity.created.v1",
+            occurred_at=timezone.now(),
+            correlation_id=uuid.uuid4(),
+            signature="",
+            audit=proof,
+        )
+        # This read-only negative check must fail before reaching the deliberate
+        # write/rollback trigger probe. The production entry point still requires
+        # an actual isolated database and its restricted login role.
+        with patch("deploy.restore_application_check.database_guard"):
+            with self.assertRaisesRegex(RuntimeError, "Restored signed evidence"):
+                verify_application()
+
     def test_implicit_memberships_and_migration_rows_are_in_the_manifest(self):
         user = get_user_model().objects.create_user("restore-membership-fixture")
         role = BusinessRole.objects.create(key="restore-role", name="Restore role")

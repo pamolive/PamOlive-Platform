@@ -229,7 +229,11 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
         (ModuleEvent, event_signature),
         (EventDelivery, delivery_signature),
     ):
-        for item in model._base_manager.exclude(signature="").iterator(chunk_size=100):
+        queryset = model._base_manager.all()
+        if model in (LoginIdentityBinding, ApprovalDecision):
+            # Historical pre-attestation requests remain readable, not executable.
+            queryset = queryset.exclude(signature="")
+        for item in queryset.iterator(chunk_size=100):
             if not constant_time_compare(item.signature, sign(item)):
                 raise RuntimeError("Restored signed evidence cannot be verified.")
             result["signed_proofs_checked"] += 1
