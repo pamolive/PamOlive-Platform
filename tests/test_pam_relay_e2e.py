@@ -13,6 +13,7 @@ import time
 from datetime import timedelta
 from pathlib import Path
 from unittest import skipUnless
+from unittest.mock import patch
 
 import asyncssh
 import pyotp
@@ -21,6 +22,7 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
+from django.db import OperationalError
 from django.test import Client, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -268,6 +270,9 @@ class NativeRelayTests(RelayHarness):
     async def test_private_key_authentication_and_logout_disconnect(self):
         await self.exercise("logout", private_key=True)
 
+    async def test_database_failure_cuts_the_real_ssh_connection_without_claiming_revocation(self):
+        await self.exercise("database_failure")
+
     async def exercise(self, termination, private_key=False):
         opened, echoed, lost = asyncio.Event(), asyncio.Event(), asyncio.Event()
         processes = []
@@ -408,17 +413,28 @@ class NativeRelayTests(RelayHarness):
                                 1 if termination == "quota" else settings.PAM_MAX_RECORDING_BYTES
                             )
                         ):
-                            await sync_to_async(revoke)()
-                            if termination == "forbidden":
-                                await websocket.send(
-                                    Instruction("connect", ("browser-chosen-target",))
-                                    .encode()
-                                    .decode()
+                            from contextlib import nullcontext
+
+                            failure = (
+                                patch(
+                                    "platform_modules.pam.broker.check_session",
+                                    side_effect=OperationalError("fixture-secret-never-log"),
                                 )
-                            elif termination == "quota":
-                                processes[0].stdout.write("capture quota test\r\n" * 100)
-                            await asyncio.wait_for(lost.wait(), timeout=6)
-                            await asyncio.wait_for(drain, timeout=6)
+                                if termination == "database_failure"
+                                else nullcontext()
+                            )
+                            with failure:
+                                await sync_to_async(revoke)()
+                                if termination == "forbidden":
+                                    await websocket.send(
+                                        Instruction("connect", ("browser-chosen-target",))
+                                        .encode()
+                                        .decode()
+                                    )
+                                elif termination == "quota":
+                                    processes[0].stdout.write("capture quota test\r\n" * 100)
+                                await asyncio.wait_for(lost.wait(), timeout=6)
+                                await asyncio.wait_for(drain, timeout=6)
                     finally:
                         drain.cancel()
                         await asyncio.gather(drain, return_exceptions=True)
@@ -433,9 +449,12 @@ class NativeRelayTests(RelayHarness):
                             {
                                 "forbidden": "input_not_authorized",
                                 "quota": "recording_quota_exceeded",
+                                "database_failure": "database_unavailable",
                             }.get(termination, "authority_lost"),
                         )
                         self.assertIsNotNone(item.ended_at)
+                        if termination == "database_failure":
+                            self.assertFalse(item.recording_complete)
                         self.assertGreater(item.recording_bytes, 0)
                         for chunk in RecordingChunk.objects.filter(connection=item):
                             payload = cipher().decrypt(bytes(chunk.encrypted_payload))

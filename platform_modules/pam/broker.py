@@ -3,13 +3,14 @@
 import asyncio
 import json
 import logging
+import re
 import time
 from http.cookies import SimpleCookie
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import close_old_connections, connections
+from django.db import DatabaseError, close_old_connections, connections
 
 from platform_core.models import Organization
 from platform_core.security import throttle
@@ -36,6 +37,19 @@ async def database(function, *args, **kwargs):
         close_old_connections()
         try:
             return function(*args, **kwargs)
+        except DatabaseError as error:
+            code = getattr(error.__cause__, "sqlstate", None)
+            code = (
+                code if isinstance(code, str) and re.fullmatch(r"[A-Z0-9]{5}", code) else "unknown"
+            )
+            operation = getattr(function, "__name__", "unknown")
+            if not isinstance(operation, str) or not re.fullmatch(
+                r"[a-zA-Z_][a-zA-Z0-9_]{0,79}", operation
+            ):
+                operation = "unknown"
+            # SQL, exception messages, parameters and connection strings can contain secrets.
+            logger.error("PAM database unavailable: operation=%s sqlstate=%s", operation, code)
+            raise
         finally:
             connections.close_all()
 
@@ -266,6 +280,8 @@ class Relay:
         except (ProtocolFailure, TransportFailure) as error:
             reason = str(error)
             complete = False
+        except DatabaseError:
+            reason = "database_unavailable"
         except (OSError, EOFError, TimeoutError, ValueError, ValidationError):
             reason = "relay_failed"
         except Exception as error:
