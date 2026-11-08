@@ -16,6 +16,7 @@ from deploy.restore_application_check import (
     key_probe,
     model_fingerprints,
     restore_url,
+    verify_application,
 )
 from platform_core.models import BusinessRole
 from platform_core.security import cipher
@@ -114,6 +115,8 @@ class RestoreGuardTests(TestCase):
     def test_live_database_is_refused_before_any_probe_write(self):
         with self.assertRaises(RuntimeError):
             database_guard("pamolive_platform", restored=True)
+        with self.assertRaises(RuntimeError):
+            verify_application()
 
     def test_archive_bound_key_companion_fails_with_a_different_key(self):
         probe = key_probe("a" * 64)

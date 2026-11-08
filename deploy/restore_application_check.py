@@ -188,6 +188,9 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
     from platform_modules.pam.models import RecordingChunk, RelayConnection, SessionEndpoint
     from platform_modules.pam.sessions import chunk_digest, recording_seal
 
+    # Keep the write/rollback probe safe even if an operator imports this helper
+    # directly rather than invoking the guarded CLI entry point.
+    database_guard(str(connection.settings_dict["NAME"]), restored=True)
     executor = MigrationExecutor(connection)
     if executor.migration_plan(executor.loader.graph.leaf_nodes()):
         raise RuntimeError("The restored schema and application image do not match.")

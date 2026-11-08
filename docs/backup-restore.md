@@ -65,6 +65,8 @@ Avant suppression, l'outil vérifie les OID, le propriétaire et l'absence de se
 
 La CI ajoute un corpus synthétique contenant des facteurs MFA, un compteur anti-rejeu, un hash de récupération, une appartenance M2M, un token SCIM, un secret de cible, des attestations/votes signés et une capture chiffrée scellée. Elle exige des valeurs réellement présentes ; une base presque vide ne suffit pas à qualifier ces chemins.
 
+Elle injecte aussi une écriture dans la source **après** le manifeste et **avant** le dump. Cette écriture doit être présente en source mais absente de la copie restaurée, qui doit correspondre au manifeste du point de sauvegarde. Retirer l'import de l'instantané ferait échouer cette porte.
+
 ## Ce succès n'autorise pas une bascule automatique
 
 Le rapport indique toujours `safe_to_serve: false`. La vérification est **hors ligne**. Une copie restaurée peut ressusciter des sessions, tickets, codes de récupération, autorisations ou tâches qui ont été révoqués après la sauvegarde.

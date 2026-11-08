@@ -5,7 +5,6 @@ import json
 import os
 import secrets
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -124,31 +123,64 @@ def main():
             ["-c", "import runpy; runpy.run_path('/qualification.py',run_name='__main__')"],
             Path(__file__).with_name("prepare_restore_fixture.py"),
         )
-        report = command(
+        check = RestoreQualification(
+            SimpleNamespace(
+                docker=args.docker,
+                postgres_container=args.postgres_container,
+                database_network=network,
+                application_image=image,
+                application_env=environment_file,
+                archive=archive,
+                source_database=source_name,
+                expected_manifest=None,
+                report_directory=directory / "result",
+                require_populated=True,
+            )
+        )
+        original_command, injected = check.command, False
+
+        def concurrent_write(arguments, **kwargs):
+            nonlocal injected
+            if "pamolive-snapshot-backup" in arguments and not injected:
+                application(
+                    [
+                        "-c",
+                        "import os; "
+                        "os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings'); "
+                        "import django; django.setup(); "
+                        "from platform_core.models import BusinessRole; "
+                        "BusinessRole.objects.create(key='after-snapshot',"
+                        "name='Concurrent synthetic write')",
+                    ]
+                )
+                injected = True
+            return original_command(arguments, **kwargs)
+
+        check.command = concurrent_write
+        try:
+            report = check.execute()
+        finally:
+            check.cleanup()
+        if not injected:
+            raise RuntimeError("The exported snapshot concurrency gate did not run.")
+        observed = application(
             [
-                sys.executable,
-                "-m",
-                "deploy.check_restore",
-                "--docker",
-                args.docker,
-                "--postgres-container",
-                args.postgres_container,
-                "--database-network",
-                network,
-                "--application-image",
-                image,
-                "--application-env",
-                str(environment_file),
-                "--archive",
-                str(archive),
-                "--source-database",
-                source_name,
-                "--report-directory",
-                str(directory / "result"),
-                "--require-populated",
+                "-c",
+                "import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings'); "
+                "import django; django.setup(); from platform_core.models import BusinessRole; "
+                "assert BusinessRole.objects.filter(key='after-snapshot').exists(); "
+                "print('present')",
             ]
         )
-        print(report.decode().strip())
+        if observed.strip() != b"present":
+            raise RuntimeError("The concurrent source change did not commit.")
+        report.update(
+            concurrent_source_write_isolated=True,
+            isolated_copy_removed=True,
+            temporary_role_removed=True,
+        )
+        write_private(directory / "result" / "report.json", json.dumps(report, sort_keys=True))
+        print(json.dumps(report, sort_keys=True))
     finally:
         # No termination/force or broad cleanup. Refuse a reused source or changed owner.
         if created:
