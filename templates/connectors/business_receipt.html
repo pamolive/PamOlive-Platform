@@ -1,0 +1,9 @@
+{% extends 'base.html' %}{% block content %}
+<p class="eyebrow">Preuve d’une lecture métier</p><h1>{{ receipt.record.source }} · {{ proof.payload.reference }}</h1>
+<p>{{ proof.payload.title }} · type {{ proof.payload.kind }} · état source {{ proof.payload.state }}</p>
+<p>Cette attestation conserve ce qu’un émetteur authentifié a déclaré avoir lu. Elle n’est ni une vérification indépendante du fournisseur ni une approbation PAM-olive. Elle ne modifie aucune autorisation locale.</p>
+{% if not proof.latest_for_record %}<p class="field-error">Cette lecture a été remplacée par une séquence plus récente. Son état est historique, pas l’état source courant.</p>{% endif %}
+<dl class="record-details"><div><dt>Dernière modification déclarée par la source</dt><dd>{{ proof.payload.source_updated_at }}</dd></div><div><dt>Lecture déclarée par l’intégration</dt><dd>{{ proof.payload.observed_at }}</dd></div><div><dt>Réception dans PAM-olive</dt><dd>{{ proof.received_at }}</dd></div><div><dt>Signature et audit</dt><dd>Vérifiés · {{ proof.receipt_id }}</dd></div><div><dt>Configuration source encore actuelle</dt><dd>{{ proof.source_configuration_current|yesno:'Oui,Non — preuve historique' }}</dd></div><div><dt>Lecture encore récente</dt><dd>{{ proof.source_read_recent|yesno:'Oui,Non — actualisation nécessaire' }}</dd></div></dl>
+{% if proof.payload.url %}<p><a href="{{ proof.payload.url }}" rel="noopener noreferrer" target="_blank">Ouvrir la référence dans le système source ↗</a> — ce lien n’est pas interrogé par le serveur PAM-olive.</p>{% endif %}
+<details><summary>Preuve structurée</summary><pre>{{ serialized }}</pre></details><p><a href="{% url 'business-sources' %}">Sources et API →</a></p>
+{% endblock %}

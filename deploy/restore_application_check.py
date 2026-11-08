@@ -191,6 +191,7 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
     from platform_modules.access.evidence import verify_evaluation
     from platform_modules.access.models import AccessEvaluation
     from platform_modules.approvals.models import ApprovalDecision
+    from platform_modules.connectors.business import verify_business_evidence
     from platform_modules.connectors.models import ProvisioningConnector
     from platform_modules.connectors.teamviewer_restoration import (
         verify_evidence as verify_teamviewer,
@@ -220,12 +221,26 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
         "encrypted_values_checked": 0,
         "signed_proofs_checked": 0,
     }
+    # Reject a wrong key before HMAC proof checks can report a less specific
+    # integrity error. The companion is bound to this exact source archive.
+    if probe:
+        payload = cipher().decrypt(probe["ciphertext"].encode())
+        if (
+            probe.get("archive_sha256") != archive_sha256
+            or not payload.startswith(b"pamolive.restore-key.v1\0" + archive_sha256.encode())
+            or not constant_time_compare(
+                hashlib.sha256(payload).hexdigest(), probe["payload_sha256"]
+            )
+        ):
+            raise RuntimeError("Archive-bound key companion does not match.")
+        result["key_companion_verified"] = True
     encrypted, signed = verify_evidence()
     result["encrypted_values_checked"] += encrypted
     result["signed_proofs_checked"] += signed
     encrypted, signed = verify_teamviewer()
     result["encrypted_values_checked"] += encrypted
     result["signed_proofs_checked"] += signed
+    result["signed_proofs_checked"] += verify_business_evidence()
     for evaluation in AccessEvaluation.unscoped.select_related("audit", "event", "intent").iterator(
         chunk_size=100
     ):
@@ -330,17 +345,6 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
     else:
         raise RuntimeError("The restored PostgreSQL audit guard did not reject modification.")
     result["postgresql_audit_guard"] = True
-    if probe:
-        payload = cipher().decrypt(probe["ciphertext"].encode())
-        if (
-            probe.get("archive_sha256") != archive_sha256
-            or not payload.startswith(b"pamolive.restore-key.v1\0" + archive_sha256.encode())
-            or not constant_time_compare(
-                hashlib.sha256(payload).hexdigest(), probe["payload_sha256"]
-            )
-        ):
-            raise RuntimeError("Archive-bound key companion does not match.")
-        result["key_companion_verified"] = True
     if expected_manifest:
         result.update(compare_manifest(expected_manifest))
     else:

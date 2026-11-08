@@ -1,16 +1,16 @@
-# Mise à niveau contrôlée vers 0.2.0a9
+# Mise à niveau contrôlée vers 0.2.0a10
 
-Cette livraison ajoute la collecte TeamViewer, ses correspondances datées, les sessions regroupées et leur explication, sans service permanent supplémentaire. La mise à niveau depuis `0.2.0a8` doit préserver les comptes, les organisations, les secrets chiffrés, les observations et les décisions antérieures. Elle impose une interruption temporaire de toutes les instances applicatives ; PostgreSQL reste disponible.
+La version `0.2.0a9` a ajouté la collecte TeamViewer et son explication. La version `0.2.0a10` ajoute les sources, dossiers et lectures de l’API métier, sans service permanent supplémentaire. La mise à niveau depuis `0.2.0a8` ou `0.2.0a9` doit préserver les comptes, les organisations, les secrets chiffrés, les observations et les décisions antérieures. Elle impose une interruption temporaire de toutes les instances applicatives ; PostgreSQL reste disponible.
 
 ## Périmètre accepté
 
-`python -m deploy.controlled_upgrade` accepte uniquement les sept migrations explicitement relues de cette livraison : `access.0010` à `access.0012` et `connectors.0004` à `connectors.0007`. Le plan contient leurs noms complets et leurs empreintes SHA-256. Un changement de plan ou une migration non autorisée arrête l’opération. Cet outil n’est pas une procédure universelle pour les versions futures ni pour des extensions ayant leurs propres migrations.
+`python -m deploy.controlled_upgrade` accepte uniquement huit migrations explicitement relues : `access.0010` à `access.0012` et `connectors.0004` à `connectors.0008`. Depuis `a8`, les huit sont en attente ; depuis `a9`, seule `connectors.0008` doit être nécessaire. Elle ajoute trois tables métier vides. Le plan contient les noms complets et empreintes SHA-256 des seules migrations restantes. Un changement de plan ou une migration non autorisée arrête l’opération. Cet outil n’est pas une procédure universelle pour les versions futures ni pour des extensions ayant leurs propres migrations.
 
 Les migrations de cette livraison réalisent des changements transactionnels PostgreSQL, sans appel fournisseur ni effet externe. Le rôle applicatif doit être dédié, propriétaire de sa base, sans rôle hérité, `SUPERUSER`, `CREATEDB`, `CREATEROLE`, `REPLICATION` ou `BYPASSRLS`. Le contrôle vérifie la base réellement connectée et le schéma `public` ; un nom de base PostgreSQL PAM-olive est requis.
 
 ## Préparation de la livraison
 
-1. Conserver l’image exacte de `0.2.0a8`, ses fichiers de déploiement et les clés existantes. Ne pas régénérer `SECRET_KEY` ni `PAMOLIVE_ENCRYPTION_KEY`.
+1. Conserver l’image exacte de la version installée, ses fichiers de déploiement et les clés existantes. Ne pas régénérer `SECRET_KEY` ni `PAMOLIVE_ENCRYPTION_KEY`.
 2. Construire l’image candidate avec le Dockerfile normal, sans la démarrer sur la base en service.
 3. Produire une sauvegarde privée et qualifier sa [restauration isolée](backup-restore.md). Exécuter ensuite la migration candidate sur une copie restaurée peuplée. Une base synthétique de CI ne remplace pas cette sauvegarde.
 4. Prévoir une fenêtre d’interruption : aucun relais PAM ni changement externe ne doit être en cours. Arrêter toutes les instances HTTP et leurs processus de tâches, y compris sur les autres VM. La sauvegarde finale et la comparaison doivent porter sur cet état arrêté.
@@ -28,7 +28,7 @@ docker compose run --rm --no-deps -T web python -m deploy.controlled_upgrade pla
 
 Adapter le nom de base à celui de l’installation. Employer les mêmes options `--env-file`, `-p` et `-f` que le déploiement lorsqu’il utilise un fichier NAS ou une image explicitement épinglée. Le fichier de plan ne contient ni mot de passe ni données métier. Le générer avec l’image Linux effectivement déployée évite une différence d’empreinte liée aux fins de ligne Windows.
 
-Après relecture des sept entrées, vérifier le retour arrière, puis appliquer exactement ce plan :
+Après relecture des entrées attendues pour la version installée, vérifier le retour arrière, puis appliquer exactement ce plan :
 
 ```sh
 docker compose run --rm --no-deps -T web python -m deploy.controlled_upgrade probe-rollback --database pamolive_platform --reviewed-plan - --offline-ack < reviewed-upgrade.json

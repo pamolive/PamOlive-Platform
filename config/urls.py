@@ -5,7 +5,7 @@ from platform_core.extensions.urls import extension_patterns
 from platform_core.oidc import views as oidc_views
 from platform_core.security import security_settings
 from platform_modules.access import ui
-from platform_modules.connectors import teamviewer_views
+from platform_modules.connectors import business_views, teamviewer_views
 from platform_modules.connectors import views as connector_views
 from platform_modules.governance import views as governance_views
 from platform_modules.identity import binding_views as identity_views
@@ -13,6 +13,18 @@ from platform_modules.intelligence import views as intelligence_views
 from platform_modules.pam import views as pam_views
 
 urlpatterns = [
+    path("api/v1/business-records/", business_views.records_api, name="business-records-api"),
+    path("connectors/business/", business_views.sources, name="business-sources"),
+    path(
+        "connectors/business/<uuid:source_id>/command/",
+        business_views.source_command,
+        name="business-source-command",
+    ),
+    path(
+        "connectors/business/receipts/<uuid:receipt_id>/",
+        business_views.receipt_detail,
+        name="business-receipt",
+    ),
     path("system/members/<int:member_id>/", ui.system, name="membership-edit"),
     path("system/oidc/", oidc_views.providers, name="oidc-providers"),
     path("system/oidc/new/", oidc_views.configure, name="oidc-provider-new"),

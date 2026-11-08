@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block content %}
 <h1>Sources et connecteurs</h1>
-<nav class="domain-tabs"><a href="{% url 'provisioning-home' %}">Provisioning SCIM et révocations</a><a href="{% url 'teamviewer-home' %}">Collecte TeamViewer</a></nav>
+<nav class="domain-tabs"><a href="{% url 'provisioning-home' %}">Provisioning SCIM et révocations</a><a href="{% url 'teamviewer-home' %}">Collecte TeamViewer</a><a href="{% url 'business-sources' %}">Systèmes métier et API</a></nav>
 <p>Créez une source pour importer des événements via l’API. Son jeton est limité à son organisation.</p>
 <form method="post" class="inline-form">{% csrf_token %}{{ form.as_p }}<button class="button">Créer une source</button></form>
 {% if token %}<div class="message"><b>Jeton affiché une seule fois :</b><code class="token">{{ token }}</code><p>Conservez-le dans le gestionnaire de secrets du système émetteur.</p></div>{% endif %}

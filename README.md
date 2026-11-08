@@ -12,7 +12,7 @@ L’image contient Django, l’interface, tous les modules livrés, le traitemen
 
 Les extensions signées disposent aussi de [notifications transactionnelles V2](docs/extensions.md#notifications-transactionnelles-v2) : échanges datés entre modules, destinataires isolés par organisation et traitement dans le processus de tâches existant. Une notification décrit un fait, elle ne transfère ni autorisation ni MFA. Les tâches tierces arbitraires et les effets externes ne sont pas assimilés à ces projections locales.
 
-La mise à niveau d’une installation `0.2.0a8` vers `0.2.0a9` suit la [procédure de migration contrôlée](docs/controlled-upgrade.md), avec sauvegarde, vérification des anciennes données et retour arrière transactionnel avant réouverture. Les commandes d’installation ci-dessous concernent une nouvelle base.
+La mise à niveau d’une installation `0.2.0a8` ou `0.2.0a9` vers `0.2.0a10` suit la [procédure de migration contrôlée](docs/controlled-upgrade.md), avec sauvegarde, vérification des anciennes données et retour arrière transactionnel avant réouverture. Les commandes d’installation ci-dessous concernent une nouvelle base.
 
 PostgreSQL 16+ doit être disponible sur un serveur existant, éventuellement une autre VM. `compose.yml` contient **un seul service**, `web`. Si vous souhaitez une base locale distincte, le fichier optionnel `compose.local-db.yml` ajoute un second conteneur PostgreSQL.
 
@@ -75,6 +75,8 @@ Dans Docker Desktop, `host.docker.internal` permet de joindre un PostgreSQL éco
 Les droits permanents motivés peuvent justifier un accès sans ticket. Un fait insuffisamment documenté reste « contexte insuffisant ». Les révocations locales ne valent pas confirmation de retrait sur un système externe.
 
 Le module Connecteurs dispose aussi d’une [collecte de rapports TeamViewer](docs/teamviewer.md), avec test avant enregistrement, activation séparée, preuves conservées et correspondances datées explicites pour le compte opérateur, l’identité attribuée et la machine cible. Les observations sont regroupées par session, puis liées à un événement unique et à son explication. Les faits source restent distincts des correspondances administratives ; les versions contradictoires ou informations manquantes ne produisent aucune conformité supposée. Le jeton et la visibilité d’un compte fournisseur réel restent à qualifier sur l’installation.
+
+L’[API des systèmes métier](docs/business-api.md) reçoit un format commun de tickets, incidents, changements et projets depuis plusieurs intégrations indépendantes. Les lectures sont versionnées et signées, sans transférer une approbation externe en droit local. L’interface gère les jetons par organisation ; l’adaptateur du système émetteur et le rattachement aux intentions sont distincts de l’API de réception.
 
 L’acteur d’une observation peut être différent du propriétaire du compte utilisé : par exemple un humain utilisant un compte de service. Sans attribution fournie par la source, l’acteur reste inconnu. Le formulaire, l’explication et le graphe distinguent ces rôles. Un [mandat PAM explicite](docs/pam-transport.md#personne-intervenante-compte-utilisé-et-mandat) permet aussi à une personne liée à son compte du portail d’utiliser un compte technique partagé après validation par des personnes indépendantes. L’intention d’observation seule n’ouvre jamais un relais ; le provisioning IAM reste réservé au compte de l’identité bénéficiaire. Voir le [contrat d’attribution de l’API](docs/api.md#acteur-compte-et-propriétaire--trois-notions-différentes).
 

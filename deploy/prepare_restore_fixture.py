@@ -102,6 +102,45 @@ def teamviewer_corpus(actor, organization):
         set_enabled(collector.pk, False, actor=actor, organization=organization)
 
 
+def business_corpus(actor, organization):
+    """Synthetic publisher assertions, not a real GLPI/Jira integration."""
+    import time
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from platform_core.authorization import recent_authentication
+    from platform_modules.connectors.business import (
+        FORMAT,
+        configure_business_source,
+        create_business_source,
+        ingest_business_record,
+    )
+
+    now = timezone.now()
+    with recent_authentication(actor, organization, time.time()):
+        source, token = create_business_source(
+            {"name": "Synthetic business corpus", "key": "restore-business"},
+            actor=actor,
+            organization=organization,
+        )
+        ingest_business_record(
+            dict(
+                schema=FORMAT,
+                external_id="fixture-483",
+                sequence=1,
+                kind="change",
+                reference="CHG-SYNTHETIC-483",
+                state="approved",
+                source_updated_at=(now - timedelta(hours=1)).isoformat(),
+                observed_at=now.isoformat(),
+            ),
+            token=token,
+            organization=organization,
+        )
+        configure_business_source(source.pk, actor=actor, organization=organization, active=False)
+
+
 def oidc_corpus(actor, organization):
     """Synthetic signed corpus only; deliberately does not contact or impersonate a real IdP."""
     import hashlib
@@ -270,6 +309,7 @@ def main():
             with organization_context(fixture.org):
                 oidc_corpus(fixture.operator, fixture.org)
                 teamviewer_corpus(fixture.admin, fixture.org)
+                business_corpus(fixture.admin, fixture.org)
                 publish_domain_event(
                     organization=fixture.org,
                     emitter="identity",
