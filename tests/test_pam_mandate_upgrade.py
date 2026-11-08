@@ -102,7 +102,9 @@ class PersonMandateUpgradeTests(TransactionTestCase):
             audit = record(
                 action="upgrade.fixture.v1",
                 summary="Evidence predates person bindings",
-                organization=org,
+                # Django's migration-state models are distinct Python classes.
+                # Core schema is unchanged; pass its runtime model to its service.
+                organization=Organization.objects.get(pk=org.pk),
                 metadata={"immutable": True},
             )
             audit_digest = audit.event_hash
