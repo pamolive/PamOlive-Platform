@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import threading
 import time
 from collections import Counter
 from unittest import skipUnless
@@ -29,7 +30,11 @@ from platform_modules.pam.models import RelayConnection, SessionEndpoint, Sessio
 from platform_modules.pam.native import NativeSession
 from platform_modules.pam.protocol import Instruction, Parser
 from platform_modules.pam.recordings import recording_page
-from platform_modules.pam.sessions import configure_endpoint, probe_endpoint, set_endpoint_enabled
+from platform_modules.pam.sessions import (
+    configure_endpoint,
+    probe_endpoint,
+    set_endpoint_enabled,
+)
 from tests.fixtures.paint import PaintProof
 from tests.fixtures.rdp import BINARY as RDP_BINARY
 from tests.fixtures.rdp import RDPFixture
@@ -106,6 +111,9 @@ class NativeRDPRelayTests(RelayHarness):
     async def test_rdp_wrong_password_never_authenticates(self):
         await self.exercise("password")
 
+    async def test_rdp_database_deadline_cuts_real_transport_and_seals_partial_capture(self):
+        await self.exercise("database_timeout")
+
     async def exercise(self, mode, shared=False):
         self.mode = mode
         config = None
@@ -114,6 +122,21 @@ class NativeRDPRelayTests(RelayHarness):
         exercise_started = time.monotonic()
         original_state = Relay.state
         original_database = broker.database
+        original_check = broker.check_session
+        fault_enabled, fault_entered = threading.Event(), threading.Event()
+        fault_released, fault_done = threading.Event(), threading.Event()
+
+        def stalled_check(*args, **kwargs):
+            if not fault_enabled.is_set():
+                return original_check(*args, **kwargs)
+            fault_entered.set()
+            try:
+                # A blocked execution adapter, not a weaker production deadline.
+                if not fault_released.wait(timeout=10):
+                    raise AssertionError("The synthetic slow check must be released by cleanup")
+                return original_check(*args, **kwargs)
+            finally:
+                fault_done.set()
 
         def operation_event(operation, started, result):
             event = {
@@ -179,6 +202,11 @@ class NativeRDPRelayTests(RelayHarness):
                     ),
                     patch.object(Relay, "state", timed_state),
                     patch.object(broker, "database", timed_database),
+                    patch.object(
+                        broker,
+                        "check_session",
+                        stalled_check if mode == "database_timeout" else original_check,
+                    ),
                     patch.object(broker, "probe_rdp", timed_phase(broker.probe_rdp, "rdp.probe")),
                     patch.object(
                         NativeSession,
@@ -295,6 +323,8 @@ class NativeRDPRelayTests(RelayHarness):
                                                         organization=self.org,
                                                         reason="Fixture person revoked",
                                                     )
+                                            elif mode == "database_timeout":
+                                                fault_enabled.set()
 
                                     await sync_to_async(revoke)()
                                 await peer.wait(
@@ -319,8 +349,16 @@ class NativeRDPRelayTests(RelayHarness):
                             if mode in ("password", "redirect"):
                                 self.assertEqual(item.end_reason, "native_error")
                             else:
-                                self.assertEqual(item.end_reason, "authority_lost")
+                                self.assertEqual(
+                                    item.end_reason,
+                                    "database_unavailable"
+                                    if mode == "database_timeout"
+                                    else "authority_lost",
+                                )
                                 self.assertGreater(item.recording_bytes, 0)
+                                if mode == "database_timeout":
+                                    self.assertTrue(fault_entered.is_set())
+                                    self.assertFalse(item.recording_complete)
                             if shared:
                                 self.account.refresh_from_db()
                                 self.assertTrue(self.account.active)
@@ -420,5 +458,8 @@ class NativeRDPRelayTests(RelayHarness):
                 print("RDP_TEST_DIAGNOSTIC " + json.dumps(diagnostic, default=str, sort_keys=True))
                 raise
             finally:
+                fault_released.set()
+                if fault_entered.is_set():
+                    self.assertTrue(await asyncio.to_thread(fault_done.wait, 2))
                 trap_server.close()
                 await trap_server.wait_closed()

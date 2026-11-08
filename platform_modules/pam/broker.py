@@ -33,6 +33,19 @@ logger = logging.getLogger(__name__)
 DATABASE_DEADLINE_SECONDS = 4
 
 
+class DatabaseDeadlineExceeded(TimeoutError):
+    """Database execution or its local queue exceeded the unchanged relay deadline."""
+
+
+def operation_name(function):
+    name = getattr(function, "__name__", "unknown")
+    return (
+        name
+        if isinstance(name, str) and re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]{0,79}", name)
+        else "unknown"
+    )
+
+
 async def database(function, *args, **kwargs):
     def call():
         close_old_connections()
@@ -43,20 +56,26 @@ async def database(function, *args, **kwargs):
             code = (
                 code if isinstance(code, str) and re.fullmatch(r"[A-Z0-9]{5}", code) else "unknown"
             )
-            operation = getattr(function, "__name__", "unknown")
-            if not isinstance(operation, str) or not re.fullmatch(
-                r"[a-zA-Z_][a-zA-Z0-9_]{0,79}", operation
-            ):
-                operation = "unknown"
             # SQL, exception messages, parameters and connection strings can contain secrets.
-            logger.error("PAM database unavailable: operation=%s sqlstate=%s", operation, code)
+            logger.error(
+                "PAM database unavailable: operation=%s sqlstate=%s", operation_name(function), code
+            )
             raise
         finally:
             connections.close_all()
 
-    return await asyncio.wait_for(
-        sync_to_async(call, thread_sensitive=False)(), timeout=DATABASE_DEADLINE_SECONDS
-    )
+    deadline = asyncio.timeout(DATABASE_DEADLINE_SECONDS)
+    try:
+        async with deadline:
+            return await sync_to_async(call, thread_sensitive=False)()
+    except TimeoutError:
+        if not deadline.expired():
+            raise
+        logger.error(
+            "PAM database deadline exceeded: phase=operation operation=%s",
+            operation_name(function),
+        )
+        raise DatabaseDeadlineExceeded from None
 
 
 def admission(session_key):
@@ -81,9 +100,22 @@ class Relay:
         # One relay must not make its heartbeat, startup and capture transactions
         # compete for its own row. PostgreSQL locks/fencing still coordinate other
         # actors and instances. Waiting for this local queue shares the same deadline.
-        async with asyncio.timeout(DATABASE_DEADLINE_SECONDS):
-            async with self.database_lock:
-                return await database(function, *args, **kwargs)
+        deadline = asyncio.timeout(DATABASE_DEADLINE_SECONDS)
+        acquired = False
+        try:
+            async with deadline:
+                async with self.database_lock:
+                    acquired = True
+                    return await database(function, *args, **kwargs)
+        except TimeoutError:
+            if not deadline.expired():
+                raise
+            logger.error(
+                "PAM database deadline exceeded: phase=%s operation=%s",
+                "state" if acquired else "queue",
+                operation_name(function),
+            )
+            raise DatabaseDeadlineExceeded from None
 
     async def monitor(self):
         while True:
@@ -292,7 +324,7 @@ class Relay:
         except (ProtocolFailure, TransportFailure) as error:
             reason = str(error)
             complete = False
-        except DatabaseError:
+        except (DatabaseError, DatabaseDeadlineExceeded):
             reason = "database_unavailable"
         except (OSError, EOFError, TimeoutError, ValueError, ValidationError):
             reason = "relay_failed"
