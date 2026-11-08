@@ -23,6 +23,7 @@ from .protocol import Instruction, Parser, ProtocolFailure
 from .sessions import (
     append_recording,
     check_session,
+    check_startup_session,
     claim_session,
     endpoint_credentials,
     finish_session,
@@ -131,7 +132,7 @@ class Relay:
 
     async def start(self, width, height):
         item = await self.state(
-            check_session,
+            check_startup_session,
             self.connection_id,
             self.organization,
             self.owner,
@@ -145,7 +146,7 @@ class Relay:
             target = await probe_rdp(endpoint.hostname, endpoint.port, endpoint.certificate_pin)
         # A revision, role, session or contract may have changed during the network probe.
         item = await self.state(
-            check_session,
+            check_startup_session,
             self.connection_id,
             self.organization,
             self.owner,

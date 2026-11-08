@@ -12,6 +12,7 @@ from django.contrib.sessions.models import Session
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import DatabaseError, connection, transaction
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from platform_core.audit import verify_chain
@@ -35,6 +36,7 @@ from platform_modules.pam.recordings import issue_recording_grant, recording_pag
 from platform_modules.pam.sessions import (
     append_recording,
     check_session,
+    check_startup_session,
     chunk_digest,
     claim_session,
     configure_endpoint,
@@ -180,6 +182,107 @@ class PamSessionTests(TestCase):
             instance_id="test-node",
         )
         return item, owner
+
+    def test_startup_recheck_is_read_only_but_rechecks_endpoint_authority(self):
+        item, owner = self.claimed()
+        before = RelayConnection.objects.filter(pk=item.pk).values().get()
+        with CaptureQueriesContext(connection) as queries:
+            checked = check_startup_session(
+                item.pk, self.org, owner, session_key=self.session_key, client_ip="127.0.0.1"
+            )
+        self.assertEqual(checked.pk, item.pk)
+        self.assertEqual(RelayConnection.objects.filter(pk=item.pk).values().get(), before)
+        for query in queries.captured_queries:
+            command = query["sql"].lstrip().upper()
+            self.assertFalse(command.startswith(("UPDATE ", "INSERT ", "DELETE ")))
+            self.assertNotIn("FOR UPDATE", command)
+        SessionEndpoint.objects.filter(pk=self.endpoint.pk).update(enabled=False)
+        with self.assertRaises(PermissionDenied):
+            check_startup_session(
+                item.pk, self.org, owner, session_key=self.session_key, client_ip="127.0.0.1"
+            )
+
+    def test_startup_recheck_does_not_reuse_a_logged_out_portal_session(self):
+        item, owner = self.claimed()
+        Session.objects.filter(session_key=self.session_key).delete()
+        with self.assertRaises(PermissionDenied):
+            check_startup_session(
+                item.pk, self.org, owner, session_key=self.session_key, client_ip="127.0.0.1"
+            )
+
+    def test_monitored_check_keeps_its_durable_heartbeat_and_row_lock(self):
+        item, owner = self.claimed()
+        item.refresh_from_db()
+        next_heartbeat = item.heartbeat_at + timedelta(seconds=2)
+        with (
+            patch("platform_modules.pam.sessions.timezone.now", return_value=next_heartbeat),
+            CaptureQueriesContext(connection) as queries,
+        ):
+            check_session(
+                item.pk, self.org, owner, session_key=self.session_key, client_ip="127.0.0.1"
+            )
+        item.refresh_from_db()
+        self.assertEqual(item.heartbeat_at, next_heartbeat)
+        self.assertEqual(item.status, "connecting")
+        if connection.vendor == "postgresql":
+            self.assertTrue(any("FOR UPDATE" in query["sql"].upper() for query in queries))
+
+    def test_startup_recheck_revalidates_fence_after_authority_reads(self):
+        from platform_modules.pam.sessions import _check_authority
+
+        item, owner = self.claimed()
+        changes = [
+            {"owner_token": uuid.uuid4()},
+            {"status": "failed"},
+            {"stop_requested_at": timezone.now()},
+            {"authority_seal": "0" * 64},
+            {"expires_at": item.expires_at + timedelta(minutes=1)},
+            {"authority_snapshot": {**item.authority_snapshot, "reason": "changed"}},
+        ]
+        for mutation in changes:
+            with self.subTest(fields=list(mutation)):
+
+                def changed_after_validation(checked, **kwargs):
+                    _check_authority(checked, **kwargs)
+                    RelayConnection.objects.filter(pk=item.pk).update(**mutation)
+
+                with (
+                    patch(
+                        "platform_modules.pam.sessions._check_authority",
+                        side_effect=changed_after_validation,
+                    ),
+                    self.assertRaises(PermissionDenied),
+                ):
+                    check_startup_session(
+                        item.pk,
+                        self.org,
+                        owner,
+                        session_key=self.session_key,
+                        client_ip="127.0.0.1",
+                    )
+                # The rejected transaction must not leave its injected alteration behind.
+                item.refresh_from_db()
+                self.assertEqual(item.owner_token, owner)
+                self.assertEqual(item.status, "connecting")
+                self.assertIsNone(item.stop_requested_at)
+
+    def test_read_only_recheck_cannot_replace_an_active_monitor_or_opening_evidence(self):
+        item, owner = self.claimed()
+        with self.assertRaises(ValueError):
+            check_session(
+                item.pk,
+                self.org,
+                owner,
+                session_key=self.session_key,
+                client_ip="127.0.0.1",
+                write_heartbeat=False,
+                target_snapshot={"protocol": "ssh"},
+            )
+        RelayConnection.objects.filter(pk=item.pk).update(status="active")
+        with self.assertRaises(PermissionDenied):
+            check_startup_session(
+                item.pk, self.org, owner, session_key=self.session_key, client_ip="127.0.0.1"
+            )
 
     def test_configuration_is_encrypted_and_requires_service_level_mfa(self):
         with self.assertRaises(PermissionDenied):

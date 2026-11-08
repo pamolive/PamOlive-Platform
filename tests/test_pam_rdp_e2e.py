@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import re
 import threading
 import time
 from collections import Counter
@@ -14,6 +15,7 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.contrib.sessions.backends.db import SessionStore
 from django.contrib.sessions.models import Session
+from django.db import connections
 from django.test import override_settings
 from django.utils import timezone
 from websockets.asyncio.client import connect
@@ -152,8 +154,44 @@ class NativeRDPRelayTests(RelayHarness):
         async def timed_database(function, *args, **kwargs):
             started = time.monotonic()
             result = "ok"
+
+            def profiled_call(*call_args, **call_kwargs):
+                db = connections["default"]
+
+                def phase(operation, callback):
+                    phase_started = time.monotonic()
+                    phase_result = "ok"
+                    try:
+                        return callback()
+                    except BaseException as error:
+                        phase_result = type(error).__name__
+                        raise
+                    finally:
+                        operation_event(operation, phase_started, phase_result)
+
+                phase("connect." + function.__name__, db.ensure_connection)
+                original_commit = db._commit
+
+                def commit():
+                    return phase("commit." + function.__name__, original_commit)
+
+                def execute(executor, sql, params, many, context):
+                    # Only an SQL command keyword; never a query, parameter or row value.
+                    matched = (
+                        re.match(r"\s*([A-Za-z]{1,16})\b", sql) if isinstance(sql, str) else None
+                    )
+                    command = matched[1].upper() if matched else "OTHER"
+                    return phase(
+                        "sql." + command + "." + function.__name__,
+                        lambda: executor(sql, params, many, context),
+                    )
+
+                with db.execute_wrapper(execute), patch.object(db, "_commit", commit):
+                    return function(*call_args, **call_kwargs)
+
+            profiled_call.__name__ = function.__name__
             try:
-                return await original_database(function, *args, **kwargs)
+                return await original_database(profiled_call, *args, **kwargs)
             except BaseException as error:
                 result = type(error).__name__
                 raise

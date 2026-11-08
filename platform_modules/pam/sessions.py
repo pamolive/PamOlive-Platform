@@ -451,7 +451,14 @@ def claim_session(connection_id, *, actor, session_key, client_ip, ticket, insta
 
 @transaction.atomic
 def check_session(
-    connection_id, organization, owner_token, *, session_key, client_ip, target_snapshot=None
+    connection_id,
+    organization,
+    owner_token,
+    *,
+    session_key,
+    client_ip,
+    target_snapshot=None,
+    write_heartbeat=True,
 ):
     # Bound a stuck database check. The async relay also has an overall deadline
     # and closes its native socket if authority cannot be established in time.
@@ -459,15 +466,37 @@ def check_session(
         with database_connection.cursor() as cursor:
             cursor.execute("SET LOCAL lock_timeout = '1s'")
             cursor.execute("SET LOCAL statement_timeout = '2s'")
+    if type(write_heartbeat) is not bool or (not write_heartbeat and target_snapshot is not None):
+        raise ValueError("Opening evidence requires the durable session check.")
     if target_snapshot is not None:
         Organization.objects.select_for_update().get(pk=organization.pk)
     with organization_context(organization):
-        item = _related(RelayConnection.objects.select_for_update(of=("self",))).get(
-            pk=connection_id
-        )
+        queryset = RelayConnection.objects
+        if write_heartbeat:
+            queryset = queryset.select_for_update(of=("self",))
+        item = _related(queryset).get(pk=connection_id)
         if item.owner_token != owner_token or item.status not in ("connecting", "active"):
             raise PermissionDenied
+        if not write_heartbeat and item.status != "connecting":
+            raise PermissionDenied("The read-only recheck is restricted to startup.")
         _check_authority(item, session_key=session_key, client_ip=client_ip)
+        if not write_heartbeat:
+            # Claiming the ticket already persisted a heartbeat. These two startup
+            # rechecks must still validate all authority, but must not each force
+            # another WAL commit. The independent monitor remains a durable check.
+            # Re-read the fence after validation: no stale owner, stopped relay or
+            # altered authority snapshot may be used after an optimistic read.
+            fenced = RelayConnection.objects.filter(pk=connection_id).first()
+            if (
+                not fenced
+                or fenced.owner_token != owner_token
+                or fenced.status != "connecting"
+                or fenced.stop_requested_at
+                or not constant_time_compare(fenced.authority_seal, item.authority_seal)
+                or not constant_time_compare(authority_seal(fenced), item.authority_seal)
+            ):
+                raise PermissionDenied("The startup authority fence changed during validation.")
+            return item
         item.heartbeat_at = timezone.now()
         if target_snapshot is not None:
             item.target_snapshot = target_snapshot
@@ -482,6 +511,17 @@ def check_session(
             )
         item.save(update_fields=["heartbeat_at", "target_snapshot", "status", "connected_at"])
         return item
+
+
+def check_startup_session(connection_id, organization, owner_token, *, session_key, client_ip):
+    return check_session(
+        connection_id,
+        organization,
+        owner_token,
+        session_key=session_key,
+        client_ip=client_ip,
+        write_heartbeat=False,
+    )
 
 
 def endpoint_credentials(item):
