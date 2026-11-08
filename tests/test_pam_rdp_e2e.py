@@ -6,6 +6,7 @@ import os
 import time
 from collections import Counter
 from unittest import skipUnless
+from unittest.mock import patch
 
 import pyotp
 from asgiref.sync import sync_to_async
@@ -22,6 +23,7 @@ from platform_core.models import AccountSecurity
 from platform_core.security import cipher
 from platform_core.tenancy import organization_context
 from platform_modules.identity.bindings import current_binding, revoke_binding
+from platform_modules.pam.broker import Relay
 from platform_modules.pam.models import RelayConnection, SessionEndpoint, SessionLease
 from platform_modules.pam.protocol import Instruction, Parser
 from platform_modules.pam.recordings import recording_page
@@ -106,6 +108,26 @@ class NativeRDPRelayTests(RelayHarness):
         self.mode = mode
         config = None
         received = []
+        state_events = []
+        original_state = Relay.state
+
+        async def timed_state(relay, function, *args, **kwargs):
+            started = time.monotonic()
+            result = "ok"
+            try:
+                return await original_state(relay, function, *args, **kwargs)
+            except BaseException as error:
+                result = type(error).__name__
+                raise
+            finally:
+                state_events.append(
+                    {
+                        "operation": function.__name__,
+                        "duration_ms": round((time.monotonic() - started) * 1000),
+                        "result": result,
+                    }
+                )
+
         async with RDPFixture(redirect=mode == "redirect") as peer:
             trap_connections = []
 
@@ -116,9 +138,12 @@ class NativeRDPRelayTests(RelayHarness):
 
             trap_server = await asyncio.start_server(trap, "127.0.0.2", peer.port)
             try:
-                with override_settings(
-                    PAM_ALLOWED_HOSTS={f"127.0.0.1:{peer.port}"},
-                    PAM_ALLOWED_NETWORKS=("127.0.0.1/32",),
+                with (
+                    override_settings(
+                        PAM_ALLOWED_HOSTS={f"127.0.0.1:{peer.port}"},
+                        PAM_ALLOWED_NETWORKS=("127.0.0.1/32",),
+                    ),
+                    patch.object(Relay, "state", timed_state),
                 ):
                     endpoint_id, _, config = await sync_to_async(self.create_launch)(
                         "",
@@ -304,6 +329,7 @@ class NativeRDPRelayTests(RelayHarness):
                 # Only synthetic fixture IDs/statuses/opcodes: never credentials or frame data.
                 diagnostic = {
                     "mode": mode,
+                    "state_operations": state_events[-30:],
                     "peer_events": [
                         {"event": item.get("event"), "connection": item.get("connection")}
                         for item in peer.events
