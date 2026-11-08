@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import time
+from collections import Counter
 from unittest import skipUnless
 
 import pyotp
@@ -103,6 +104,8 @@ class NativeRDPRelayTests(RelayHarness):
 
     async def exercise(self, mode, shared=False):
         self.mode = mode
+        config = None
+        received = []
         async with RDPFixture(redirect=mode == "redirect") as peer:
             trap_connections = []
 
@@ -297,6 +300,58 @@ class NativeRDPRelayTests(RelayHarness):
                         self.assertTrue(
                             any(item.opcode in ("rect", "cfill", "img") for item in received)
                         )
+            except BaseException:
+                # Only synthetic fixture IDs/statuses/opcodes: never credentials or frame data.
+                diagnostic = {
+                    "mode": mode,
+                    "peer_events": [
+                        {"event": item.get("event"), "connection": item.get("connection")}
+                        for item in peer.events
+                    ],
+                    "display_opcodes": dict(Counter(item.opcode for item in received)),
+                    "native_error_codes": [
+                        item.arguments[-1]
+                        for item in received
+                        if item.opcode == "error"
+                        and item.arguments
+                        and item.arguments[-1].isdecimal()
+                    ],
+                }
+                self.log.seek(0, os.SEEK_END)
+                self.log.seek(max(0, self.log.tell() - 2048))
+                native_tail = self.log.read(2048).decode("utf-8", errors="replace")
+                diagnostic["synthetic_native_log_tail"] = native_tail.replace(
+                    peer.password, "[redacted]"
+                ).replace("incorrect-test-password", "[redacted]")
+                if config:
+                    connection_id = config["websocket_path"].split("/")[3]
+
+                    def snapshot():
+                        with organization_context(self.org):
+                            return (
+                                RelayConnection.objects.filter(pk=connection_id)
+                                .values(
+                                    "status",
+                                    "end_reason",
+                                    "recording_bytes",
+                                    "recording_chunks",
+                                    "connected_at",
+                                    "ended_at",
+                                    "expires_at",
+                                    "endpoint__enabled",
+                                    "lease__status",
+                                    "lease__expires_at",
+                                    "lease__intent__status",
+                                )
+                                .first()
+                            )
+
+                    try:
+                        diagnostic["relay"] = await sync_to_async(snapshot)()
+                    except Exception as error:
+                        diagnostic["snapshot_error_class"] = type(error).__name__
+                print("RDP_TEST_DIAGNOSTIC " + json.dumps(diagnostic, default=str, sort_keys=True))
+                raise
             finally:
                 trap_server.close()
                 await trap_server.wait_closed()
