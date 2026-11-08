@@ -4,6 +4,7 @@ import importlib.metadata
 import io
 import json
 import os
+import stat
 import sys
 import tempfile
 import zipfile
@@ -249,6 +250,40 @@ class ExtensionReleaseTests(SimpleTestCase):
                 wheel = build_wheel(self.directory, {name: b"tamper"})
                 with self.assertRaises(ExtensionError):
                     inspect_wheel(wheel, self.manifest)
+
+    def test_archive_directories_and_windows_device_paths_are_checked_too(self):
+        for name in (
+            "../outside/",
+            "/absolute/",
+            "platform_core/",
+            "pamolive_ext_notes/C:/outside.py",
+            "pamolive_ext_notes/data:stream",
+            "pamolive_ext_notes/CON.py",
+            "pamolive_ext_notes/NUL/",
+            "pamolive_ext_notes/trailing./",
+        ):
+            with self.subTest(name=name):
+                wheel = build_wheel(self.directory, {name: b""})
+                with self.assertRaises(ExtensionError):
+                    inspect_wheel(wheel, self.manifest)
+
+    def test_symbolic_directory_and_case_collisions_are_rejected(self):
+        wheel = build_wheel(self.directory)
+        link = zipfile.ZipInfo("pamolive_ext_notes/link/")
+        link.external_attr = (stat.S_IFLNK | 0o777) << 16
+        with zipfile.ZipFile(wheel, "a") as archive:
+            archive.writestr(link, "../outside/")
+        with self.assertRaises(ExtensionError):
+            inspect_wheel(wheel, self.manifest)
+        wheel = build_wheel(
+            self.directory,
+            {
+                "pamolive_ext_notes/Case.py": b"first",
+                "pamolive_ext_notes/case.py": b"second",
+            },
+        )
+        with self.assertRaises(ExtensionError):
+            inspect_wheel(wheel, self.manifest)
 
     def test_installed_inventory_matches_signed_release_before_import(self):
         self.installed()

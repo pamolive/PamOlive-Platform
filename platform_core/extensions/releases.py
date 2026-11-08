@@ -13,7 +13,7 @@ from configparser import ConfigParser
 from configparser import Error as ConfigParserError
 from dataclasses import dataclass
 from email.parser import BytesParser
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -65,13 +65,16 @@ def _relative(name):
         raise ExtensionError("Chemin de paquet invalide.")
     path = PurePosixPath(name)
     if (
-        not isinstance(name, str)
-        or not name
+        not name
         or "\\" in name
         or path.is_absolute()
         or any(p in (".", "..") for p in path.parts)
         or str(path) != name
         or len(name) > 240
+        or any(
+            ":" in part or part.endswith((" ", ".")) or PureWindowsPath(part).is_reserved()
+            for part in path.parts
+        )
     ):
         raise ExtensionError("Chemin de paquet invalide.")
     return path
@@ -100,12 +103,13 @@ def inspect_wheel(path, manifest):
     try:
         with zipfile.ZipFile(path) as archive:
             names = [info.filename for info in archive.infolist()]
-            if len(names) != len(set(names)) or len(names) > 2000:
+            if (
+                len(names) != len({name.rstrip("/").casefold() for name in names})
+                or len(names) > 2000
+            ):
                 raise ExtensionError("Wheel dupliquée ou trop de fichiers.")
             for info in archive.infolist():
-                if info.is_dir():
-                    continue
-                relative = _relative(info.filename)
+                relative = _relative(info.filename[:-1] if info.is_dir() else info.filename)
                 total += info.file_size
                 if total > MAX_WHEEL_BYTES or stat.S_ISLNK(info.external_attr >> 16):
                     raise ExtensionError("Wheel trop grande ou contenant un lien symbolique.")
@@ -116,13 +120,18 @@ def inspect_wheel(path, manifest):
                     metadata_root = root
                 elif root != manifest.package:
                     raise ExtensionError("Une extension ne peut livrer que son propre package.")
-                if (
-                    relative.suffix in (".pyc", ".pyo", ".pth", ".so", ".pyd")
-                    or "__pycache__" in relative.parts
-                ):
+                if relative.suffix.casefold() in (
+                    ".pyc",
+                    ".pyo",
+                    ".pth",
+                    ".so",
+                    ".pyd",
+                ) or "__pycache__" in {part.casefold() for part in relative.parts}:
                     raise ExtensionError(
                         "Hooks de démarrage, bytecode et bibliothèques natives refusés."
                     )
+                if info.is_dir():
+                    continue
                 if relative.name != "RECORD" or root == manifest.package:
                     files[str(relative)] = digest(archive.read(info))
             needed = {
@@ -237,10 +246,13 @@ def verify_payload(envelope, trust_keys):
             metadata_roots.add(root)
         if not isinstance(expected_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
             raise ExtensionError("Empreinte de fichier invalide.")
-        if (
-            relative.suffix in (".pyc", ".pyo", ".pth", ".so", ".pyd")
-            or "__pycache__" in relative.parts
-        ):
+        if relative.suffix.casefold() in (
+            ".pyc",
+            ".pyo",
+            ".pth",
+            ".so",
+            ".pyd",
+        ) or "__pycache__" in {part.casefold() for part in relative.parts}:
             raise ExtensionError("Fichier de démarrage ou bytecode refusé.")
     if len(metadata_roots) != 1:
         raise ExtensionError("Inventaire de métadonnées incomplet.")
