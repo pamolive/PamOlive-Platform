@@ -744,16 +744,19 @@ class ObservationIntervalUpgradeTests(TransactionTestCase):
             )
             self.assertIsNone(AccessEvent.unscoped.get(pk=event.pk).ended_at)
             self.assertEqual(
-                AccessEvaluation.unscoped.filter(pk=old_evaluation.pk).values(*before_evaluation).get(),
+                AccessEvaluation.unscoped.filter(pk=old_evaluation.pk)
+                .values(*before_evaluation)
+                .get(),
                 before_evaluation,
             )
             self.assertEqual(
                 proof.__class__.objects.filter(pk=proof.pk).values().get(), before_audit
             )
             organization = Organization.objects.get(pk=org.pk)
-            ModuleActivation.objects.create(
-                organization=organization, module_key="access", version="test", enabled=True
-            )
+            for key in ("identity", "access"):
+                ModuleActivation.objects.create(
+                    organization=organization, module_key=key, version="test", enabled=True
+                )
             actor = get_user_model().objects.create_superuser("interval-upgrade-admin")
             new = reevaluate_event(event.pk, actor=actor, organization=organization)
             self.assertEqual(new.rule_version, "access-context/7")

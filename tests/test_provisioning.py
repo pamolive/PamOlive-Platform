@@ -27,7 +27,12 @@ from django.utils import timezone
 
 from platform_core.audit import verify_chain
 from platform_core.authorization import recent_authentication
-from platform_core.models import AccountSecurity, Organization, OrganizationMembership
+from platform_core.models import (
+    AccountSecurity,
+    ModuleActivation,
+    Organization,
+    OrganizationMembership,
+)
 from platform_core.services import install_module
 from platform_core.tenancy import organization_context
 from platform_modules.access.services import create_record, revoke_identity
@@ -750,6 +755,17 @@ class ProvisioningTests(TestCase):
         self.grant()
         claim = _claim(self.org)
         ExternalChange.objects.filter(pk=claim.pk).update(claim_expires_at=timezone.now())
+        with self.assertRaises(IntegrationFailure):
+            _check_dispatch(claim, self.org)
+        self.assertEqual(self.server.state["effects"], 0)
+
+    def test_indirect_module_dependency_is_rechecked_before_scim_write(self):
+        self.configured()
+        self.grant()
+        claim = _claim(self.org)
+        ModuleActivation.objects.filter(organization=self.org, module_key="identity").update(
+            enabled=False
+        )
         with self.assertRaises(IntegrationFailure):
             _check_dispatch(claim, self.org)
         self.assertEqual(self.server.state["effects"], 0)

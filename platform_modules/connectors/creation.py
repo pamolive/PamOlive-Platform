@@ -13,9 +13,9 @@ from django.utils.crypto import constant_time_compare
 
 from platform_core.audit import record
 from platform_core.authorization import assurance_datetime, require_recent_authentication
-from platform_core.models import ModuleActivation, Organization
+from platform_core.models import Organization
 from platform_core.security import cipher
-from platform_core.services import authorize, require_module
+from platform_core.services import authorize, module_available, require_module
 from platform_core.tenancy import current_organization, organization_context
 from platform_modules.access.models import AccessIntent
 
@@ -357,9 +357,7 @@ def _claim_creation(organization):
     locked = Organization.objects.select_for_update().get(pk=organization.pk)
     if not locked.active:
         return None
-    if not ModuleActivation.objects.filter(
-        organization=organization, module_key="connectors", enabled=True
-    ).exists():
+    if not module_available(organization, "connectors"):
         return None
     now = timezone.now()
     for job in (

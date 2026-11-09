@@ -102,7 +102,12 @@ class ExtensionSchemaUpgradeTests(TransactionTestCase):
                 old_membership.objects.create(
                     organization=organization, account=actor, role="admin", active=True
                 )
-                for key, enabled in (("identity", True), ("pam", organization.pk == first.pk)):
+                for key, enabled in (
+                    ("identity", True),
+                    ("access", True),
+                    ("approvals", True),
+                    ("pam", organization.pk == first.pk),
+                ):
                     old_activation.objects.create(
                         organization=organization,
                         module_key=key,
@@ -138,7 +143,7 @@ class ExtensionSchemaUpgradeTests(TransactionTestCase):
                 self.assertEqual(list(model.objects.order_by("pk").values(*fields)), rows)
             self.assertEqual(AuditEvent.objects.filter(pk=proof.pk).values().get(), audit_before)
             self.assertEqual(ExtensionDeployment.objects.count(), 0)
-            self.assertEqual(ModuleActivation.objects.count(), 4)
+            self.assertEqual(ModuleActivation.objects.count(), 8)
             self.assertFalse(ModuleActivation.objects.exclude(release_hash="").exists())
             for organization in Organization.objects.all():
                 self.assertTrue(verify_chain(organization))

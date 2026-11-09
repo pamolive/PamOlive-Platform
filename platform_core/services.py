@@ -3,7 +3,7 @@ from django.db import transaction
 
 from .audit import record
 from .models import ModuleActivation, Organization, OrganizationMembership
-from .registry import all_modules, get_module
+from .registry import ModuleDependencyError, all_modules, dependency_closure, get_module
 from .tenancy import current_organization, enforce_federated_scope
 
 
@@ -27,14 +27,41 @@ def require_module(organization, key):
     definition = get_module(key)
     if not definition:
         raise PermissionDenied("Le paquet de ce module est absent du déploiement.")
-    if not ModuleActivation.objects.filter(
-        organization=organization, module_key=key, enabled=True
-    ).exists():
-        raise PermissionDenied("Ce module n’est pas activé pour cette organisation.")
+    # Extension packages have an additional release/version contract, even when
+    # they are already present in the process or a stale enabled row exists.
     if definition.metadata.get("extension_release"):
         from .extensions.api import require_delivery
 
         require_delivery(organization, key)
+        return
+    try:
+        definitions = dependency_closure(key)
+    except ModuleDependencyError as error:
+        raise PermissionDenied("Les dépendances de ce module ne sont pas disponibles.") from error
+    required = {item.key for item in definitions}
+    active = set(
+        ModuleActivation.objects.filter(
+            organization=organization, module_key__in=required, enabled=True
+        ).values_list("module_key", flat=True)
+    )
+    if active != required:
+        raise PermissionDenied(
+            "Ce module ou ses dépendances ne sont pas activés dans cette organisation."
+        )
+    for dependency in definitions:
+        if dependency.metadata.get("extension_release"):
+            from .extensions.api import require_delivery
+
+            require_delivery(organization, dependency.key)
+
+
+def module_available(organization, key):
+    """Noninteractive jobs must honor the same module authority as the UI."""
+    try:
+        require_module(organization, key)
+    except PermissionDenied:
+        return False
+    return True
 
 
 def module_catalog(organization=None):

@@ -8,6 +8,7 @@ from platform_core.audit import record
 from platform_core.authorization import require_recent_authentication
 from platform_core.models import ExtensionDeployment, ModuleActivation
 from platform_core.services import authorize as authorize_roles
+from platform_core.services import require_module
 from platform_core.tenancy import current_organization
 
 
@@ -45,6 +46,10 @@ def require_delivery(organization, key):
             raise PermissionDenied("Dépendance non activée dans cette organisation.")
         if release_for(dependency.key):
             require_delivery(organization, dependency.key)
+        else:
+            # A compatible enabled row is not sufficient when a built-in
+            # dependency itself needs a module that is no longer active.
+            require_module(organization, dependency.key)
     return release
 
 

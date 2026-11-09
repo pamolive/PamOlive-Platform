@@ -24,6 +24,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from platform_core.audit import verify_chain
+from platform_core.models import ModuleActivation
 from platform_modules.access.services import create_record, revoke_identity
 from platform_modules.approvals.services import decide
 from platform_modules.connectors.creation import (
@@ -268,6 +269,16 @@ class ScimCreationFixture:
 
 
 class ScimCreationTests(ScimCreationFixture, TestCase):
+    def test_broken_module_dependency_pauses_creation_without_consuming_the_job(self):
+        job = self.request()
+        ModuleActivation.objects.filter(organization=self.org, module_key="identity").update(
+            enabled=False
+        )
+        self.assertEqual(process_creations(self.org), 0)
+        job.refresh_from_db()
+        self.assertEqual((job.status, job.attempts, self.server.state["posts"]), ("queued", 0, 0))
+        self.assertFalse(ScimCreationDispatch.objects.exists())
+
     def test_creation_only_is_inactive_signed_mapped_without_new_local_authority(self):
         grants = Grant.objects.count()
         job = self.request()

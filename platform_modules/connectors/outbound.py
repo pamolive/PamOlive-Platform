@@ -11,9 +11,9 @@ from django.utils import timezone
 
 from platform_core.audit import record
 from platform_core.authorization import require_recent_authentication
-from platform_core.models import ModuleActivation, Organization
+from platform_core.models import Organization
 from platform_core.security import cipher
-from platform_core.services import authorize, require_module
+from platform_core.services import authorize, module_available, require_module
 from platform_core.tenancy import organization_context
 from platform_modules.identity.models import Grant
 
@@ -424,9 +424,7 @@ def _check_dispatch(claim, organization):
         if (
             not connector.enabled
             or connector.revision != change.connector_revision
-            or not ModuleActivation.objects.filter(
-                organization=organization, module_key="connectors", enabled=True
-            ).exists()
+            or not module_available(organization, "connectors")
             or _obsolete(change)
             or (change.kind == "activate_account" and not _activation_ready(change))
         ):
@@ -461,7 +459,11 @@ def _claim(organization):
             .select_related("binding__connector", "account__identity", "grant", "group")
             .order_by("created_at")
         )
-        for change in candidates[:50]:
+        candidates = list(candidates[:50])
+        if not candidates:
+            return None
+        available = module_available(organization, "connectors")
+        for change in candidates:
             binding = change.binding
             if not binding or not change.authorization_at:
                 change.status, change.result_code = "blocked", "authorization_or_mapping_required"
@@ -471,9 +473,7 @@ def _claim(organization):
                 not binding.connector.enabled
                 or binding.connector.verified_revision != change.connector_revision
                 or binding.connector.revision != change.connector_revision
-                or not ModuleActivation.objects.filter(
-                    organization=organization, module_key="connectors", enabled=True
-                ).exists()
+                or not available
             ):
                 change.status, change.result_code = "blocked", "connector_configuration_changed"
             elif _obsolete(change):
