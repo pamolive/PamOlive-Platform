@@ -34,6 +34,20 @@ Le `compose.yml` ordinaire est exécuté une fois sur chaque VM. Ne pas lancer l
 
 Les [sessions Django sont conservées en base](https://docs.djangoproject.com/en/5.2/topics/http/sessions/#using-database-backed-sessions), pas en mémoire du nœud. Les compteurs MFA et codes de récupération sont verrouillés dans PostgreSQL ; une connexion supplémentaire ne doit pas réautoriser un code consommé ailleurs. Les tâches sont réclamées ou rendues idempotentes par les transactions, révisions et jetons de fencing PostgreSQL. Deux processus de tâches peuvent tourner en même temps : aucun résultat d'autorisation n'est mis en cache pour permettre la bascule.
 
+## Contrôler deux VM existantes
+
+Avant de placer les deux VM derrière le répartiteur, lancer le contrôle depuis un poste disposant de Python 3.8 ou plus et d’OpenSSH. Les deux VM Linux doivent déjà exécuter la même image contenant le module `deploy.remote_ha_node`. Le compte SSH d’exploitation doit pouvoir inspecter Docker et lancer la sonde dans le conteneur applicatif. Valider les empreintes des hôtes dans le fichier `known_hosts` avant l’essai : le contrôle refuse les connexions interactives et les hôtes SSH inconnus.
+
+```sh
+python -m deploy.check_remote_active_active --node-a lab-pam-a --node-b lab-pam-b
+```
+
+Remplacer les alias d’exemple par ceux du poste. Les options `--ssh-config`, `--project` et `--container` permettent de sélectionner la configuration SSH et le projet Compose PamOlive. La sonde refuse un conteneur non sain, non Web ou hors du projet indiqué. Elle contrôle les images, les identifiants des hôtes, les identifiants applicatifs, les versions, les migrations et la cohérence des clés et de la politique de sécurité. Le rapport n’affiche ni les valeurs ni les empreintes des clés, ni les adresses de la base.
+
+Pour vérifier que les deux nœuds atteignent réellement le même PostgreSQL, A prend un verrou aléatoire dans une transaction en lecture seule. B ne doit pas pouvoir l’obtenir tant que A le tient ; il doit ensuite l’obtenir après la fin de la transaction de A. Le verrou ne cible aucune table métier. Il disparaît à la fin de la transaction, même si le poste perd la connexion. La sonde n’exécute ni migration ni redémarrage.
+
+Un succès confirme la cohérence observée à cet instant. Il ne valide pas la répartition du trafic, la perte d’une VM, la reprise de PostgreSQL ou la tenue en charge. Effectuer ces essais séparément sur l’infrastructure de test.
+
 ## Répartition et connexions PAM
 
 Le proxy transmet l'hôte public, termine TLS et **écrase** les en-têtes d'origine uniquement depuis ses adresses explicitement autorisées. Il doit permettre les [mises à niveau WebSocket](https://nginx.org/en/docs/http/websocket.html), ne pas rejouer les POST après un envoi incertain et retirer un backend qui échoue à son contrôle de disponibilité.
