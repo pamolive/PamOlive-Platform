@@ -8,6 +8,7 @@ from deploy.check_active_active import (
     Browser,
     CSRFParser,
     Qualification,
+    safe_relay_state,
     totp,
     validate_configuration,
     validate_rdp_network,
@@ -37,6 +38,23 @@ def configuration():
 
 
 class ActiveActiveGuardTests(TestCase):
+    def test_rdp_state_diagnostics_report_only_known_values(self):
+        self.assertEqual(
+            safe_relay_state(["failed", "qualification-a", "relay_owner_lost", False, True]),
+            dict(
+                status="failed",
+                owner="qualification-a",
+                reason="relay_owner_lost",
+                complete=False,
+                recorded=True,
+            ),
+        )
+        self.assertEqual(
+            safe_relay_state(["secret", "session", "opaque", 1, "other"]),
+            dict(status="unknown", owner="unknown", reason="other", complete=None, recorded=None),
+        )
+        self.assertEqual(safe_relay_state(None), {"state": "unavailable"})
+
     def test_rdp_peer_network_is_private_scope_with_exact_two_nodes(self):
         info = {
             "Name": PROJECT + "_default",
