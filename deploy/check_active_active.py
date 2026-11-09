@@ -1,7 +1,8 @@
 """Disposable two-node qualification; Python 3.8+ and Docker Compose, no local Django.
 
-The fixed Compose project is deliberately unrelated to production. Only its two
-containers are killed/restarted. The existing private test database is never dropped.
+The fixed Compose project is deliberately unrelated to production. Only its
+nodes are killed/restarted, and an optional RDP peer is disposable.
+The existing private test database is never dropped.
 Captured Docker/HTTP output is not printed, because fixtures contain test credentials.
 """
 
@@ -18,6 +19,7 @@ import struct
 import subprocess
 import tempfile
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from html.parser import HTMLParser
 from http.cookies import SimpleCookie
@@ -68,6 +70,17 @@ def validate_configuration(config):
             first.get(key) == second.get(key) and len(first.get(key, "")) >= 40,
             "Shared test keys required.",
         )
+
+
+def validate_rdp_network(info, node_ids):
+    require(
+        info.get("Name") == PROJECT + "_default"
+        and (info.get("Labels") or {}).get("com.docker.compose.project") == PROJECT
+        and info.get("Driver") == "bridge"
+        and len(set(node_ids)) == 2
+        and set(info.get("Containers") or {}) == set(node_ids),
+        "Wrong RDP test network scope.",
+    )
 
 
 class CSRFParser(HTMLParser):
@@ -132,7 +145,7 @@ def totp(secret, timestamp=None):
 
 
 class Qualification:
-    def __init__(self, docker, env_file, *, native_pam=False):
+    def __init__(self, docker, env_file, *, native_pam=False, native_rdp=False):
         self.docker = docker
         self.prefix = [
             docker,
@@ -147,14 +160,15 @@ class Qualification:
         self.stage = "configuration"
         self.started = False
         self.native_pam = native_pam
+        self.native_rdp = native_rdp
 
-    def command(self, *arguments, timeout=90):
+    def command(self, *arguments, timeout=90, content=None):
         return subprocess.run(
-            arguments, check=True, capture_output=True, text=True, timeout=timeout
+            arguments, check=True, capture_output=True, text=True, timeout=timeout, input=content
         ).stdout
 
-    def compose(self, *arguments, timeout=90):
-        return self.command(*self.prefix, *arguments, timeout=timeout)
+    def compose(self, *arguments, timeout=90, content=None):
+        return self.command(*self.prefix, *arguments, timeout=timeout, content=content)
 
     def node(self, name):
         identifier = self.compose("ps", "--all", "-q", name).strip()
@@ -271,6 +285,196 @@ class Qualification:
             finally:
                 if worker.poll() is None:
                     worker.kill()
+
+    def native_rdp_check(self, run, browser):
+        network = PROJECT + "_default"
+        (info,) = json.loads(self.command(self.docker, "network", "inspect", network))
+        validate_rdp_network(info, [self.node(name)[1]["Id"] for name in ("node-a", "node-b")])
+        token = uuid.uuid4().hex
+        name = PROJECT + "-rdp-" + token
+        peer_args = [
+            self.docker,
+            "run",
+            "--rm",
+            "-i",
+            "--pull",
+            "never",
+            "--name",
+            name,
+            "--label",
+            "io.pamolive.ha-rdp=" + token,
+            "--network",
+            network,
+            "--network-alias",
+            "ha-rdp-fixture",
+            "--init",
+            "--user",
+            "1000:1000",
+            "--read-only",
+            "--tmpfs",
+            "/tmp:size=64m,mode=1777",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "-e",
+            "PAMOLIVE_HA_RDP_PEER=1",
+            "--entrypoint",
+            "python",
+            "pamolive-platform:native-test",
+            "-m",
+            "deploy.active_active_rdp",
+            "peer",
+        ]
+
+        def database(action, payload):
+            result = json.loads(
+                self.compose(
+                    "exec",
+                    "-T",
+                    "--user",
+                    "1000:1000",
+                    "node-b",
+                    "python",
+                    "-m",
+                    "deploy.active_active_rdp",
+                    action,
+                    content=json.dumps(payload) + "\n",
+                    timeout=25,
+                )
+            )
+            require(
+                result.pop("stage") == {"prepare": "prepared", "state": "state"}[action],
+                "RDP database fixture refused.",
+            )
+            return result
+
+        def wait_state(organization, expected):
+            deadline = time.monotonic() + 50
+            while time.monotonic() < deadline:
+                result = database("state", {"organization": organization, "keys": list(expected)})
+                if result.get("relays") == expected:
+                    return
+                time.sleep(0.5)
+            raise RuntimeError("Durable RDP state or recording did not match.")
+
+        with subprocess.Popen(
+            peer_args,
+            text=True,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        ) as worker:
+            messages = queue.Queue()
+
+            def receive_lines():
+                for line in worker.stdout:
+                    messages.put(line)
+                messages.put("")
+
+            def receive(stage, timeout=120):
+                data = json.loads(messages.get(timeout=timeout))
+                if data.get("stage") == "failed":
+                    self.stage = "RDP peer " + data["phase"] + " (" + data["error"] + ")"
+                require(data.pop("stage") == stage, "Unexpected test-peer phase.")
+                return data
+
+            def send(line):
+                worker.stdin.write(line + "\n")
+                worker.stdin.flush()
+
+            def validate_ids(report, names):
+                require(
+                    set(report) == set(names)
+                    and all(str(uuid.UUID(value)) == value for value in report.values())
+                    and len(set(report.values())) == len(names),
+                    "Unexpected test relay identifiers.",
+                )
+
+            active_a = ["active", "qualification-a", "", False, True]
+            active_b = ["active", "qualification-b", "", False, True]
+            Thread(target=receive_lines, daemon=True).start()
+            try:
+                self.stage = "start isolated RDP peer and prepare pinned intents"
+                ready = receive("ready", timeout=35)
+                require(
+                    set(ready) == {"pin", "password"}
+                    and re.fullmatch(r"[0-9a-f]{64}", ready["pin"])
+                    and re.fullmatch(r"[a-zA-Z0-9_-]{32}", ready["password"]),
+                    "Unexpected RDP test credentials.",
+                )
+                prepared = database("prepare", {"run": run, **ready})
+                validate_ids(prepared, ("organization", "intent_a", "intent_b"))
+                org = prepared.pop("organization")
+                send(
+                    json.dumps(
+                        {
+                            **prepared,
+                            "session": browser.cookies["pamolive_platform_session"].value,
+                            "csrf": browser.cookies["pamolive_platform_csrftoken"].value,
+                        }
+                    )
+                )
+                self.stage = "two simultaneous recorded RDP sessions"
+                both = receive("both-active")
+                validate_ids(both, ("a", "b"))
+                wait_state(org, {both["a"]: active_a, both["b"]: active_b})
+                send("both-recorded")
+                self.stage = "remote stop followed by a newly opened RDP relay"
+                before = receive("kill-node-a")
+                validate_ids(before, ("a", "b", "c"))
+                require(
+                    all(before[key] == value for key, value in both.items()),
+                    "RDP relay identifiers changed.",
+                )
+                wait_state(
+                    org,
+                    {
+                        before["a"]: ["ended", "qualification-a", "stop_requested", False, True],
+                        before["b"]: active_b,
+                        before["c"]: active_a,
+                    },
+                )
+                self.kill_node_a()
+                send("node-a-killed")
+                self.stage = "RDP input on node B and orphaned partial recording on node A"
+                surviving = receive("surviving", timeout=60)
+                require(
+                    surviving == {key: before[key] for key in ("b", "c")}, "Wrong surviving relays."
+                )
+                wait_state(
+                    org,
+                    {
+                        before["b"]: active_b,
+                        before["c"]: ["failed", "qualification-a", "relay_owner_lost", False, True],
+                    },
+                )
+                send("orphan-verified")
+                require(receive("complete", timeout=25) == {}, "Unexpected final RDP report.")
+                require(worker.wait(timeout=15) == 0, "RDP peer did not exit cleanly.")
+                return {
+                    "both_pinned_rdp_nla_relays_recorded": True,
+                    "shared_ticket_replay_refused": True,
+                    "stopped_on_other_node": True,
+                    "surviving_rdp_session_accepts_input": True,
+                    "lost_relay_reaped_with_partial_capture": True,
+                }
+            finally:
+                if worker.poll() is None:
+                    try:
+                        # Identify by the exact invocation label, never by a name alone.
+                        peers = self.command(
+                            self.docker,
+                            "ps",
+                            "-q",
+                            "--filter",
+                            "label=io.pamolive.ha-rdp=" + token,
+                        ).splitlines()
+                        if len(peers) == 1 and re.fullmatch(r"[0-9a-f]{12,64}", peers[0]):
+                            self.command(self.docker, "stop", "-t", "3", peers[0], timeout=12)
+                    finally:
+                        if worker.poll() is None:
+                            worker.kill()
 
     def execute(self):
         validate_configuration(json.loads(self.compose("config", "--format", "json")))
@@ -453,6 +657,38 @@ class Qualification:
             },
             "Final shared state differs from expected proofs.",
         )
+        native_rdp = {}
+        if self.native_rdp:
+            self.stage = "independent test organization for RDP"
+            rdp_data = self.fixture("prepare")
+            rdp_browser = Browser()
+            require(
+                rdp_browser.post(
+                    a,
+                    "/accounts/login/",
+                    {
+                        "username": rdp_data["username"],
+                        "password": rdp_data["password"],
+                        "otp": totp(rdp_data["totp_secret"]),
+                    },
+                )[0]
+                == 302,
+                "RDP test login failed.",
+            )
+            native_rdp = self.native_rdp_check(rdp_data["run"], rdp_browser)
+            self.stage = "node A returns after RDP fault"
+            self.compose("start", "node-a", timeout=90)
+            a = self.wait_ready("node-a")
+            require(
+                rdp_browser.request(a, "/identities/")[0] == 200,
+                "Recovered RDP node lost the shared session.",
+            )
+            require(
+                self.fixture("inspect", rdp_data["run"])["audit_valid"], "RDP audit chain failed."
+            )
+        scope = ", ".join(
+            ["HTTP", *(["native SSH"] if native else []), *(["native RDP"] if native_rdp else [])]
+        )
         return {
             "result": "OK",
             "nodes": 2,
@@ -470,8 +706,8 @@ class Qualification:
             "session_after_node_return": True,
             "audit_valid": True,
             "native_ssh": native,
-            "scope": ("HTTP and native SSH" if native else "HTTP/application")
-            + ", same-host fault injection; not VM/database HA or live PAM handover",
+            "native_rdp": native_rdp,
+            "scope": scope + ", same-host fault injection; not VM/database HA or live PAM handover",
         }
 
     def cleanup(self):
@@ -512,8 +748,11 @@ def main():
     parser.add_argument("--docker", default="docker")
     parser.add_argument("--env-file", type=Path, required=True)
     parser.add_argument("--native-pam", action="store_true")
+    parser.add_argument("--native-rdp", action="store_true")
     args = parser.parse_args()
-    check = Qualification(args.docker, args.env_file.resolve(), native_pam=args.native_pam)
+    check = Qualification(
+        args.docker, args.env_file.resolve(), native_pam=args.native_pam, native_rdp=args.native_rdp
+    )
     try:
         report = check.execute()
     except Exception as error:

@@ -11,9 +11,14 @@ class PaintProof:
     def __init__(self):
         self.matches = False
         self.streams = {}
+        self.expected = self.EXPECTED
+
+    def expect(self, color):
+        self.expected = color
+        self.matches = False
 
     def color(self, color):
-        return all(abs(actual - expected) <= 8 for actual, expected in zip(color, self.EXPECTED))
+        return all(abs(actual - expected) <= 8 for actual, expected in zip(color, self.expected))
 
     def image(self, data):
         from PIL import Image

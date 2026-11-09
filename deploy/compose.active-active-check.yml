@@ -8,7 +8,7 @@ x-node: &node
     PAMOLIVE_HA_QUALIFICATION: '1'
     DEBUG: 'false'
     ALLOWED_HOSTS: ha.pamolive.test,localhost,127.0.0.1,ha-web-a,ha-web-b
-    PAMOLIVE_TARGET_HOSTS: ha-ssh-fixture:22222
+    PAMOLIVE_TARGET_HOSTS: ha-ssh-fixture:22222,ha-rdp-fixture:23389
     PAMOLIVE_TARGET_NETWORKS: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
     SECURE_COOKIES: 'false'
     SECURE_SSL_REDIRECT: 'false'
