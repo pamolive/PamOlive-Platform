@@ -53,12 +53,23 @@ def build_wheel(directory, extra=None):
     return wheel
 
 
-def signed_fixture(directory):
+def signed_fixture(directory, *, periodic=False):
     directory = Path(directory)
-    wheel = build_wheel(directory)
-    manifest = ModuleManifest.from_dict(
-        json.loads((SOURCE / "pamolive_ext_notes" / "manifest.json").read_bytes())
-    )
+    manifest_path = "pamolive_ext_notes/manifest.json"
+    data = json.loads((SOURCE / manifest_path).read_bytes())
+    extra = {}
+    if periodic:
+        data["api_version"] = "3"
+        data["periodic_signals"] = [
+            {
+                "name": "sample_refresh_v1",
+                "handler": "pamolive_ext_notes.events.record_periodic_receipt",
+                "interval_minutes": 60,
+            }
+        ]
+        extra[manifest_path] = canonical(data)
+    wheel = build_wheel(directory, extra)
+    manifest = ModuleManifest.from_dict(data)
     key = Ed25519PrivateKey.generate()
     envelope = sign_payload(inspect_wheel(wheel, manifest), key, "test-publisher")
     trust = {"test-publisher": base64.b64encode(key.public_key().public_bytes_raw()).decode()}

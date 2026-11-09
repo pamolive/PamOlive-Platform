@@ -14,10 +14,11 @@ from tests.extension_fixtures import signed_fixture
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--postgres", action="store_true")
+    parser.add_argument("--periodic", action="store_true")
     options = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="pamolive-extension-gate-") as temporary:
         directory = Path(temporary)
-        wheel, _, _, _, trust, catalog = signed_fixture(directory)
+        wheel, _, _, _, trust, catalog = signed_fixture(directory, periodic=options.periodic)
         installed = directory / "installed"
         subprocess.run(
             [

@@ -3,7 +3,7 @@
 import io
 import os
 import time
-from datetime import timedelta
+from datetime import UTC, timedelta
 from types import SimpleNamespace
 from unittest import skipUnless
 from unittest.mock import patch
@@ -34,6 +34,10 @@ from platform_core.services import disable_module, install_module, require_modul
 from platform_core.tenancy import organization_context
 
 INSTALLED = any(item.manifest.key == "example_notes" for item in settings.PAMOLIVE_EXTENSIONS)
+PERIODIC = any(
+    item.manifest.key == "example_notes" and item.manifest.periodic_signals
+    for item in settings.PAMOLIVE_EXTENSIONS
+)
 
 
 @skipUnless(INSTALLED, "Requires the signed, installed extension image gate")
@@ -127,6 +131,33 @@ class ExtensionRuntimeTests(TestCase):
         with self.assertRaises(ValidationError):
             self.activate()
         self.assertFalse(ExtensionDeployment.objects.exists())
+
+    @skipUnless(PERIODIC, "Requires the separately signed V3 schedule fixture")
+    def test_existing_worker_delivers_one_signed_periodic_signal_to_real_wheel(self):
+        from pamolive_ext_notes.models import EventReceipt
+
+        from platform_core.models import EventAttempt, EventDelivery, ModuleEvent
+
+        self.enabled()
+        clock = (timezone.now() - timedelta(days=1)).astimezone(UTC)
+        slot = clock.replace(minute=0, second=0, microsecond=0)
+        ModuleActivation.objects.filter(organization=self.org, module_key="example_notes").update(
+            updated_at=slot - timedelta(hours=1)
+        )
+        with patch(
+            "platform_core.periodic_signals.database_clock",
+            return_value=slot + timedelta(minutes=1),
+        ):
+            call_command("runjobs", once=True)
+            call_command("runjobs", once=True)
+        receipt = EventReceipt.objects.get()
+        event = ModuleEvent.objects.get()
+        self.assertEqual(str(receipt.event_id), str(event.pk))
+        self.assertEqual(receipt.aggregate_id, slot.isoformat())
+        self.assertEqual(EventDelivery.objects.get().consumer, "example_notes")
+        self.assertEqual(EventAttempt.objects.get().outcome, "delivered")
+        self.assertFalse(EventReceipt.objects.filter(organization=self.other).exists())
+        self.assertTrue(verify_chain(self.org))
 
     def test_installed_wheel_consumes_a_pre_activation_event_after_reviewed_backfill(self):
         from pamolive_ext_notes.models import EventReceipt

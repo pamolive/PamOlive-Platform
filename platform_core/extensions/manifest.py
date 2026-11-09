@@ -7,8 +7,10 @@ from dataclasses import asdict, dataclass
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
-CORE_VERSION = "0.2.0a17"
-API_VERSION = "2"
+CORE_VERSION = "0.2.0a18"
+API_VERSION = "3"
+PERIODIC_TOPIC = "core.module_schedule.elapsed.v1"
+PERIODIC_INTERVALS = frozenset({15, 60, 1440})
 BUILTIN_KEYS = frozenset(
     {
         "identity",
@@ -105,6 +107,17 @@ class ConsumedEvent:
 
 
 @dataclass(frozen=True)
+class PeriodicSignal:
+    name: str
+    handler: str
+    interval_minutes: int
+
+    @property
+    def topic(self):
+        return PERIODIC_TOPIC
+
+
+@dataclass(frozen=True)
 class ModuleManifest:
     key: str
     name: str
@@ -121,12 +134,15 @@ class ModuleManifest:
     routes: tuple[Route, ...]
     emitted_events: tuple[EmittedEvent, ...] = ()
     consumed_events: tuple[ConsumedEvent, ...] = ()
+    periodic_signals: tuple[PeriodicSignal, ...] = ()
 
     def to_dict(self):
         # A JSON round trip turns the immutable tuple fields into contract arrays.
         import json
 
         result = json.loads(json.dumps(asdict(self)))
+        if self.api_version in ("1", "2"):
+            result.pop("periodic_signals")
         if self.api_version == "1":
             # Retain the byte-equivalent signed V1 manifest representation.
             result.pop("emitted_events")
@@ -136,7 +152,8 @@ class ModuleManifest:
     @classmethod
     def from_dict(cls, value):
         event_fields = {"emitted_events", "consumed_events"}
-        fields(value, set(cls.__dataclass_fields__) - event_fields, event_fields)
+        optional_fields = event_fields | {"periodic_signals"}
+        fields(value, set(cls.__dataclass_fields__) - optional_fields, optional_fields)
         key = text(value["key"], 40)
         if not KEY.fullmatch(key) or keyword.iskeyword(key) or key in BUILTIN_KEYS:
             raise ExtensionError("Clé d’extension réservée ou invalide.")
@@ -146,12 +163,14 @@ class ModuleManifest:
         app = text(value["django_app"], 200)
         if not DOTTED.fullmatch(app) or not app.startswith(root + ".apps."):
             raise ExtensionError("AppConfig doit appartenir au package de l’extension.")
-        if value["api_version"] not in ("1", API_VERSION):
+        if value["api_version"] not in ("1", "2", API_VERSION):
             raise ExtensionError("Version d’API d’extension non prise en charge.")
         if value["api_version"] == "1" and event_fields & set(value):
             raise ExtensionError("Les événements exigent le contrat d’extension V2.")
-        if value["api_version"] == "2" and event_fields - set(value):
-            raise ExtensionError("Le contrat V2 déclare explicitement ses événements.")
+        if value["api_version"] in ("2", "3") and event_fields - set(value):
+            raise ExtensionError("Le contrat V2 ou V3 déclare explicitement ses événements.")
+        if ("periodic_signals" in value) != (value["api_version"] == "3"):
+            raise ExtensionError("Les signaux périodiques exigent une liste explicite en V3.")
         if value["license_kind"] != "community":
             raise ExtensionError(
                 "Seules les extensions communautaires sont chargeables par ce contrat. "
@@ -215,14 +234,33 @@ class ModuleManifest:
             if (
                 not re.fullmatch(r"[a-z][a-z0-9_]*_v[1-9][0-9]{0,3}", name)
                 or not re.fullmatch(topic_pattern, topic)
+                or topic == PERIODIC_TOPIC
                 or not DOTTED.fullmatch(handler)
                 or not handler.startswith(root + ".")
             ):
                 raise ExtensionError("Consommateur versionné ou chemin de gestionnaire invalide.")
             consumed.append(ConsumedEvent(name, topic, handler))
+        declared = value.get("periodic_signals", [])
+        if not isinstance(declared, list) or len(declared) > 4:
+            raise ExtensionError("Un module peut déclarer jusqu’à quatre signaux périodiques.")
+        periodic = []
+        for item in declared:
+            fields(item, ("name", "handler", "interval_minutes"))
+            name = text(item["name"], 60)
+            handler = text(item["handler"], 200)
+            interval = item["interval_minutes"]
+            if (
+                not re.fullmatch(r"[a-z][a-z0-9_]*_v[1-9][0-9]{0,3}", name)
+                or not DOTTED.fullmatch(handler)
+                or not handler.startswith(root + ".")
+                or type(interval) is not int
+                or interval not in PERIODIC_INTERVALS
+            ):
+                raise ExtensionError("Nom, gestionnaire ou période du signal invalide.")
+            periodic.append(PeriodicSignal(name, handler, interval))
         if len({item.topic for item in emitted}) != len(emitted) or len(
-            {item.name for item in consumed}
-        ) != len(consumed):
+            {item.name for item in (*consumed, *periodic)}
+        ) != len(consumed) + len(periodic):
             raise ExtensionError("Déclaration d’événement dupliquée.")
         routes = []
         for route in value["routes"]:
@@ -283,4 +321,5 @@ class ModuleManifest:
             tuple(routes),
             tuple(emitted),
             tuple(consumed),
+            tuple(periodic),
         )

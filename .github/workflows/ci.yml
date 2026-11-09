@@ -34,6 +34,8 @@ jobs:
         run: python manage.py test tests.test_oidc tests.test_oidc_tls --noinput
       - name: Verify a separately installed signed module on PostgreSQL
         run: python -m deploy.check_extensions --postgres
+      - name: Verify the signed V3 periodic signals with a separately installed wheel
+        run: python -m deploy.check_extensions --postgres --periodic
       - name: Verify that local credentials cannot enter the image
         run: |
           printf 'must-not-enter-the-image' > .bootstrap-admin
