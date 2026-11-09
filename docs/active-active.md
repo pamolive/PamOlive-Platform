@@ -66,7 +66,7 @@ Depuis une copie du dépôt, générer un environnement privé avec l'outil four
 
 ```sh
 python -m deploy.prepare_active_active_environment /chemin/prive/ha.env --image pamolive-platform:qualification --network reseau-prive-postgresql
-python -m deploy.check_active_active --env-file /chemin/prive/ha.env --native-pam
+python -m deploy.check_active_active --env-file /chemin/prive/ha.env
 ```
 
 Sous Windows, utiliser `py -m ...` et un chemin privé Windows ; sur un NAS, `python3 -m ...` et au besoin `--docker /usr/local/bin/docker`. Ne pas publier le fichier généré. L'outil de préparation peut aussi s'exécuter dans l'image avec le répertoire de sortie privé monté ; le pilote Docker, lui, s'exécute sur l'hôte, sans montage du socket Docker dans un conteneur.
@@ -85,10 +85,21 @@ Le pilote vérifie successivement :
 8. Le nœud A est tué brutalement ; la session authentifiée et une nouvelle écriture fonctionnent sur B.
 9. A redémarre et accepte la session existante ; les faits, révocations et chaînes d'audit partagés sont vérifiés.
 
-Avec `--native-pam`, les deux nœuds ouvrent aussi chacun une vraie session SSH WebSocket vers une cible fictive du réseau privé de test. Le pilote confirme le refus du rejeu du ticket sur B, l’arrêt de la session de A depuis B et la fermeture côté serveur SSH. Après avoir rouvert la session de A, il arrête brutalement ce nœud : la session déjà ouverte sur B répond encore au clavier, et la capture abandonnée de A est conservée comme incomplète. Sans cette option, le pilote ne qualifie que le parcours HTTP.
+### Essais de bascule SSH et RDP
 
-Le pilote retire ensuite ses deux conteneurs et son réseau temporaire, jamais le réseau de base externe ni une base PostgreSQL. Il conserve les données synthétiques dans la base dédiée. En échec, des journaux privés sont conservés dans un dossier temporaire annoncé ; ne pas les publier sans revue. Une expiration d'observation n'est pas une autorisation de relancer un deuxième test sur le même projet.
+Ajouter `--native-pam` pour tester SSH et `--native-rdp` pour tester RDP. Pour l’essai RDP, construire depuis la même révision l’image réservée à la cible de test. Elle n’est pas utilisée pour installer PAM-olive ni pour démarrer les deux nœuds applicatifs.
+
+```sh
+docker build --target native-test -t pamolive-platform:native-test .
+python -m deploy.check_active_active --env-file /chemin/prive/ha.env --native-pam --native-rdp
+```
+
+Chaque option ouvre une session WebSocket réelle sur chacun des deux nœuds. Le pilote vérifie qu’un ticket consommé sur A est refusé sur B et qu’une commande envoyée à B ferme bien la session de A. Il rouvre ensuite une session sur A et arrête brutalement ce nœud. La session déjà ouverte sur B doit encore répondre au clavier ; en RDP, la cible doit aussi renvoyer un nouvel affichage après la panne. La capture abandonnée de A reste disponible et est marquée incomplète.
+
+Le test RDP utilise une cible fictive avec authentification NLA et empreinte de certificat attendue. Cette cible démarre dans un conteneur jetable sur le réseau du projet de test, sans port publié. Les deux conteneurs applicatifs continuent d’utiliser la même image de production.
+
+Le pilote retire ensuite ses deux conteneurs applicatifs, l’éventuelle cible de test et le réseau temporaire. Il ne retire ni le réseau de base externe ni une base PostgreSQL. Les données synthétiques restent dans la base dédiée. En cas d’échec, des journaux privés sont conservés dans un dossier temporaire annoncé ; ne pas les publier sans revue. Un délai d’observation dépassé ne suffit pas pour lancer un deuxième test sur le même projet.
 
 ## Limites de la preuve
 
-Un succès démontre une bascule HTTP entre deux conteneurs du même hôte. Avec `--native-pam`, il démontre aussi la continuité d’une session SSH déjà établie sur le nœud survivant, sans transfert de la session du nœud perdu. Il ne qualifie pas RDP sur deux nœuds, la panne physique d'un hôte, la partition réseau entre VM, le failover PostgreSQL, le répartiteur TLS ou le débit sous charge. Effectuer ces essais sur l'infrastructure cible avant d’annoncer une HA de production. Les délais et contrôles de sécurité restent ceux des [transports PAM](pam-transport.md).
+Sur un même hôte, un succès confirme la reprise du trafic HTTP sur le nœud survivant et, pour chaque protocole sélectionné, la continuité d’une session déjà ouverte sur ce nœud. Il n’implique aucun transfert de la session du nœud perdu. Sur l’infrastructure cible, tester séparément la perte d’une VM ou de son hôte, une partition réseau, la reprise PostgreSQL, le répartiteur TLS et le débit sous charge avant d’annoncer une haute disponibilité de production. Les délais et contrôles de sécurité restent ceux des [transports PAM](pam-transport.md).
