@@ -2,7 +2,7 @@ import time
 from datetime import timedelta
 from unittest.mock import patch
 
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -13,6 +13,7 @@ from platform_core.tenancy import organization_context
 from platform_modules.access.models import AccessIntent
 from platform_modules.connectors.business import configure_business_source, create_business_source
 from platform_modules.connectors.business_models import BusinessReceipt
+from platform_modules.identity import mobility_contract
 from platform_modules.identity.models import Grant
 from platform_modules.identity.mover import propose_move, verify_mover
 from platform_modules.identity.mover_models import MoveDecision, MoveProposal
@@ -178,10 +179,12 @@ class MoverBusinessTests(MoverFixture, TestCase):
         detail = self.client.get(reverse("record-detail", args=["event", event.pk]))
         self.assertContains(detail, page)
         self.assertNotContains(detail, "Synthetic source dossier")
-        for url in (page, export):
-            self.assertRedirects(
-                self.client.get(url), reverse("account-security"), fetch_redirect_response=False
-            )
+        with patch("platform_modules.access.mobility_context.read_origins") as read_origins:
+            for url in (page, export):
+                self.assertRedirects(
+                    self.client.get(url), reverse("account-security"), fetch_redirect_response=False
+                )
+            read_origins.assert_not_called()
         for module in ("identity", "access", "connectors"):
             install_module(module, actor=self.admin, organization=self.other)
         self.login(self.admin, organization=self.other)
@@ -201,7 +204,7 @@ class MoverBusinessTests(MoverFixture, TestCase):
                 self.mobility_export(event)["business_context"]["mobility"]["rows"], []
             )
         with patch(
-            "platform_modules.access.mobility_context.observed_business_origin",
+            "platform_modules.identity.mobility_contract.observed_business_origin",
             side_effect=ValidationError("invalid origin"),
         ):
             row = self.mobility_export(event)["business_context"]["mobility"]["rows"][0]
@@ -214,6 +217,33 @@ class MoverBusinessTests(MoverFixture, TestCase):
         self.assertEqual(
             self.mobility_export(unrelated)["business_context"]["mobility"]["rows"], []
         )
+
+    def test_mobility_contract_returns_opaque_ids_then_tenant_scoped_verified_values(self):
+        intent, *_ = self.move_with_access()
+        key = mobility_contract.MobilityOriginKey("intent", intent.pk)
+        keys = (key,)
+        with organization_context(self.org):
+            self.assertEqual(
+                mobility_contract.discover_origins(keys, organization=self.org), frozenset(keys)
+            )
+            snapshot = mobility_contract.read_origins(keys, organization=self.org)[key]
+            self.assertIsInstance(snapshot, mobility_contract.MobilityOrigin)
+            self.assertEqual(snapshot.intent_id, intent.pk)
+            self.assertIsNone(snapshot.grant_proof)
+            self.assertIn("signature", snapshot.intent_proof)
+            self.assertLessEqual(snapshot.decided_at, snapshot.last_proof_at)
+            with self.assertRaises(ValidationError):
+                mobility_contract.read_origins(
+                    keys * (mobility_contract.MAX_ORIGINS + 1), organization=self.org
+                )
+        install_module("identity", actor=self.admin, organization=self.other)
+        with organization_context(self.other):
+            with self.assertNumQueries(0), self.assertRaises(PermissionDenied):
+                mobility_contract.read_origins(keys, organization=self.org)
+            self.assertEqual(
+                mobility_contract.discover_origins(keys, organization=self.other), frozenset()
+            )
+            self.assertEqual(mobility_contract.read_origins(keys, organization=self.other), {})
 
     def test_invalid_current_dossier_does_not_replace_authenticated_historical_reads(self):
         _, _, _, _, reviewed = self.move_with_access()
