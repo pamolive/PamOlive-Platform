@@ -30,9 +30,13 @@ WEB_A, WEB_B = "ha-web-a", "ha-web-b"
 PHASE = "setup"
 
 
+class FixtureError(RuntimeError):
+    """Only fixed fixture messages, never response bodies or exception arguments."""
+
+
 def require(condition, message):
     if not condition:
-        raise RuntimeError(message)
+        raise FixtureError(message)
 
 
 def prepare(run, public_key, password):
@@ -297,16 +301,20 @@ async def exercise(info):
                 await prove(b, "node-b")
                 await await_state(org, aid, ("active", "qualification-a", "", False, True))
                 await await_state(org, bid, ("active", "qualification-b", "", False, True))
-                PHASE = "cross-node stop and new launch"
+                PHASE = "cross-node stop HTTP"
                 status, _ = await asyncio.to_thread(
                     post, WEB_B, f"/pam/connections/{aid}/stop/", session, csrf
                 )
-                require(status == 302, "Node B could not request stop on node A.")
+                require(status == 302, f"Node B stop HTTP {status}.")
+                PHASE = "cross-node stop WebSocket"
                 await asyncio.wait_for(a.wait_closed(), 12)
+                PHASE = "cross-node stop durable state"
                 await await_state(
                     org, aid, ("ended", "qualification-a", "stop_requested", False, True)
                 )
+                PHASE = "new ticket on node A"
                 cid, cfg_c = await asyncio.to_thread(launch, WEB_A, intent_a, session, csrf)
+                PHASE = "new native relay on node A"
                 async with relay(WEB_A, cfg_c, session) as c:
                     await asyncio.wait_for(opened.get(), 15)
                     await prove(c, "before-crash")
@@ -342,7 +350,11 @@ def main():
     try:
         asyncio.run(exercise(json.loads(sys.stdin.readline(4096))))
     except Exception as error:
-        emit("failed", phase=PHASE, error=type(error).__name__)
+        emit(
+            "failed",
+            phase=PHASE,
+            error=str(error) if isinstance(error, FixtureError) else type(error).__name__,
+        )
         raise SystemExit(1) from None
 
 

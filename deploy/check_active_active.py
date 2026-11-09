@@ -244,13 +244,15 @@ class Qualification:
                 worker.stdin.flush()
                 first = json.loads(messages.get(timeout=160))
                 if first.get("stage") == "failed":
-                    self.stage = "native SSH: " + first["phase"]
+                    self.stage = "native SSH: " + first["phase"] + " (" + first["error"] + ")"
                 require(first == {"stage": "kill-node-a"}, "Native relay preparation failed.")
                 self.stage = "native SSH on surviving node and durable orphan cleanup"
                 self.kill_node_a()
                 worker.stdin.write("node-a-killed\n")
                 worker.stdin.flush()
                 report = json.loads(messages.get(timeout=85))
+                if report.get("stage") == "failed":
+                    self.stage = "native SSH: " + report["phase"] + " (" + report["error"] + ")"
                 require(report.pop("stage") == "complete", "Native relay fault check failed.")
                 require(
                     set(report)
