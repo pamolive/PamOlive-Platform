@@ -11,6 +11,7 @@ import base64
 import hashlib
 import hmac
 import http.client
+import ipaddress
 import json
 import os
 import queue
@@ -111,12 +112,22 @@ def partition_scope(network, node_a, node_b, route):
         and route["server"] not in (addresses[a], addresses[b]),
         "The live PostgreSQL route does not use the expected network endpoints.",
     )
-    aliases = links_a[name].get("Aliases") or []
-    require(
-        all(re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}", alias) for alias in aliases),
-        "Unexpected endpoint aliases.",
+    namespace, other_namespace = (
+        item["NetworkSettings"].get("SandboxKey", "") for item in (node_a, node_b)
     )
-    return network_id, a, aliases
+    require(
+        namespace != other_namespace
+        and all(
+            re.fullmatch(r"/(?:var/)?run/docker/netns/[a-f0-9]{12,64}", value)
+            for value in (namespace, other_namespace)
+        )
+        and all(
+            item.get("HostConfig", {}).get("NetworkMode") in (default, name)
+            for item in (node_a, node_b)
+        ),
+        "The qualification requires two distinct Docker-managed network namespaces.",
+    )
+    return namespace, f"{ipaddress.IPv4Address(route['server'])}/32"
 
 
 def safe_relay_state(values):
@@ -253,7 +264,7 @@ class Qualification:
 
     def port(self, name):
         _, data = self.node(name)
-        ports = data["NetworkSettings"]["Ports"]["8000/tcp"]
+        ports = (data["NetworkSettings"].get("Ports") or {}).get("8000/tcp") or []
         require(len(ports) == 1 and ports[0]["HostIp"] == "127.0.0.1", "Unsafe test listener.")
         return int(ports[0]["HostPort"])
 
@@ -296,17 +307,24 @@ class Qualification:
         network = json.loads(self.command(self.docker, "network", "inspect", network_name))[0]
         require(network.get("Name") == network_name, "Unexpected database network.")
         route = self.fixture("database-route", node="node-a")
-        network_id, container_id, aliases = partition_scope(network, node_a, node_b, route)
+        namespace, destination = partition_scope(network, node_a, node_b, route)
+        route_command = ("sudo", "-n", "nsenter", f"--net={namespace}", "ip", "-4", "route")
+        require(
+            not self.command(*route_command, "show", "exact", destination).strip(),
+            "Refusing to replace an existing database host route.",
+        )
         baseline = self.fixture("inspect", data["run"])
         payload = {**event, "external_id": "ha-database-partition"}
-        self.stage = "node A loses only its database network"
-        self.command(self.docker, "network", "disconnect", network_id, container_id)
+        self.stage = "only the PostgreSQL address becomes unreachable in node A"
+        rule = ("unreachable", destination, "proto", "static")
+        self.command(*route_command, "add", *rule)
         try:
-            detached = self.node("node-a")[1]
+            isolated = self.node("node-a")[1]
             require(
-                set(detached["NetworkSettings"]["Networks"]) == {PROJECT + "_default"}
-                and detached["State"]["StartedAt"] == node_a["State"]["StartedAt"],
-                "Node A did not remain alive on the test network.",
+                isolated["Id"] == node_a["Id"]
+                and isolated["NetworkSettings"]["SandboxKey"] == namespace
+                and isolated["State"]["StartedAt"] == node_a["State"]["StartedAt"],
+                "Node A did not remain alive in its private test network namespace.",
             )
             observed = self.fixture(
                 "partition-probe",
@@ -332,26 +350,21 @@ class Qualification:
             require(status == 201, "Node B could not commit during node A's database partition.")
             event_id = json.loads(response)["event_id"]
         finally:
-            self.command(
-                self.docker,
-                "network",
-                "connect",
-                *(item for alias in aliases for item in ("--alias", alias)),
-                network_id,
-                container_id,
-            )
-        self.stage = "original node A rejoins and deduplicates the committed event"
+            self.command(*route_command, "del", *rule)
+        self.stage = "original node A's published port becomes healthy again"
         a = self.wait_ready("node-a")
         returned = self.node("node-a")[1]
         require(
-            returned["Id"] == container_id
+            returned["Id"] == node_a["Id"]
+            and returned["NetworkSettings"]["SandboxKey"] == namespace
             and returned["State"]["StartedAt"] == node_a["State"]["StartedAt"],
-            "Node A was restarted instead of recovering its network path.",
+            "Node A was restarted instead of recovering its database route.",
         )
         require(
             browser.request(a, "/identities/")[0] == 200,
             "The shared session did not survive the database partition.",
         )
+        self.stage = "recovered node A deduplicates the committed event"
         status, _, response = Browser().request(
             a, "/api/v1/events/", payload=payload, bearer=data["source_token"]
         )
@@ -951,7 +964,7 @@ def main():
     parser.add_argument(
         "--database-partition",
         action="store_true",
-        help="disconnect only the disposable node's proved database bridge endpoint",
+        help="block the proved database address in node A's private Linux network namespace",
     )
     args = parser.parse_args()
     check = Qualification(

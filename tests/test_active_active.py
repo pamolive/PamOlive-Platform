@@ -57,11 +57,13 @@ def partition_topology():
         {
             "Id": key,
             "State": {"StartedAt": "fixture-start"},
+            "HostConfig": {"NetworkMode": PROJECT + "_default"},
             "NetworkSettings": {
+                "SandboxKey": "/var/run/docker/netns/" + key[:12],
                 "Networks": {
                     PROJECT + "_default": {},
                     name: {"NetworkID": network, "IPAddress": ips[key], "Aliases": ["node-" + tag]},
-                }
+                },
             },
         }
         for key, tag in ((a, "a"), (b, "b"))
@@ -83,7 +85,10 @@ class RDPKeepaliveTests(IsolatedAsyncioTestCase):
 class ActiveActiveGuardTests(TestCase):
     def test_partition_only_targets_a_database_route_proved_on_the_external_bridge(self):
         info, a, b, route = partition_topology()
-        self.assertEqual(partition_scope(info, a, b, route), (info["Id"], a["Id"], ["node-a"]))
+        self.assertEqual(
+            partition_scope(info, a, b, route),
+            (a["NetworkSettings"]["SandboxKey"], route["server"] + "/32"),
+        )
         for mutation in (
             {"client": "172.17.0.1"},
             {"server": "172.17.0.1"},
@@ -100,36 +105,61 @@ class ActiveActiveGuardTests(TestCase):
             with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
                 partition_scope({**info, **mutation}, a, b, route)
 
-    def test_partition_reconnects_only_owned_node_even_when_probe_fails(self):
+        for namespace in ("/proc/1/ns/net", b["NetworkSettings"]["SandboxKey"], ""):
+            bad = deepcopy(a)
+            bad["NetworkSettings"]["SandboxKey"] = namespace
+            with self.subTest(namespace=namespace), self.assertRaises(RuntimeError):
+                partition_scope(info, bad, b, route)
+
+    def test_partition_removes_only_owned_route_even_when_probe_fails(self):
         info, a, b, route = partition_topology()
-        detached = deepcopy(a)
-        del detached["NetworkSettings"]["Networks"][info["Name"]]
         check = Qualification("docker", "/not-used", database_partition=True)
         with (
-            patch.object(check, "command", side_effect=[json.dumps([info]), "", ""]) as command,
-            patch.object(
-                check, "node", side_effect=[(a["Id"], a), (b["Id"], b), (a["Id"], detached)]
-            ),
+            patch.object(check, "command", side_effect=[json.dumps([info]), "", "", ""]) as command,
+            patch.object(check, "node", side_effect=[(a["Id"], a), (b["Id"], b), (a["Id"], a)]),
             patch.object(check, "fixture", side_effect=[route, {}, {"health": 200, "ingest": 201}]),
             self.assertRaisesRegex(RuntimeError, "must fail its health check"),
         ):
             check.check_database_partition(
                 info["Name"], 1234, Mock(), {"run": "run", "source_token": "fixture-only"}, {}
             )
+        prefix = (
+            "sudo",
+            "-n",
+            "nsenter",
+            "--net=" + a["NetworkSettings"]["SandboxKey"],
+            "ip",
+            "-4",
+            "route",
+        )
+        destination = route["server"] + "/32"
         self.assertEqual(
             command.call_args_list,
             [
                 call("docker", "network", "inspect", info["Name"]),
-                call("docker", "network", "disconnect", info["Id"], a["Id"]),
-                call("docker", "network", "connect", "--alias", "node-a", info["Id"], a["Id"]),
+                call(*prefix, "show", "exact", destination),
+                call(*prefix, "add", "unreachable", destination, "proto", "static"),
+                call(*prefix, "del", "unreachable", destination, "proto", "static"),
             ],
         )
 
+    def test_partition_refuses_to_replace_existing_database_route(self):
+        info, a, b, route = partition_topology()
+        check = Qualification("docker", "/not-used", database_partition=True)
+        with (
+            patch.object(
+                check, "command", side_effect=[json.dumps([info]), "existing route"]
+            ) as command,
+            patch.object(check, "node", side_effect=[(a["Id"], a), (b["Id"], b)]),
+            patch.object(check, "fixture", return_value=route),
+            self.assertRaisesRegex(RuntimeError, "existing database host route"),
+        ):
+            check.check_database_partition(info["Name"], 1234, Mock(), {}, {})
+        self.assertEqual(command.call_count, 2)
+
     def test_partition_survivor_commits_then_recovered_node_deduplicates_the_exact_event(self):
         info, a, b, route = partition_topology()
-        detached = deepcopy(a)
-        del detached["NetworkSettings"]["Networks"][info["Name"]]
-        nodes = [(a["Id"], a), (b["Id"], b), (a["Id"], detached), (a["Id"], a)]
+        nodes = [(a["Id"], a), (b["Id"], b), (a["Id"], a), (a["Id"], a)]
         initial = {"events": 2, "received_audits": 2, "other_events": 0, "audit_valid": True}
         final = {**initial, "events": 3, "received_audits": 3}
         event_body = json.dumps({"event_id": "fixture-event"})
@@ -137,7 +167,7 @@ class ActiveActiveGuardTests(TestCase):
         browser.request.return_value = (200, None, "")
         check = Qualification("docker", "/not-used", database_partition=True)
         with (
-            patch.object(check, "command", side_effect=[json.dumps([info]), "", ""]),
+            patch.object(check, "command", side_effect=[json.dumps([info]), "", "", ""]),
             patch.object(check, "node", side_effect=nodes),
             patch.object(
                 check,
