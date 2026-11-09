@@ -613,6 +613,82 @@ def mover_corpus(actor, requester, organization):
     assert not ref["latest"]["current_source_assertion"]
 
 
+def certificate_possession_corpus(actor, organization):
+    """Preserve a real signed challenge with no production key or network peer."""
+    import base64
+    from datetime import timedelta
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+    from cryptography.x509.oid import NameOID
+    from django.utils import timezone
+
+    from platform_modules.access import certificate_possession as possession
+    from platform_modules.access.services import ingest_event
+    from platform_modules.connectors.services import create_source
+    from platform_modules.identity.models import Credential, Identity
+
+    now = timezone.now()
+    key = ed25519.Ed25519PrivateKey.generate()
+    name = x509.Name(
+        [x509.NameAttribute(NameOID.COMMON_NAME, "restore-certificate.example.invalid")]
+    )
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=1))
+        .not_valid_after(now + timedelta(days=1))
+        .sign(key, None)
+    )
+    machine = Identity.objects.create(
+        organization=organization, name="Synthetic certificate machine", kind="machine"
+    )
+    credential = Credential.objects.create(
+        organization=organization,
+        identity=machine,
+        kind="certificate",
+        name="Synthetic Ed25519 certificate",
+        fingerprint=cert.fingerprint(hashes.SHA256()).hex(),
+    )
+    source, token = create_source(
+        "Synthetic certificate source", actor=actor, organization=organization
+    )
+    event, created = ingest_event(
+        {
+            "external_id": "offline-certificate-proof",
+            "occurred_at": now - timedelta(minutes=1),
+            "credential": credential,
+            "domain": "certificate",
+            "method": "TLS",
+            "action": "connect",
+        },
+        organization=organization,
+        source=source,
+    )
+    assert created
+    challenge = possession.issue(possession.consume_budget(token), event.pk)
+    message = base64.b64decode(challenge["message_b64"], validate=True)
+    result = possession.submit(
+        possession.consume_budget(token),
+        event.pk,
+        challenge["challenge"],
+        base64.b64encode(cert.public_bytes(serialization.Encoding.DER)).decode("ascii"),
+        base64.b64encode(key.sign(message)).decode("ascii"),
+    )
+    assert result["status"] == "verified" and not result["historical_access_verified"]
+    # Subsequent inventory changes and source disablement must not erase a
+    # historical proof of what was checked at the challenge time.
+    credential.fingerprint = "f" * 64
+    credential.save(update_fields=["fingerprint"])
+    source.active = False
+    source.save(update_fields=["active"])
+    assert possession.verify_restored_proofs() == 1
+
+
 def main():
     import django
 
@@ -671,6 +747,7 @@ def main():
             with organization_context(fixture.org):
                 oidc_corpus(fixture.operator, fixture.org)
                 teamviewer_corpus(fixture.admin, fixture.org)
+                certificate_possession_corpus(fixture.admin, fixture.org)
                 business_corpus(fixture.admin, fixture.org, fixture.intent.pk)
                 scim_creation_corpus(fixture.admin, fixture.operator, fixture.org)
                 recertification_corpus(fixture.admin, fixture.org)
@@ -687,7 +764,7 @@ def main():
         "Synthetic restore corpus prepared: MFA, counter, recovery hash, M2M, "
         "SCIM token, target secret, OIDC secret/link/draft/flow, signed mandate, "
         "signed notification, TeamViewer token/report/run/sighting/mappings/session "
-        "and sealed capture."
+        "certificate key possession and sealed capture."
     )
 
 

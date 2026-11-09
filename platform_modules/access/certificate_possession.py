@@ -148,18 +148,22 @@ def _receipts(event, action):
     )
 
 
+def _token_ingested(event):
+    receipts = _receipts(event, "access.event.received.v1")
+    return (
+        len(receipts) == 1
+        and receipts[0].actor_id is None
+        and receipts[0].event_hash == digest(receipts[0])
+    )
+
+
 def _scope(source, event_id, now):
     event = AccessEvent.objects.filter(
         pk=event_id, source=str(source.pk), domain="certificate", credential__isnull=False
     ).first()
     if event is None:
         raise Unavailable
-    receipts = _receipts(event, "access.event.received.v1")
-    if (
-        len(receipts) != 1
-        or receipts[0].actor_id is not None
-        or receipts[0].event_hash != digest(receipts[0])
-    ):
+    if not _token_ingested(event):
         raise Unavailable
     credential = (
         Credential.objects.select_for_update()
@@ -306,13 +310,24 @@ def summary(event):
             body = proof.metadata["proof"]
             payload = body["challenge_payload"]
             verified_at = datetime.fromisoformat(body["verified_at"])
+            bound = {
+                "schema": SCHEMA,
+                "event_id": str(event.pk),
+                "source_id": event.source,
+                "organization_id": str(event.organization_id),
+                "credential_id": str(event.credential_id),
+                "event_sha256": _sha(_canonical(source_snapshot(event))),
+            }
             if (
                 proof.event_hash == digest(proof)
                 and hmac.compare_digest(
                     proof.metadata["seal"], sign(body, "certificate-possession")
                 )
-                and payload["event_sha256"] == _sha(_canonical(source_snapshot(event)))
+                and all(payload[key] == value for key, value in bound.items())
                 and timezone.is_aware(verified_at)
+                and type(payload["issued_at"]) is int
+                and 0 <= verified_at.timestamp() - payload["issued_at"] < AGE_SECONDS
+                and _token_ingested(event)
                 and _verify_key(
                     payload,
                     _decode(body["certificate_der_b64"], MAX_DER),
@@ -325,3 +340,21 @@ def summary(event):
     except (TypeError, ValueError, KeyError, ValidationError):
         pass
     return {"status": "invalid"}
+
+
+def verify_restored_proofs():
+    """Recheck historical proof bytes, without trusting current source/credential state."""
+    count = 0
+    for row in AuditEvent.objects.filter(action=ACTION).iterator(chunk_size=100):
+        try:
+            event = AccessEvent.unscoped.filter(
+                pk=row.object_id,
+                organization_id=row.organization_id,
+            ).first()
+        except (ValueError, ValidationError):
+            event = None
+        result = summary(event) if event is not None else None
+        if not result or result["status"] != "verified" or result["proof_id"] != str(row.pk):
+            raise ValidationError("Preuve de possession restaurée invalide.")
+        count += 1
+    return count

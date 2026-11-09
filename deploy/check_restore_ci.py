@@ -161,6 +161,8 @@ def main():
             report = check.execute()
         finally:
             check.cleanup()
+        if report.get("certificate_possession_proofs_checked") != 1:
+            raise RuntimeError("Missing or invalid restored certificate possession proof.")
         if not injected:
             raise RuntimeError("The exported snapshot concurrency gate did not run.")
         observed = application(

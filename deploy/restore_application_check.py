@@ -188,6 +188,7 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
     )
     from platform_core.oidc.restoration import verify_evidence
     from platform_core.security import cipher
+    from platform_modules.access.certificate_possession import verify_restored_proofs
     from platform_modules.access.evidence import verify_evaluation
     from platform_modules.access.models import AccessEvaluation
     from platform_modules.approvals.models import ApprovalDecision
@@ -241,6 +242,8 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
     result["encrypted_values_checked"] += encrypted
     result["signed_proofs_checked"] += signed
     result["signed_proofs_checked"] += verify_business_evidence()
+    result["certificate_possession_proofs_checked"] = verify_restored_proofs()
+    result["signed_proofs_checked"] += result["certificate_possession_proofs_checked"]
     from platform_modules.connectors.creation import verify_creations
 
     result["signed_proofs_checked"] += verify_creations()

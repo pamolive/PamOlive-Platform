@@ -14,7 +14,7 @@ from django.test import TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from platform_core.audit import verify_chain
+from platform_core.audit import record, verify_chain
 from platform_core.models import AuditEvent, ModuleActivation, Organization
 from platform_core.tenancy import organization_context
 from platform_modules.access import certificate_possession as proof
@@ -137,6 +137,11 @@ class CertificatePossessionTests(TransactionTestCase):
         self.assertEqual(self.post("certificate-proof", body).status_code, 409)
         self.assertEqual(AuditEvent.objects.filter(action=proof.ACTION).count(), 1)
         self.assertTrue(verify_chain(self.org))
+        self.credential.fingerprint = "e" * 64
+        self.credential.save(update_fields=["fingerprint"])
+        self.source.active = False
+        self.source.save(update_fields=["active"])
+        self.assertEqual(proof.verify_restored_proofs(), 1)
         self.event.refresh_from_db()
         self.assertEqual(self.event.credential_observation, "possession_asserted")
         with organization_context(self.org):
@@ -150,6 +155,38 @@ class CertificatePossessionTests(TransactionTestCase):
         self.assertContains(detail, "Vérifiée au moment du défi")
         self.event.action = "altered source"
         self.assertEqual(proof.summary(self.event), {"status": "invalid"})
+
+    def test_restore_rejects_a_sealed_record_with_an_invalid_public_signature(self):
+        from django.core import signing
+        from django.core.exceptions import ValidationError
+
+        challenge = self.challenge()
+        signed = self.answer(challenge, key=ed25519.Ed25519PrivateKey.generate())
+        body = {
+            "challenge_payload": signing.loads(challenge["challenge"], salt=proof.SALT),
+            "verified_at": timezone.now().isoformat(),
+            "algorithm": "Ed25519",
+            "certificate_der_b64": signed["certificate"],
+            "signature_b64": signed["signature"],
+        }
+        record(
+            action=proof.ACTION,
+            summary="Synthetic invalid restore proof",
+            organization=self.org,
+            target=self.event,
+            metadata={"proof": body, "seal": proof.sign(body, "certificate-possession")},
+        )
+        self.assertTrue(verify_chain(self.org))
+        self.assertEqual(proof.summary(self.event), {"status": "invalid"})
+        with self.assertRaises(ValidationError):
+            proof.verify_restored_proofs()
+
+    def test_offline_backup_fixture_preserves_a_real_verifiable_proof(self):
+        from deploy.prepare_restore_fixture import certificate_possession_corpus
+
+        with organization_context(self.org):
+            certificate_possession_corpus(self.admin, self.org)
+        self.assertEqual(proof.verify_restored_proofs(), 1)
 
     def test_scope_enforces_https_source_receipt_and_tenant(self):
         self.assertEqual(self.post("certificate-challenge", {}, secure=False).status_code, 403)
