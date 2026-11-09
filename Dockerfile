@@ -14,7 +14,17 @@ WORKDIR /app
 RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin pamolive && useradd --uid 1001 --no-create-home --shell /usr/sbin/nologin pamolive-guacd
 COPY requirements.lock ./
 RUN pip install --no-cache-dir -r requirements.lock
-COPY . .
+COPY manage.py pyproject.toml README.md LICENSE .env.example ./
+COPY config/ ./config/
+COPY deploy/ ./deploy/
+COPY docs/ ./docs/
+COPY examples/ ./examples/
+COPY integrations/ ./integrations/
+COPY platform_core/ ./platform_core/
+COPY platform_modules/ ./platform_modules/
+COPY templates/ ./templates/
+COPY tests/ ./tests/
+COPY third_party/ ./third_party/
 RUN python manage.py collectstatic --noinput
 USER root
 EXPOSE 8000

@@ -40,12 +40,32 @@ jobs:
         run: |
           printf 'must-not-enter-the-image' > .bootstrap-admin
           cp .bootstrap-admin .image-private-check.dump
+          mkdir .image-private-context config/.nas-access
+          cp .bootstrap-admin .image-private-context/undesignated.txt
+          cp .bootstrap-admin config/.nas-access/key-without-extension
+          cp .bootstrap-admin config/qualification.pem
+          cp .bootstrap-admin tests/.env.qualification
+          cp .bootstrap-admin tests/qualification.tar
           docker build --target production --provenance=false --sbom=false \
             --label "org.opencontainers.image.source=https://github.com/pamolive/PamOlive-Platform" \
             --label "org.opencontainers.image.revision=$GITHUB_SHA" \
             --label "io.pamolive.source.license=AGPL-3.0-or-later" \
             -t pamolive-platform:ci .
-          docker run --rm --entrypoint python pamolive-platform:ci -c "from pathlib import Path; from importlib.util import find_spec; assert not Path('/app/.bootstrap-admin').exists(); assert not Path('/app/.env').exists(); assert not Path('/app/.image-private-check.dump').exists(); assert not Path('/opt/pamolive-test').exists(); assert find_spec('PIL') is None"
+          docker run --rm -i --network none --entrypoint python pamolive-platform:ci - <<'PY'
+          from importlib.util import find_spec
+          from pathlib import Path
+
+          root = Path("/app")
+          paths = (
+              ".bootstrap-admin", ".env", ".image-private-check.dump",
+              ".image-private-context", "config/.nas-access", "config/qualification.pem",
+              "tests/.env.qualification", "tests/qualification.tar",
+          )
+          assert not any((root / name).exists() for name in paths)
+          assert (root / ".env.example").is_file()
+          assert not Path("/opt/pamolive-test").exists()
+          assert find_spec("PIL") is None
+          PY
       - name: Verify native SSH/RDP plugins without contacting a target
         run: docker run --rm --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:ci -m deploy.check_guacd
       - name: Prepare a separately signed extension wheel
