@@ -31,7 +31,10 @@ class RemoteHAGuards(SimpleTestCase):
         args = remote.arguments(*remote.worker_args("a" * 64))
         self.assertIn("BatchMode=yes", args)
         self.assertIn("StrictHostKeyChecking=yes", args)
-        self.assertIn("docker exec -i --user 1000:1000", args[-1])
+        self.assertIn("ClearAllForwardings=yes", args)
+        self.assertIn(
+            "docker --host unix:///var/run/docker.sock exec -i --user 1000:1000", args[-1]
+        )
         self.assertNotIn("sudo", args[-1])
         for invalid in ("-oProxyCommand=bad", "host;cmd", "../host", "host\n"):
             with self.subTest(invalid=invalid), self.assertRaises(control.CheckError):

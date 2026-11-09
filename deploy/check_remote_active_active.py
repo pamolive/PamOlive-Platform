@@ -13,6 +13,7 @@ from threading import Thread
 FORMAT = "pamolive.remote-ha/1"
 IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,79}\Z")
 SHA = re.compile(r"sha256:[a-f0-9]{64}\Z")
+DOCKER = ("docker", "--host", "unix:///var/run/docker.sock")
 INSPECT = (
     '{"container":{{json .Id}},"image":{{json .Image}},'
     '"project":{{json (index .Config.Labels "com.docker.compose.project")}},'
@@ -49,6 +50,8 @@ class Node:
             "-o",
             "StrictHostKeyChecking=yes",
             "-o",
+            "ClearAllForwardings=yes",
+            "-o",
             "ConnectTimeout=8",
             self.alias,
         ]
@@ -65,9 +68,9 @@ class Node:
 
     def describe(self):
         identity = self.run("cat", "/etc/machine-id").strip()
-        engine = self.run("docker", "info", "--format", "{{.ID}}").strip()
+        engine = self.run(*DOCKER, "info", "--format", "{{.ID}}").strip()
         info = json.loads(
-            self.run("docker", "inspect", "--type=container", "--format", INSPECT, self.container)
+            self.run(*DOCKER, "inspect", "--type=container", "--format", INSPECT, self.container)
         )
         require(
             re.fullmatch(r"[a-f0-9]{32}", identity), "No valid independent Linux host identity."
@@ -87,7 +90,7 @@ class Node:
     def worker_args(self, container_id):
         require(re.fullmatch(r"[a-f0-9]{64}", container_id), "Invalid inspected container ID.")
         return (
-            "docker",
+            *DOCKER,
             "exec",
             "-i",
             "--user",

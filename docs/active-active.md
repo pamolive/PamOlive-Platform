@@ -36,7 +36,7 @@ Les [sessions Django sont conservées en base](https://docs.djangoproject.com/en
 
 ## Contrôler deux VM existantes
 
-Avant de placer les deux VM derrière le répartiteur, lancer le contrôle depuis un poste disposant de Python 3.8 ou plus et d’OpenSSH. Les deux VM Linux doivent déjà exécuter la même image contenant le module `deploy.remote_ha_node`. Le compte SSH d’exploitation doit pouvoir inspecter Docker et lancer la sonde dans le conteneur applicatif. Valider les empreintes des hôtes dans le fichier `known_hosts` avant l’essai : le contrôle refuse les connexions interactives et les hôtes SSH inconnus.
+Avant de placer les deux VM derrière le répartiteur, lancer le contrôle depuis un poste disposant de Python 3.8 ou plus et d’OpenSSH. Les deux VM Linux doivent déjà exécuter la même image contenant le module `deploy.remote_ha_node`. Le compte SSH d’exploitation doit pouvoir inspecter et utiliser le socket Docker local `/var/run/docker.sock` sur chaque VM. Valider les empreintes des hôtes dans le fichier `known_hosts` avant l’essai : le contrôle refuse les connexions interactives et les hôtes SSH inconnus.
 
 ```sh
 python -m deploy.check_remote_active_active --node-a lab-pam-a --node-b lab-pam-b
