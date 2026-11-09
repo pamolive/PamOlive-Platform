@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from platform_core.models import OrganizationMembership
-from platform_modules.access.ui import scoped
+from platform_core.view_access import scoped
 
 from .bindings import create_binding, revoke_binding
 from .models import Identity, LoginIdentityBinding

@@ -1,5 +1,4 @@
 import json
-from functools import wraps
 from uuid import UUID
 
 from django import forms
@@ -15,7 +14,6 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_safe
 
 from platform_core.audit import verify_chain
-from platform_core.authorization import recent_authentication
 from platform_core.memberships import set_membership
 from platform_core.models import AuditEvent, ModuleActivation, Organization, OrganizationMembership
 from platform_core.security import ensure_recent
@@ -27,6 +25,7 @@ from platform_core.services import (
     require_module,
 )
 from platform_core.tenancy import current_organization, organization_context
+from platform_core.view_access import scoped
 from platform_modules.approvals.services import decide
 from platform_modules.connectors.models import EventSource
 from platform_modules.connectors.services import create_source, source_from_token
@@ -125,30 +124,6 @@ CATALOG = {
         ),
     ),
 }
-
-
-def scoped(module=None, roles=("admin", "operator", "reviewer", "auditor")):
-    def decorator(view):
-        @login_required
-        @wraps(view)
-        def wrapped(request, *args, **kwargs):
-            organization = current_organization()
-            authorize(request.user, organization, roles=roles)
-            if module:
-                require_module(organization, module)
-            if request.method == "POST":
-                challenge = ensure_recent(request)
-                if challenge is not None:
-                    return challenge
-                with recent_authentication(
-                    request.user, organization, request.session.get("mfa_verified_at", 0)
-                ):
-                    return view(request, *args, **kwargs)
-            return view(request, *args, **kwargs)
-
-        return wrapped
-
-    return decorator
 
 
 def model_form(model, fields, data=None):

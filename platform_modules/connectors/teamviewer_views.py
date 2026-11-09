@@ -13,7 +13,7 @@ from django.views.decorators.http import require_POST
 
 from platform_core.models import AuditEvent
 from platform_core.security import cipher, ensure_recent
-from platform_modules.access.ui import scoped
+from platform_core.view_access import scoped
 
 from .scim import IntegrationFailure
 from .teamviewer_access import verify_observation

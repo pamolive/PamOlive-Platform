@@ -17,6 +17,7 @@ from platform_core.models import Organization
 from platform_core.services import authorize, require_module
 from platform_core.tenancy import current_organization
 
+from . import business_port
 from .bindings import current_binding
 from .models import ExternalAccount, Identity, Resource
 from .mover_models import MoveAccess, MoveDecision, MoveGrant, MoveProposal, RoleRevision
@@ -400,12 +401,13 @@ def propose_move(
     if set(target) == set(before["roles"]) and department == before["department"]:
         raise ValidationError("Aucun changement de poste ou de rôle à examiner.")
     business = {}
-    if business_receipts is not None:
-        from platform_modules.connectors.business_references import capture_references
-
-        provenance = capture_references(business_receipts, organization=organization)
-        if provenance:
-            business["business"] = provenance
+    if business_receipts is not None and business_receipts != []:
+        provenance = business_port.active_provider(organization).capture_references(
+            business_receipts, organization=organization
+        )
+        if not provenance:
+            raise ValidationError("Le fournisseur n’a pas confirmé les lectures sélectionnées.")
+        business["business"] = provenance
     return _attest(
         MoveProposal(organization=organization, identity=identity),
         actor,
@@ -474,9 +476,9 @@ def decide_move(proposal_id, *, approved, comment, actor, organization):
     if withdrawals != data["withdrawals"]:
         raise ValidationError("Les accès à retirer ont changé. Préparez une nouvelle demande.")
     if "business" in data:
-        from platform_modules.connectors.business_references import recheck_references
-
-        facts["business_checked"] = recheck_references(data["business"], organization=organization)
+        facts["business_checked"] = business_port.active_provider(organization).recheck_references(
+            data["business"], organization=organization
+        )
     from platform_modules.access.models import AccessIntent
     from platform_modules.access.services import create_record
 
@@ -605,14 +607,14 @@ def attest_grant(link, grant, *, actor, organization):
 
 
 def verify_mover():
-    from platform_modules.connectors.business_references import verify_reference_history
-
     count = 0
     for model in (RoleRevision, MoveProposal, MoveDecision, MoveAccess, MoveGrant):
         for obj in model.unscoped.select_related("audit").iterator():
             _proof(obj)
             if model is MoveProposal and "business" in obj.body:
-                verify_reference_history(obj.body["business"], None, organization=obj.organization)
+                business_port.verify_history(
+                    obj.body["business"], None, organization=obj.organization
+                )
             if model is MoveDecision:
                 _proof(obj.proposal)
                 if (
@@ -628,7 +630,7 @@ def verify_mover():
                 ):
                     raise ValidationError("Provenance de décision de mobilité incomplète.")
                 if obj.applied and "business" in obj.proposal.body:
-                    verify_reference_history(
+                    business_port.verify_history(
                         obj.proposal.body["business"],
                         obj.body["business_checked"],
                         organization=obj.organization,

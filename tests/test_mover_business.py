@@ -1,5 +1,6 @@
 import time
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -13,7 +14,7 @@ from platform_core.tenancy import organization_context
 from platform_modules.access.models import AccessIntent
 from platform_modules.connectors.business import configure_business_source, create_business_source
 from platform_modules.connectors.business_models import BusinessReceipt
-from platform_modules.identity import mobility_contract
+from platform_modules.identity import business_port, mobility_contract
 from platform_modules.identity.models import Grant
 from platform_modules.identity.mover import propose_move, verify_mover
 from platform_modules.identity.mover_models import MoveDecision, MoveProposal
@@ -351,6 +352,96 @@ class MoverBusinessTests(MoverFixture, TestCase):
         with self.assertRaises(ValidationError):
             self.anchored_move([a, b])
         self.assertFalse(MoveProposal.objects.exists())
+
+    def test_source_picker_only_accepts_active_source_ids_of_selected_organization(self):
+        for module in ("identity", "access", "connectors"):
+            install_module(module, actor=self.admin, organization=self.other)
+        foreign, _ = self.source("foreign", organization=self.other)
+        with self.mfa(self.admin):
+            configure_business_source(
+                self.ticket.pk, actor=self.admin, organization=self.org, active=False
+            )
+        self.login(self.operator)
+        prepare = reverse("mover-prepare", args=[self.identity.pk])
+        page = self.client.get(prepare, {"choose": "1"})
+        self.assertContains(page, f'value="{self.hr.pk}"')
+        self.assertNotContains(page, f'value="{foreign.pk}"')
+        self.assertNotContains(page, f'value="{self.ticket.pk}"')
+        self.assertNotContains(page, self.hr_token)
+        for forged in (foreign.pk, self.ticket.pk, "not-a-uuid"):
+            with self.subTest(source=forged):
+                response = self.client.post(
+                    prepare,
+                    {
+                        "department": "Operations",
+                        "reference": "HR-42",
+                        "reason": "Exact source selection",
+                        "command": "preview",
+                        "business-TOTAL_FORMS": "1",
+                        "business-INITIAL_FORMS": "0",
+                        "business-0-source": str(forged),
+                        "business-0-external_id": "42",
+                    },
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("source", response.context["references"].forms[0].errors)
+                self.assertFalse(response.context["preview"])
+        self.assertFalse(MoveProposal.objects.exists())
+
+    def test_contract_absence_preserves_plain_mobility_but_cannot_drop_existing_proof(self):
+        receipt = self.reading()
+        anchored = self.anchored_move([receipt])
+        self.login(self.operator)
+        prepare = reverse("mover-prepare", args=[self.identity.pk])
+        with patch.object(business_port, "_provider", None):
+            self.assertNotContains(
+                self.client.get(prepare, {"choose": "1"}), "Lectures RH et métier vérifiées"
+            )
+            with self.assertRaises(PermissionDenied):
+                self.anchored_move([receipt], department="Other")
+            with self.assertRaises(PermissionDenied):
+                self.apply(anchored)
+            with organization_context(None), self.assertRaises(ValidationError):
+                verify_mover()
+            plain = self.proposal({}, department="Other")
+        self.assertNotIn("business", plain.body)
+        self.assertFalse(MoveDecision.objects.exists())
+
+    def test_selected_proofs_cannot_be_silently_dropped_by_the_provider(self):
+        receipt = self.reading()
+        provider = business_port.active_provider(self.org)
+        with (
+            patch.object(provider, "capture_references", return_value={}),
+            self.assertRaisesMessage(ValidationError, "n’a pas confirmé les lectures"),
+        ):
+            self.anchored_move([receipt])
+        self.assertFalse(MoveProposal.objects.exists())
+
+    def test_disabled_connector_blocks_live_proof_but_preserves_offline_verification(self):
+        anchored = self.anchored_move([self.reading()])
+        disable_module("connectors", actor=self.admin, organization=self.org)
+        self.assertFalse(business_port.available(self.org))
+        with self.assertRaises(PermissionDenied):
+            self.apply(anchored)
+        self.login(self.reviewer)
+        export = reverse("mover-business-export", args=[anchored.pk])
+        self.assertEqual(self.client.get(export).status_code, 403)
+        with organization_context(None):
+            self.assertEqual(verify_mover(), 1)
+
+    def test_contract_rejects_unknown_version_duplicate_and_cross_tenant_lookup(self):
+        provider = business_port.active_provider(self.org)
+        self.assertEqual(provider.contract, business_port.CONTRACT)
+        with self.assertRaises(RuntimeError):
+            business_port.register(provider)
+        with patch.object(business_port, "_provider", None), self.assertRaises(RuntimeError):
+            business_port.register(
+                SimpleNamespace(contract="identity.mobility-business-evidence/2")
+            )
+        with self.assertRaises(PermissionDenied):
+            business_port.available(self.other)
+        with self.assertRaises(PermissionDenied):
+            provider.source_choices(organization=self.other)
 
     def test_http_requires_review_of_bound_preview_and_independent_review_page(self):
         first = self.reading()

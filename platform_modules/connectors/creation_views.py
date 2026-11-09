@@ -9,8 +9,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from platform_core.security import cipher, ensure_recent
+from platform_core.view_access import scoped
 from platform_modules.access.models import AccessIntent
-from platform_modules.access.ui import scoped
 
 from .business import sign
 from .creation import (
