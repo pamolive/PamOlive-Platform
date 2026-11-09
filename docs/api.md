@@ -91,6 +91,23 @@ Une preuve acceptée renvoie HTTP 201 et sa référence d’audit. Une autre pre
 
 La vérification atteste qu’une entité pouvait signer avec la clé correspondante au moment du défi. Elle ne valide ni une chaîne d’autorité, ni la révocation PKI, ni la localisation de la clé pendant l’accès historique. Elle ne change ni le fait, ni son évaluation, ni les droits.
 
+#### Utiliser le client de signature détachée
+
+Le client se lance depuis le dépôt sur un poste disposant de Python et de la dépendance `cryptography` du projet. Il n’ajoute aucun service sur PamOlive. Copier le [fichier cible d’exemple](../integrations/certificate-holder.example.json) en `cible.json` et renseigner l’origine HTTPS et les quatre UUID attendus. Fournir le jeton de source dans la variable `PAMOLIVE_CERTIFICATE_SOURCE_TOKEN` via le gestionnaire de secrets du poste. Ne pas le placer dans le fichier cible ni dans la ligne de commande.
+
+```sh
+python -m integrations.certificate_holder fetch --target cible.json --certificate public.der --bundle defi
+```
+
+Le client vérifie le périmètre et crée `defi/message.bin` et `defi/challenge.json`. Le répertoire doit être nouveau. Faire signer `message.bin` par le détenteur de la clé dans les 120 secondes, avec l’outil approuvé pour cette clé. Pour une **clé Ed25519 de test**, [OpenSSL](https://docs.openssl.org/3.5/man1/openssl-pkeyutl/#ed25519-and-ed448-algorithms) peut produire la signature détachée :
+
+```sh
+openssl pkeyutl -sign -rawin -inkey cle-test-ed25519.pem -in defi/message.bin -out signature.bin
+python -m integrations.certificate_holder submit --target cible.json --certificate public.der --bundle defi --signature signature.bin
+```
+
+Le client vérifie la signature localement avant d’envoyer le certificat public et la signature à PamOlive. Il n’utilise ni redirection ni proxy hérité. Pour une autorité interne, ajouter `--ca-file` avec son certificat public approuvé aux deux commandes Python. Si la soumission est interrompue, consulter l’événement avant de refaire un défi : le serveur a pu enregistrer la preuve avant la coupure.
+
 ## Rapports de couverture de collecte
 
 L’administrateur active le module Graphe et investigations, puis crée un périmètre dans **Relations et couverture des sources** : source, domaine et ressource ou organisation entière explicitement confirmée. Le producteur utilise son jeton de source existant pour `POST /api/v1/collection-reports/` :
