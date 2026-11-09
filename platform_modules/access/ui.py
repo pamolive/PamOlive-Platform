@@ -379,6 +379,18 @@ def record_detail(request, kind, object_id):
         and is_managed_source(obj.source)
         and (not evaluation_valid or latest.context_hash != interpreted.fingerprint)
     )
+    mover_business = None
+    if (
+        kind == "intent"
+        and ModuleActivation.objects.filter(
+            organization=request.organization,
+            module_key="connectors",
+            enabled=True,
+        ).exists()
+    ):
+        from platform_modules.identity.mover import business_origin
+
+        mover_business = business_origin(obj)
     return render(
         request,
         "governance/detail.html",
@@ -394,6 +406,7 @@ def record_detail(request, kind, object_id):
             "obj": obj,
             "kind": kind,
             "details": details,
+            "mover_business": mover_business,
             "interpretation": interpreted
             if kind == "event" and is_managed_source(obj.source)
             else None,

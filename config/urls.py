@@ -26,6 +26,17 @@ urlpatterns = [
     path("identities/<uuid:identity_id>/move/", mover_views.prepare, name="mover-prepare"),
     path("identities/mobility/<uuid:proposal_id>/", mover_views.detail, name="mover-detail"),
     path(
+        "identities/mobility/<uuid:proposal_id>/business/",
+        mover_views.business_proof,
+        name="mover-business-proof",
+    ),
+    path(
+        "identities/mobility/<uuid:proposal_id>/business/export/",
+        mover_views.business_proof,
+        {"export": True},
+        name="mover-business-export",
+    ),
+    path(
         "identities/mobility/<uuid:proposal_id>/decision/",
         mover_views.decision,
         name="mover-decision",

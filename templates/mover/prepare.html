@@ -3,7 +3,25 @@
 <p><a href="{% url 'mover-home' %}">← Mobilité interne</a></p><h1>Préparer le changement de {{ identity }}</h1>
 <p>Équipe actuelle : {{ identity.department|default:'non renseignée' }}. Sélectionnez les rôles à conserver et les nouveaux rôles. Un rôle omis sera retiré après approbation ; une sélection vide retire tous les rôles métier suivis.</p>
 {% if form %}
-<form method="post" class="erp-form">{% csrf_token %}{{ form.as_p }}<button class="button">Soumettre à un approbateur</button></form>
+<form method="post" class="erp-form">{% csrf_token %}{{ form.as_p }}
+{% if business_enabled or references.is_bound %}
+<details{% if preview or references.is_bound %} open{% endif %}>
+<summary>Lectures RH et métier vérifiées (facultatif)</summary>
+<p>Choisissez la source et l’identifiant stable du dossier. Un même numéro peut exister dans plusieurs sources. L’état publié ne vaut pas approbation dans PAM-olive.</p>
+{{ references.management_form }}{{ references.non_form_errors }}
+{% for row in references %}<fieldset><legend>Dossier {{ forloop.counter }}</legend>{{ row.as_p }}</fieldset>{% endfor %}
+<button class="button subtle" name="command" value="preview">Examiner les lectures source</button>
+</details>
+{% endif %}
+{% if preview %}
+<section class="workflow-card"><h2>Lectures à rattacher</h2>
+{% for reading in preview %}<p><strong>{{ reading.source_key }} · {{ reading.payload.reference }}</strong> — {{ reading.payload.title }} · {{ reading.payload.state }} · séquence {{ reading.payload.sequence }}<br>
+Lecture déclarée : {{ reading.payload.observed_at }} · reçue : {{ reading.received_at }}<br>
+{% if reading.payload.url %}Adresse déclarée : {{ reading.payload.url }}{% endif %}</p>{% endfor %}
+<input type="hidden" name="business_preview" value="{{ preview_token }}">
+<p>Toute modification du formulaire nécessite un nouvel examen.</p></section>
+{% endif %}
+<button class="button" name="command" value="submit">Soumettre à un approbateur</button></form>
 <p><a href="{% url 'mover-prepare' identity.pk %}">Revoir les rôles choisis</a></p>
 {% else %}
 <form method="get" class="erp-form">{{ picker.as_p }}<button class="button" name="choose" value="1">Continuer vers les comptes et le motif</button></form>

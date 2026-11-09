@@ -1,20 +1,40 @@
 """Native forms for business role publication, preparation and independent review."""
 
+import hashlib
+
 from django import forms
 from django.contrib import messages
+from django.core import signing
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db.models import OuterRef, Q, Subquery
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from platform_core.models import OrganizationMembership
+from platform_core.attestations import canonical
+from platform_core.models import ModuleActivation, OrganizationMembership
+from platform_core.security import ensure_recent
+from platform_core.services import require_module
 from platform_modules.access.ui import scoped
+from platform_modules.connectors.business_models import BusinessSource
+from platform_modules.connectors.business_references import (
+    MAX_REFERENCES,
+    preview_references,
+    reference_context,
+)
 
 from .models import ExternalAccount, Identity, Resource
-from .mover import current_move, decide_move, latest_role, propose_move, publish_role, verified
+from .mover import (
+    current_move,
+    decide_move,
+    latest_role,
+    proof_anchor,
+    propose_move,
+    publish_role,
+    verified,
+)
 from .mover_models import MoveAccess, MoveDecision, MoveProposal, RoleRevision
 
 
@@ -166,6 +186,112 @@ class MoveForm(forms.Form):
             self.assignments[str(role.pk)] = keys
 
 
+class SourceReferenceForm(forms.Form):
+    source = forms.ModelChoiceField(
+        label="Source métier",
+        queryset=BusinessSource.unscoped.none(),
+        required=False,
+    )
+    external_id = forms.CharField(
+        label="Identifiant dans cette source", max_length=180, required=False
+    )
+
+    def __init__(self, *args, enabled, **kwargs):
+        super().__init__(*args, **kwargs)
+        if enabled:
+            self.fields["source"].queryset = BusinessSource.objects.filter(active=True).order_by(
+                "key"
+            )
+            self.fields["source"].label_from_instance = (
+                lambda source: f"{source.name} · {source.key}"
+            )
+
+    def clean(self):
+        data = super().clean()
+        if not self.errors and bool(data.get("source")) != bool(data.get("external_id")):
+            raise ValidationError("Indiquez la source et l’identifiant du même dossier.")
+        return data
+
+
+SourceReferences = forms.formset_factory(
+    SourceReferenceForm,
+    extra=MAX_REFERENCES,
+    max_num=MAX_REFERENCES,
+    absolute_max=MAX_REFERENCES,
+    validate_max=True,
+)
+PREVIEW_SALT = "pamolive.mover.business.preview/1"
+REVIEW_SALT = "pamolive.mover.business.review/1"
+
+
+def _preview_scope(request, payload, references):
+    normalized = dict(
+        organization_id=request.organization.pk,
+        actor_id=request.user.pk,
+        move=payload,
+        references=references,
+    )
+    return hashlib.sha256(canonical(normalized).encode()).hexdigest()
+
+
+def _review_scope(request, proposal):
+    return dict(
+        actor_id=request.user.pk,
+        organization_id=str(request.organization.pk),
+        proposal_id=str(proposal.pk),
+        signature=proposal.signature,
+    )
+
+
+def _submit_or_preview(request, identity, form, references):
+    data = form.cleaned_data
+    payload = dict(
+        identity_id=identity.pk,
+        department=data["department"],
+        reason=data["reason"],
+        reference=data["reference"],
+        assignments={
+            key: [data[name].pk for name in fields] for key, fields in form.assignments.items()
+        },
+    )
+    command = request.POST.get("command", "submit")
+    scope = _preview_scope(request, payload, references)
+    if command == "preview":
+        if not references:
+            raise ValidationError("Sélectionnez au moins un dossier à examiner.")
+        readings = preview_references(references, organization=request.organization)
+        return (
+            None,
+            readings,
+            signing.dumps(
+                dict(scope=scope, receipts=[row["receipt_id"] for row in readings]),
+                salt=PREVIEW_SALT,
+            ),
+        )
+    if command != "submit":
+        raise ValidationError("Commande de mobilité inconnue.")
+    receipts = None
+    if references:
+        try:
+            reviewed = signing.loads(
+                request.POST.get("business_preview", ""),
+                salt=PREVIEW_SALT,
+                max_age=600,
+            )
+        except signing.BadSignature:
+            raise ValidationError("Examinez les lectures métier avant de soumettre.") from None
+        if reviewed["scope"] != scope:
+            raise ValidationError("La demande a changé. Examinez à nouveau les lectures métier.")
+        receipts = reviewed["receipts"]
+    proposal = propose_move(
+        **payload,
+        business_receipts=receipts,
+        actor=request.user,
+        organization=request.organization,
+    )
+    return proposal, [], ""
+
+
 @scoped("identity", roles=("admin", "operator"))
 def prepare(request, identity_id):
     identity = get_object_or_404(
@@ -189,6 +315,17 @@ def prepare(request, identity_id):
     )
     picker.fields["roles"] = choice
     form = None
+    business_enabled = ModuleActivation.objects.filter(
+        organization=request.organization,
+        module_key="connectors",
+        enabled=True,
+    ).exists()
+    references = SourceReferences(
+        request.POST if any(key.startswith("business-") for key in request.POST) else None,
+        prefix="business",
+        form_kwargs={"enabled": business_enabled},
+    )
+    preview, preview_token = [], ""
     if picker.is_bound and picker.is_valid():
         selected = list(picker.cleaned_data["roles"])
         if len(selected) > 10:
@@ -205,25 +342,43 @@ def prepare(request, identity_id):
                     "roles": [role.pk for role in selected],
                 },
             )
-            if request.method == "POST" and form.is_valid():
-                data = form.cleaned_data
+            if (
+                request.method == "POST"
+                and form.is_valid()
+                and (not references.is_bound or references.is_valid())
+            ):
                 try:
-                    proposal = propose_move(
-                        identity_id=identity.pk,
-                        department=data["department"],
-                        assignments={
-                            role_id: [data[name].pk for name in fields]
-                            for role_id, fields in form.assignments.items()
-                        },
-                        reason=data["reason"],
-                        reference=data["reference"],
-                        actor=request.user,
-                        organization=request.organization,
+                    chosen = (
+                        [
+                            (item["source"].pk, item["external_id"])
+                            for item in references.cleaned_data
+                            if item.get("source")
+                        ]
+                        if references.is_bound
+                        else []
                     )
-                    return redirect("mover-detail", proposal_id=proposal.pk)
+                    proposal, preview, preview_token = _submit_or_preview(
+                        request,
+                        identity,
+                        form,
+                        chosen,
+                    )
+                    if proposal:
+                        return redirect("mover-detail", proposal_id=proposal.pk)
                 except ValidationError as error:
                     form.add_error(None, "; ".join(error.messages))
-    return _page(request, "prepare", picker=picker, form=form, identity=identity, current=current)
+    return _page(
+        request,
+        "prepare",
+        picker=picker,
+        form=form,
+        identity=identity,
+        current=current,
+        business_enabled=business_enabled,
+        references=references,
+        preview=preview,
+        preview_token=preview_token,
+    )
 
 
 @scoped("identity")
@@ -278,14 +433,80 @@ def detail(request, proposal_id):
     )
 
 
+@scoped("identity")
+def business_proof(request, proposal_id, *, export=False):
+    require_module(request.organization, "connectors")
+    proposal = get_object_or_404(MoveProposal.objects.select_related("audit"), pk=proposal_id)
+    if not verified(proposal):
+        raise PermissionDenied("Preuve de proposition invalide.")
+    if "business" not in proposal.body:
+        raise Http404
+    challenge = ensure_recent(request)
+    if challenge is not None:
+        return challenge
+    decision = MoveDecision.objects.filter(proposal=proposal).select_related("audit").first()
+    if decision and (
+        not verified(decision)
+        or decision.body["proposal_signature"] != proposal.signature
+        or decision.identity_id != proposal.identity_id
+        or (decision.applied and "business_checked" not in decision.body)
+    ):
+        raise PermissionDenied("Preuve de décision invalide.")
+    try:
+        context = reference_context(
+            proposal.body["business"],
+            decision.body.get("business_checked") if decision else None,
+            organization=request.organization,
+        )
+    except ValidationError:
+        raise PermissionDenied("Preuves métier incomplètes ou invalides.") from None
+    if export:
+        context["proposal"] = proof_anchor(proposal)
+        context["decision"] = proof_anchor(decision) if decision else None
+        response = JsonResponse(context)
+        response["Cache-Control"] = "no-store"
+        return response
+    can_review = (
+        not decision
+        and _can(request, "admin", "reviewer")
+        and request.user.pk != proposal.audit.actor_id
+        and all(
+            row["same_context"] and row["latest"]["current_source_assertion"]
+            for row in context["references"]
+        )
+    )
+    return _page(
+        request,
+        "business_proof",
+        proposal=proposal,
+        context=context,
+        review_token=signing.dumps(_review_scope(request, proposal), salt=REVIEW_SALT)
+        if can_review
+        else "",
+    )
+
+
 @scoped("identity", roles=("admin", "reviewer"))
 @require_POST
 def decision(request, proposal_id):
-    get_object_or_404(MoveProposal.objects, pk=proposal_id)
+    proposal = get_object_or_404(MoveProposal.objects, pk=proposal_id)
     command = request.POST.get("decision")
     try:
         if command not in ("approve", "deny"):
             raise ValidationError("Décision inconnue.")
+        if command == "approve" and "business" in proposal.body:
+            try:
+                reviewed = signing.loads(
+                    request.POST.get("business_review", ""),
+                    salt=REVIEW_SALT,
+                    max_age=600,
+                )
+            except signing.BadSignature:
+                reviewed = None
+            if reviewed != _review_scope(request, proposal):
+                raise ValidationError(
+                    "Examinez les lectures métier avant d’approuver le transfert."
+                )
         decide_move(
             proposal_id,
             approved=command == "approve",

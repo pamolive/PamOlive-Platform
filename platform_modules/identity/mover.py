@@ -119,6 +119,29 @@ def _proof(obj):
     return obj
 
 
+def proof_anchor(obj):
+    return dict(
+        body=_json(_scope(_proof(obj))),
+        signature=obj.signature,
+        audit_id=str(obj.audit_id),
+        audit_hash=obj.audit.event_hash,
+    )
+
+
+def business_origin(intent):
+    link = MoveAccess.objects.filter(intent=intent).select_related("decision__proposal").first()
+    if not link or "business" not in link.decision.proposal.body:
+        return None
+    try:
+        _check_access(link)
+        proposal = _proof(link.decision.proposal)
+        if link.decision.body["proposal_signature"] == proposal.signature:
+            return proposal.pk
+    except ValidationError:
+        pass
+    return None
+
+
 def _guard(actor, organization, roles, *, workflow=True):
     if current_organization().pk != organization.pk:
         raise PermissionDenied
@@ -329,7 +352,17 @@ def _accounts(target):
 
 
 @transaction.atomic
-def propose_move(*, identity_id, department, assignments, reason, reference, actor, organization):
+def propose_move(
+    *,
+    identity_id,
+    department,
+    assignments,
+    reason,
+    reference,
+    actor,
+    organization,
+    business_receipts=None,
+):
     _guard(actor, organization, ("admin", "operator"))
     binding = current_binding(actor, organization=organization)
     identity = (
@@ -346,6 +379,13 @@ def propose_move(*, identity_id, department, assignments, reason, reference, act
     target = _selection(identity, before, assignments)
     if set(target) == set(before["roles"]) and department == before["department"]:
         raise ValidationError("Aucun changement de poste ou de rôle à examiner.")
+    business = {}
+    if business_receipts is not None:
+        from platform_modules.connectors.business_references import capture_references
+
+        provenance = capture_references(business_receipts, organization=organization)
+        if provenance:
+            business["business"] = provenance
     return _attest(
         MoveProposal(organization=organization, identity=identity),
         actor,
@@ -357,6 +397,7 @@ def propose_move(*, identity_id, department, assignments, reason, reference, act
         reason=reason,
         reference=reference,
         withdrawals=_withdrawals(before, target),
+        **business,
         **_binding_data(binding),
     )
 
@@ -412,6 +453,10 @@ def decide_move(proposal_id, *, approved, comment, actor, organization):
     withdrawals = _withdrawals(before, target)
     if withdrawals != data["withdrawals"]:
         raise ValidationError("Les accès à retirer ont changé. Préparez une nouvelle demande.")
+    if "business" in data:
+        from platform_modules.connectors.business_references import recheck_references
+
+        facts["business_checked"] = recheck_references(data["business"], organization=organization)
     from platform_modules.access.models import AccessIntent
     from platform_modules.access.services import create_record
 
@@ -540,10 +585,14 @@ def attest_grant(link, grant, *, actor, organization):
 
 
 def verify_mover():
+    from platform_modules.connectors.business_references import verify_reference_history
+
     count = 0
     for model in (RoleRevision, MoveProposal, MoveDecision, MoveAccess, MoveGrant):
         for obj in model.unscoped.select_related("audit").iterator():
             _proof(obj)
+            if model is MoveProposal and "business" in obj.body:
+                verify_reference_history(obj.body["business"], None, organization=obj.organization)
             if model is MoveDecision:
                 _proof(obj.proposal)
                 if (
@@ -558,6 +607,12 @@ def verify_mover():
                     }
                 ):
                     raise ValidationError("Provenance de décision de mobilité incomplète.")
+                if obj.applied and "business" in obj.proposal.body:
+                    verify_reference_history(
+                        obj.proposal.body["business"],
+                        obj.body["business_checked"],
+                        organization=obj.organization,
+                    )
             if model is MoveAccess:
                 _check_access(obj)
                 if (

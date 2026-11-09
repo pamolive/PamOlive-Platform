@@ -471,9 +471,17 @@ def recertification_corpus(actor, organization):
 def mover_corpus(actor, requester, organization):
     """Restore a withdrawn role grant and its full provenance, with no remote calls."""
     import time
+    from datetime import timedelta
+
+    from django.utils import timezone
 
     from platform_core.authorization import recent_authentication
     from platform_modules.approvals.services import decide
+    from platform_modules.connectors.business import (
+        configure_business_source,
+        create_business_source,
+        ingest_business_record,
+    )
     from platform_modules.identity.models import ExternalAccount, Identity, Resource
     from platform_modules.identity.mover import (
         decide_move,
@@ -507,8 +515,32 @@ def mover_corpus(actor, requester, organization):
             actor=actor,
             organization=organization,
         )
+        source, token = create_business_source(
+            dict(key="offline-hr", name="Synthetic HR source", freshness_seconds=900),
+            actor=actor,
+            organization=organization,
+        )
+    modified = (timezone.now() - timedelta(minutes=2)).isoformat()
 
-    def propose(department, assignments):
+    def reading(sequence):
+        result, _ = ingest_business_record(
+            dict(
+                schema="pamolive.business-record/1",
+                external_id="offline-42",
+                sequence=sequence,
+                kind="change",
+                reference="OFFLINE-HR",
+                state="approved",
+                title="Synthetic HR dossier",
+                source_updated_at=modified,
+                observed_at=timezone.now().isoformat(),
+            ),
+            token=token,
+            organization=organization,
+        )
+        return result
+
+    def propose(department, assignments, receipts=None):
         with recent_authentication(requester, organization, time.time()):
             return propose_move(
                 identity_id=person.pk,
@@ -518,9 +550,11 @@ def mover_corpus(actor, requester, organization):
                 reference="OFFLINE-HR",
                 actor=requester,
                 organization=organization,
+                business_receipts=receipts,
             )
 
-    first = propose("Support", {role.pk: [account.pk]})
+    first = propose("Support", {role.pk: [account.pk]}, [reading(1).pk])
+    latest = reading(2)
     with recent_authentication(actor, organization, time.time()):
         applied = decide_move(
             first.pk,
@@ -530,6 +564,7 @@ def mover_corpus(actor, requester, organization):
             organization=organization,
         )
         intent = MoveAccess.objects.get(decision=applied).intent
+        assert applied.body["business_checked"][0]["receipt_id"] == str(latest.pk)
         decide(
             intent.pk,
             approved=True,
@@ -546,6 +581,7 @@ def mover_corpus(actor, requester, organization):
             actor=actor,
             organization=organization,
         )
+        configure_business_source(source.pk, actor=actor, organization=organization, active=False)
     assert MoveGrant.objects.get(access__intent=intent).grant.status == "revoked"
     assert verify_mover() == 7
 

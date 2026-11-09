@@ -18,6 +18,8 @@ La [recertification périodique](docs/recertification.md) configure des règles 
 
 La [mobilité interne](docs/mobility.md) relie les changements de poste aux rôles métier versionnés. Elle retire les accès attribués par les rôles remplacés, préserve les droits indépendants et fait approuver les nouveaux accès par le circuit IAM.
 
+`0.2.0a14` ajoute les lectures RH et métier vérifiées aux demandes de mobilité. Depuis `0.2.0a13`, aucune migration PostgreSQL supplémentaire n’est requise ; vérifier la sauvegarde et l’absence de migrations en attente avant de remplacer l’image.
+
 PostgreSQL 16+ doit être disponible sur un serveur existant, éventuellement une autre VM. `compose.yml` contient **un seul service**, `web`. Si vous souhaitez une base locale distincte, le fichier optionnel `compose.local-db.yml` ajoute un second conteneur PostgreSQL.
 
 ## Installation Linux, macOS ou NAS Synology

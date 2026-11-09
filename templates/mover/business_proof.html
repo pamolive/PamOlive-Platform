@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block content %}
+<p><a href="{% url 'mover-detail' proposal.pk %}">← Changement de poste</a></p>
+<h1>Lectures RH et métier du changement de poste</h1>
+<p>Les lectures proviennent de sources authentifiées. Elles n’approuvent ni le changement de poste ni les accès. Les lectures conservées restent distinctes de la dernière déclaration connue.</p>
+{% for item in context.references %}
+<section class="workflow-card">
+<h2>{{ item.selected.source_key }} · {{ item.selected.payload.reference }}</h2>
+<p>{{ item.selected.payload.title }} · dossier {{ item.selected.payload.external_id }}</p>
+<dl>
+<dt>Lecture sélectionnée</dt><dd>Séquence {{ item.selected.sequence }} · état {{ item.selected.payload.state }} · reçue {{ item.selected.received_at }}</dd>
+<dt>Lecture vérifiée à la soumission</dt><dd>Séquence {{ item.submitted.sequence }} · reçue {{ item.submitted.received_at }}</dd>
+{% if item.reviewed %}<dt>Lecture vérifiée à la décision</dt><dd>Séquence {{ item.reviewed.sequence }} · reçue {{ item.reviewed.received_at }}</dd>{% endif %}
+<dt>Dernière déclaration connue</dt><dd>Séquence {{ item.latest.payload.sequence }} · référence {{ item.latest.payload.reference }} · état {{ item.latest.payload.state }} · reçue {{ item.latest.received_at }}</dd>
+</dl>
+{% if item.same_context and item.latest.current_source_assertion %}<p>La lecture courante confirme le même contenu.</p>
+{% else %}<p role="status">La référence a changé ou n’est plus actuelle. Les preuves historiques sont conservées.</p>{% endif %}
+</section>
+{% endfor %}
+{% if review_token %}
+<form method="post" action="{% url 'mover-decision' proposal.pk %}" class="erp-form">
+{% csrf_token %}<input type="hidden" name="business_review" value="{{ review_token }}">
+<p><label>Motif de décision <textarea name="comment" maxlength="2000" required></textarea></label></p>
+<button class="button" name="decision" value="approve">Approuver le transfert après examen</button>
+</form>
+{% endif %}
+<p><a href="{% url 'mover-business-export' proposal.pk %}">Exporter les attestations et les lectures en JSON ↓</a></p>
+{% endblock %}

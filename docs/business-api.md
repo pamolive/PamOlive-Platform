@@ -115,6 +115,8 @@ Les champs `association_known_before_access`, `pinned_read_known_before_access` 
 
 Un module Connecteurs désactivé rend ce contexte indisponible, sans supprimer son histoire ni inventer une conformité. Un jeton d’intégration ne peut ni publier un rattachement humain ni approuver une intention.
 
+Les mêmes sources peuvent justifier une [proposition de mobilité](mobility.md#rattacher-un-dossier-rh-ou-métier). Le portail fixe les lectures examinées et les contrôle à nouveau à l’approbation. Le contrat HTTP d’ingestion reste inchangé : le jeton d’intégration n’a accès ni à la proposition ni à ses décisions.
+
 ## Conservation des preuves
 
 Les lectures sont signées avec tous leurs champs et leurs microsecondes, liées à l’audit de l’organisation et conservées sans réécriture. PostgreSQL refuse les modifications et suppressions des dossiers et lectures ainsi que les relations vers une autre organisation. Une correction ajoute une séquence ; elle ne remplace pas l’ancienne preuve. Les réponses et l’interface distinguent une déclaration source, une lecture récente et une autorisation locale.

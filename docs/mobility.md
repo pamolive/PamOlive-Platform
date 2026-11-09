@@ -19,6 +19,16 @@ Le demandeur et l’approbateur doivent disposer d’un lien explicite entre leu
 
 Une demande reste applicable pendant 48 heures. Si un poste, un rôle choisi, un compte ou un droit à retirer change après la soumission, préparez une nouvelle demande. Le refus ne change ni le poste ni les droits.
 
+## Rattacher un dossier RH ou métier
+
+Si un système RH ou de ticketing publie déjà ses lectures via l’[API multi-sources](business-api.md), ouvrez **Lectures RH et métier vérifiées** avant de soumettre le changement. Choisissez jusqu’à cinq dossiers par leur source et leur identifiant stable. Deux outils peuvent employer le même numéro ; aucune correspondance n’est déduite de la référence saisie en texte.
+
+Cliquez sur **Examiner les lectures source**, puis vérifiez leur contenu avant de soumettre. Modifier le formulaire impose un nouvel examen. La proposition conserve la lecture sélectionnée et celle vérifiée à la soumission. L’approbateur consulte les preuves avec sa MFA personnelle avant de valider.
+
+Une nouvelle lecture du même contenu, sous la même révision de source, peut maintenir la preuve à jour. Une modification du dossier, une rotation de la source, sa désactivation ou une lecture périmée bloque l’approbation. Soumettez une nouvelle demande avec les lectures actuelles ; le refus de l’ancienne reste possible. Après décision, les preuves et l’export distinguent les lectures conservées de la dernière déclaration connue. L’état source, même « approved », n’est pas une décision PAM-olive. Une modification ultérieure du dossier externe ne réécrit ni la décision ni ses droits.
+
+Sans rattachement, la référence reste une déclaration manuelle. Le parcours n’exige pas de connecter un fournisseur particulier.
+
 ## Comprendre les retraits
 
 Supposons que la personne quitte **Support** pour **Exploitation**, tout en gardant le rôle **Commun**. Le changement retire les demandes et droits issus de l’affectation **Support**, conserve **Commun** à sa révision actuelle et crée des demandes pour **Exploitation**. Un droit de support accordé indépendamment reste actif, même s’il désigne le même compte, la même ressource et le même privilège.

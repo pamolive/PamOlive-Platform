@@ -1,5 +1,7 @@
 # Mise à niveau contrôlée vers 0.2.0a13
 
+Le schéma de `0.2.0a14` est identique. Pour passer de `a13` à `a14`, qualifier une sauvegarde avec l’image candidate et vérifier un plan vide ; ne pas lancer d’application de migration. Une fois des propositions avec preuves métier créées, ne pas redémarrer `a13` sans procédure de retour validée : il ne contrôle pas ces nouveaux rattachements.
+
 La version `0.2.0a13` ajoute les rôles métier versionnés et le parcours de mobilité interne. La mise à niveau depuis `0.2.0a8` à `0.2.0a12` doit préserver les comptes, les organisations, les secrets chiffrés, les observations et les décisions antérieures. Elle impose une interruption temporaire de toutes les instances applicatives ; PostgreSQL reste disponible.
 
 ## Périmètre accepté

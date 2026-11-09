@@ -4,6 +4,8 @@
 {% if not valid %}<p role="alert">Preuve invalide. Aucune approbation disponible.</p>{% else %}
 <p>{{ proposal.body.before.department|default:'Non renseigné' }} → {{ proposal.body.department }} · {{ proposal.body.reference }}</p>
 <p>{{ proposal.body.reason }} · Soumis par {{ proposal.audit.actor }}</p>
+{% if proposal.body.business %}<p><a href="{% url 'mover-business-proof' proposal.pk %}">Examiner les lectures RH et métier rattachées →</a>. Elles renseignent le dossier ; elles ne remplacent pas votre décision.</p>
+{% else %}<p>Référence saisie manuellement, sans lecture source rattachée.</p>{% endif %}
 <h2>Rôles après le changement</h2>
 {% for role,rows in target %}<h3>{{ role }}</h3>
 {% if rows %}<div class="table-wrap"><table><thead><tr><th>Ressource</th><th>Compte</th><th>Méthode</th><th>Droit</th><th>Durée</th></tr></thead><tbody>
@@ -15,7 +17,7 @@
 {% if decision %}<h2>{{ decision.applied|yesno:'Changement appliqué,Changement refusé' }}</h2><p>{{ decision.body.comment }} · {{ decision.audit.actor }}</p>
 {% if decision.applied %}<p>Les retraits locaux ne prouvent pas encore la révocation chez le fournisseur. Les nouveaux accès suivent le circuit d’approbation normal.</p>
 <ul>{% for link in requests %}<li><a href="{% url 'record-detail' 'intent' link.intent_id %}">{{ link.intent }}</a> · {{ link.intent.get_status_display }}</li>{% empty %}<li>Aucune nouvelle demande d’accès.</li>{% endfor %}</ul>{% endif %}
-{% elif can_decide %}<form method="post" action="{% url 'mover-decision' proposal.pk %}" class="erp-form">{% csrf_token %}<p><label>Motif de décision <textarea name="comment" maxlength="2000" required></textarea></label></p><button class="button" name="decision" value="approve">Approuver le transfert</button> <button class="button subtle" name="decision" value="deny">Refuser</button></form>
+{% elif can_decide %}<form method="post" action="{% url 'mover-decision' proposal.pk %}" class="erp-form">{% csrf_token %}<p><label>Motif de décision <textarea name="comment" maxlength="2000" required></textarea></label></p>{% if not proposal.body.business %}<button class="button" name="decision" value="approve">Approuver le transfert</button> {% endif %}<button class="button subtle" name="decision" value="deny">Refuser</button></form>
 {% else %}<p>En attente d’une décision indépendante avec MFA.</p>{% endif %}
 {% endif %}
 {% endblock %}
