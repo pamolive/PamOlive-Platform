@@ -186,6 +186,7 @@ async def submit_ticket(websocket, config):
 async def relay(node, config, session):
     async with socket(node, config, session) as websocket:
         await submit_ticket(websocket, config)
+        display_ready = asyncio.Event()
 
         async def drain():
             parser = Parser()
@@ -196,12 +197,13 @@ async def relay(node, config, session):
                             await websocket.send(
                                 Instruction("sync", (item.arguments[0],)).encode().decode()
                             )
+                            display_ready.set()
             except ConnectionClosed:
                 pass
 
         worker = asyncio.create_task(drain())
         try:
-            yield websocket
+            yield websocket, display_ready
         finally:
             await websocket.close()
             await worker
@@ -251,7 +253,7 @@ async def exercise(info):
     )
     password = secrets.token_urlsafe(24)
     key = asyncssh.generate_private_key("ssh-ed25519")
-    opened, commands = asyncio.Queue(), asyncio.Queue()
+    opened = asyncio.Queue()
 
     class Peer(asyncssh.SSHServer):
         def begin_auth(self, username):
@@ -264,17 +266,22 @@ async def exercise(info):
             return username == "ha-fixture" and secrets.compare_digest(value, password)
 
     async def terminal(process):
-        await opened.put(True)
-        process.stdout.write("Isolated SSH active-active proof\r\n")
-        async for line in process.stdin:
-            process.stdout.write("Keyboard received\r\n")
-            await commands.put(line.strip())
+        commands, disconnected = asyncio.Queue(), asyncio.Event()
+        await opened.put((commands, disconnected))
+        try:
+            process.stdout.write("Isolated SSH active-active proof\r\n")
+            while line := await process.stdin.readline():
+                process.stdout.write("Keyboard received\r\n")
+                await commands.put(line.strip())
+        finally:
+            disconnected.set()
 
-    async def prove(websocket, marker):
+    async def prove(websocket, commands, marker):
         for key in (*map(ord, marker), 65293):
             for pressed in ("1", "0"):
                 await websocket.send(Instruction("key", (str(key), pressed)).encode().decode())
-        require(await asyncio.wait_for(commands.get(), 12) == marker, "SSH input did not arrive.")
+        received = await asyncio.wait_for(commands.get(), 12)
+        require(received == marker, f"SSH input mismatch: {len(received)} characters.")
 
     server = await asyncssh.create_server(
         Peer, str(address), PORT, server_host_keys=[key], process_factory=terminal
@@ -287,18 +294,20 @@ async def exercise(info):
         session, csrf = info["session"], info["csrf"]
         PHASE = "first launch and cross-node replay"
         aid, cfg_a = await asyncio.to_thread(launch, WEB_A, intent_a, session, csrf)
-        async with relay(WEB_A, cfg_a, session) as a:
-            await asyncio.wait_for(opened.get(), 15)
+        async with relay(WEB_A, cfg_a, session) as (a, display_a):
+            commands_a, disconnected_a = await asyncio.wait_for(opened.get(), 15)
+            await asyncio.wait_for(display_a.wait(), 12)
             async with socket(WEB_B, cfg_a, session) as replay:
                 await submit_ticket(replay, cfg_a)
                 await asyncio.wait_for(replay.wait_closed(), 10)
             require(opened.empty(), "Replay established another native SSH connection.")
             PHASE = "independent native relays on both nodes"
             bid, cfg_b = await asyncio.to_thread(launch, WEB_B, intent_b, session, csrf)
-            async with relay(WEB_B, cfg_b, session) as b:
-                await asyncio.wait_for(opened.get(), 15)
-                await prove(a, "node-a")
-                await prove(b, "node-b")
+            async with relay(WEB_B, cfg_b, session) as (b, display_b):
+                commands_b, _ = await asyncio.wait_for(opened.get(), 15)
+                await asyncio.wait_for(display_b.wait(), 12)
+                await prove(a, commands_a, "node-a")
+                await prove(b, commands_b, "node-b")
                 await await_state(org, aid, ("active", "qualification-a", "", False, True))
                 await await_state(org, bid, ("active", "qualification-b", "", False, True))
                 PHASE = "cross-node stop HTTP"
@@ -308,6 +317,7 @@ async def exercise(info):
                 require(status == 302, f"Node B stop HTTP {status}.")
                 PHASE = "cross-node stop WebSocket"
                 await asyncio.wait_for(a.wait_closed(), 12)
+                await asyncio.wait_for(disconnected_a.wait(), 12)
                 PHASE = "cross-node stop durable state"
                 await await_state(
                     org, aid, ("ended", "qualification-a", "stop_requested", False, True)
@@ -315,16 +325,18 @@ async def exercise(info):
                 PHASE = "new ticket on node A"
                 cid, cfg_c = await asyncio.to_thread(launch, WEB_A, intent_a, session, csrf)
                 PHASE = "new native relay on node A"
-                async with relay(WEB_A, cfg_c, session) as c:
-                    await asyncio.wait_for(opened.get(), 15)
-                    await prove(c, "before-crash")
+                async with relay(WEB_A, cfg_c, session) as (c, display_c):
+                    commands_c, disconnected_c = await asyncio.wait_for(opened.get(), 15)
+                    await asyncio.wait_for(display_c.wait(), 12)
                     await await_state(org, cid, ("active", "qualification-a", "", False, True))
+                    await prove(c, commands_c, "before-crash")
                     PHASE = "surviving relay and orphan reaper"
                     emit("kill-node-a")
                     answer = await asyncio.to_thread(sys.stdin.readline, 256)
                     require(answer.strip() == "node-a-killed", "Missing host crash confirmation.")
                     await asyncio.wait_for(c.wait_closed(), 12)
-                    await prove(b, "node-b-after-crash")
+                    await asyncio.wait_for(disconnected_c.wait(), 12)
+                    await prove(b, commands_b, "node-b-after-crash")
                     await await_state(
                         org, cid, ("failed", "qualification-a", "relay_owner_lost", False, True)
                     )
