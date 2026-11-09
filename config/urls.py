@@ -85,6 +85,7 @@ urlpatterns = [
         name="business-association-withdraw",
     ),
     path("api/v1/business-records/", business_views.records_api, name="business-records-api"),
+    path("api/v1/business-source/", business_views.source_api, name="business-source-api"),
     path("connectors/business/", business_views.sources, name="business-sources"),
     path(
         "connectors/business/<uuid:source_id>/command/",

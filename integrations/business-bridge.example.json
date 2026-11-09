@@ -1,0 +1,21 @@
+{
+  "source": {
+    "url": "https://tickets.example.test/api/dossiers/{id}",
+    "headers_env": {"Authorization": "TICKETS_READ_AUTH"},
+    "fields": {
+      "external_id": "/id",
+      "reference": "/reference",
+      "source_updated_at": "/updated_at",
+      "state": "/status",
+      "title": "/title"
+    },
+    "kind": "ticket",
+    "states": {"new": "open", "validated": "approved", "resolved": "closed"}
+  },
+  "pamolive": {
+    "url": "https://pamolive.example.test",
+    "organization_id": "00000000-0000-0000-0000-000000000001",
+    "source_id": "00000000-0000-0000-0000-000000000002",
+    "token_env": "PAMOLIVE_PUBLISH_TOKEN"
+  }
+}

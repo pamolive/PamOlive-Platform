@@ -8,6 +8,19 @@
   "servers": [{"url": "/", "description": "The selected PAM-olive installation"}],
   "security": [{"businessToken": []}],
   "paths": {
+    "/api/v1/business-source/": {
+      "get": {
+        "operationId": "getBusinessSourceIdentity",
+        "summary": "Check the exact organization and source bound to this token before publishing",
+        "description": "No request body or query parameters are accepted. This call uses the same per-source rate budget as business records.",
+        "responses": {
+          "200": {"description": "Only the caller's source identity; Cache-Control: no-store", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SourceIdentity"}}}},
+          "400": {"$ref": "#/components/responses/Invalid"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
     "/api/v1/business-records/": {
       "post": {
         "operationId": "publishBusinessRead",
@@ -43,6 +56,17 @@
   "components": {
     "securitySchemes": {"businessToken": {"type": "http", "scheme": "bearer", "description": "A dedicated pobiz_ integration credential, not a telemetry token, human MFA proof or browser cookie."}},
     "schemas": {
+      "SourceIdentity": {
+        "type": "object", "additionalProperties": false,
+        "required": ["schema", "organization_id", "source_id", "source_key", "source_revision"],
+        "properties": {
+          "schema": {"type": "string", "const": "pamolive.business-source/1"},
+          "organization_id": {"type": "string", "format": "uuid"},
+          "source_id": {"type": "string", "format": "uuid"},
+          "source_key": {"type": "string"},
+          "source_revision": {"type": "integer", "minimum": 1}
+        }
+      },
       "BusinessRead": {
         "type": "object", "additionalProperties": false,
         "required": ["schema", "external_id", "sequence", "kind", "reference", "state", "source_updated_at", "observed_at"],
@@ -74,7 +98,7 @@
           "created": {"type": "boolean", "description": "Present on POST only."}
         }
       },
-      "Error": {"type": "object", "additionalProperties": false, "required": ["error"], "properties": {"error": {"type": "string", "enum": ["unauthorized", "rate_limited", "invalid_business_record", "sequence_conflict", "payload_too_large", "not_found", "application_json_required"]}}}
+      "Error": {"type": "object", "additionalProperties": false, "required": ["error"], "properties": {"error": {"type": "string", "enum": ["unauthorized", "rate_limited", "invalid_request", "invalid_business_record", "sequence_conflict", "payload_too_large", "not_found", "application_json_required"]}}}
     },
     "responses": {
       "Invalid": {"description": "Invalid fields, dates, duplicate keys or malformed query", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},

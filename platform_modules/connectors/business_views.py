@@ -311,13 +311,16 @@ def invalid_constant(value):
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def records_api(request):
-    response = _records_api(request)
+    return _private_response(_records_api(request))
+
+
+def _private_response(response):
     response["Cache-Control"] = "no-store"
     response["X-Content-Type-Options"] = "nosniff"
     return response
 
 
-def _records_api(request):
+def _authenticated_api_source(request):
     header = request.headers.get("Authorization", "")
     token = header[7:] if header.startswith("Bearer ") else ""
     try:
@@ -325,9 +328,36 @@ def _records_api(request):
     except BusinessRateLimited:
         response = JsonResponse({"error": "rate_limited"}, status=429)
         response["Retry-After"] = "60"
-        return response
+        return None, None, response
     except PermissionDenied:
-        return JsonResponse({"error": "unauthorized"}, status=401)
+        return None, None, JsonResponse({"error": "unauthorized"}, status=401)
+    return source, token, None
+
+
+@require_http_methods(["GET"])
+def source_api(request):
+    source, _, error = _authenticated_api_source(request)
+    if error is not None:
+        return _private_response(error)
+    if request.GET or request.body:
+        return _private_response(JsonResponse({"error": "invalid_request"}, status=400))
+    return _private_response(
+        JsonResponse(
+            dict(
+                schema="pamolive.business-source/1",
+                organization_id=str(source.organization_id),
+                source_id=str(source.pk),
+                source_key=source.key,
+                source_revision=source.revision,
+            )
+        )
+    )
+
+
+def _records_api(request):
+    source, token, error = _authenticated_api_source(request)
+    if error is not None:
+        return error
     try:
         if len(request.body) > 16384:
             raise RequestDataTooBig

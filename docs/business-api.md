@@ -4,7 +4,7 @@ Plusieurs outils de ticketing, de gestion des changements ou de projets peuvent 
 
 Cette API reçoit des **déclarations de sources authentifiées**. Elle ne contacte pas elle-même GLPI, Jira ou ServiceNow et ne certifie pas leur configuration. Un adaptateur dans l’outil émetteur, une automatisation existante ou un client d’intégration doit lire le système source et traduire ses champs. L’état source `approved` n’est jamais une approbation PAM-olive : l’API ne crée ni identité, ni compte, ni intention, ni droit et ne déclenche aucun provisioning.
 
-Le [contrat OpenAPI](business-api.openapi.json) décrit les deux opérations destinées aux intégrateurs. Les opérations interactives de rattachement restent protégées par la session du portail et la MFA ; elles ne sont pas accessibles avec le jeton source.
+Le [contrat OpenAPI](business-api.openapi.json) décrit les opérations destinées aux intégrateurs. Les opérations interactives de rattachement restent protégées par la session du portail et la MFA ; elles ne sont pas accessibles avec le jeton source.
 
 Le rattachement à une intention est une déclaration humaine séparée, datée et protégée par MFA. Une référence texte identique dans deux systèmes n’établit aucun lien automatique.
 
@@ -17,6 +17,29 @@ Les anciens jetons d’ingestion d’événements ne peuvent pas appeler cette A
 L’identifiant externe doit rester stable pour un même dossier dans une même source. Ne pas réutiliser une intégration pour un autre outil ou espace d’identifiants : créer une nouvelle source. Une rotation de jeton conserve l’intégration ; elle exige une nouvelle lecture sous la révision courante avant de présenter sa déclaration comme actuelle.
 
 Pour une évaluation sur le réseau local, conserver l’adresse existante de l’application. HTTP ne chiffre ni le jeton ni les références : limiter cet usage au réseau de confiance. Employer HTTPS pour une exposition distante ou des échanges sensibles. Aucun changement DNS ni reverse proxy n’est nécessaire au développement local.
+
+### Vérifier la destination du jeton
+
+`GET /api/v1/business-source/` sans paramètres ni corps renvoie les UUID de l’organisation et de la source, la clé de la source et sa révision. Il exige le jeton métier et consomme un appel dans le même budget. Comparer les deux UUID aux valeurs attendues avant de publier, même si aucun dossier n’a encore été importé. La réponse ne contient aucun jeton ni dossier.
+
+### Lire un dossier depuis un outil externe
+
+Le [client Python](../integrations/business_bridge.py) lit un dossier par GET HTTPS et peut publier ses champs utiles dans PAM-olive. Il s’exécute sur le poste ou dans une automatisation existante, sans dépendance Python supplémentaire ni conteneur à lancer. Utiliser une configuration et deux identifiants distincts par intégration : accès en lecture chez le fournisseur, jeton métier chez PAM-olive.
+
+1. Copier [la configuration d’exemple](../integrations/business-bridge.example.json). Remplacer l’adresse du fournisseur par son endpoint JSON final : `{id}` occupe un segment entier du chemin et la réponse doit contenir cet identifiant stable. Adapter les chemins JSON aux champs de l’API. Par exemple `/fields/status/name` sélectionne un libellé imbriqué. Les états non reconnus deviennent `unknown`.
+2. Renseigner l’origine de PAM-olive et les deux UUID affichés dans **Connecteurs → Systèmes métier et API**. Fournir les secrets dans les variables indiquées par `headers_env` et `token_env`, via le gestionnaire de secrets du poste ou de l’automatisation. Pour un en-tête `Authorization` du fournisseur, la variable contient sa valeur complète, préfixe compris ; pour PAM-olive, la variable contient seulement le jeton.
+3. Vérifier le mapping, puis publier explicitement. Les deux commandes sont identiques sous PowerShell, Bash et macOS depuis la racine du dépôt :
+
+   ```text
+   python -m integrations.business_bridge source-test.json 483
+   python -m integrations.business_bridge source-test.json 483 --publish
+   ```
+
+La première commande lit le fournisseur et affiche le type et l’état normalisés, sans contacter PAM-olive. La seconde vérifie d’abord l’identité du jeton, puis publie une lecture séquencée. Elle affiche l’identifiant du reçu, sans le contenu du dossier. Après une réponse de publication perdue, le client réessaie une fois avec exactement la même séquence, les mêmes dates et le même contenu. Si une autre lecture est au moins aussi récente, le client s’arrête pour éviter d’écraser l’historique.
+
+Le fournisseur doit utiliser HTTPS. Pour une autorité interne, indiquer son fichier PEM avec `--source-ca-file` ou `--platform-ca-file`. Le client ne suit pas les redirections et n’utilise pas les proxys déclarés dans l’environnement. `--allow-http-local` ne concerne que la destination PAM-olive sur une IP privée ou de bouclage littérale ; réserver cette option au pilote sur un réseau de confiance. Le client ne renouvelle pas les jetons fournisseur et ne parcourt pas un inventaire de tickets : l’automatisation lui fournit les identifiants à lire.
+
+Pour qualifier le pilote, utiliser un dossier de test par outil, y compris deux dossiers qui ont le même identifiant externe. Dans PAM-olive, vérifier qu’ils appartiennent à leurs sources respectives, rattacher l’un à une demande et faire approuver l’accès localement. Dans le détail de l’accès observé, comparer le dossier rattaché avec sa lecture source. Un état source `approved` ne doit jamais suffire à accorder un droit.
 
 ## Publier une lecture
 
