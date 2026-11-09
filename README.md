@@ -22,6 +22,8 @@ La [mobilité interne](docs/mobility.md) relie les changements de poste aux rôl
 
 PostgreSQL 16+ doit être disponible sur un serveur existant, éventuellement une autre VM. `compose.yml` contient **un seul service**, `web`. Si vous souhaitez une base locale distincte, le fichier optionnel `compose.local-db.yml` ajoute un second conteneur PostgreSQL.
 
+Lorsqu’une référence qualifiée est disponible, [installer l’image Docker sans compilation](docs/image-distribution.md) avec `compose.registry.yml`. Cette variante conserve le même service applicatif et le même PostgreSQL externe.
+
 ## Installation Linux, macOS ou NAS Synology
 
 Prérequis : Git, Docker Engine et Docker Compose v2. `make` n’est pas nécessaire. Sur Synology, utiliser Container Manager et son moteur Docker. Le rôle PostgreSQL dédié doit posséder la base PAM-olive, sans être superutilisateur.

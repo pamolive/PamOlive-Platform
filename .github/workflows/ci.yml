@@ -38,7 +38,11 @@ jobs:
         run: |
           printf 'must-not-enter-the-image' > .bootstrap-admin
           cp .bootstrap-admin .image-private-check.dump
-          docker build -t pamolive-platform:ci .
+          docker build --target production \
+            --label "org.opencontainers.image.source=https://github.com/pamolive/PamOlive-Platform" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "io.pamolive.source.license=AGPL-3.0-or-later" \
+            -t pamolive-platform:ci .
           docker run --rm --entrypoint python pamolive-platform:ci -c "from pathlib import Path; from importlib.util import find_spec; assert not Path('/app/.bootstrap-admin').exists(); assert not Path('/app/.env').exists(); assert not Path('/app/.image-private-check.dump').exists(); assert not Path('/opt/pamolive-test').exists(); assert find_spec('PIL') is None"
       - name: Verify native SSH/RDP plugins without contacting a target
         run: docker run --rm --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:ci -m deploy.check_guacd
@@ -80,3 +84,26 @@ jobs:
         run: python -m deploy.check_restore_ci --postgres-container '${{ job.services.postgres.id }}' --ha-env-file /tmp/pamolive-ha-ci.env
       - name: Verify controlled historical upgrade, rollback and exact old-column preservation
         run: python -m deploy.check_upgrade_ci --postgres-container '${{ job.services.postgres.id }}' --ha-env-file /tmp/pamolive-ha-ci.env
+      - name: Verify the image-only Compose runtime is identical
+        run: |
+          export ENV_FILE="$RUNNER_TEMP/compose-qualification.env"
+          : > "$ENV_FILE"
+          export DATABASE_URL=postgresql://fixture:fixture@db.example.test/pamolive
+          export SECRET_KEY=compose-qualification-only
+          export PAMOLIVE_IMAGE=ghcr.io/pamolive/pamolive-platform@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          docker compose --env-file "$ENV_FILE" -f compose.yml config --format json > "$RUNNER_TEMP/compose-source.json"
+          docker compose --env-file "$ENV_FILE" -f compose.registry.yml config --format json > "$RUNNER_TEMP/compose-registry.json"
+          python -m deploy.qualified_image compare-compose "$RUNNER_TEMP/compose-source.json" "$RUNNER_TEMP/compose-registry.json" --image "$PAMOLIVE_IMAGE"
+      - name: Export and verify the exact qualified image
+        run: |
+          python -m deploy.qualified_image export "$RUNNER_TEMP/pamolive-qualified-image" --revision "$GITHUB_SHA"
+          python -m deploy.qualified_image verify "$RUNNER_TEMP/pamolive-qualified-image" --revision "$GITHUB_SHA"
+      - name: Retain the qualified image for main publication
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'pamolive/PamOlive-Platform'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: pamolive-linux-amd64-${{ github.sha }}
+          path: ${{ runner.temp }}/pamolive-qualified-image/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

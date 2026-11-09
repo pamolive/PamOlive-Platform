@@ -1,0 +1,81 @@
+name: Publish qualified Docker image
+
+on:
+  workflow_dispatch:
+    inputs:
+      qualification_run:
+        description: ID of successful Platform checks on this exact main revision
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  packages: write
+  attestations: write
+  id-token: write
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main' && github.repository == 'pamolive/PamOlive-Platform'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      IMAGE_NAME: ghcr.io/pamolive/pamolive-platform
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Authenticate the qualification source and validate the downloaded archive
+        id: archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALIFICATION_RUN: ${{ inputs.qualification_run }}
+        run: |
+          set -euo pipefail
+          [[ "$QUALIFICATION_RUN" =~ ^[1-9][0-9]{0,19}$ ]]
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALIFICATION_RUN" > "$RUNNER_TEMP/qualified-run.json"
+          python3 -m deploy.qualified_image verify-run "$RUNNER_TEMP/qualified-run.json" --revision "$GITHUB_SHA"
+          gh run download "$QUALIFICATION_RUN" -R "$GITHUB_REPOSITORY" \
+            --name "pamolive-linux-amd64-$GITHUB_SHA" --dir "$RUNNER_TEMP/pamolive-qualified-image"
+          metadata="$(python3 -m deploy.qualified_image verify "$RUNNER_TEMP/pamolive-qualified-image" --revision "$GITHUB_SHA")"
+          image_id="$(jq -er '.image_id' <<< "$metadata")"
+          docker image load --input "$RUNNER_TEMP/pamolive-qualified-image/pamolive-linux-amd64.tar"
+          test "$(docker image inspect --format '{{.Id}}' pamolive-platform:ci)" = "$image_id"
+          printf 'image_id=%s\n' "$image_id" >> "$GITHUB_OUTPUT"
+      - name: Push the tested image without rebuilding
+        id: publish
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
+          QUALIFIED_IMAGE_ID: ${{ steps.archive.outputs.image_id }}
+        run: |
+          set -euo pipefail
+          tag="sha-$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker image tag pamolive-platform:ci "$IMAGE_NAME:$tag"
+          docker push "$IMAGE_NAME:$tag" | tee "$RUNNER_TEMP/pamolive-push.log"
+          digest="$(sed -nE 's/^.*digest: (sha256:[a-f0-9]{64}) size: [0-9]+$/\1/p' "$RUNNER_TEMP/pamolive-push.log")"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          docker pull "$IMAGE_NAME@$digest"
+          test "$(docker image inspect --format '{{.Id}}' "$IMAGE_NAME@$digest")" = "$QUALIFIED_IMAGE_ID"
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+      - name: Attest promotion provenance of the pushed digest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          push-to-registry: true
+      - name: Report the immutable installation reference
+        env:
+          IMAGE_DIGEST: ${{ steps.publish.outputs.digest }}
+          QUALIFICATION_RUN: ${{ inputs.qualification_run }}
+        run: |
+          {
+            printf '## Qualified Linux amd64 image\n\n'
+            printf 'Image: `%s@%s`\n\n' "$IMAGE_NAME" "$IMAGE_DIGEST"
+            printf 'Source revision: `%s`\n\n' "$GITHUB_SHA"
+            printf 'Qualification run: %s/actions/runs/%s\n' "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$QUALIFICATION_RUN"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        run: docker logout ghcr.io
