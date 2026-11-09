@@ -1,4 +1,4 @@
-"""Disposable two-node HTTP qualification; Python 3.8+ and Docker Compose, no local Django.
+"""Disposable two-node qualification; Python 3.8+ and Docker Compose, no local Django.
 
 The fixed Compose project is deliberately unrelated to production. Only its two
 containers are killed/restarted. The existing private test database is never dropped.
@@ -12,6 +12,7 @@ import hmac
 import http.client
 import json
 import os
+import queue
 import re
 import struct
 import subprocess
@@ -21,6 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 from html.parser import HTMLParser
 from http.cookies import SimpleCookie
 from pathlib import Path
+from threading import Thread
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 PROJECT = "pamolive-platform-ha-check"
@@ -130,7 +132,7 @@ def totp(secret, timestamp=None):
 
 
 class Qualification:
-    def __init__(self, docker, env_file):
+    def __init__(self, docker, env_file, *, native_pam=False):
         self.docker = docker
         self.prefix = [
             docker,
@@ -144,6 +146,7 @@ class Qualification:
         ]
         self.stage = "configuration"
         self.started = False
+        self.native_pam = native_pam
 
     def command(self, *arguments, timeout=90):
         return subprocess.run(
@@ -198,6 +201,74 @@ class Qualification:
         if run:
             arguments.extend(["--run", run])
         return json.loads(self.compose(*arguments))
+
+    def kill_node_a(self):
+        identifier, _ = self.node("node-a")
+        self.command(self.docker, "kill", "--signal", "KILL", identifier)
+
+    def native_ssh(self, run, browser):
+        _, b = self.node("node-b")
+        peer_ip = b["NetworkSettings"]["Networks"][PROJECT + "_default"]["IPAddress"]
+        session = browser.cookies["pamolive_platform_session"].value
+        csrf = browser.cookies["pamolive_platform_csrftoken"].value
+        with subprocess.Popen(
+            self.prefix
+            + [
+                "exec",
+                "-T",
+                "--user",
+                "1000:1000",
+                "node-b",
+                "python",
+                "-m",
+                "deploy.active_active_ssh",
+            ],
+            text=True,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        ) as worker:
+            messages = queue.Queue()
+
+            def read_reports():
+                for line in worker.stdout:
+                    messages.put(line)
+                messages.put("")
+
+            Thread(target=read_reports, daemon=True).start()
+            try:
+                worker.stdin.write(
+                    json.dumps(dict(run=run, peer_ip=peer_ip, session=session, csrf=csrf))
+                )
+                worker.stdin.write("\n")
+                worker.stdin.flush()
+                first = json.loads(messages.get(timeout=160))
+                if first.get("stage") == "failed":
+                    self.stage = "native SSH: " + first["phase"]
+                require(first == {"stage": "kill-node-a"}, "Native relay preparation failed.")
+                self.stage = "native SSH on surviving node and durable orphan cleanup"
+                self.kill_node_a()
+                worker.stdin.write("node-a-killed\n")
+                worker.stdin.flush()
+                report = json.loads(messages.get(timeout=85))
+                require(report.pop("stage") == "complete", "Native relay fault check failed.")
+                require(
+                    set(report)
+                    == {
+                        "both_native_relays_active",
+                        "shared_ticket_replay_refused",
+                        "stopped_on_other_node",
+                        "surviving_ssh_session_roundtrip",
+                        "lost_relay_reaped_with_partial_capture",
+                    }
+                    and all(value is True for value in report.values()),
+                    "Incomplete native relay proof.",
+                )
+                require(worker.wait(timeout=15) == 0, "Native relay fixture did not exit cleanly.")
+                return report
+            finally:
+                if worker.poll() is None:
+                    worker.kill()
 
     def execute(self):
         validate_configuration(json.loads(self.compose("config", "--format", "json")))
@@ -338,9 +409,13 @@ class Qualification:
             and state["grant_revision"] == 2,
             "Durable expiration was lost or duplicated.",
         )
+        native = {}
+        if self.native_pam:
+            self.stage = "native SSH, one-use cross-node ticket and remote stop"
+            native = self.native_ssh(data["run"], browser)
+        else:
+            self.kill_node_a()
         self.stage = "abrupt node A loss, authenticated node B continuation"
-        identifier, _ = self.node("node-a")
-        self.command(self.docker, "kill", "--signal", "KILL", identifier)
         require(
             browser.request(b, "/records/identity/" + data["identity"] + "/")[0] == 200,
             "Shared session did not survive node A loss.",
@@ -392,8 +467,9 @@ class Qualification:
             "write_after_node_loss": True,
             "session_after_node_return": True,
             "audit_valid": True,
-            "scope": "HTTP/application, same-host fault injection; "
-            "not VM/database HA or live PAM handover",
+            "native_ssh": native,
+            "scope": ("HTTP and native SSH" if native else "HTTP/application")
+            + ", same-host fault injection; not VM/database HA or live PAM handover",
         }
 
     def cleanup(self):
@@ -433,8 +509,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--docker", default="docker")
     parser.add_argument("--env-file", type=Path, required=True)
+    parser.add_argument("--native-pam", action="store_true")
     args = parser.parse_args()
-    check = Qualification(args.docker, args.env_file.resolve())
+    check = Qualification(args.docker, args.env_file.resolve(), native_pam=args.native_pam)
     try:
         report = check.execute()
     except Exception as error:

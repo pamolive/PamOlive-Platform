@@ -7,7 +7,9 @@ x-node: &node
     PAMOLIVE_ENCRYPTION_KEY: qualification-only-shared-encryption-key-never-for-production
     PAMOLIVE_HA_QUALIFICATION: '1'
     DEBUG: 'false'
-    ALLOWED_HOSTS: ha.pamolive.test,localhost,127.0.0.1
+    ALLOWED_HOSTS: ha.pamolive.test,localhost,127.0.0.1,ha-web-a,ha-web-b
+    PAMOLIVE_TARGET_HOSTS: ha-ssh-fixture:22222
+    PAMOLIVE_TARGET_NETWORKS: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
     SECURE_COOKIES: 'false'
     SECURE_SSL_REDIRECT: 'false'
     WEB_WORKERS: '1'
@@ -27,11 +29,19 @@ x-node: &node
 services:
   node-a:
     <<: *node
+    networks:
+      default:
+        aliases: [ha-web-a]
+      database: {}
     environment:
       <<: *environment
       PAMOLIVE_INSTANCE_ID: qualification-a
   node-b:
     <<: *node
+    networks:
+      default:
+        aliases: [ha-ssh-fixture, ha-web-b]
+      database: {}
     environment:
       <<: *environment
       PAMOLIVE_INSTANCE_ID: qualification-b
