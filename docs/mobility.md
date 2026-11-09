@@ -45,4 +45,6 @@ La mobilité ne désactive ni le compte du portail ni les comptes externes. Elle
 
 Les publications, propositions, décisions, liens avec les demandes IAM et attributions effectives sont attestés et liés à l’audit. PostgreSQL empêche la réécriture de ces preuves et les relations entre organisations. Les affectations sont suivies par révision et par décision d’origine : retirer puis réattribuer le même rôle ne réactive pas ses anciennes demandes.
 
+Lorsqu’une observation est rapprochée de l’intention ou du droit attribué, la [vue d’explication](business-api.md#utiliser-le-contexte-dans-lexplication-dun-accès) permet de retrouver les dossiers examinés à la mobilité. Elle ne déduit aucun lien à partir du numéro de ticket et n’étend pas le rapprochement à une partie de la session qui n’a pas été couverte.
+
 La mobilité utilise l’application et le traitement de provisioning existants. Aucun conteneur supplémentaire n’est nécessaire. Le contrôle de restauration vérifie les preuves avec la clé de l’installation.

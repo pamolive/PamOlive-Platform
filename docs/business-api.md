@@ -117,6 +117,10 @@ Un module Connecteurs désactivé rend ce contexte indisponible, sans supprimer 
 
 Les mêmes sources peuvent justifier une [proposition de mobilité](mobility.md#rattacher-un-dossier-rh-ou-métier). Le portail fixe les lectures examinées et les contrôle à nouveau à l’approbation. Le contrat HTTP d’ingestion reste inchangé : le jeton d’intégration n’a accès ni à la proposition ni à ses décisions.
 
+Pour un accès lié à un changement de poste, ouvrir **Expliquer cet accès → Vérifier l’origine de mobilité et les dossiers métier**. PamOlive remonte de l’intention ou du droit rapproché par l’évaluation signée jusqu’au rôle et à la décision de mobilité. Un autre accès portant le même numéro de ticket ne récupère pas ces preuves. La MFA protège la page et les données correspondantes dans `business_context.mobility` de l’export.
+
+L’export indique les dates exactes des rapprochements. Pour une session, chaque ligne cite uniquement les segments concernés, en intervalles à fin exclue. `reviewed_provenance_known_at_start` indique si les preuves de mobilité et les lectures examinées étaient déjà connues au début du segment, d’après les dates enregistrées et déclarées. Il ne garantit pas que la source est restée à jour pendant la session. La dernière déclaration, consultée après coup, reste séparée de la lecture examinée à la décision ; si elle ne peut pas être vérifiée, l’export conserve seulement l’historique authentifié. Ce contexte ne confirme pas l’exécution du droit sur le système distant.
+
 ## Conservation des preuves
 
 Les lectures sont signées avec tous leurs champs et leurs microsecondes, liées à l’audit de l’organisation et conservées sans réécriture. PostgreSQL refuse les modifications et suppressions des dossiers et lectures ainsi que les relations vers une autre organisation. Une correction ajoute une séquence ; elle ne remplace pas l’ancienne preuve. Les réponses et l’interface distinguent une déclaration source, une lecture récente et une autorisation locale.

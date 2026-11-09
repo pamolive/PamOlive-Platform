@@ -12,12 +12,12 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_safe
 
 from platform_core.audit import verify_chain
 from platform_core.authorization import recent_authentication
 from platform_core.memberships import set_membership
-from platform_core.models import AuditEvent, ModuleActivation, OrganizationMembership
+from platform_core.models import AuditEvent, ModuleActivation, Organization, OrganizationMembership
 from platform_core.security import ensure_recent
 from platform_core.services import (
     authorize,
@@ -34,6 +34,7 @@ from platform_modules.identity.models import Credential, ExternalAccount, Grant,
 from platform_modules.pam.models import SessionLease
 from platform_modules.pam.services import open_lease
 
+from . import mobility_context
 from .evidence import verify_evaluation
 from .models import AccessEvent, AccessIntent
 from .observations import is_managed_source, observation_context
@@ -182,7 +183,6 @@ def _business_intent_matches(evaluation):
 
 
 def _event_business_export(request, event, evaluation):
-    from platform_core.models import Organization
     from platform_modules.connectors.business_associations import intent_business_context
     from platform_modules.connectors.business_models import BusinessAssociation
 
@@ -195,27 +195,32 @@ def _event_business_export(request, event, evaluation):
         local_authorizations_modified=False,
         state="no_verified_intent_match",
     )
-    if not intents:
-        return data, None
     # Privacy check and reads share the same lock as association publication.
     # A concurrent new association must not bypass the fresh-MFA export gate.
     with transaction.atomic():
         Organization.objects.select_for_update().get(pk=request.organization.pk, active=True)
+        origins, mobility_limited = mobility_context.candidates(
+            event, evaluation, request.organization
+        )
         active = ModuleActivation.objects.filter(
             organization=request.organization, module_key="connectors", enabled=True
         ).exists()
-        if active and BusinessAssociation.objects.filter(intent__in=intents).exists():
+        if origins or (active and BusinessAssociation.objects.filter(intent__in=intents).exists()):
             challenge = ensure_recent(request)
             if challenge is not None:
                 return None, challenge
-        data["state"] = "separate_current_context"
+        if intents or origins:
+            data["state"] = "separate_current_context"
         data["intents"] = [
             intent_business_context(
                 obj.pk, event_at=event.occurred_at, evaluated_at=evaluation.evaluated_at
             )
             for obj in intents
         ]
-        data["truncated"] |= any(item["truncated"] for item in data["intents"])
+        data["mobility"] = mobility_context.project(
+            origins, organization=request.organization, limited=mobility_limited
+        )
+        data["truncated"] |= mobility_limited or any(item["truncated"] for item in data["intents"])
     return data, None
 
 
@@ -681,7 +686,12 @@ def system(request, member_id=None):
 
 
 @scoped("access")
+@transaction.atomic
 def export_event(request, object_id):
+    Organization.objects.select_for_update().get(pk=request.organization.pk, active=True)
+    authorize(
+        request.user, request.organization, roles=("admin", "operator", "reviewer", "auditor")
+    )
     event = get_object_or_404(AccessEvent.objects, pk=object_id)
     context = observation_context(event, organization=request.organization)
     evaluation = (
@@ -747,12 +757,15 @@ def export_event(request, object_id):
                 "actor_inferred_from_ownership": False,
             },
             "evaluation": {
+                "id": str(evaluation.pk),
                 "verdict": evaluation.verdict,
                 "rule_version": evaluation.rule_version,
                 "evaluated_at": evaluation.evaluated_at.isoformat(),
                 "findings": evaluation.findings,
                 "context": evaluation.context,
                 "context_hash": evaluation.context_hash,
+                "audit_id": str(evaluation.audit_id),
+                "signature": evaluation.signature,
                 "proof_verified": valid and bool(evaluation.signature),
                 "integrity_status": "signed" if evaluation.signature else "legacy_unsealed",
                 "current_interpretation_differs": managed
@@ -775,6 +788,43 @@ def export_event(request, object_id):
         }
     )
     response["Content-Disposition"] = f'attachment; filename="access-{event.pk}.json"'
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@scoped("access")
+@require_safe
+@transaction.atomic
+def event_mobility_context(request, object_id):
+    Organization.objects.select_for_update().get(pk=request.organization.pk, active=True)
+    authorize(
+        request.user, request.organization, roles=("admin", "operator", "reviewer", "auditor")
+    )
+    event = get_object_or_404(AccessEvent.objects, pk=object_id)
+    evaluation = (
+        event.evaluations.select_related("audit", "event", "intent")
+        .order_by("-evaluated_at")
+        .first()
+    )
+    if evaluation is not None and (
+        not verify_evaluation(evaluation)
+        or (
+            is_managed_source(event.source)
+            and evaluation.context_hash
+            != observation_context(event, organization=request.organization).fingerprint
+        )
+    ):
+        evaluation = None
+    origins, limited = mobility_context.candidates(event, evaluation, request.organization)
+    if origins:
+        challenge = ensure_recent(request)
+        if challenge is not None:
+            return challenge
+    result = mobility_context.project(origins, organization=request.organization, limited=limited)
+    result["evaluation_id"] = str(evaluation.pk) if evaluation is not None else None
+    response = render(
+        request, "governance/event_mobility.html", {"event": event, "mobility": result}
+    )
     response["Cache-Control"] = "no-store"
     return response
 

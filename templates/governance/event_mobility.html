@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block content %}
+<p><a href="{% url 'record-detail' 'event' event.pk %}">← Expliquer cet accès</a></p>
+<h1>Origine de mobilité de l’accès</h1>
+<p>Ce contexte est consulté après coup. Il ne modifie ni l’évaluation historique, ni l’autorisation, ni le fait observé. Il ne prouve pas une exécution sur le système distant.</p>
+{% if mobility.limited %}<p role="status">Trop de rapprochements : aucune synthèse partielle n’est présentée comme complète.</p>{% endif %}
+{% for row in mobility.rows %}
+<section class="workflow-card">
+{% if row.state == 'verified_origin' %}
+<h2>{{ row.role.name }} · révision {{ row.role.revision }}</h2>
+<p>{% if row.basis == 'grant' %}Droit attribué rapproché{% else %}Intention approuvée rapprochée{% endif %} → <a href="{% url 'record-detail' 'intent' row.intent_id %}">demande IAM</a> → <a href="{% url 'mover-business-proof' row.proposal_id %}">changement de poste et lectures signées</a>.</p>
+<ul>
+{% for match in row.matches %}
+<li><time datetime="{{ match.start }}">{{ match.start }}</time>{% if match.end %} → <time datetime="{{ match.end }}">{{ match.end }}</time> (fin exclue){% endif %} :
+{% if match.reviewed_provenance_known_at_start %}les preuves étaient déjà connues au début de ce rapprochement.
+{% else %}les preuves n’étaient pas toutes connues au début ; aucune justification rétroactive.{% endif %}</li>
+{% endfor %}
+</ul>
+{% for item in row.references %}
+<h3>{{ item.reviewed.source_key }} · {{ item.reviewed.payload.reference }}</h3>
+<p>{{ item.reviewed.payload.title }}. Lecture examinée à la décision : séquence {{ item.reviewed.sequence }}, état {{ item.reviewed.payload.state }}, reçue {{ item.reviewed.received_at }}.</p>
+{% if item.latest %}
+<p>Dernière déclaration à la consultation : séquence {{ item.latest.payload.sequence }}, état {{ item.latest.payload.state }}.
+{% if item.same_context and item.latest.current_source_assertion %}Le contenu est toujours actuel et inchangé.
+{% else %}Elle diffère ou n’est plus actuelle ; la lecture historique reste conservée.{% endif %}</p>
+{% else %}
+<p>Dernière déclaration non vérifiable ; seul l’historique signé est affiché.</p>
+{% endif %}
+{% endfor %}
+{% else %}
+<h2>Origine non vérifiable</h2>
+<p>Le lien vers le changement de poste ou sa preuve n’est pas valide. Aucun dossier métier n’est affiché pour ce rapprochement.</p>
+{% endif %}
+</section>
+{% empty %}
+<p>Aucun rapprochement signé et actuel avec une origine de mobilité n’est disponible. Cela ne prouve ni une absence de dossier ni un accès illégitime.</p>
+{% endfor %}
+{% if mobility.rows %}<p><a href="{% url 'event-export' event.pk %}">Exporter l’explication et les preuves en JSON ↓</a></p>{% endif %}
+{% endblock %}

@@ -476,6 +476,9 @@ def mover_corpus(actor, requester, organization):
     from django.utils import timezone
 
     from platform_core.authorization import recent_authentication
+    from platform_modules.access.evidence import verify_evaluation
+    from platform_modules.access.mobility_context import candidates, project
+    from platform_modules.access.services import ingest_event
     from platform_modules.approvals.services import decide
     from platform_modules.connectors.business import (
         configure_business_source,
@@ -572,6 +575,21 @@ def mover_corpus(actor, requester, organization):
             actor=actor,
             organization=organization,
         )
+    event, _ = ingest_event(
+        dict(
+            source="offline-mobility-observation",
+            external_id="offline-access",
+            identity=person,
+            account=account,
+            resource=resource,
+            method="SSO",
+            privilege="reader",
+            action="login",
+            occurred_at=timezone.now(),
+        ),
+        actor=requester,
+        organization=organization,
+    )
     second = propose("Operations", {})
     with recent_authentication(actor, organization, time.time()):
         decide_move(
@@ -584,6 +602,15 @@ def mover_corpus(actor, requester, organization):
         configure_business_source(source.pk, actor=actor, organization=organization, active=False)
     assert MoveGrant.objects.get(access__intent=intent).grant.status == "revoked"
     assert verify_mover() == 7
+    evaluation = event.evaluations.get()
+    assert verify_evaluation(evaluation) and evaluation.intent_id == intent.pk
+    matches, limited = candidates(event, evaluation, organization)
+    context = project(matches, organization=organization, limited=limited)
+    (row,) = context["rows"]
+    (ref,) = row["references"]
+    assert row["matches"][0]["reviewed_provenance_known_at_start"]
+    assert ref["reviewed"]["receipt_id"] == str(latest.pk)
+    assert not ref["latest"]["current_source_assertion"]
 
 
 def main():

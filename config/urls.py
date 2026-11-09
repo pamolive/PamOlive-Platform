@@ -344,6 +344,11 @@ urlpatterns = [
     path("system/", ui.system, name="system-status"),
     path("api/v1/events/", ui.api_events, name="api-events"),
     path("api/v1/events/<uuid:object_id>/export/", ui.export_event, name="event-export"),
+    path(
+        "events/<uuid:object_id>/mobility/",
+        ui.event_mobility_context,
+        name="event-mobility-context",
+    ),
 ]
 
 urlpatterns += extension_patterns()

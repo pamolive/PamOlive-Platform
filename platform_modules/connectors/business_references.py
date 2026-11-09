@@ -215,7 +215,7 @@ def _historical_snapshot(receipt):
 
 
 @transaction.atomic
-def reference_context(provenance, checked, *, organization):
+def reference_context(provenance, checked, *, organization, tolerate_invalid_latest=False):
     _guard(organization)
     selected, submitted = _historical(provenance, organization)
     approved = _load(checked, organization) if checked is not None else []
@@ -229,14 +229,19 @@ def reference_context(provenance, checked, *, organization):
     now = timezone.now()
     rows = []
     for index, receipt in enumerate(selected):
-        latest, status = _latest(receipt, organization, now)
+        try:
+            latest, status = _latest(receipt, organization, now)
+        except ValidationError:
+            if not tolerate_invalid_latest:
+                raise
+            latest, status = None, None
         rows.append(
             dict(
                 selected=_historical_snapshot(receipt),
                 submitted=_historical_snapshot(submitted[index]),
                 reviewed=_historical_snapshot(approved[index]) if approved else None,
                 latest=status,
-                same_context=_same_context(receipt, latest),
+                same_context=_same_context(receipt, latest) if latest is not None else None,
             )
         )
     return dict(

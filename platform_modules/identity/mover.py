@@ -142,6 +142,26 @@ def business_origin(intent):
     return None
 
 
+def observed_business_origin(link, grant=None):
+    """Verify an exact request/right origin; never decide whether an event matches it."""
+    if grant is not None:
+        _check_grant(grant)
+        if grant.access_id != link.pk:
+            raise ValidationError("Origine d’attribution incohérente.")
+    else:
+        _check_access(link)
+    decision = link.decision
+    proposal = _proof(decision.proposal)
+    if (
+        proposal.identity_id != decision.identity_id
+        or decision.body.get("proposal_signature") != proposal.signature
+        or "business" not in proposal.body
+        or not decision.body.get("business_checked")
+    ):
+        raise ValidationError("Preuve de mobilité métier incomplète.")
+    return proposal, decision
+
+
 def _guard(actor, organization, roles, *, workflow=True):
     if current_organization().pk != organization.pk:
         raise PermissionDenied
