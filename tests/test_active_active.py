@@ -1,13 +1,18 @@
 from copy import deepcopy
-from unittest import TestCase
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest.mock import AsyncMock, call, patch
+
+from websockets.exceptions import ConnectionClosed
 
 from deploy.active_active_fixture import require_test_database
+from deploy.active_active_rdp import send_keepalives
 from deploy.check_active_active import (
     PROJECT,
     Browser,
     CSRFParser,
     Qualification,
+    safe_relay_state,
     totp,
     validate_configuration,
     validate_rdp_network,
@@ -36,7 +41,35 @@ def configuration():
     return {"services": services}
 
 
+class RDPKeepaliveTests(IsolatedAsyncioTestCase):
+    async def test_browser_protocol_keepalive_only_sends_nop_and_exits_when_closed(self):
+        websocket = SimpleNamespace(
+            send=AsyncMock(side_effect=[None, ConnectionClosed(None, None)])
+        )
+        with patch("deploy.active_active_rdp.asyncio.sleep", new_callable=AsyncMock) as delay:
+            await send_keepalives(websocket)
+        self.assertEqual(delay.await_args_list, [call(5), call(5)])
+        self.assertEqual(websocket.send.await_args_list, [call("3.nop;"), call("3.nop;")])
+
+
 class ActiveActiveGuardTests(TestCase):
+    def test_rdp_state_diagnostics_report_only_known_values(self):
+        self.assertEqual(
+            safe_relay_state(["failed", "qualification-a", "relay_owner_lost", False, True]),
+            dict(
+                status="failed",
+                owner="qualification-a",
+                reason="relay_owner_lost",
+                complete=False,
+                recorded=True,
+            ),
+        )
+        self.assertEqual(
+            safe_relay_state(["secret", "session", "opaque", 1, "other"]),
+            dict(status="unknown", owner="unknown", reason="other", complete=None, recorded=None),
+        )
+        self.assertEqual(safe_relay_state(None), {"state": "unavailable"})
+
     def test_rdp_peer_network_is_private_scope_with_exact_two_nodes(self):
         info = {
             "Name": PROJECT + "_default",

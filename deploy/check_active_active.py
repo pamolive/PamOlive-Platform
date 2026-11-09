@@ -83,6 +83,36 @@ def validate_rdp_network(info, node_ids):
     )
 
 
+def safe_relay_state(values):
+    """Expose only a bounded test state, never relay IDs or arbitrary strings."""
+    if not isinstance(values, list) or len(values) != 5:
+        return {"state": "unavailable"}
+    status, owner, reason, complete, recorded = values
+    statuses = ("pending", "connecting", "active", "ended", "failed")
+    owners = ("qualification-a", "qualification-b")
+    reasons = (
+        "",
+        "stop_requested",
+        "relay_owner_lost",
+        "native_error",
+        "native_closed",
+        "client_closed",
+        "authority_lost",
+        "relay_failed",
+        "database_unavailable",
+        "relay_shutdown",
+        "ticket_expired",
+        "input_rate_exceeded",
+    )
+    return {
+        "status": status if status in statuses else "unknown",
+        "owner": owner if owner in owners else "unknown",
+        "reason": reason if reason in reasons else "other",
+        "complete": complete if type(complete) is bool else None,
+        "recorded": recorded if type(recorded) is bool else None,
+    }
+
+
 class CSRFParser(HTMLParser):
     token = None
 
@@ -351,11 +381,35 @@ class Qualification:
 
         def wait_state(organization, expected):
             deadline = time.monotonic() + 50
+            actual = {}
             while time.monotonic() < deadline:
                 result = database("state", {"organization": organization, "keys": list(expected)})
-                if result.get("relays") == expected:
+                actual = result.get("relays") or {}
+                if actual == expected:
                     return
+                if any(
+                    safe_relay_state(actual.get(key)).get("status") in ("ended", "failed")
+                    and actual[key] != value
+                    for key, value in expected.items()
+                ):
+                    break
                 time.sleep(0.5)
+            print(
+                json.dumps(
+                    {
+                        "rdp_state_mismatch": [
+                            {
+                                "slot": slot,
+                                "expected": safe_relay_state(wanted),
+                                "observed": safe_relay_state(actual.get(key)),
+                            }
+                            for slot, (key, wanted) in enumerate(expected.items(), 1)
+                        ],
+                    },
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
             raise RuntimeError("Durable RDP state or recording did not match.")
 
         with subprocess.Popen(
@@ -442,6 +496,11 @@ class Qualification:
                 require(
                     surviving == {key: before[key] for key in ("b", "c")}, "Wrong surviving relays."
                 )
+                print(
+                    "RDP node B accepted a post-fault key and returned the new target color.",
+                    flush=True,
+                )
+                self.stage = "durable RDP survivor and orphan recording state"
                 wait_state(
                     org,
                     {
