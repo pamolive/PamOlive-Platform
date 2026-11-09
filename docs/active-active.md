@@ -56,7 +56,7 @@ Le proxy transmet l'hôte public, termine TLS et **écrase** les en-têtes d'ori
 
 Une requête HTTP suivante peut arriver sur l'autre VM. Un WebSocket déjà établi reste en revanche attaché à son processus et à son moteur natif. **La perte de ce nœud interrompt sa session SSH/RDP ; elle ne migre pas une connexion TCP native vers l'autre VM.** Le contrôle et le réconciliateur clôturent les baux orphelins et marquent les captures partielles. La reprise exige une nouvelle ouverture autorisée ; aucune session n'est rejointe silencieusement et aucune MFA n'est injectée au milieu d'un transport encore ouvert.
 
-Le ticket de lancement n'est pas un secret d'affinité du répartiteur : il est partagé et consommé une seule fois en base. Une commande d'arrêt peut être déposée sur une autre instance ; le propriétaire du transport la détecte lors de son contrôle continu. Les tests natifs séparés couvrent ces contrôles et le fencing ; le test HTTP ci-dessous ne revendique pas encore un scénario PAM multi-conteneurs.
+Le ticket de lancement n'est pas un secret d'affinité du répartiteur : il est partagé et consommé une seule fois en base. Une commande d'arrêt peut être déposée sur une autre instance ; le propriétaire du transport la détecte lors de son contrôle continu.
 
 ## Qualification reproductible, sans données d'installation
 
@@ -66,7 +66,7 @@ Depuis une copie du dépôt, générer un environnement privé avec l'outil four
 
 ```sh
 python -m deploy.prepare_active_active_environment /chemin/prive/ha.env --image pamolive-platform:qualification --network reseau-prive-postgresql
-python -m deploy.check_active_active --env-file /chemin/prive/ha.env
+python -m deploy.check_active_active --env-file /chemin/prive/ha.env --native-pam
 ```
 
 Sous Windows, utiliser `py -m ...` et un chemin privé Windows ; sur un NAS, `python3 -m ...` et au besoin `--docker /usr/local/bin/docker`. Ne pas publier le fichier généré. L'outil de préparation peut aussi s'exécuter dans l'image avec le répertoire de sortie privé monté ; le pilote Docker, lui, s'exécute sur l'hôte, sans montage du socket Docker dans un conteneur.
@@ -85,8 +85,10 @@ Le pilote vérifie successivement :
 8. Le nœud A est tué brutalement ; la session authentifiée et une nouvelle écriture fonctionnent sur B.
 9. A redémarre et accepte la session existante ; les faits, révocations et chaînes d'audit partagés sont vérifiés.
 
+Avec `--native-pam`, les deux nœuds ouvrent aussi chacun une vraie session SSH WebSocket vers une cible fictive du réseau privé de test. Le pilote confirme le refus du rejeu du ticket sur B, l’arrêt de la session de A depuis B et la fermeture côté serveur SSH. Après avoir rouvert la session de A, il arrête brutalement ce nœud : la session déjà ouverte sur B répond encore au clavier, et la capture abandonnée de A est conservée comme incomplète. Sans cette option, le pilote ne qualifie que le parcours HTTP.
+
 Le pilote retire ensuite ses deux conteneurs et son réseau temporaire, jamais le réseau de base externe ni une base PostgreSQL. Il conserve les données synthétiques dans la base dédiée. En échec, des journaux privés sont conservés dans un dossier temporaire annoncé ; ne pas les publier sans revue. Une expiration d'observation n'est pas une autorisation de relancer un deuxième test sur le même projet.
 
 ## Limites de la preuve
 
-Un succès démontre une bascule **HTTP/applicative** entre deux conteneurs du même hôte. Il ne qualifie pas la panne physique d'un hôte, la partition réseau entre VM, le failover PostgreSQL, le répartiteur TLS, le débit sous charge ou une reprise native SSH/RDP sans interruption. Ces portes doivent être exécutées sur l'infrastructure cible avant une annonce de HA de production. La latence de stockage et les délais de sécurité PAM restent ceux documentés dans [les transports PAM](pam-transport.md) ; aucun délai ou contrôle n'est assoupli pour ce test.
+Un succès démontre une bascule HTTP entre deux conteneurs du même hôte. Avec `--native-pam`, il démontre aussi la continuité d’une session SSH déjà établie sur le nœud survivant, sans transfert de la session du nœud perdu. Il ne qualifie pas RDP sur deux nœuds, la panne physique d'un hôte, la partition réseau entre VM, le failover PostgreSQL, le répartiteur TLS ou le débit sous charge. Effectuer ces essais sur l'infrastructure cible avant d’annoncer une HA de production. Les délais et contrôles de sécurité restent ceux des [transports PAM](pam-transport.md).
