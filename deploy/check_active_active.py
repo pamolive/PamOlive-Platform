@@ -83,6 +83,42 @@ def validate_rdp_network(info, node_ids):
     )
 
 
+def partition_scope(network, node_a, node_b, route):
+    """Prove the exact disposable node endpoint carries the dedicated DB connection."""
+    name = network.get("Name", "")
+    network_id = network.get("Id", "")
+    members = network.get("Containers") or {}
+    a, b = (item["Id"] for item in (node_a, node_b))
+    links_a, links_b = (item["NetworkSettings"]["Networks"] for item in (node_a, node_b))
+    default = PROJECT + "_default"
+    require(
+        name != default
+        and network.get("Driver") == "bridge"
+        and re.fullmatch(r"[a-f0-9]{64}", network_id)
+        and a != b
+        and a in members
+        and b in members
+        and all(set(links) == {default, name} for links in (links_a, links_b))
+        and all(links[name].get("NetworkID") == network_id for links in (links_a, links_b)),
+        "The qualification database network must be a distinct shared bridge.",
+    )
+    addresses = {key: item.get("IPv4Address", "").split("/")[0] for key, item in members.items()}
+    require(
+        bool(route.get("client"))
+        and route["client"] == links_a[name]["IPAddress"] == addresses[a]
+        and bool(route.get("server"))
+        and sum(value == route["server"] for value in addresses.values()) == 1
+        and route["server"] not in (addresses[a], addresses[b]),
+        "The live PostgreSQL route does not use the expected network endpoints.",
+    )
+    aliases = links_a[name].get("Aliases") or []
+    require(
+        all(re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}", alias) for alias in aliases),
+        "Unexpected endpoint aliases.",
+    )
+    return network_id, a, aliases
+
+
 def safe_relay_state(values):
     """Expose only a bounded test state, never relay IDs or arbitrary strings."""
     if not isinstance(values, list) or len(values) != 5:
@@ -175,7 +211,9 @@ def totp(secret, timestamp=None):
 
 
 class Qualification:
-    def __init__(self, docker, env_file, *, native_pam=False, native_rdp=False):
+    def __init__(
+        self, docker, env_file, *, native_pam=False, native_rdp=False, database_partition=False
+    ):
         self.docker = docker
         self.prefix = [
             docker,
@@ -191,6 +229,7 @@ class Qualification:
         self.started = False
         self.native_pam = native_pam
         self.native_rdp = native_rdp
+        self.database_partition = database_partition
 
     def command(self, *arguments, timeout=90, content=None):
         return subprocess.run(
@@ -230,13 +269,13 @@ class Qualification:
             time.sleep(1)
         raise RuntimeError("Qualification node did not become ready.")
 
-    def fixture(self, action, run=""):
+    def fixture(self, action, run="", *, node="node-b", content=None):
         arguments = [
             "exec",
             "-T",
             "--user",
             "1000:1000",
-            "node-b",
+            node,
             "python",
             "-m",
             "deploy.active_active_fixture",
@@ -244,11 +283,98 @@ class Qualification:
         ]
         if run:
             arguments.extend(["--run", run])
-        return json.loads(self.compose(*arguments))
+        return json.loads(self.compose(*arguments, content=content))
 
     def kill_node_a(self):
         identifier, _ = self.node("node-a")
         self.command(self.docker, "kill", "--signal", "KILL", identifier)
+
+    def check_database_partition(self, network_name, b, browser, data, event):
+        self.stage = "validate the dedicated PostgreSQL network path"
+        _, node_a = self.node("node-a")
+        _, node_b = self.node("node-b")
+        network = json.loads(self.command(self.docker, "network", "inspect", network_name))[0]
+        require(network.get("Name") == network_name, "Unexpected database network.")
+        route = self.fixture("database-route", node="node-a")
+        network_id, container_id, aliases = partition_scope(network, node_a, node_b, route)
+        baseline = self.fixture("inspect", data["run"])
+        payload = {**event, "external_id": "ha-database-partition"}
+        self.stage = "node A loses only its database network"
+        self.command(self.docker, "network", "disconnect", network_id, container_id)
+        try:
+            detached = self.node("node-a")[1]
+            require(
+                set(detached["NetworkSettings"]["Networks"]) == {PROJECT + "_default"}
+                and detached["State"]["StartedAt"] == node_a["State"]["StartedAt"],
+                "Node A did not remain alive on the test network.",
+            )
+            observed = self.fixture(
+                "partition-probe",
+                node="node-a",
+                content=json.dumps({"event": payload, "token": data["source_token"]}),
+            )
+            require(
+                observed["health"] == 503 and observed["ingest"] in (500, 503),
+                "An isolated node must fail its health check and refuse writes.",
+            )
+            require(
+                self.fixture("inspect", data["run"]) == baseline,
+                "The rejected write changed authoritative state.",
+            )
+            require(
+                Browser().request(b, "/health/")[0] == 200
+                and browser.request(b, "/identities/")[0] == 200,
+                "Node B became unavailable during node A's database partition.",
+            )
+            status, _, response = Browser().request(
+                b, "/api/v1/events/", payload=payload, bearer=data["source_token"]
+            )
+            require(status == 201, "Node B could not commit during node A's database partition.")
+            event_id = json.loads(response)["event_id"]
+        finally:
+            self.command(
+                self.docker,
+                "network",
+                "connect",
+                *(item for alias in aliases for item in ("--alias", alias)),
+                network_id,
+                container_id,
+            )
+        self.stage = "original node A rejoins and deduplicates the committed event"
+        a = self.wait_ready("node-a")
+        returned = self.node("node-a")[1]
+        require(
+            returned["Id"] == container_id
+            and returned["State"]["StartedAt"] == node_a["State"]["StartedAt"],
+            "Node A was restarted instead of recovering its network path.",
+        )
+        require(
+            browser.request(a, "/identities/")[0] == 200,
+            "The shared session did not survive the database partition.",
+        )
+        status, _, response = Browser().request(
+            a, "/api/v1/events/", payload=payload, bearer=data["source_token"]
+        )
+        require(
+            status == 200 and json.loads(response)["event_id"] == event_id,
+            "Node A did not deduplicate the event committed by node B.",
+        )
+        require(
+            self.fixture("inspect", data["run"])
+            == {
+                **baseline,
+                "events": baseline["events"] + 1,
+                "received_audits": baseline["received_audits"] + 1,
+            },
+            "Recovery must preserve one event, one audit, and the other tenant's state.",
+        )
+        return {
+            "isolated_health_unavailable": True,
+            "isolated_write_refused": True,
+            "surviving_node_committed": True,
+            "original_node_rejoined_without_restart": True,
+            "replay_deduplicated": True,
+        }
 
     def native_ssh(self, run, browser):
         _, b = self.node("node-b")
@@ -536,7 +662,16 @@ class Qualification:
                             worker.kill()
 
     def execute(self):
-        validate_configuration(json.loads(self.compose("config", "--format", "json")))
+        config = json.loads(self.compose("config", "--format", "json"))
+        validate_configuration(config)
+        database_network = config.get("networks", {}).get("database", {})
+        network_name = database_network.get("name", "")
+        if self.database_partition:
+            require(
+                database_network.get("external") is True
+                and re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}", network_name),
+                "The partition requires an explicit external database bridge.",
+            )
         existing = self.command(
             self.docker, "ps", "-aq", "--filter", "label=com.docker.compose.project=" + PROJECT
         )
@@ -716,6 +851,10 @@ class Qualification:
             },
             "Final shared state differs from expected proofs.",
         )
+        partition = {}
+        if self.database_partition:
+            partition = self.check_database_partition(network_name, b, browser, data, event)
+            a = self.port("node-a")
         native_rdp = {}
         if self.native_rdp:
             self.stage = "independent test organization for RDP"
@@ -766,6 +905,7 @@ class Qualification:
             "audit_valid": True,
             "native_ssh": native,
             "native_rdp": native_rdp,
+            "database_partition": partition,
             "scope": scope + ", same-host fault injection; not VM/database HA or live PAM handover",
         }
 
@@ -808,9 +948,18 @@ def main():
     parser.add_argument("--env-file", type=Path, required=True)
     parser.add_argument("--native-pam", action="store_true")
     parser.add_argument("--native-rdp", action="store_true")
+    parser.add_argument(
+        "--database-partition",
+        action="store_true",
+        help="disconnect only the disposable node's proved database bridge endpoint",
+    )
     args = parser.parse_args()
     check = Qualification(
-        args.docker, args.env_file.resolve(), native_pam=args.native_pam, native_rdp=args.native_rdp
+        args.docker,
+        args.env_file.resolve(),
+        native_pam=args.native_pam,
+        native_rdp=args.native_rdp,
+        database_partition=args.database_partition,
     )
     try:
         report = check.execute()

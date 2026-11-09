@@ -5,6 +5,7 @@ import json
 import os
 import re
 import secrets
+import sys
 import uuid
 from datetime import timedelta
 
@@ -26,6 +27,31 @@ def require_test_database():
         actual_name = cursor.fetchone()[0]
     if actual_name != str(connection.settings_dict["NAME"]):
         raise RuntimeError("Qualification refuses a database routing override.")
+
+
+def database_route():
+    from django.db import connection
+
+    require_test_database()
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT host(inet_client_addr()), host(inet_server_addr())")
+        client, server = cursor.fetchone()
+    return {"client": client, "server": server}
+
+
+def partition_probe():
+    from deploy.check_active_active import Browser
+
+    if os.environ.get("PAMOLIVE_HA_QUALIFICATION") != "1":
+        raise RuntimeError("The loopback probe requires a qualification container.")
+    data = json.load(sys.stdin)
+    browser = Browser()
+    return {
+        "health": browser.request(8000, "/health/")[0],
+        "ingest": browser.request(
+            8000, "/api/v1/events/", payload=data["event"], bearer=data["token"]
+        )[0],
+    }
 
 
 def prepare():
@@ -135,12 +161,19 @@ def main():
     import django
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("prepare", "arm", "inspect"))
+    parser.add_argument(
+        "action", choices=("prepare", "arm", "inspect", "database-route", "partition-probe")
+    )
     parser.add_argument("--run", default="")
     args = parser.parse_args()
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
     django.setup()
-    result = prepare() if args.action == "prepare" else inspect_run(args.run, args.action)
+    fixture = {
+        "prepare": prepare,
+        "database-route": database_route,
+        "partition-probe": partition_probe,
+    }.get(args.action)
+    result = fixture() if fixture else inspect_run(args.run, args.action)
     print(json.dumps(result))
 
 

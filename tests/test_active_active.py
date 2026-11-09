@@ -1,7 +1,8 @@
+import json
 from copy import deepcopy
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, Mock, call, patch
 
 from websockets.exceptions import ConnectionClosed
 
@@ -12,6 +13,7 @@ from deploy.check_active_active import (
     Browser,
     CSRFParser,
     Qualification,
+    partition_scope,
     safe_relay_state,
     totp,
     validate_configuration,
@@ -41,6 +43,32 @@ def configuration():
     return {"services": services}
 
 
+def partition_topology():
+    network, name = "a" * 64, "private-postgresql"
+    a, b, db = "b" * 64, "c" * 64, "d" * 64
+    ips = {a: "172.20.0.2", b: "172.20.0.3", db: "172.20.0.4"}
+    info = {
+        "Name": name,
+        "Id": network,
+        "Driver": "bridge",
+        "Containers": {key: {"IPv4Address": ip + "/16"} for key, ip in ips.items()},
+    }
+    nodes = [
+        {
+            "Id": key,
+            "State": {"StartedAt": "fixture-start"},
+            "NetworkSettings": {
+                "Networks": {
+                    PROJECT + "_default": {},
+                    name: {"NetworkID": network, "IPAddress": ips[key], "Aliases": ["node-" + tag]},
+                }
+            },
+        }
+        for key, tag in ((a, "a"), (b, "b"))
+    ]
+    return info, *nodes, {"client": ips[a], "server": ips[db]}
+
+
 class RDPKeepaliveTests(IsolatedAsyncioTestCase):
     async def test_browser_protocol_keepalive_only_sends_nop_and_exits_when_closed(self):
         websocket = SimpleNamespace(
@@ -53,6 +81,86 @@ class RDPKeepaliveTests(IsolatedAsyncioTestCase):
 
 
 class ActiveActiveGuardTests(TestCase):
+    def test_partition_only_targets_a_database_route_proved_on_the_external_bridge(self):
+        info, a, b, route = partition_topology()
+        self.assertEqual(partition_scope(info, a, b, route), (info["Id"], a["Id"], ["node-a"]))
+        for mutation in (
+            {"client": "172.17.0.1"},
+            {"server": "172.17.0.1"},
+            {"server": route["client"]},
+            {"server": None},
+        ):
+            with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
+                partition_scope(info, a, b, {**route, **mutation})
+        for mutation in (
+            {"Name": PROJECT + "_default"},
+            {"Driver": "host"},
+            {"Containers": {a["Id"]: info["Containers"][a["Id"]]}},
+        ):
+            with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
+                partition_scope({**info, **mutation}, a, b, route)
+
+    def test_partition_reconnects_only_owned_node_even_when_probe_fails(self):
+        info, a, b, route = partition_topology()
+        detached = deepcopy(a)
+        del detached["NetworkSettings"]["Networks"][info["Name"]]
+        check = Qualification("docker", "/not-used", database_partition=True)
+        with (
+            patch.object(check, "command", side_effect=[json.dumps([info]), "", ""]) as command,
+            patch.object(
+                check, "node", side_effect=[(a["Id"], a), (b["Id"], b), (a["Id"], detached)]
+            ),
+            patch.object(check, "fixture", side_effect=[route, {}, {"health": 200, "ingest": 201}]),
+            self.assertRaisesRegex(RuntimeError, "must fail its health check"),
+        ):
+            check.check_database_partition(
+                info["Name"], 1234, Mock(), {"run": "run", "source_token": "fixture-only"}, {}
+            )
+        self.assertEqual(
+            command.call_args_list,
+            [
+                call("docker", "network", "inspect", info["Name"]),
+                call("docker", "network", "disconnect", info["Id"], a["Id"]),
+                call("docker", "network", "connect", "--alias", "node-a", info["Id"], a["Id"]),
+            ],
+        )
+
+    def test_partition_survivor_commits_then_recovered_node_deduplicates_the_exact_event(self):
+        info, a, b, route = partition_topology()
+        detached = deepcopy(a)
+        del detached["NetworkSettings"]["Networks"][info["Name"]]
+        nodes = [(a["Id"], a), (b["Id"], b), (a["Id"], detached), (a["Id"], a)]
+        initial = {"events": 2, "received_audits": 2, "other_events": 0, "audit_valid": True}
+        final = {**initial, "events": 3, "received_audits": 3}
+        event_body = json.dumps({"event_id": "fixture-event"})
+        browser = Mock()
+        browser.request.return_value = (200, None, "")
+        check = Qualification("docker", "/not-used", database_partition=True)
+        with (
+            patch.object(check, "command", side_effect=[json.dumps([info]), "", ""]),
+            patch.object(check, "node", side_effect=nodes),
+            patch.object(
+                check,
+                "fixture",
+                side_effect=[route, initial, {"health": 503, "ingest": 500}, initial, final],
+            ),
+            patch.object(check, "wait_ready", return_value=4321),
+            patch("deploy.check_active_active.Browser") as peer,
+        ):
+            peer.return_value.request.side_effect = [
+                (200, None, ""),
+                (201, None, event_body),
+                (200, None, event_body),
+            ]
+            report = check.check_database_partition(
+                info["Name"], 1234, browser, {"run": "run", "source_token": "fixture-only"}, {}
+            )
+        self.assertTrue(all(report.values()))
+        write, replay = peer.return_value.request.call_args_list[1:]
+        self.assertEqual(write.args, (1234, "/api/v1/events/"))
+        self.assertEqual(replay.args, (4321, "/api/v1/events/"))
+        self.assertEqual(write.kwargs, replay.kwargs)
+
     def test_rdp_state_diagnostics_report_only_known_values(self):
         self.assertEqual(
             safe_relay_state(["failed", "qualification-a", "relay_owner_lost", False, True]),
