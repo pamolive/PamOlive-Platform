@@ -73,11 +73,23 @@ Les observations acceptent également :
 }
 ```
 
-Ces champs complètent le corps d’événement précédent, ils ne le remplacent pas. `domain` vaut `physical`, `pam`, `remote`, `network`, `application`, `certificate`, `directory` ou `cloud`. Sans domaine connu, ne pas en inventer un. `credential_observation` vaut `identifier_only` par défaut, ou `possession_asserted` si la source déclare avoir une preuve de possession ; PAM-olive ne vérifie pas cryptographiquement cette déclaration. Aucun secret ou certificat privé n’est transmis. Un certificat gouverné reste distinct de l’identité machine qui le possède.
+Ces champs complètent le corps d’événement précédent, ils ne le remplacent pas. `domain` vaut `physical`, `pam`, `remote`, `network`, `application`, `certificate`, `directory` ou `cloud`. Sans domaine connu, ne pas en inventer un. `credential_observation` vaut `identifier_only` par défaut ou `possession_asserted` si la source déclare disposer d’une preuve. Ce champ reste une déclaration de la source, distincte du constat cryptographique décrit ci-dessous. Un certificat gouverné reste distinct de l’identité machine qui le possède.
 
 Une intention contenant un switch/port/VLAN précis utilise la suite « observation ». Ce parcours ne configure pas un NAC ou un switch et n’est pas converti en droit IAM générique, qui perdrait ces restrictions. L’intégration d’un provisioning réseau requiert un adaptateur capable de les faire appliquer.
 
 Les exports d’événements incluent les UUID et champs structurés dans `facts`, ainsi que les constats et leur version. Une réévaluation ajoute une explication, elle ne modifie ni l’observation ni les évaluations précédentes.
+
+### Vérification de la possession d’une clé de certificat
+
+Enregistrer dans l’inventaire l’empreinte SHA-256 du certificat public en DER, puis publier l’événement avec `domain: "certificate"` et l’UUID de ce certificat dans `credential`. Seule la source Bearer qui a publié l’événement peut demander le défi. Un événement saisi à la main n’est pas éligible, même si sa source affichée porte le même nom. Utiliser HTTPS sur un nom ou une adresse approuvée ; un NAS configuré seulement en HTTP ne reçoit pas les preuves.
+
+1. Appeler `POST /api/v1/events/<uuid>/certificate-challenge/` avec un objet JSON vide et le jeton de source. La réponse fournit `challenge`, `message_b64`, l’empreinte attendue et une durée de 120 secondes.
+2. Sur le système qui détient la clé privée, vérifier le format `pamolive.certificate-possession/1`, l’organisation, la source, l’événement et l’empreinte du message avant de le signer. Décoder `message_b64` en octets et signer ces octets exacts. Le message commence par `PamOlive certificate possession v1` suivi d’un saut de ligne et d’un objet JSON. Les algorithmes acceptés sont Ed25519, ECDSA P-256/SHA-256 (signature DER) et RSA-PSS/SHA-256 (MGF1 SHA-256, sel de 32 octets, clé de 2 048 à 4 096 bits).
+3. Appeler `POST /api/v1/events/<uuid>/certificate-proof/` avec le même jeton, le `challenge` intact, `certificate` (certificat public DER en base64) et `signature` (signature en base64). La clé privée ne quitte pas le système qui signe.
+
+Une preuve acceptée renvoie HTTP 201 et sa référence d’audit. Une autre preuve pour le même événement renvoie 409 sans remplacer l’original. Les deux routes partagent une limite de 30 appels par minute et par source, y compris les tentatives invalides. Le résumé figure sous `certificate_possession` dans l’export interactif et dans le détail de l’événement.
+
+La vérification atteste qu’une entité pouvait signer avec la clé correspondante au moment du défi. Elle ne valide ni une chaîne d’autorité, ni la révocation PKI, ni la localisation de la clé pendant l’accès historique. Elle ne change ni le fait, ni son évaluation, ni les droits.
 
 ## Rapports de couverture de collecte
 

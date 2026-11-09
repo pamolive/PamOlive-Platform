@@ -34,7 +34,7 @@ from platform_modules.identity.models import Credential, ExternalAccount, Grant,
 from platform_modules.pam.models import SessionLease
 from platform_modules.pam.services import open_lease
 
-from . import mobility_context
+from . import certificate_possession, mobility_context
 from .evidence import verify_evaluation
 from .models import AccessEvent, AccessIntent
 from .observations import is_managed_source, observation_context
@@ -427,6 +427,9 @@ def record_detail(request, kind, object_id):
             else [],
             "interpretation_stale": stale,
             "evaluation_valid": evaluation_valid,
+            "certificate_possession": certificate_possession.summary(obj)
+            if kind == "event"
+            else None,
             "accounts": ExternalAccount.objects.filter(identity=obj) if kind == "identity" else [],
             "grants": Grant.objects.filter(identity=obj) if kind == "identity" else [],
             "credentials": Credential.objects.filter(identity=obj) if kind == "identity" else [],
@@ -713,6 +716,7 @@ def export_event(request, object_id):
     response = JsonResponse(
         {
             "event_id": str(event.pk),
+            "certificate_possession": certificate_possession.summary(event),
             "business_context": business,
             "organization_id": str(request.organization.pk),
             "who": str(event.identity) if event.identity_id else None,

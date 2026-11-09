@@ -5,7 +5,7 @@ from platform_core import event_backfill_views
 from platform_core.extensions.urls import extension_patterns
 from platform_core.oidc import views as oidc_views
 from platform_core.security import security_settings
-from platform_modules.access import ui
+from platform_modules.access import certificate_views, ui
 from platform_modules.connectors import business_views, creation_views, teamviewer_views
 from platform_modules.connectors import views as connector_views
 from platform_modules.governance import views as governance_views
@@ -350,6 +350,17 @@ urlpatterns = [
         name="module-event-backfill",
     ),
     path("api/v1/events/", ui.api_events, name="api-events"),
+    path(
+        "api/v1/events/<uuid:object_id>/certificate-challenge/",
+        certificate_views.certificate_proof,
+        {"challenge_only": True},
+        name="certificate-challenge",
+    ),
+    path(
+        "api/v1/events/<uuid:object_id>/certificate-proof/",
+        certificate_views.certificate_proof,
+        name="certificate-proof",
+    ),
     path("api/v1/events/<uuid:object_id>/export/", ui.export_event, name="event-export"),
     path(
         "events/<uuid:object_id>/mobility/",
