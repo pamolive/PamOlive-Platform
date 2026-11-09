@@ -4,7 +4,7 @@ Le catalogue distingue désormais trois opérations : **livrer du code**, **vali
 
 Les huit modules intégrés restent disponibles sans configuration supplémentaire. Une extension est une distribution Python séparée, ajoutée à la même image applicative. Elle n’ajoute aucun conteneur permanent. L’exemple `examples/notes-extension/` n’est ni installé ni activé automatiquement, et aucune donnée de démonstration n’est créée dans une installation cliente.
 
-## Contrats effectivement disponibles : HTTP V1 et notifications V2
+## Contrats HTTP V1, notifications V2 et signaux périodiques V3
 
 Une extension expose un point d’entrée de distribution `pamolive.modules`, un manifeste JSON et un `AppConfig` Django :
 
@@ -23,9 +23,9 @@ Distribution wheel py3-none-any
     static/<package>/
 ```
 
-Consulter le [manifeste complet de l’exemple](../examples/notes-extension/pamolive_ext_notes/manifest.json). Le contrat impose une clé propre, une version canonique PEP 440 de 30 caractères maximum, une plage de compatibilité du noyau, la version d’API (`1` pour les anciens contrats HTTP, `2` pour les notifications), le package, l’AppConfig, les dépendances, les permissions et les routes. Les objets de contrat Python sont immuables.
+Consulter le [manifeste complet de l’exemple](../examples/notes-extension/pamolive_ext_notes/manifest.json). Le contrat impose une clé propre, une version canonique PEP 440 de 30 caractères maximum, une plage de compatibilité du noyau, la version d’API (`1` pour HTTP, `2` pour les notifications et `3` pour les signaux périodiques), le package, l’AppConfig, les dépendances, les permissions et les routes. Les objets de contrat Python sont immuables.
 
-Les clés des modules intégrés sont réservées. Le package d’une extension commence par `pamolive_ext_`. Ses vues sont montées uniquement sous `/extensions/<clé>/`, dans leur espace de noms `ext-<clé>`. Le noyau construit les routes depuis le manifeste et ajoute son contrôle d’accès ; l’extension ne fournit pas une racine URL libre. GET/HEAD et POST sont pris en charge ; une route POST exige une permission sensible. Le contrat HTTP V1 reste accepté avec la même représentation de manifeste signé. Les notifications nécessitent `api_version: "2"` et les deux listes d’événements explicites décrites ci-dessous. Les WebSockets et tâches tierces libres ne sont pas des contrats livrés.
+Les clés des modules intégrés sont réservées. Le package d’une extension commence par `pamolive_ext_`. Ses vues sont montées uniquement sous `/extensions/<clé>/`, dans leur espace de noms `ext-<clé>`. Le noyau construit les routes depuis le manifeste et ajoute son contrôle d’accès ; l’extension ne fournit pas une racine URL libre. GET/HEAD et POST sont pris en charge ; une route POST exige une permission sensible. Les manifestes V1 et V2 conservent leur représentation signée. Les notifications nécessitent `api_version: "2"` ou `"3"` et deux listes d’événements explicites. Les WebSockets et les commandes tierces arbitraires ne font pas partie de ces contrats.
 
 Une permission s’écrit `module.ressource.action`. Elle déclare les rôles techniques autorisés dans l’organisation et son caractère sensible. Le contrôle vérifie aussi le paquet livré, son empreinte et l’activation organisationnelle. Les actions sensibles passent par la MFA personnelle existante, avec reprise du formulaire après challenge.
 
@@ -190,3 +190,25 @@ Après avoir activé une extension dans l’organisation, ouvrir **Paramètres �
 Confirmer dans les cinq minutes. PamOlive relit l’ensemble sous le verrou de l’organisation : une livraison, un contrat ou une sélection modifiés rendent l’aperçu caduc. Réduire la période si elle contient plus de 100 événements. En cas de preuve invalide, rien n’est mis en file.
 
 Le rattrapage crée uniquement les destinataires manquants pour l’abonnement choisi et conserve le lien vers chaque événement original signé. Il ne renvoie pas un événement déjà livré, ne réinitialise pas une tentative en échec et ne modifie pas un destinataire lié à un ancien contrat. L’audit de confirmation référence le lot exact. Le processus de traitement reste le même : aucun nouveau conteneur, aucune MFA ni autorisation locale transmise à l’extension.
+
+## Déclencher une projection périodique
+
+À partir du noyau `0.2.0a18`, un module V3 peut déclarer jusqu’à quatre traitements locaux périodiques. Conserver les listes `emitted_events` et `consumed_events`, même vides, puis ajouter `periodic_signals` au manifeste signé. Par exemple :
+
+```json
+"periodic_signals": [
+  {
+    "name": "sample_refresh_v1",
+    "handler": "pamolive_ext_notes.events.record_periodic_receipt",
+    "interval_minutes": 60
+  }
+]
+```
+
+Choisir une période de 15, 60 ou 1 440 minutes. Les créneaux sont calculés en UTC selon l’horloge PostgreSQL : par exemple, un traitement horaire devient admissible à chaque heure pile. Le module et ses dépendances doivent être actifs dans l’organisation. Le premier créneau admissible commence après l’activation. Une seule notification par organisation, module, nom et créneau est mise en file, même avec plusieurs instances.
+
+Le traitement doit commencer dans les dix minutes qui suivent l’ouverture du créneau. Un arrêt prolongé ne déclenche pas de rattrapage ; un signal déjà en file mais périmé est enregistré comme `expired` sans appel au gestionnaire. Une désactivation suspend le traitement, et une nouvelle activation ne rend pas l’ancien signal exécutable. Les signaux ne sont pas proposés dans le rattrapage des événements métier.
+
+Le gestionnaire reçoit une enveloppe `core.module_schedule.elapsed.v1` avec le créneau (`payload.slot_utc`), le nom et l’empreinte de livraison. Il s’exécute dans le processus de tâches existant et le contexte de l’organisation, sans compte acteur, autorisation ou MFA. Réserver ce contrat aux projections courtes en base locale, par exemple recalculer un index. Pour contacter un service tiers, utiliser une file dédiée à cet effet et ses propres contrôles, pas le gestionnaire du signal.
+
+La commande `python -m deploy.check_extensions --postgres --periodic` exerce le signal avec une wheel V3 signée et une base de test. Le [module d’exemple](../examples/notes-extension/pamolive_ext_notes/manifest.json) garde son manifeste V2 ; le test produit une variante V3 séparée.

@@ -20,6 +20,7 @@ from django.utils.module_loading import import_string
 
 from .audit import digest, record
 from .authorization import without_interactive_authentication
+from .extensions.manifest import PERIODIC_TOPIC, PeriodicSignal
 from .models import EventAttempt, EventDelivery, ModuleEvent, Organization
 from .tenancy import current_organization, organization_context
 
@@ -139,18 +140,48 @@ def contract_hash(subscription):
     return hashlib.sha256(canonical(asdict(subscription))).hexdigest()
 
 
-def _subscriptions(organization):
+def _subscriptions(organization, *, include_periodic=False):
     from .extensions.api import require_delivery
 
     for release in settings.PAMOLIVE_EXTENSIONS:
-        if not release.manifest.consumed_events:
+        manifest = release.manifest
+        if not manifest.consumed_events and not (include_periodic and manifest.periodic_signals):
             continue
         try:
             require_delivery(organization, release.manifest.key)
         except PermissionDenied:
             continue
-        for subscription in release.manifest.consumed_events:
+        for subscription in manifest.consumed_events:
             yield release, subscription
+        if include_periodic:
+            for signal in manifest.periodic_signals:
+                yield release, signal
+
+
+def _write_event(event, *, actor=None):
+    event.signature = event_signature(event)
+    event.audit = record(
+        action="core.module_event.published.v1",
+        summary="Notification de module publiée",
+        actor=actor,
+        organization=event.organization,
+        target=event,
+        metadata={"topic": event.topic, "event_signature": event.signature},
+    )
+    event.save(force_insert=True)
+
+
+def _write_delivery(event, release, subscription):
+    delivery = EventDelivery(
+        organization=event.organization,
+        event=event,
+        consumer=release.manifest.key,
+        handler_name=subscription.name,
+        contract_hash=contract_hash(subscription),
+        available_at=event.occurred_at,
+    )
+    delivery.signature = delivery_signature(delivery)
+    delivery.save(force_insert=True)
 
 
 @transaction.atomic
@@ -170,7 +201,8 @@ def publish_domain_event(
         raise PermissionDenied("Contexte organisationnel incorrect.")
     Organization.objects.select_for_update().get(pk=organization.pk, active=True)
     if (
-        not re.fullmatch(
+        topic == PERIODIC_TOPIC
+        or not re.fullmatch(
             re.escape(emitter) + r"\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\.v[1-9][0-9]{0,3}", topic
         )
         or len(topic) > 120
@@ -200,29 +232,11 @@ def publish_domain_event(
         causation_id=parent.event_id if parent else None,
         depth=parent.depth + 1 if parent else 0,
     )
-    event.signature = event_signature(event)
-    event.audit = record(
-        action="core.module_event.published.v1",
-        summary="Notification de module publiée",
-        actor=actor,
-        organization=organization,
-        target=event,
-        metadata={"topic": topic, "event_signature": event.signature},
-    )
-    event.save()
+    _write_event(event, actor=actor)
     for release, subscription in _subscriptions(organization):
         if subscription.topic != topic:
             continue
-        delivery = EventDelivery(
-            organization=organization,
-            event=event,
-            consumer=release.manifest.key,
-            handler_name=subscription.name,
-            contract_hash=contract_hash(subscription),
-            available_at=timezone.now(),
-        )
-        delivery.signature = delivery_signature(delivery)
-        delivery.save()
+        _write_delivery(event, release, subscription)
     return event
 
 
@@ -265,7 +279,7 @@ def _process_one(organization):
             .exists()
         ):
             return False
-        subscriptions = list(_subscriptions(organization))
+        subscriptions = list(_subscriptions(organization, include_periodic=True))
         if not subscriptions:
             return False
         allowed = Q(pk__in=[])
@@ -289,9 +303,15 @@ def _process_one(organization):
             event.topic == subscription.topic
             and event.organization_id == delivery.organization_id
             and event_is_valid(event)
+            and delivery.signature.isascii()
             and hmac.compare_digest(delivery.signature, delivery_signature(delivery))
         )
         outcome, code = "invalid", "EnvelopeIntegrity"
+        if valid and isinstance(subscription, PeriodicSignal):
+            from .periodic_signals import periodic_delivery_state
+
+            outcome, code = periodic_delivery_state(event, release, subscription)
+            valid = outcome == "ready"
         if valid:
             try:
                 # Only installed signed-manifest paths reach import_string. The
@@ -342,7 +362,10 @@ def _process_one(organization):
 
 
 def process_events(organization, *, limit=10):
-    if not any(release.manifest.consumed_events for release in settings.PAMOLIVE_EXTENSIONS):
+    if not any(
+        release.manifest.consumed_events or release.manifest.periodic_signals
+        for release in settings.PAMOLIVE_EXTENSIONS
+    ):
         return 0
     if not Organization.objects.filter(pk=organization.pk, active=True).exists():
         return 0

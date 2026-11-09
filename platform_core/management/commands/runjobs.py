@@ -1,4 +1,5 @@
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 
 from django.core.management.base import BaseCommand
@@ -7,6 +8,7 @@ from django.db import close_old_connections, connections
 from platform_core.events import process_events
 from platform_core.models import Organization
 from platform_core.oidc.services import cleanup_expired
+from platform_core.periodic_signals import enqueue_periodic_signals
 from platform_modules.connectors.creation import process_creations
 from platform_modules.connectors.outbound import process_changes
 from platform_modules.connectors.teamviewer_access import process_access_observations
@@ -19,10 +21,13 @@ from platform_modules.pam.services import expire_leases
 from platform_modules.pam.sessions import reap_connections
 from platform_modules.recertification.schedules import process_schedules
 
+WORKER_COUNT = 4
+
 
 def deliver(organization):
     close_old_connections()
     try:
+        queued_signals = enqueue_periodic_signals(organization)
         notifications = process_events(organization, limit=1)
         campaigns = process_schedules(organization, limit=1)
         creations = process_creations(organization, limit=1)
@@ -32,6 +37,7 @@ def deliver(organization):
         sessions = process_sessions(organization)
         return (
             notifications
+            + queued_signals
             + campaigns
             + creations
             + changes
@@ -44,6 +50,21 @@ def deliver(organization):
         connections.close_all()
 
 
+def refill(executor, pending, organizations, queue):
+    active = {org.pk: org for org in organizations}
+    ordered = deque(key for key in queue if key in active)
+    known = set(ordered)
+    ordered.extend(key for key in active if key not in known)
+    for _ in range(len(ordered)):
+        if len(pending) >= WORKER_COUNT:
+            break
+        key = ordered.popleft()
+        ordered.append(key)
+        if key not in pending:
+            pending[key] = executor.submit(deliver, active[key])
+    return ordered
+
+
 class Command(BaseCommand):
     help = "Traiter les expirations durables ; chaque opération est verrouillée dans PostgreSQL."
 
@@ -52,7 +73,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         pending = {}
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        queue = deque()
+        with ThreadPoolExecutor(max_workers=WORKER_COUNT) as executor:
             while True:
                 close_old_connections()
                 cleanup_expired()
@@ -65,6 +87,7 @@ class Command(BaseCommand):
                     reconcile_contracts(organization)
                 if options["once"]:
                     for organization in organizations:
+                        enqueue_periodic_signals(organization)
                         process_events(organization)
                         process_schedules(organization, limit=10)
                         process_creations(organization)
@@ -78,7 +101,5 @@ class Command(BaseCommand):
                     if future.done():
                         future.result()
                         del pending[key]
-                for organization in organizations:
-                    if organization.pk not in pending and len(pending) < 4:
-                        pending[organization.pk] = executor.submit(deliver, organization)
+                queue = refill(executor, pending, organizations, queue)
                 time.sleep(5)
