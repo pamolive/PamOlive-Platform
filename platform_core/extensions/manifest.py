@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
-CORE_VERSION = "0.2.0a19"
+CORE_VERSION = "0.2.0a20"
 API_VERSION = "3"
 PERIODIC_TOPIC = "core.module_schedule.elapsed.v1"
 PERIODIC_INTERVALS = frozenset({15, 60, 1440})
