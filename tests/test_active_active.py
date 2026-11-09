@@ -4,13 +4,18 @@ from unittest.mock import patch
 
 from deploy.active_active_fixture import require_test_database
 from deploy.check_active_active import (
+    PROJECT,
     Browser,
     CSRFParser,
     Qualification,
     totp,
     validate_configuration,
+    validate_rdp_network,
 )
 from deploy.prepare_active_active_environment import environment
+from platform_modules.pam.protocol import Instruction
+from tests.fixtures.paint import PaintProof
+from tests.fixtures.rdp import RDPFixture
 
 
 def configuration():
@@ -32,6 +37,43 @@ def configuration():
 
 
 class ActiveActiveGuardTests(TestCase):
+    def test_rdp_peer_network_is_private_scope_with_exact_two_nodes(self):
+        info = {
+            "Name": PROJECT + "_default",
+            "Driver": "bridge",
+            "Labels": {"com.docker.compose.project": PROJECT},
+            "Containers": {"node-a": {}, "node-b": {}},
+        }
+        validate_rdp_network(info, ["node-a", "node-b"])
+        for key, value in (
+            ("Name", "production"),
+            ("Driver", "host"),
+            ("Labels", {"com.docker.compose.project": "production"}),
+            ("Containers", {"node-a": {}, "node-b": {}, "outside": {}}),
+        ):
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                validate_rdp_network({**info, key: value}, ["node-a", "node-b"])
+
+    def test_rdp_peer_requires_a_specific_private_ipv4_interface_for_two_nodes(self):
+        self.assertIsNone(RDPFixture().ha_bind)
+        for address in ("10.1.2.3", "172.16.2.3", "192.168.1.2"):
+            self.assertEqual(RDPFixture(ha_bind=address).ha_bind, address)
+        for address in ("0.0.0.0", "127.0.0.1", "172.32.2.1", "8.8.8.8", "::1", "host.local"):
+            with self.subTest(address=address), self.assertRaises(ValueError):
+                RDPFixture(ha_bind=address)
+
+    def test_rdp_after_fault_requires_a_new_display_color_not_an_old_frame(self):
+        pixels = PaintProof()
+        before = Instruction("cfill", ("0", "0", "187", "216", "88", "255"))
+        after = Instruction("cfill", ("0", "0", "80", "107", "215", "255"))
+        pixels.observe(before)
+        self.assertTrue(pixels.matches)
+        pixels.expect((80, 107, 215))
+        pixels.observe(before)
+        self.assertFalse(pixels.matches)
+        pixels.observe(after)
+        self.assertTrue(pixels.matches)
+
     def test_only_identical_private_two_node_test_configuration_is_accepted(self):
         validate_configuration(configuration())
         mutations = (

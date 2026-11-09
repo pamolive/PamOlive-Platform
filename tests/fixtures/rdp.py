@@ -1,6 +1,7 @@
-"""Headless loopback-only RDP/NLA fixture, without an OS login or shell."""
+"""Headless test-only RDP/NLA fixture, without an OS login or shell."""
 
 import asyncio
+import ipaddress
 import json
 import os
 import secrets
@@ -16,11 +17,23 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 BINARY = Path(os.environ.get("PAM_RDP_FIXTURE", "/opt/pamolive-test/rdp-fixture"))
+HA_PORT = 23389
+HA_NETWORKS = tuple(
+    ipaddress.IPv4Network(value) for value in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+)
+
+
+def isolated_bind(address):
+    parsed = ipaddress.IPv4Address(address)
+    if not any(parsed in network for network in HA_NETWORKS):
+        raise ValueError("Only a specific private test interface may host the RDP fixture.")
+    return str(parsed)
 
 
 class RDPFixture:
-    def __init__(self, *, redirect=False, expired=False):
+    def __init__(self, *, redirect=False, expired=False, ha_bind=None):
         self.redirect, self.expired = redirect, expired
+        self.ha_bind = isolated_bind(ha_bind) if ha_bind is not None else None
         self.password = secrets.token_urlsafe(24)
         self.process = self.reader = None
         self.events = []
@@ -34,10 +47,10 @@ class RDPFixture:
             if isinstance(value, dict) and "event" in value:
                 self.events.append(value)
 
-    async def wait(self, event, *, timeout=10, connection=None):
+    async def wait(self, event, *, timeout=10, connection=None, after=0):
         async with asyncio.timeout(timeout):
             while True:
-                for value in self.events:
+                for value in self.events[after:]:
                     if value["event"] == event and (
                         connection is None or value.get("connection") == connection
                     ):
@@ -95,6 +108,7 @@ class RDPFixture:
                     "HOME": self.directory.name,
                     "WLOG_LEVEL": "ERROR",
                     "PAM_TEST_PASSWORD": self.password,
+                    **({"PAM_TEST_HA_BIND": self.ha_bind} if self.ha_bind else {}),
                 },
                 stdout=asyncio.subprocess.PIPE,
                 stderr=self.log,
@@ -102,6 +116,8 @@ class RDPFixture:
             )
             self.reader = asyncio.create_task(self.collect())
             self.port = (await self.wait("ready"))["port"]
+            if self.ha_bind and self.port != HA_PORT:
+                raise RuntimeError("Wrong port for the isolated RDP fixture.")
             return self
         except BaseException:
             await self.__aexit__(*sys.exc_info())

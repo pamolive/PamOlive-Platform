@@ -1,4 +1,4 @@
-/* PAM-olive test-only loopback RDP peer. No OS account, shell or desktop.
+/* PAM-olive test-only RDP peer. No OS account, shell or desktop.
  * Built against public FreeRDP/WinPR APIs; never copied into production.
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
@@ -17,6 +17,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <pthread.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -117,6 +118,10 @@ static BOOL keyboard(rdpInput* input, UINT16 flags, UINT8 code) {
         event("key_a");
         return paint(input->context, 0x58d8bb);
     }
+    if (!(flags & KBD_FLAGS_RELEASE) && code == 0x30) {
+        event("key_b");
+        return paint(input->context, 0xd76b50);
+    }
     return TRUE;
 }
 
@@ -124,6 +129,10 @@ static BOOL unicode_key(rdpInput* input, UINT16 flags, UINT16 code) {
     if (!(flags & KBD_FLAGS_RELEASE) && code == 'a') {
         event("key_a");
         return paint(input->context, 0x58d8bb);
+    }
+    if (!(flags & KBD_FLAGS_RELEASE) && code == 'b') {
+        event("key_b");
+        return paint(input->context, 0xd76b50);
     }
     return TRUE;
 }
@@ -233,6 +242,19 @@ int main(int argc, char** argv) {
     struct sockaddr_in address = {0};
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    /* Only the isolated HA test may supply a specific private interface.
+     * Never bind every interface or allow a caller-selected port. */
+    const char* bind_address = getenv("PAM_TEST_HA_BIND");
+    if (bind_address) {
+        if (inet_pton(AF_INET, bind_address, &address.sin_addr) != 1)
+            return 16;
+        uint32_t ip = ntohl(address.sin_addr.s_addr);
+        if ((ip & 0xff000000U) != 0x0a000000U
+            && (ip & 0xfff00000U) != 0xac100000U
+            && (ip & 0xffff0000U) != 0xc0a80000U)
+            return 16;
+        address.sin_port = htons(23389);
+    }
     if (bind(listener, (struct sockaddr*)&address, sizeof(address)) || listen(listener, 16))
         return 8;
     socklen_t length = sizeof(address);

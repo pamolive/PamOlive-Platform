@@ -39,7 +39,7 @@ def require(condition, message):
         raise FixtureError(message)
 
 
-def prepare(run, public_key, password):
+def prepare(run, public_key, password, *, protocol="ssh", hostname=TARGET, port=PORT):
     import pyotp
     from django.contrib.auth import get_user_model
     from django.utils import timezone
@@ -61,9 +61,11 @@ def prepare(run, public_key, password):
 
     require_test_database()
     require(re.fullmatch(r"[0-9a-f]{32}", run), "Invalid qualification run.")
+    require(protocol in ("ssh", "rdp"), "Unknown fixture protocol.")
+    label = protocol.upper()
     org = Organization.objects.get(key="ha-" + run)
     actor = get_user_model().objects.get(username="ha-" + run)
-    reviewer = get_user_model().objects.create_user("ha-ssh-reviewer-" + run)
+    reviewer = get_user_model().objects.create_user(f"ha-{protocol}-reviewer-{run}")
     OrganizationMembership.objects.create(account=reviewer, organization=org, role="reviewer")
     AccountSecurity.objects.create(
         account=reviewer, encrypted_secret=cipher().encrypt(pyotp.random_base32().encode()).decode()
@@ -81,29 +83,35 @@ def prepare(run, public_key, password):
                 actor=actor,
                 organization=org,
             )
-        resource = Resource.objects.create(organization=org, name="Isolated HA SSH", kind="server")
+        resource = Resource.objects.create(
+            organization=org, name=f"Isolated HA {label}", kind="server"
+        )
         account = ExternalAccount.objects.create(
             organization=org,
             identity=identity,
             kind="privileged",
-            username="ha-fixture",
+            username="ha-fixture" if protocol == "ssh" else "fixture",
             system="HA",
         )
         endpoint = configure_endpoint(
             actor=actor,
             organization=org,
-            name="Isolated HA SSH",
+            name=f"Isolated HA {label}",
             resource=resource,
             account=account,
-            protocol="ssh",
-            hostname=TARGET,
-            port=PORT,
+            protocol=protocol,
+            hostname=hostname,
+            port=port,
             auth_method="password",
             password=password,
-            host_key=public_key,
+            **(
+                {"host_key": public_key}
+                if protocol == "ssh"
+                else {"rdp_pin": public_key, "domain": "FIXTURE"}
+            ),
         )
         verified, _ = probe_endpoint(endpoint.pk, actor=actor, organization=org)
-        require(verified, "The SSH identity probe failed.")
+        require(verified, f"The {label} identity probe failed.")
         set_endpoint_enabled(endpoint.pk, actor=actor, organization=org, enabled=True)
         intents = [
             create_record(
@@ -112,7 +120,7 @@ def prepare(run, public_key, password):
                     identity=identity,
                     resource=resource,
                     account=account,
-                    method="SSH",
+                    method=label,
                     reason=f"Isolated native active-active check on {node}",
                     fulfillment="pam",
                     starts_at=timezone.now() - timedelta(seconds=5),
