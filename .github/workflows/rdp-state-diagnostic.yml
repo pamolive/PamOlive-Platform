@@ -1,0 +1,41 @@
+name: Focused isolated RDP state diagnosis
+on:
+  push:
+    branches: [agent/rdp-state-diagnostic]
+permissions:
+  contents: read
+jobs:
+  rdp-state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: pamolive
+          POSTGRES_PASSWORD: ci-only-database-password
+          POSTGRES_DB: pamolive
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://pamolive:ci-only-database-password@127.0.0.1:5432/pamolive
+      SECRET_KEY: ci-only-secret-not-used-outside-isolated-ci-jobs
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements-dev.lock
+      - name: Build the exact application and test-only RDP peer
+        run: |
+          docker build --target production --provenance=false --sbom=false -t pamolive-platform:ci .
+          docker build --target native-test -t pamolive-platform:native-test .
+      - name: Run the existing two-node check and report safe states on failure
+        run: |
+          python -c "import os, psycopg; connection=psycopg.connect(os.environ['DATABASE_URL'], autocommit=True); connection.execute('CREATE DATABASE test_pamolive_ha OWNER pamolive'); connection.close()"
+          ha_network=$(docker inspect '${{ job.services.postgres.id }}' --format '{{json .NetworkSettings.Networks}}' | python -c "import json,sys; print(next(iter(json.load(sys.stdin))))")
+          python -m deploy.prepare_active_active_environment "$RUNNER_TEMP/rdp-ha.env" --image pamolive-platform:ci --network "$ha_network" --host postgres
+          python -m deploy.check_active_active --env-file "$RUNNER_TEMP/rdp-ha.env" --native-pam --native-rdp
