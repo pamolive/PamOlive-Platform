@@ -27,7 +27,6 @@ jobs:
         with:
           persist-credentials: false
       - name: Authenticate the qualification source and validate the downloaded archive
-        id: archive
         env:
           GH_TOKEN: ${{ github.token }}
           QUALIFICATION_RUN: ${{ inputs.qualification_run }}
@@ -39,16 +38,13 @@ jobs:
           python3 -m deploy.qualified_image verify-run "$RUNNER_TEMP/qualified-run.json" --revision "$GITHUB_SHA"
           gh run download "$QUALIFICATION_RUN" -R "$GITHUB_REPOSITORY" \
             --name "pamolive-linux-amd64-$GITHUB_SHA" --dir "$RUNNER_TEMP/pamolive-qualified-image"
-          metadata="$(python3 -m deploy.qualified_image verify "$RUNNER_TEMP/pamolive-qualified-image" --revision "$GITHUB_SHA")"
-          image_id="$(jq -er '.image_id' <<< "$metadata")"
+          python3 -m deploy.qualified_image verify "$RUNNER_TEMP/pamolive-qualified-image" --revision "$GITHUB_SHA"
           docker image load --input "$RUNNER_TEMP/pamolive-qualified-image/pamolive-linux-amd64.tar"
-          test "$(docker image inspect --format '{{.Id}}' pamolive-platform:ci)" = "$image_id"
-          printf 'image_id=%s\n' "$image_id" >> "$GITHUB_OUTPUT"
+          python3 -m deploy.qualified_image verify "$RUNNER_TEMP/pamolive-qualified-image" --revision "$GITHUB_SHA" --loaded
       - name: Push the tested image without rebuilding
         id: publish
         env:
           REGISTRY_TOKEN: ${{ github.token }}
-          QUALIFIED_IMAGE_ID: ${{ steps.archive.outputs.image_id }}
         run: |
           set -euo pipefail
           tag="sha-$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
@@ -58,7 +54,8 @@ jobs:
           digest="$(sed -nE 's/^.*digest: (sha256:[a-f0-9]{64}) size: [0-9]+$/\1/p' "$RUNNER_TEMP/pamolive-push.log")"
           [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
           docker pull "$IMAGE_NAME@$digest"
-          test "$(docker image inspect --format '{{.Id}}' "$IMAGE_NAME@$digest")" = "$QUALIFIED_IMAGE_ID"
+          python3 -m deploy.qualified_image verify-registry "$RUNNER_TEMP/pamolive-qualified-image" \
+            --revision "$GITHUB_SHA" --digest "$digest"
           printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
       - name: Attest promotion provenance of the pushed digest
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4

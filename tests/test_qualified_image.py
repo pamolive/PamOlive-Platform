@@ -1,3 +1,4 @@
+import hashlib
 import io
 import json
 import tarfile
@@ -10,7 +11,8 @@ from django.test import SimpleTestCase
 from deploy import qualified_image as image
 
 REV = "a" * 40
-CONFIG = "blobs/sha256/" + "b" * 64
+OCI_MANIFEST = "application/vnd.oci.image.manifest.v1+json"
+OCI_INDEX = "application/vnd.oci.image.index.v1+json"
 
 
 def add(tar, name, value):
@@ -18,6 +20,19 @@ def add(tar, name, value):
     member = tarfile.TarInfo(name)
     member.size = len(raw)
     tar.addfile(member, io.BytesIO(raw))
+
+
+def descriptor(value, media_type):
+    raw = json.dumps(value).encode()
+    return {
+        "digest": "sha256:" + hashlib.sha256(raw).hexdigest(),
+        "mediaType": media_type,
+        "size": len(raw),
+    }
+
+
+def blob(digest):
+    return "blobs/sha256/" + digest[7:]
 
 
 class QualifiedImageTests(SimpleTestCase):
@@ -39,12 +54,49 @@ class QualifiedImageTests(SimpleTestCase):
             },
         }
 
-    def archive_fixture(self, *, tag=None, duplicate=False):
+    def archive_fixture(self, *, tag=None, duplicate=False, oci=False, detached=False):
+        config = descriptor(self.config, "application/vnd.oci.image.config.v1+json")
+        config_path = blob(config["digest"])
+        manifest = {"schemaVersion": 2, "config": config, "layers": []}
+        target = descriptor(manifest, OCI_MANIFEST)
+        nested = {"schemaVersion": 2, "manifests": [target]}
+        index_descriptor = descriptor(nested, OCI_INDEX)
         with tarfile.open(self.archive, "w") as tar:
-            add(tar, CONFIG, self.config)
-            add(tar, "manifest.json", [{"Config": CONFIG, "RepoTags": [tag or image.TAG]}])
+            add(tar, config_path, self.config)
+            add(tar, "manifest.json", [{"Config": config_path, "RepoTags": [tag or image.TAG]}])
             if duplicate:
-                add(tar, CONFIG, self.config)
+                add(tar, config_path, self.config)
+            if oci:
+                add(tar, "index.json", {"schemaVersion": 2, "manifests": [index_descriptor]})
+                add(tar, blob(index_descriptor["digest"]), nested)
+                add(
+                    tar,
+                    blob(target["digest"]),
+                    {**manifest, "unexpected": True} if detached else manifest,
+                )
+        return config, target, index_descriptor
+
+    def test_classic_config_and_containerd_manifest_ids_both_bind_to_the_archive(self):
+        config, manifest, index = self.archive_fixture(oci=True)
+        archived = image.archive_identity(self.archive, REV)
+        self.assertEqual(archived.config_id, config["digest"])
+        runtime = {"Os": "linux", "Architecture": "amd64", "Config": self.config["config"]}
+        image.bind_engine_image({**runtime, "Id": config["digest"]}, archived, REV)
+        for target in (manifest, index):
+            info = {**runtime, "Id": target["digest"], "Descriptor": target}
+            image.bind_engine_image(info, archived, REV)
+        unrelated = {"digest": "sha256:" + "b" * 64}
+        with self.assertRaisesMessage(image.QualificationError, "OCI target"):
+            image.bind_engine_image(
+                {**runtime, "Id": unrelated["digest"], "Descriptor": unrelated}, archived, REV
+            )
+        with self.assertRaisesMessage(image.QualificationError, "configuration"):
+            image.bind_engine_image({**runtime, "Id": manifest["digest"]}, archived, REV)
+
+    def test_containerd_descriptor_must_hash_to_exact_manifest(self):
+        self.archive_fixture(oci=True, detached=True)
+        with self.assertRaisesMessage(image.QualificationError, "descriptor digest or size"):
+            image.archive_identity(self.archive, REV)
 
     def test_exact_archive_revision_checksum_and_image_id_are_bound(self):
         self.archive_fixture()
