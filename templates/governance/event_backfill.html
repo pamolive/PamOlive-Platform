@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block content %}
+<p><a href="{% url 'system-status' %}">← Notifications entre modules</a></p>
+<h1>Rattrapage d’événements</h1>
+<p>Choisir un abonnement actif et une période de 31 jours maximum. Le rattrapage met en file des faits signés déjà publiés. Il ne réécrit aucune notification, ne transmet pas votre MFA au module et n’accorde aucun droit d’accès.</p>
+{% if subscribed %}
+<form method="post" class="erp-form">
+{% csrf_token %}
+{{ form.as_p }}
+<button class="button subtle" name="command" value="preview">Prévisualiser</button>
+{% if plan %}
+<section class="workflow-card">
+<h2>{{ plan.scope.topic }}</h2>
+<p>Destinataire : {{ plan.scope.consumer }} · {{ plan.scope.handler }}. {{ plan.ready }} notification(s) à ajouter. L’aperçu est valable cinq minutes.</p>
+{% if plan.truncated %}<p role="alert">Plus de 100 événements correspondent. Réduisez la période ; aucun envoi partiel n’est autorisé.</p>{% endif %}
+{% if plan.blocked %}<p role="alert">Une preuve est invalide. Aucun rattrapage ne sera mis en file pour cet aperçu.</p>{% endif %}
+<div class="table-wrap">
+<table>
+<thead><tr><th>Date de publication</th><th>Événement</th><th>Décision de mise en file</th></tr></thead>
+<tbody>
+{% for row in plan.rows %}
+<tr><td>{{ row.occurred_at }}</td><td><code>{{ row.event }}</code></td><td>
+{% if row.state == 'ready' %}À ajouter
+{% elif row.state == 'existing' %}Déjà enregistré, inchangé
+{% elif row.state == 'old_contract' %}Ancien contrat, inchangé
+{% else %}Preuve invalide, aucun envoi{% endif %}
+</td></tr>
+{% empty %}<tr><td colspan="3">Aucun événement dans la période.</td></tr>{% endfor %}
+</tbody>
+</table>
+</div>
+{% if plan.ready and not plan.truncated and not plan.blocked %}
+<button class="button" name="command" value="submit">Confirmer la mise en file</button>
+{% endif %}
+</section>
+{% endif %}
+</form>
+{% else %}<p>Aucun abonnement d’extension n’est actif dans cette organisation.</p>{% endif %}
+{% endblock %}

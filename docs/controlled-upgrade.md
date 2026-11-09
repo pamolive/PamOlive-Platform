@@ -1,6 +1,6 @@
 # Mise à niveau contrôlée vers 0.2.0a13
 
-Le schéma est inchangé de `0.2.0a13` à `0.2.0a16`. Pour changer de version dans cette plage, qualifier une sauvegarde avec l’image candidate et vérifier un plan vide ; ne pas lancer d’application de migration. Une fois des propositions avec preuves métier créées, ne pas redémarrer `a13` sans procédure de retour validée : il ne contrôle pas ces nouveaux rattachements. La vue d’explication d’`a15` et le contrôle d’identité de source d’`a16` n’introduisent aucun nouveau format de preuve.
+Le schéma est inchangé de `0.2.0a13` à `0.2.0a17`. Pour changer de version dans cette plage, qualifier une sauvegarde avec l’image candidate et vérifier un plan vide ; ne pas lancer d’application de migration. Une fois des propositions avec preuves métier créées, ne pas redémarrer `a13` sans procédure de retour validée : il ne contrôle pas ces nouveaux rattachements. Le rattrapage d’événements d’`a17` conserve le format existant des notifications signées.
 
 La version `0.2.0a13` ajoute les rôles métier versionnés et le parcours de mobilité interne. La mise à niveau depuis `0.2.0a8` à `0.2.0a12` doit préserver les comptes, les organisations, les secrets chiffrés, les observations et les décisions antérieures. Elle impose une interruption temporaire de toutes les instances applicatives ; PostgreSQL reste disponible.
 

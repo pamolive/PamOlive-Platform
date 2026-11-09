@@ -18,7 +18,7 @@ from django.db.models import Q
 from django.utils import timezone
 from django.utils.module_loading import import_string
 
-from .audit import record
+from .audit import digest, record
 from .authorization import without_interactive_authentication
 from .models import EventAttempt, EventDelivery, ModuleEvent, Organization
 from .tenancy import current_organization, organization_context
@@ -102,6 +102,23 @@ def event_data(event):
 
 def event_signature(event):
     return signature(b"pamolive.module-event.v1", event_data(event))
+
+
+def event_is_valid(event):
+    try:
+        payload_bytes(event.payload)
+        audit = event.audit
+        return (
+            hmac.compare_digest(event.signature, event_signature(event))
+            and audit.organization_id == event.organization_id
+            and audit.action == "core.module_event.published.v1"
+            and audit.object_type == event._meta.label_lower
+            and audit.object_id == str(event.pk)
+            and audit.event_hash == digest(audit)
+            and audit.metadata.get("event_signature") == event.signature
+        )
+    except (AttributeError, TypeError, ValueError, ValidationError):
+        return False
 
 
 def delivery_signature(delivery):
@@ -266,20 +283,13 @@ def _process_one(organization):
         release, subscription = by_contract[
             (delivery.consumer, delivery.handler_name, delivery.contract_hash)
         ]
-        event = ModuleEvent.objects.get(pk=delivery.event_id)
+        event = ModuleEvent.objects.select_related("audit").get(pk=delivery.event_id)
         delivery.attempts += 1
-        try:
-            payload_bytes(event.payload)
-            bounded = True
-        except ValidationError:
-            bounded = False
-        valid = bounded and (
+        valid = (
             event.topic == subscription.topic
             and event.organization_id == delivery.organization_id
-            and hmac.compare_digest(event.signature, event_signature(event))
+            and event_is_valid(event)
             and hmac.compare_digest(delivery.signature, delivery_signature(delivery))
-            and event.audit.organization_id == event.organization_id
-            and event.audit.metadata.get("event_signature") == event.signature
         )
         outcome, code = "invalid", "EnvelopeIntegrity"
         if valid:

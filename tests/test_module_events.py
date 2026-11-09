@@ -10,6 +10,7 @@ from unittest import skipUnless
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core import signing
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.management import call_command
 from django.db import DatabaseError, close_old_connections, connection, connections, transaction
@@ -17,6 +18,7 @@ from django.test import TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from platform_core import event_backfill
 from platform_core.audit import record, verify_chain
 from platform_core.authorization import recent_authentication, require_recent_authentication
 from platform_core.events import payload_bytes, process_events
@@ -31,6 +33,7 @@ from platform_core.models import (
     ModuleActivation,
     ModuleEvent,
     Organization,
+    OrganizationMembership,
 )
 from platform_core.tenancy import current_organization, organization_context
 from platform_modules.access.services import create_record, revoke_identity
@@ -95,6 +98,193 @@ class ModuleEventTests(TransactionTestCase):
         Identity.objects.create(
             organization=current_organization(), kind="machine", name="Projection"
         )
+
+    def historic_identity(self):
+        self.activation.enabled = False
+        self.activation.save(update_fields=["enabled"])
+        identity = create_record(
+            "identity",
+            {"name": "Historical person", "kind": "human"},
+            actor=self.actor,
+            organization=self.org,
+        )
+        self.activation.enabled = True
+        self.activation.save(update_fields=["enabled"])
+        return ModuleEvent.objects.get(aggregate_id=str(identity.pk))
+
+    def backfill_scope(self):
+        end = timezone.now()
+        return dict(
+            actor=self.actor,
+            organization=self.org,
+            selected="example_notes:identity_receipt_v1",
+            start=end - timedelta(days=1),
+            end=end,
+        )
+
+    def test_historical_backfill_is_reviewed_audited_and_delivered_once_without_mfa(self):
+        historic = self.historic_identity()
+        create_record(
+            "identity",
+            {"name": "Already queued person", "kind": "human"},
+            actor=self.actor,
+            organization=self.org,
+        )
+        with organization_context(self.other):
+            create_record(
+                "identity",
+                {"name": "Foreign person", "kind": "human"},
+                actor=self.actor,
+                organization=self.other,
+            )
+        original = EventDelivery.objects.get()
+        before = ModuleEvent.objects.count()
+        arguments = self.backfill_scope()
+        with recent_authentication(self.actor, self.org, time.time()):
+            plan, token = event_backfill.preview(**arguments)
+            self.assertEqual(plan["ready"], 1)
+            self.assertEqual([row["state"] for row in plan["rows"]], ["ready", "existing"])
+            self.assertEqual(EventDelivery.objects.count(), 1)
+            self.assertEqual(event_backfill.submit(**arguments, token=token), 1)
+            with self.assertRaisesMessage(ValidationError, "périmètre a changé"):
+                event_backfill.submit(**arguments, token=token)
+        self.assertEqual(ModuleEvent.objects.count(), before)
+        self.assertEqual(EventDelivery.unscoped.filter(organization=self.other).count(), 0)
+        queued = EventDelivery.objects.get(event=historic)
+        original.refresh_from_db()
+        self.assertEqual(original.attempts, 0)
+        self.assertEqual(queued.status, "pending")
+        review = AuditEvent.objects.get(action="core.module_event.backfill_requested.v1")
+        self.assertEqual(review.actor, self.actor)
+        self.assertEqual(
+            review.metadata["recipients"], [{"event": str(historic.pk), "delivery": str(queued.pk)}]
+        )
+
+        def consume(envelope):
+            self.assertEqual(envelope.organization_id, str(self.org.pk))
+            with self.assertRaises(PermissionDenied):
+                require_recent_authentication(self.actor, self.org)
+            self.project(envelope)
+
+        with recent_authentication(self.actor, self.org, time.time()):
+            with patch("platform_core.events.import_string", return_value=consume):
+                self.assertEqual(process_events(self.org), 2)
+                self.assertEqual(process_events(self.org), 0)
+        self.assertEqual(EventAttempt.objects.get(delivery=queued).outcome, "delivered")
+        self.assertEqual(Identity.objects.filter(name="Projection").count(), 2)
+        self.assertTrue(verify_chain(self.org))
+
+    def test_backfill_refuses_an_expired_foreign_or_changed_preview(self):
+        self.historic_identity()
+        arguments = self.backfill_scope()
+        other_actor = get_user_model().objects.create_superuser("second-admin")
+        AccountSecurity.objects.create(account=other_actor, encrypted_secret="fixture-enabled")
+        with self.assertRaises(PermissionDenied):
+            event_backfill.preview(**arguments)
+        with recent_authentication(self.actor, self.org, time.time()):
+            plan, token = event_backfill.preview(**arguments)
+            with patch.object(signing.TimestampSigner, "timestamp", return_value="1"):
+                _, expired = event_backfill.preview(**arguments)
+            with self.assertRaisesMessage(ValidationError, "aperçu n’est plus valide"):
+                event_backfill.submit(**arguments, token=expired)
+            shifted = {**arguments, "start": arguments["start"] + timedelta(minutes=1)}
+            with self.assertRaisesMessage(ValidationError, "périmètre a changé"):
+                event_backfill.submit(**shifted, token=token)
+        with recent_authentication(other_actor, self.org, time.time()):
+            with self.assertRaisesMessage(ValidationError, "périmètre a changé"):
+                event_backfill.submit(**{**arguments, "actor": other_actor}, token=token)
+        with (
+            organization_context(self.other),
+            recent_authentication(self.actor, self.other, time.time()),
+        ):
+            with self.assertRaises(PermissionDenied):
+                event_backfill.submit(**arguments, token=token)
+        self.assertEqual(plan["ready"], 1)
+        self.assertFalse(EventDelivery.objects.exists())
+
+    def test_backfill_never_rewrites_a_prior_contract(self):
+        old = create_record(
+            "identity",
+            {"name": "Old release", "kind": "human"},
+            actor=self.actor,
+            organization=self.org,
+        )
+        first = EventDelivery.objects.get(event__aggregate_id=str(old.pk))
+        historical = self.historic_identity()
+        # Simulate installing a separately admitted version which keeps the logical
+        # subscriber's name but changes its handler contract.
+        self.release.manifest = replace(
+            self.manifest,
+            consumed_events=tuple(
+                replace(item, handler=item.handler + "_changed")
+                if item.name == "identity_receipt_v1"
+                else item
+                for item in self.manifest.consumed_events
+            ),
+        )
+        self.release.release_hash = "e" * 64
+        ExtensionDeployment.objects.filter(module_key="example_notes").update(
+            release_hash=self.release.release_hash
+        )
+        self.activation.release_hash = self.release.release_hash
+        self.activation.save(update_fields=["release_hash"])
+        arguments = self.backfill_scope()
+        with recent_authentication(self.actor, self.org, time.time()):
+            plan, token = event_backfill.preview(**arguments)
+            self.assertEqual([row["state"] for row in plan["rows"]], ["old_contract", "ready"])
+            self.assertEqual(event_backfill.submit(**arguments, token=token), 1)
+        reloaded = EventDelivery.objects.get(pk=first.pk)
+        self.assertEqual(reloaded.signature, first.signature)
+        self.assertEqual(reloaded.contract_hash, first.contract_hash)
+        self.assertNotEqual(
+            EventDelivery.objects.get(event=historical).contract_hash, first.contract_hash
+        )
+
+    def test_backfill_rejects_invalid_evidence_and_refuses_truncated_batches(self):
+        self.historic_identity()
+        self.historic_identity()
+        arguments = self.backfill_scope()
+        with recent_authentication(self.actor, self.org, time.time()):
+            with patch.object(event_backfill, "LIMIT", 1):
+                plan, token = event_backfill.preview(**arguments)
+                self.assertTrue(plan["truncated"])
+                with self.assertRaisesMessage(ValidationError, "ne peut pas être mis en file"):
+                    event_backfill.submit(**arguments, token=token)
+            with patch.object(event_backfill, "event_is_valid", return_value=False):
+                plan, token = event_backfill.preview(**arguments)
+                self.assertTrue(plan["blocked"])
+                with self.assertRaisesMessage(ValidationError, "ne peut pas être mis en file"):
+                    event_backfill.submit(**arguments, token=token)
+        self.assertFalse(EventDelivery.objects.exists())
+
+    def test_backfill_ui_requires_admin_and_mfa_and_never_discloses_event_payload(self):
+        self.historic_identity()
+        args = self.backfill_scope()
+        fields = {key: str(args[key]) for key in ("selected", "start", "end")}
+        url = reverse("module-event-backfill")
+        self.assertEqual(self.client.get(url).status_code, 302)
+        operator = get_user_model().objects.create_user("backfill-operator")
+        OrganizationMembership.objects.create(
+            organization=self.org, account=operator, role="operator"
+        )
+        self.client.force_login(operator)
+        self.assertEqual(self.client.get(url).status_code, 403)
+        self.client.force_login(self.actor)
+        session = self.client.session
+        session["organization_id"] = str(self.org.pk)
+        session.save()
+        self.assertEqual(self.client.post(url, dict(fields, command="preview")).status_code, 302)
+        session = self.client.session
+        session["mfa_verified_at"] = time.time()
+        session.save()
+        response = self.client.post(url, dict(fields, command="preview"))
+        self.assertContains(response, "Confirmer la mise en file")
+        self.assertNotContains(response, "Historical person")
+        self.assertIn("no-store", response["Cache-Control"])
+        token = response.context["form"].data["token"]
+        result = self.client.post(url, dict(fields, command="submit", token=token))
+        self.assertRedirects(result, reverse("system-status"), fetch_redirect_response=False)
+        self.assertEqual(EventDelivery.objects.count(), 1)
 
     def test_publisher_enforces_declared_topic_mfa_delivery_and_tenant(self):
         with self.assertRaises(PermissionDenied):
@@ -339,6 +529,34 @@ class ModuleEventTests(TransactionTestCase):
         self.assertEqual(sum(results), 1)
         self.assertEqual(Identity.objects.count(), 1)
         self.assertEqual(EventAttempt.objects.count(), 1)
+
+    @skipUnless(connection.vendor == "postgresql", "PostgreSQL organization lock")
+    def test_concurrent_backfill_confirmations_create_only_one_recipient_and_audit(self):
+        self.historic_identity()
+        arguments = self.backfill_scope()
+        with recent_authentication(self.actor, self.org, time.time()):
+            _, token = event_backfill.preview(**arguments)
+
+        def submit():
+            close_old_connections()
+            try:
+                with (
+                    organization_context(self.org),
+                    recent_authentication(self.actor, self.org, time.time()),
+                ):
+                    return event_backfill.submit(**arguments, token=token)
+            except ValidationError:
+                return 0
+            finally:
+                connections.close_all()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _: submit(), range(2)))
+        self.assertCountEqual(results, [0, 1])
+        self.assertEqual(EventDelivery.objects.count(), 1)
+        self.assertEqual(
+            AuditEvent.objects.filter(action="core.module_event.backfill_requested.v1").count(), 1
+        )
 
     @skipUnless(connection.vendor == "postgresql", "PostgreSQL immutable and tenant guards")
     def test_raw_sql_cannot_rewrite_event_or_recipient_scope(self):

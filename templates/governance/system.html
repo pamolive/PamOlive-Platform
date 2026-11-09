@@ -8,6 +8,7 @@
 <p>Le mot de passe initial s’applique uniquement à un nouveau compte. Un compte existant extérieur à cette organisation ne peut être ajouté que par un administrateur de plateforme connecté localement.</p>
 <p>Désactiver l’appartenance retire son rôle dans cette organisation, sans désactiver le compte global ni ses autres appartenances. Un administrateur de plateforme conserve son autorité de récupération. Cela ne remplace pas le départ d’une identité IAM ni la révocation de ses comptes externes. Le dernier administrateur actif est protégé.</p>
 <h2>Notifications entre modules</h2>
+<p><a class="button subtle" href="{% url 'module-event-backfill' %}">Rattrapage d’événements</a></p>
 <p>Traitement durable dans le conteneur applicatif. Une notification décrit un fait ; elle ne donne aucun droit d’accès. Les modules désactivés conservent leurs destinataires en attente.</p>
 <div class="metrics">{% for state in notification_states %}<article><b>{{ state.count }}</b><span>{{ state.status }}</span></article>{% empty %}<p>Aucune notification destinée à une extension dans cette organisation.</p>{% endfor %}</div>
 <div class="table-wrap"><table><thead><tr><th>Événement</th><th>Module destinataire</th><th>Gestionnaire</th><th>État</th><th>Tentatives</th></tr></thead><tbody>{% for notification in notifications %}<tr><td>{{ notification.event.topic }}</td><td>{{ notification.consumer }}</td><td>{{ notification.handler_name }}</td><td>{{ notification.status }}</td><td>{{ notification.attempts }}</td></tr>{% endfor %}</tbody></table></div>

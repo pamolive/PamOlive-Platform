@@ -3,6 +3,7 @@
 import io
 import os
 import time
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest import skipUnless
 from unittest.mock import patch
@@ -15,6 +16,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import Client, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from platform_core.audit import verify_chain
 from platform_core.authorization import recent_authentication
@@ -125,6 +127,45 @@ class ExtensionRuntimeTests(TestCase):
         with self.assertRaises(ValidationError):
             self.activate()
         self.assertFalse(ExtensionDeployment.objects.exists())
+
+    def test_installed_wheel_consumes_a_pre_activation_event_after_reviewed_backfill(self):
+        from pamolive_ext_notes.models import EventReceipt
+
+        from platform_core.events import process_events
+        from platform_core.models import EventDelivery, ModuleEvent
+        from platform_modules.access.services import create_record
+
+        identity = create_record(
+            "identity",
+            {"name": "Pre-activation identity", "kind": "human"},
+            actor=self.admin,
+            organization=self.org,
+        )
+        historical = ModuleEvent.objects.get(aggregate_id=str(identity.pk))
+        self.enabled()
+        self.assertFalse(EventDelivery.objects.exists())
+        self.client.force_login(self.admin)
+        session = self.client.session
+        session["organization_id"] = str(self.org.pk)
+        session["mfa_verified_at"] = time.time()
+        session.save()
+        args = {
+            "selected": "example_notes:identity_receipt_v1",
+            "start": (historical.occurred_at - timedelta(seconds=1)).isoformat(),
+            "end": timezone.now().isoformat(),
+        }
+        route = reverse("module-event-backfill")
+        response = self.client.post(route, dict(args, command="preview"))
+        self.assertContains(response, "Confirmer la mise en file")
+        token = response.context["form"].data["token"]
+        self.assertLess(len(token), 500)
+        response = self.client.post(route, dict(args, command="submit", token=token))
+        self.assertRedirects(response, reverse("system-status"), fetch_redirect_response=False)
+        self.assertEqual(process_events(self.org), 1)
+        self.assertEqual(process_events(self.org), 0)
+        self.assertEqual(EventReceipt.objects.get().aggregate_id, str(identity.pk))
+        self.assertEqual(EventDelivery.objects.get().event_id, historical.pk)
+        self.assertTrue(verify_chain(self.org))
 
     def test_deliver_refuses_pending_migrations_without_marking_ready(self):
         with patch(

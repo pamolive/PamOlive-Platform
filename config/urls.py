@@ -1,6 +1,7 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
+from platform_core import event_backfill_views
 from platform_core.extensions.urls import extension_patterns
 from platform_core.oidc import views as oidc_views
 from platform_core.security import security_settings
@@ -343,6 +344,11 @@ urlpatterns = [
     path("pam/<uuid:object_id>/lease/", ui.lease, name="pam-lease"),
     path("audit/", ui.audit, name="audit-log"),
     path("system/", ui.system, name="system-status"),
+    path(
+        "system/notifications/backfill/",
+        event_backfill_views.backfill,
+        name="module-event-backfill",
+    ),
     path("api/v1/events/", ui.api_events, name="api-events"),
     path("api/v1/events/<uuid:object_id>/export/", ui.export_event, name="event-export"),
     path(
