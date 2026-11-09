@@ -42,6 +42,16 @@ async def acknowledge(expected):
     require(actual.strip() == expected, "Missing or invalid host acknowledgement.")
 
 
+async def send_keepalives(websocket):
+    """Match Guacamole.Client 1.6's browser keepalive, not synthetic keyboard input."""
+    try:
+        while True:
+            await asyncio.sleep(5)
+            await websocket.send(Instruction("nop", ()).encode().decode())
+    except ConnectionClosed:
+        pass
+
+
 @asynccontextmanager
 async def relay(node, config, session):
     async with socket(node, config, session) as websocket:
@@ -67,9 +77,12 @@ async def relay(node, config, session):
                 pass
 
         worker = asyncio.create_task(drain())
+        keepalives = asyncio.create_task(send_keepalives(websocket))
         try:
             yield websocket, display, pixels, worker
         finally:
+            keepalives.cancel()
+            await asyncio.gather(keepalives, return_exceptions=True)
             await websocket.close()
             await worker
 
