@@ -14,7 +14,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import Client, TestCase
+from django.test import Client, TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -131,33 +131,6 @@ class ExtensionRuntimeTests(TestCase):
         with self.assertRaises(ValidationError):
             self.activate()
         self.assertFalse(ExtensionDeployment.objects.exists())
-
-    @skipUnless(PERIODIC, "Requires the separately signed V3 schedule fixture")
-    def test_existing_worker_delivers_one_signed_periodic_signal_to_real_wheel(self):
-        from pamolive_ext_notes.models import EventReceipt
-
-        from platform_core.models import EventAttempt, EventDelivery, ModuleEvent
-
-        self.enabled()
-        clock = (timezone.now() - timedelta(days=1)).astimezone(UTC)
-        slot = clock.replace(minute=0, second=0, microsecond=0)
-        ModuleActivation.objects.filter(organization=self.org, module_key="example_notes").update(
-            updated_at=slot - timedelta(hours=1)
-        )
-        with patch(
-            "platform_core.periodic_signals.database_clock",
-            return_value=slot + timedelta(minutes=1),
-        ):
-            call_command("runjobs", once=True)
-            call_command("runjobs", once=True)
-        receipt = EventReceipt.objects.get()
-        event = ModuleEvent.objects.get()
-        self.assertEqual(str(receipt.event_id), str(event.pk))
-        self.assertEqual(receipt.aggregate_id, slot.isoformat())
-        self.assertEqual(EventDelivery.objects.get().consumer, "example_notes")
-        self.assertEqual(EventAttempt.objects.get().outcome, "delivered")
-        self.assertFalse(EventReceipt.objects.filter(organization=self.other).exists())
-        self.assertTrue(verify_chain(self.org))
 
     def test_installed_wheel_consumes_a_pre_activation_event_after_reviewed_backfill(self):
         from pamolive_ext_notes.models import EventReceipt
@@ -381,3 +354,45 @@ class ExtensionRuntimeTests(TestCase):
                 action="identity.person.created.v1",
                 summary="forged source",
             )
+
+
+@skipUnless(PERIODIC, "Requires the separately signed V3 schedule fixture")
+class PeriodicExtensionRuntimeTests(TransactionTestCase):
+    def test_existing_worker_delivers_one_signed_periodic_signal_to_real_wheel(self):
+        from pamolive_ext_notes.models import EventReceipt
+
+        from platform_core.models import EventAttempt, EventDelivery, ModuleEvent
+
+        # The real worker resets its PostgreSQL connection. Run outside the
+        # outer transaction that Django's TestCase keeps open.
+        admin = get_user_model().objects.create_superuser("periodic-wheel-admin")
+        AccountSecurity.objects.create(
+            account=admin,
+            encrypted_secret=cipher().encrypt(pyotp.random_base32().encode()).decode(),
+        )
+        org = Organization.objects.create(key="periodic-wheel-a", name="Periodic A")
+        other = Organization.objects.create(key="periodic-wheel-b", name="Periodic B")
+        call_command("pamolive_extensions", "deliver", actor=admin.username, stdout=io.StringIO())
+        with organization_context(org), recent_authentication(admin, org, time.time()):
+            install_module("identity", actor=admin, organization=org)
+            install_module("example_notes", actor=admin, organization=org)
+        clock = (timezone.now() - timedelta(days=1)).astimezone(UTC)
+        slot = clock.replace(minute=0, second=0, microsecond=0)
+        ModuleActivation.objects.filter(organization=org, module_key="example_notes").update(
+            updated_at=slot - timedelta(hours=1)
+        )
+        with patch(
+            "platform_core.periodic_signals.database_clock",
+            return_value=slot + timedelta(minutes=1),
+        ):
+            call_command("runjobs", once=True)
+            call_command("runjobs", once=True)
+        with organization_context(org):
+            receipt = EventReceipt.objects.get(organization=org)
+            event = ModuleEvent.objects.get()
+            self.assertEqual(str(receipt.event_id), str(event.pk))
+            self.assertEqual(receipt.aggregate_id, slot.isoformat())
+            self.assertEqual(EventDelivery.objects.get().consumer, "example_notes")
+            self.assertEqual(EventAttempt.objects.get().outcome, "delivered")
+        self.assertFalse(EventReceipt.objects.filter(organization=other).exists())
+        self.assertTrue(verify_chain(org))

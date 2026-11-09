@@ -102,6 +102,11 @@ jobs:
           python -m deploy.qualified_image verify "$RUNNER_TEMP/pamolive-qualified-image" --revision "$GITHUB_SHA"
           docker image load --input "$RUNNER_TEMP/pamolive-qualified-image/pamolive-linux-amd64.tar"
           python -m deploy.qualified_image verify "$RUNNER_TEMP/pamolive-qualified-image" --revision "$GITHUB_SHA" --loaded
+      - name: Verify a fresh Compose installation of the loaded image without building
+        run: |
+          export PAMOLIVE_TEST_DATABASE_NETWORK
+          PAMOLIVE_TEST_DATABASE_NETWORK=$(docker inspect '${{ job.services.postgres.id }}' --format '{{json .NetworkSettings.Networks}}' | python -c "import json,sys; print(next(iter(json.load(sys.stdin))))")
+          bash deploy/check_registry_install_ci.sh
       - name: Retain the qualified image for main publication
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'pamolive/PamOlive-Platform'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
