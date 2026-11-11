@@ -11,6 +11,7 @@ import sys
 from datetime import date, datetime, time
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import UUID
 
 FORMAT = "pamolive-controlled-upgrade/1"
@@ -19,6 +20,11 @@ REVIEWED = {
     ("access", "0010_observed_intervals"),
     ("access", "0011_signed_observation_context"),
     ("access", "0012_evaluation_proof_guard"),
+    ("access", "0013_pam_mandate_destination"),
+    ("access", "0014_accessintent_pam_trust"),
+    ("access", "0015_event_provenance"),
+    ("access", "0016_provenance_database_guards"),
+    ("approvals", "0004_approvaldecision_pam_trust"),
     ("connectors", "0004_teamviewercollector_teamviewerrun_teamviewerreport"),
     ("connectors", "0005_teamviewer_mapping_evidence"),
     ("connectors", "0006_teamviewer_physical_sessions"),
@@ -26,12 +32,28 @@ REVIEWED = {
     ("connectors", "0008_business_reference_sources"),
     ("connectors", "0009_business_intent_associations"),
     ("connectors", "0010_scim_initial_accounts"),
+    ("connectors", "0011_scim_destination_binding"),
     ("recertification", "0002_periodic_campaigns_and_review_evidence"),
     ("identity", "0008_business_roles_and_mobility"),
+    ("pam", "0004_credential_destination"),
+    ("pam", "0005_pamtrustchallenge_pamtrustauthorization_and_more"),
+    ("pam", "0006_trust_database_boundaries"),
 }
 NEW_DEFAULTS = {
     "connectors_externalchange": {"creation_proof_id": None},
-    "access_accessevent": {"ended_at": None},
+    "connectors_provisioningconnector": {"destination_seal": ""},
+    "pam_sessionendpoint": {"credential_seal": "", "destination_epoch": 1},
+    "access_accessintent": {"pam_destination": {}, "pam_trust": {}},
+    "approvals_approvaldecision": {"pam_trust": {}},
+    "access_accessevent": {
+        "ended_at": None,
+        "provenance_channel": "legacy_unknown",
+        "collector_source_id": None,
+        "manual_actor_id": None,
+        "internal_principal": "",
+        "facts_schema": "",
+        "facts_digest": "",
+    },
     "access_accessevaluation": {
         "audit_id": None,
         "context": {},
@@ -178,7 +200,13 @@ def snapshot(table_specs, *, after=False):
                         body[column] = value
                     for column, expected in extra.items():
                         actual = source[column]
-                        if column == "context" and isinstance(actual, str):
+                        if column == "destination_seal" and source["revision"] == 1:
+                            from platform_modules.connectors.scim_credentials import (
+                                destination_seal,
+                            )
+
+                            expected = destination_seal(SimpleNamespace(pk=source["id"], **source))
+                        if isinstance(expected, dict) and isinstance(actual, str):
                             actual = json.loads(actual)
                         if actual != expected:
                             raise UpgradeRefused("historical_default_changed")

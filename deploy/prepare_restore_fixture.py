@@ -1,7 +1,6 @@
 """Populated CI-only recovery corpus; no network target is contacted."""
 
 import os
-import unittest
 
 
 def teamviewer_corpus(actor, organization):
@@ -626,7 +625,7 @@ def certificate_possession_corpus(actor, organization):
 
     from platform_modules.access import certificate_possession as possession
     from platform_modules.access.services import ingest_event
-    from platform_modules.connectors.services import create_source
+    from platform_modules.connectors.services import create_source, source_from_token
     from platform_modules.identity.models import Credential, Identity
 
     now = timezone.now()
@@ -667,7 +666,8 @@ def certificate_possession_corpus(actor, organization):
             "action": "connect",
         },
         organization=organization,
-        source=source,
+        source=source_from_token(token),
+        source_token=token,
     )
     assert created
     challenge = possession.issue(possession.consume_budget(token), event.pk)
@@ -689,6 +689,124 @@ def certificate_possession_corpus(actor, organization):
     assert possession.verify_restored_proofs() == 1
 
 
+def historical_pam_corpus():
+    """Seed pre-independent-trust evidence for offline archival verification only."""
+    import time
+    import uuid
+    from datetime import timedelta
+    from types import SimpleNamespace
+
+    import asyncssh
+    import pyotp
+    from django.contrib.auth import get_user_model
+    from django.utils import timezone
+
+    from platform_core.authorization import recent_authentication
+    from platform_core.models import AccountSecurity, ModuleActivation, Organization
+    from platform_core.security import cipher
+    from platform_core.tenancy import organization_context
+    from platform_modules.access.models import AccessIntent
+    from platform_modules.approvals.models import ApprovalDecision
+    from platform_modules.identity.bindings import create_binding
+    from platform_modules.identity.models import ExternalAccount, Identity, Resource
+    from platform_modules.pam.mandates import account_snapshot, decision_signature, scope_hash
+    from platform_modules.pam.models import RelayConnection, SessionEndpoint, SessionLease
+    from platform_modules.pam.sessions import append_recording, authority_seal, finish_session
+
+    users = get_user_model()
+    admin = users.objects.create_superuser("admin", password="synthetic-restore-password")
+    operator = users.objects.create_user("operator", password="synthetic-restore-password")
+    organization = Organization.objects.create(key="test", name="Synthetic historical restore")
+    for actor in (admin, operator):
+        AccountSecurity.objects.create(
+            account=actor,
+            encrypted_secret=cipher().encrypt(pyotp.random_base32().encode()).decode(),
+        )
+    ModuleActivation.objects.bulk_create([
+        ModuleActivation(organization=organization, module_key=key, version="test", enabled=True)
+        for key in ("identity", "access", "approvals", "pam")
+    ])
+    with organization_context(organization):
+        from platform_core.models import OrganizationMembership
+
+        OrganizationMembership.objects.create(
+            organization=organization, account=operator, role="operator",
+        )
+        OrganizationMembership.objects.create(
+            organization=organization, account=admin, role="admin",
+        )
+        identity = Identity.objects.create(organization=organization, name="Person", kind="human")
+        reviewer = Identity.objects.create(organization=organization, name="Reviewer", kind="human")
+        resource = Resource.objects.create(organization=organization, name="Server", kind="server")
+        account = ExternalAccount.objects.create(
+            organization=organization, identity=identity, username="synthetic-root",
+            system="Synthetic historical server", kind="privileged",
+        )
+        with recent_authentication(admin, organization, time.time()):
+            requester_binding = create_binding(
+                login_account=operator, identity=identity, verification_reference="Historical HR-1",
+                actor=admin, organization=organization,
+            )
+            reviewer_binding = create_binding(
+                login_account=admin, identity=reviewer, verification_reference="Historical HR-2",
+                actor=admin, organization=organization,
+            )
+        now = timezone.now()
+        endpoint = SessionEndpoint.objects.create(
+            organization=organization, resource=resource, account=account,
+            name="Historical synthetic endpoint", protocol="ssh", hostname="ssh.example.test",
+            port=22, auth_method="password",
+            encrypted_secret=cipher().encrypt(b'{"password":"synthetic-historical-secret"}').decode(),
+            ssh_host_key=asyncssh.generate_private_key("ssh-ed25519").export_public_key().decode(),
+            enabled=False,
+        )
+        intent = AccessIntent.objects.create(
+            organization=organization, identity=identity, account=account, resource=resource,
+            requested_by=operator, requester_binding=requester_binding,
+            account_snapshot=account_snapshot(account), method="SSH",
+            privilege="native_full_account",
+            fulfillment="pam", reason="Historical synthetic archive", reference="OFFLINE-ARCHIVE",
+            starts_at=now - timedelta(minutes=1), ends_at=now + timedelta(hours=1),
+        )
+        vote = ApprovalDecision(
+            organization=organization, intent=intent, reviewer=admin,
+            reviewer_binding=reviewer_binding, reviewer_identity=reviewer,
+            approved=True, comment="Historical synthetic approval", decided_at=now,
+            mfa_verified_at=now - timedelta(seconds=1), mfa_window_minutes=5,
+            scope_hash=scope_hash(intent),
+        )
+        vote.signature = decision_signature(vote)
+        vote.save()
+        intent.status, intent.approved_at = "approved", now
+        intent.save(update_fields=["status", "approved_at"])
+        lease = SessionLease.objects.create(
+            organization=organization, intent=intent, opened_by=operator, expires_at=intent.ends_at,
+        )
+        owner = uuid.uuid4()
+        item = RelayConnection(
+            organization=organization, lease=lease, endpoint=endpoint, opened_by=operator,
+            endpoint_revision=endpoint.revision,
+            browser_session_hash="synthetic-historical-browser",
+            client_ip="127.0.0.1", ticket_expires_at=now + timedelta(seconds=30),
+            expires_at=intent.ends_at, owner_token=owner, status="active",
+            authority_snapshot={
+                "identity_id": str(identity.pk), "requester_binding_id": str(requester_binding.pk),
+                "intent_id": str(intent.pk), "mandate_scope_hash": scope_hash(intent),
+                "fixture_kind": "historical-pre-independent-trust",
+            },
+            target_snapshot={"hostname": endpoint.hostname, "port": 22, "protocol": "ssh"},
+        )
+        item.authority_seal = authority_seal(item)
+        item.save()
+        append_recording(item.pk, organization, owner, b"4.sync,1.1;", 10)
+        append_recording(item.pk, organization, owner, b"4.sync,1.2;", 20)
+        finish_session(item.pk, organization, owner, reason="client_closed", complete=True)
+    return SimpleNamespace(
+        admin=admin, operator=operator, org=organization, identity=identity,
+        resource=resource, account=account, intent=intent,
+    )
+
+
 def main():
     import django
 
@@ -696,7 +814,6 @@ def main():
     django.setup()
     from django.contrib.auth.hashers import make_password
     from django.db import connection
-    from django.test import Client, override_settings
 
     if (
         os.environ.get("PAMOLIVE_RESTORE_FIXTURE") != "1"
@@ -710,56 +827,44 @@ def main():
 
     from platform_core.models import AccountSecurity, BusinessRole
     from platform_core.security import cipher
+    from platform_core.tenancy import organization_context
     from platform_modules.connectors.models import ProvisioningConnector
-    from platform_modules.pam.sessions import append_recording, finish_session
-    from tests.test_pam_sessions import PamSessionFixtureMixin
 
-    class Fixture(PamSessionFixtureMixin, unittest.TestCase):
-        pass
+    fixture = historical_pam_corpus()
 
-    with override_settings(PAM_ALLOWED_HOSTS={"ssh.example.test:22"}):
-        Fixture.setUpTestData()
-        fixture = Fixture()
-        fixture.client = Client()
-        try:
-            fixture.setUp()
-            item, owner = fixture.claimed()
-            append_recording(item.pk, fixture.org, owner, b"4.sync,1.1;", 10)
-            append_recording(item.pk, fixture.org, owner, b"4.sync,1.2;", 20)
-            finish_session(item.pk, fixture.org, owner, reason="client_closed", complete=True)
-            ProvisioningConnector.objects.create(
-                organization=fixture.org,
-                name="Synthetic restore token",
-                base_url="https://unused.example.invalid/scim/v2",
-                encrypted_token=cipher().encrypt(b"not-a-real-service-token").decode(),
-                enabled=False,
-            )
-            role = BusinessRole.objects.create(key="restore-proof", name="Synthetic M2M proof")
-            role.members.add(fixture.operator)
-            profile = AccountSecurity.objects.get(account=fixture.operator)
-            profile.last_counter = 4242
-            profile.freshness_minutes = 10
-            profile.recovery_hashes = [make_password("synthetic-not-a-real-recovery-code")]
-            profile.save()
-            from platform_core.events import publish_domain_event
-            from platform_core.tenancy import organization_context
+    with organization_context(fixture.org):
+        from platform_core.events import publish_domain_event
+        from platform_modules.connectors.scim_credentials import destination_seal
 
-            with organization_context(fixture.org):
-                oidc_corpus(fixture.operator, fixture.org)
-                teamviewer_corpus(fixture.admin, fixture.org)
-                certificate_possession_corpus(fixture.admin, fixture.org)
-                business_corpus(fixture.admin, fixture.org, fixture.intent.pk)
-                scim_creation_corpus(fixture.admin, fixture.operator, fixture.org)
-                recertification_corpus(fixture.admin, fixture.org)
-                mover_corpus(fixture.admin, fixture.operator, fixture.org)
-                publish_domain_event(
-                    organization=fixture.org,
-                    emitter="identity",
-                    topic="identity.identity.created.v1",
-                    payload={"identity_id": str(fixture.identity.pk), "kind": "human"},
-                )
-        finally:
-            fixture.doCleanups()
+        connector = ProvisioningConnector(
+            organization=fixture.org,
+            name="Synthetic restore token",
+            base_url="https://unused.example.invalid/scim/v2",
+            encrypted_token=cipher().encrypt(b"not-a-real-service-token").decode(),
+            enabled=False,
+        )
+        connector.destination_seal = destination_seal(connector)
+        connector.save()
+        role = BusinessRole.objects.create(key="restore-proof", name="Synthetic M2M proof")
+        role.members.add(fixture.operator)
+        profile = AccountSecurity.objects.get(account=fixture.operator)
+        profile.last_counter = 4242
+        profile.freshness_minutes = 10
+        profile.recovery_hashes = [make_password("synthetic-not-a-real-recovery-code")]
+        profile.save()
+        oidc_corpus(fixture.operator, fixture.org)
+        teamviewer_corpus(fixture.admin, fixture.org)
+        certificate_possession_corpus(fixture.admin, fixture.org)
+        business_corpus(fixture.admin, fixture.org, fixture.intent.pk)
+        scim_creation_corpus(fixture.admin, fixture.operator, fixture.org)
+        recertification_corpus(fixture.admin, fixture.org)
+        mover_corpus(fixture.admin, fixture.operator, fixture.org)
+        publish_domain_event(
+            organization=fixture.org,
+            emitter="identity",
+            topic="identity.identity.created.v1",
+            payload={"identity_id": str(fixture.identity.pk), "kind": "human"},
+        )
     print(
         "Synthetic restore corpus prepared: MFA, counter, recovery hash, M2M, "
         "SCIM token, target secret, OIDC secret/link/draft/flow, signed mandate, "

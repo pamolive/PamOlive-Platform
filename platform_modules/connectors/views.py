@@ -54,7 +54,8 @@ def configure(request, connector_id=None):
     form.fields["base_url"] = forms.URLField(
         label="URL HTTPS de base SCIM",
         initial=connector.base_url if connector else "",
-        help_text="Exemple : https://annuaire.example/scim/v2",
+        disabled=connector is not None,
+        help_text="Pour une autre destination, créez un nouveau connecteur.",
     )
     form.fields["token"] = forms.CharField(
         label="Jeton API",

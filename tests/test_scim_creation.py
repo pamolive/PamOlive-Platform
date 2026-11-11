@@ -577,7 +577,6 @@ class ScimCreationTests(ScimCreationFixture, TestCase):
                 connector_id=self.connector.pk,
                 name="Rotated",
                 base_url=self.url,
-                token="new-fixture-token",
             )
         process_creations(self.org)
         self.assertEqual(self.server.state["posts"], 0)
@@ -625,7 +624,6 @@ class ScimCreationTests(ScimCreationFixture, TestCase):
                 connector_id=self.connector.pk,
                 name="New configuration",
                 base_url=self.url,
-                token="new-fixture-token",
             )
         from platform_core.tenancy import organization_context
 

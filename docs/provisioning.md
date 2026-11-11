@@ -10,7 +10,15 @@ Le module Connecteurs possède désormais un client SCIM 2.0 et une file durable
 4. Activer la configuration testée, puis relier chaque compte local à son identifiant utilisateur SCIM et chaque droit local à un groupe SCIM.
 5. Les nouvelles attributions, révocations, recertifications et départs créent des opérations traçables. Une opération déjà bloquée ou sans correspondance nécessite une relance explicite après configuration.
 
-Modifier l’URL ou le jeton désactive la configuration et exige un nouveau test. Tester une configuration déjà active ne la désactive pas en cas de panne transitoire. Aucun mot de passe de compte cible n’est requis ; le jeton de provisioning est chiffré avec la clé de l’installation et n’est jamais renvoyé dans les formulaires de consultation.
+La destination d’un connecteur est fixe, hôte, port et chemin de base compris. Le jeton chiffré est scellé avec l’organisation, l’identifiant du connecteur et son URL enregistrée. Le jeton peut être corrigé tant qu’il n’existe aucune correspondance ni demande de création. Ensuite, son remplacement exige un nouveau connecteur et de nouvelles correspondances, même si l’URL reste identique. Cette règle couvre les fournisseurs qui sélectionnent un autre annuaire d’après le jeton derrière la même URL.
+
+Un compte local est lié à un seul utilisateur SCIM. Représenter un compte dans un autre annuaire par un compte externe distinct et conserver les anciennes correspondances pour les retraits. Une relance conserve les correspondances déjà fixées. Pour renouveler un jeton expiré portant un historique, réconcilier les anciens droits et retraits sur l’annuaire d’origine avant de basculer explicitement vers la nouvelle configuration.
+
+### Mise à niveau des connecteurs existants
+
+Arrêter tous les portails et workers de l’ancienne version avant d’appliquer la migration, y compris sur les autres nœuds. Préserver la clé d’origine. La migration scelle les connecteurs toujours en révision initiale sans réécrire le ciphertext ni les preuves. Les révisions historiques supérieures sont suspendues pour les tests et les opérations réseau, car l’audit historique ne conserve pas toutes les URL.
+
+Avant la mise à niveau, inventorier les connecteurs révisés, leurs droits externes et leurs retraits en attente. Vérifier et réconcilier ces retraits avec leur annuaire d’origine, puis configurer les nouvelles correspondances explicitement. Conserver l’historique. Un retour à l’ancien binaire exige une restauration contrôlée de l’état antérieur et une réconciliation des effets externes.
 
 ## Politique de sortie
 

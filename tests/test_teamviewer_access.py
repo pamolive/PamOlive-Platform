@@ -7,6 +7,7 @@ from threading import Barrier
 from unittest import skipUnless
 from unittest.mock import patch
 
+from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import DatabaseError, close_old_connections, connection, connections, transaction
 from django.test import Client, TransactionTestCase, override_settings
@@ -17,13 +18,19 @@ from platform_core.models import AuditEvent, ModuleActivation
 from platform_core.services import install_module
 from platform_core.tenancy import organization_context
 from platform_modules.access.evidence import verify_evaluation
-from platform_modules.access.models import AccessEvaluation, AccessEvent, AccessIntent
+from platform_modules.access.models import (
+    AccessEvaluation,
+    AccessEvent,
+    AccessEventQuota,
+    AccessIntent,
+)
 from platform_modules.access.observations import (
     EVENT_FACT_FIELDS,
     ObservationContext,
     observation_context,
     register_provider,
 )
+from platform_modules.access.provenance import event_facts_digest, verify_provenance_receipt
 from platform_modules.access.services import evaluate_event, ingest_event
 from platform_modules.connectors.teamviewer_access import (
     SOURCE,
@@ -103,10 +110,51 @@ class TeamViewerAccessTests(SessionFixtureData, TeamViewerFixture):
     def event(self):
         return AccessEvent.objects.get(source=SOURCE)
 
+    def fixture_event(self, **facts):
+        # Deliberately bypass the trusted adapter to exercise its refusal of
+        # a synthetic, unreceipted row. New ordinary writers cannot create a
+        # legacy_unknown event after the P0-4 migration.
+        event = AccessEvent(
+            organization=self.org,
+            provenance_channel="internal",
+            internal_principal=f"synthetic-test-fixture:{uuid.uuid4().hex}",
+            **facts,
+        )
+        event.facts_schema, event.facts_digest = event_facts_digest(event)
+        event.full_clean()
+        event.save()
+        return event
+
     def latest(self):
         return AccessEvaluation.objects.select_related("audit", "event", "intent").latest(
             "evaluated_at"
         )
+
+    def test_new_normalization_has_internal_authority_and_v8_receipt(self):
+        normalize_sessions(self.org)
+        event = self.event()
+        self.assertEqual(event.provenance_channel, "internal")
+        self.assertEqual(event.internal_principal, "teamviewer")
+        self.assertIsNone(event.collector_source_id)
+        self.assertIsNone(event.manual_actor_id)
+        self.assertTrue(verify_provenance_receipt(event.provenance_receipt))
+        self.assertTrue(verify_observation(TeamViewerAccessObservation.objects.get()))
+
+    def test_internal_event_quota_refuses_extra_normalization_without_adoption(self):
+        self.read(replace(self.source, id=str(uuid.uuid4())))
+        index_sessions(self.org)
+        with override_settings(PAMOLIVE_EVENT_INTERNAL_DAILY_LIMIT=1):
+            normalize_sessions(self.org)
+        self.assertEqual(AccessEvent.objects.count(), 1)
+        self.assertEqual(TeamViewerAccessObservation.objects.count(), 1)
+        quota = AccessEventQuota.objects.get(
+            channel="internal", principal_key="teamviewer"
+        )
+        self.assertEqual(quota.accepted_count, 1)
+        self.assertEqual(quota.attempt_count, 2)
+        self.assertEqual(quota.denied_count, 1)
+        self.assertIsNotNone(quota.first_denial_audit_id)
+        self.assertEqual(quota.first_denial_audit.action, "access.event.quota_denied.v1")
 
     def test_unresolved_source_is_recorded_without_invented_identity_or_resource(self):
         self.assertEqual(normalize_sessions(self.org), 1)
@@ -126,18 +174,24 @@ class TeamViewerAccessTests(SessionFixtureData, TeamViewerFixture):
 
     def test_public_ingestion_captures_server_receipt_not_a_callers_timestamp(self):
         received = self.source.ended_at + timedelta(seconds=2)
+        facts = dict(
+            source="ordinary-receipt-fixture",
+            external_id="receipt-1",
+            occurred_at=self.source.started_at,
+            ended_at=self.source.ended_at,
+            resource=self.device,
+            method="TeamViewer",
+            action="remote_session",
+        )
+        with self.assertRaises(ValidationError):
+            ingest_event(
+                {**facts, "received_at": self.before},
+                organization=self.org,
+                actor=self.admin,
+            )
         with patch("django.utils.timezone.now", return_value=received):
             event, _ = ingest_event(
-                dict(
-                    source="ordinary-receipt-fixture",
-                    external_id="receipt-1",
-                    occurred_at=self.source.started_at,
-                    ended_at=self.source.ended_at,
-                    received_at=self.before,
-                    resource=self.device,
-                    method="TeamViewer",
-                    action="remote_session",
-                ),
+                facts,
                 organization=self.org,
                 actor=self.admin,
             )
@@ -285,7 +339,7 @@ class TeamViewerAccessTests(SessionFixtureData, TeamViewerFixture):
         )
         with self.assertRaises(ValidationError):
             ingest_event(data, organization=self.org, actor=self.admin)
-        fake = AccessEvent.objects.create(organization=self.org, **data)
+        fake = self.fixture_event(**data)
         original = AccessEvent.objects.values().get()
         normalize_sessions(self.org)
         self.assertFalse(TeamViewerAccessObservation.objects.exists())
@@ -322,11 +376,37 @@ class TeamViewerAccessTests(SessionFixtureData, TeamViewerFixture):
             with self.assertRaises(RuntimeError):
                 verify_evidence()
 
+    def test_historical_teamviewer_chain_survives_secret_key_rotation_with_evidence_keyring(self):
+        normalize_sessions(self.org)
+        link = TeamViewerAccessObservation.objects.get()
+        self.assertTrue(verify_observation(link))
+        self.assertGreater(verify_evidence()[1], 0)
+        old_key = settings.SECRET_KEY
+        with override_settings(
+            SECRET_KEY="synthetic-rotated-secret-key", PAMOLIVE_EVIDENCE_VERIFICATION_KEYS=()
+        ):
+            self.assertFalse(verify_observation(link))
+            with self.assertRaises(RuntimeError):
+                verify_evidence()
+        with override_settings(
+            SECRET_KEY="synthetic-rotated-secret-key",
+            PAMOLIVE_EVIDENCE_VERIFICATION_KEYS=(old_key,),
+        ):
+            self.assertTrue(verify_observation(link))
+            self.assertTrue(verify_evaluation(self.latest()))
+            self.assertGreater(verify_evidence()[1], 0)
+
     def test_new_evaluation_seal_binds_every_current_source_field(self):
         normalize_sessions(self.org)
         event = self.event()
-        self.assertEqual(
-            set(EVENT_FACT_FIELDS), {field.attname for field in event._meta.concrete_fields}
+        self.assertTrue(
+            set(EVENT_FACT_FIELDS).issubset(
+                {field.attname for field in event._meta.concrete_fields}
+            )
+        )
+        self.assertTrue(
+            {"provenance_channel", "collector_source_id", "manual_actor_id", "facts_digest"}
+            .isdisjoint(EVENT_FACT_FIELDS)
         )
         evaluation = self.latest()
         evaluation.event.evidence = "forged-source-reference"
@@ -371,8 +451,7 @@ class TeamViewerAccessTests(SessionFixtureData, TeamViewerFixture):
 
         from platform_modules.access.observations import _providers
 
-        event = AccessEvent.objects.create(
-            organization=self.org,
+        event = self.fixture_event(
             source="managed:fixture",
             external_id="adapter-fixture",
             occurred_at=self.source.started_at,
@@ -475,8 +554,7 @@ class TeamViewerAccessTests(SessionFixtureData, TeamViewerFixture):
         from platform_modules.connectors.teamviewer_session_models import TeamViewerSession
 
         session = TeamViewerSession.objects.get()
-        event = AccessEvent.objects.create(
-            organization=self.org,
+        event = self.fixture_event(
             source="ordinary-fixture",
             external_id=self.source.id,
             occurred_at=self.source.started_at,
@@ -499,8 +577,7 @@ class TeamViewerAccessTests(SessionFixtureData, TeamViewerFixture):
                 insert, [uuid.uuid4(), self.org.pk, session.pk, event.pk, audit.pk, "a" * 64]
             )
         self.assertEqual(error.exception.__cause__.sqlstate, "23514")
-        canonical = AccessEvent.objects.create(
-            organization=self.org,
+        canonical = self.fixture_event(
             source=SOURCE,
             external_id=self.source.id,
             occurred_at=self.source.started_at,

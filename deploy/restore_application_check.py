@@ -190,7 +190,12 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
     from platform_core.security import cipher
     from platform_modules.access.certificate_possession import verify_restored_proofs
     from platform_modules.access.evidence import verify_evaluation
-    from platform_modules.access.models import AccessEvaluation
+    from platform_modules.access.models import (
+        AccessEvaluation,
+        AccessEvent,
+        AccessProvenanceReceipt,
+    )
+    from platform_modules.access.provenance import verify_provenance_receipt
     from platform_modules.approvals.models import ApprovalDecision
     from platform_modules.connectors.business import verify_business_evidence
     from platform_modules.connectors.models import ProvisioningConnector
@@ -259,6 +264,19 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
         if not verify_evaluation(evaluation, allow_legacy=True):
             raise RuntimeError("Restored access interpretation proof is invalid.")
         result["signed_proofs_checked"] += bool(evaluation.signature)
+    receipt_count = 0
+    for receipt in AccessProvenanceReceipt.unscoped.select_related(
+        "audit", "event__collector_source"
+    ).iterator(chunk_size=100):
+        if not verify_provenance_receipt(receipt):
+            raise RuntimeError("Restored V8 event provenance receipt is invalid.")
+        receipt_count += 1
+    if receipt_count != AccessEvent.unscoped.exclude(
+        provenance_channel="legacy_unknown"
+    ).count():
+        raise RuntimeError("A non-legacy event is missing its provenance receipt.")
+    result["provenance_receipts_checked"] = receipt_count
+    result["signed_proofs_checked"] += receipt_count
     for model, field in (
         (AccountSecurity, "encrypted_secret"),
         (ProvisioningConnector, "encrypted_token"),
@@ -268,6 +286,21 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
             if value:
                 cipher().decrypt(value.encode() if isinstance(value, str) else bytes(value))
                 result["encrypted_values_checked"] += 1
+    if hasattr(ProvisioningConnector, "destination_seal"):
+        from platform_modules.connectors.scim_credentials import destination_verified
+
+        for connector in ProvisioningConnector._base_manager.exclude(
+            destination_seal=""
+        ).iterator():
+            if not destination_verified(connector):
+                raise RuntimeError("Restored SCIM credential destination is invalid.")
+    if hasattr(SessionEndpoint, "credential_seal"):
+        from platform_modules.pam.target_binding import credential_verified
+
+        endpoints = SessionEndpoint._base_manager.exclude(credential_seal="")
+        for endpoint in endpoints.select_related("account").iterator():
+            if not credential_verified(endpoint):
+                raise RuntimeError("Restored PAM credential destination is invalid.")
     for model, sign in (
         (LoginIdentityBinding, binding_signature),
         (ApprovalDecision, decision_signature),
@@ -283,6 +316,30 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
                 raise RuntimeError("Restored signed evidence cannot be verified.")
             result["signed_proofs_checked"] += 1
     result.update(sealed_captures_verified=0, unsealed_captures=0)
+    from platform_modules.access.models import AccessIntent
+    from platform_modules.pam.trust import _historical_registry
+    from platform_modules.pam.trust_auth import (
+        authorization_evidence,
+        verify_authorization_evidence,
+    )
+    from platform_modules.pam.trust_auth_models import PAMTrustAuthorization
+    from platform_modules.pam.trust_models import PAMTrustRevision
+    from platform_modules.pam.trust_registry import verify_history
+
+    result["pam_trust_registries_verified"] = 0
+    for organization_id in PAMTrustRevision.unscoped.order_by().values_list(
+        "organization_id", flat=True
+    ).distinct():
+        verify_history(Organization.objects.get(pk=organization_id))
+        result["pam_trust_registries_verified"] += 1
+    for proof in PAMTrustAuthorization.unscoped.filter(consumed_at__isnull=False):
+        if not verify_authorization_evidence(authorization_evidence(proof)):
+            raise RuntimeError("Restored independent PAM action evidence is invalid.")
+        result["signed_proofs_checked"] += 1
+    for intent in AccessIntent.unscoped.exclude(pam_trust={}):
+        _historical_registry(intent)
+    # Archival verification must never treat an old checkpoint as live authority.
+    result["pam_live_trust_requires_independent_current_checkpoint"] = True
     for relay in RelayConnection.unscoped.iterator(chunk_size=100):
         previous, sequence, size, elapsed = "", 0, 0, 0
         for chunk in (

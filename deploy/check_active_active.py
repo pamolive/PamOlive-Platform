@@ -315,10 +315,11 @@ class Qualification:
         )
         baseline = self.fixture("inspect", data["run"])
         payload = {**event, "external_id": "ha-database-partition"}
-        self.stage = "only the PostgreSQL address becomes unreachable in node A"
+        self.stage = "install unreachable route for the exact database address"
         rule = ("unreachable", destination, "proto", "static")
         self.command(*route_command, "add", *rule)
         try:
+            self.stage = "inspect live node A with database address blocked"
             isolated = self.node("node-a")[1]
             require(
                 isolated["Id"] == node_a["Id"]
@@ -326,6 +327,7 @@ class Qualification:
                 and isolated["State"]["StartedAt"] == node_a["State"]["StartedAt"],
                 "Node A did not remain alive in its private test network namespace.",
             )
+            self.stage = "probe isolated A loopback HTTP health and ingestion"
             observed = self.fixture(
                 "partition-probe",
                 node="node-a",
@@ -335,6 +337,7 @@ class Qualification:
                 observed["health"] == 503 and observed["ingest"] in (500, 503),
                 "An isolated node must fail its health check and refuse writes.",
             )
+            self.stage = "validate no isolated write and healthy surviving B"
             require(
                 self.fixture("inspect", data["run"]) == baseline,
                 "The rejected write changed authoritative state.",
@@ -344,13 +347,17 @@ class Qualification:
                 and browser.request(b, "/identities/")[0] == 200,
                 "Node B became unavailable during node A's database partition.",
             )
+            self.stage = "commit the same event on B during database isolation"
             status, _, response = Browser().request(
                 b, "/api/v1/events/", payload=payload, bearer=data["source_token"]
             )
             require(status == 201, "Node B could not commit during node A's database partition.")
             event_id = json.loads(response)["event_id"]
         finally:
+            previous_stage = self.stage
+            self.stage = "remove only the installed database route"
             self.command(*route_command, "del", *rule)
+            self.stage = previous_stage
         self.stage = "original node A's published port becomes healthy again"
         a = self.wait_ready("node-a")
         returned = self.node("node-a")[1]
@@ -981,6 +988,23 @@ def main():
             f"Active-active check failed at {check.stage} ({type(error).__name__}); "
             "captured output and credentials suppressed."
         )
+        if isinstance(error, subprocess.CalledProcessError):
+            details = (error.stderr or "").lower()
+            for needle, label in (
+                ("operation not permitted", "namespace-or-route-permission"),
+                ("permission denied", "permission-denied"),
+                ("file exists", "existing-route"),
+                ("no such process", "missing-route"),
+                ("command not found", "missing-command"),
+                ("timed out", "timeout"),
+                ("connection refused", "connection-refused"),
+                ("invalid argument", "invalid-argument"),
+                ("undefined variable", "undefined-variable"),
+                ("error:", "subprocess-error"),
+            ):
+                if needle in details:
+                    print("Restricted subprocess category: " + label)
+                    break
         print("Private failure evidence: " + str(check.preserve_failure(error)))
         raise SystemExit(1) from None
     finally:

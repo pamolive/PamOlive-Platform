@@ -1,0 +1,562 @@
+{
+  "files": [
+    {
+      "path": ".env.example",
+      "sha256": "AC67DA9493E900899B6B127EABC348F5E92FB1EBE2F49D23427A4F18C18A8DBF"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "43575A2CF9B368364D3B457637A4CF5781803CCCC6E5D1F40D57B4F6D42B4502"
+    },
+    {
+      "path": "config/settings.py",
+      "sha256": "CBA5115737D0698EFF26EAA0244BA8CE54C3C825D34F657843DD6F950D386B1B"
+    },
+    {
+      "path": "config/urls.py",
+      "sha256": "AF1BD145CB7B6F2D9E0010C0028A39830BF2A62B9AE51B781E43CD4B8492ABC9"
+    },
+    {
+      "path": "deploy/check_active_active.py",
+      "sha256": "4B279D0692EA17106BBBE3AC4F386286EFC7D7438C3992D48EDF9B7A842E2322"
+    },
+    {
+      "path": "deploy/check_extensions.py",
+      "sha256": "BEF458D970B8F34D1E22B7F70A8A0D8BE07B49187A497436324016977ECD86BC"
+    },
+    {
+      "path": "deploy/check_upgrade_ci.py",
+      "sha256": "BBE51F61FF2C14D09D5D0E3210E3FA90816FEC0BD9704785D4A87DA2D1386176"
+    },
+    {
+      "path": "deploy/controlled_upgrade.py",
+      "sha256": "836FEF249BFC7B50EDD06422B1CC80B7D4941120821733EC4DFF1646F830E46B"
+    },
+    {
+      "path": "deploy/prepare_restore_fixture.py",
+      "sha256": "3126C0612D3789DE96CFA054F26F537196AD272C8CBF15CD819D3F29B1F38D45"
+    },
+    {
+      "path": "deploy/prepare_upgrade_fixture.py",
+      "sha256": "EEFCAA2A807BC5EF94B1C8EC7F76B5E97A97D2A2187E5A81C3C202D9B8D582E8"
+    },
+    {
+      "path": "deploy/restore_application_check.py",
+      "sha256": "D15AA2DAE7D64B708D6043CECA22556C141BE96B992E5F346622CCB37FBE9F75"
+    },
+    {
+      "path": "deploy/runtime.py",
+      "sha256": "5741A2EE5A59DF387B71A58FA080E42430FC41D3AABF1B4706816BACFF342B7E"
+    },
+    {
+      "path": "docs/architecture-decisions.md",
+      "sha256": "AC1761E153CEEA99833B58134694E7296156684E641436D499DCC5B5C4FD444C"
+    },
+    {
+      "path": "docs/backup-restore.md",
+      "sha256": "8E266ADC72058F44961B91C7560A9982F923BC1CA310134F272727BE9F808525"
+    },
+    {
+      "path": "docs/controlled-upgrade.md",
+      "sha256": "027D2DC14C6BC6D57441D50F144ADEFA0B4F4721C272B06F9CFBEBC8F8664C28"
+    },
+    {
+      "path": "docs/pam-transport.md",
+      "sha256": "858BE7341A3C6B1C9FAC3ACF2109D53569FDF5388FD7D33D119B359B4097C334"
+    },
+    {
+      "path": "docs/provisioning.md",
+      "sha256": "D09E6E7BE389A87D7848F669E0B22768A0910F82F6F720999529DF936849CE40"
+    },
+    {
+      "path": "platform_core/view_access.py",
+      "sha256": "0F93CDE3DCFF33D487A1C8F91400948C0E272115F17AECEEE57FB2A61A37DF2F"
+    },
+    {
+      "path": "platform_modules/access/certificate_possession.py",
+      "sha256": "1F8400FEF5E1A92FAEBC8C993E9970935A9A7519183AE15762BFF33B64852C3D"
+    },
+    {
+      "path": "platform_modules/access/evidence.py",
+      "sha256": "F09138F228161DE4FDC510866ECC711D81B907B85D0E4A6C0E0412EC41E07463"
+    },
+    {
+      "path": "platform_modules/access/models.py",
+      "sha256": "B4A43490A55E09B4A06539C693510EA62EB89869C2E74A200F1925AE6B126B3F"
+    },
+    {
+      "path": "platform_modules/access/services.py",
+      "sha256": "337A12735847CC715F0F8E2E7D11C7ACCC437A988A58B4089D7643AC303F6D35"
+    },
+    {
+      "path": "platform_modules/access/temporal.py",
+      "sha256": "40310E4ECC2517C80F4F532751FB4D3736D037689CDFC91FEA9C7F41C0D1BC0F"
+    },
+    {
+      "path": "platform_modules/access/ui.py",
+      "sha256": "D47EEA7DD69A6B6BFD0C90CA7631AC1145E65B5B4BAAE8FE4216EE8C0DB6BA9E"
+    },
+    {
+      "path": "platform_modules/approvals/models.py",
+      "sha256": "6BD07E4B6E8E070A555F2F89F1ECA8AED496C899BDD5385A1135AE4A735B5904"
+    },
+    {
+      "path": "platform_modules/approvals/services.py",
+      "sha256": "1A12DB71664872CB2285D5C8AB980063A8C8CB0D4C665E148487EFCAF9654305"
+    },
+    {
+      "path": "platform_modules/connectors/creation.py",
+      "sha256": "64812A0D582277CADE6FAB9400B3EDCC9779EA7B9B5684F18FA80C5F3BB6264A"
+    },
+    {
+      "path": "platform_modules/connectors/creation_views.py",
+      "sha256": "177078E801FA86082438A199DB76FBE7D9344D9D77C99A1F8484DDAB7CBD9F59"
+    },
+    {
+      "path": "platform_modules/connectors/models.py",
+      "sha256": "05E5351B69EB79E1410AD7147FD195F53667461E7D13281A21645D1BD7D88ED4"
+    },
+    {
+      "path": "platform_modules/connectors/outbound.py",
+      "sha256": "FC5C076655C022A70DD3E99C4B277DA7B0BDF2206B4036C0B0BE4DE7E9E21FFE"
+    },
+    {
+      "path": "platform_modules/connectors/services.py",
+      "sha256": "D8DB3AECC562DA65D63A4CC2D02D8C4D1D07FE0C11C118584952E11FB445B7EB"
+    },
+    {
+      "path": "platform_modules/connectors/teamviewer_access.py",
+      "sha256": "857B3AFB73DBA71A17600F461DB2E5094EE1FD9F3BBE6ADBA60B07815D532C3A"
+    },
+    {
+      "path": "platform_modules/connectors/teamviewer_collection.py",
+      "sha256": "5576B2561702992C817A29FF635A64B26FC68D968CB9E637BE2C8DFDC0B053F9"
+    },
+    {
+      "path": "platform_modules/connectors/teamviewer_ingestion.py",
+      "sha256": "5DD257DDD05CE0E20BA79EFB3D4649508B63AA311DF69752659A682E17EC3477"
+    },
+    {
+      "path": "platform_modules/connectors/teamviewer_mapping.py",
+      "sha256": "D5BC944B7090C8EBBE43B5A8671E033784E43F6772E48A294F56E9F743A382D8"
+    },
+    {
+      "path": "platform_modules/connectors/teamviewer_restoration.py",
+      "sha256": "C401B5463278F2E94EFF307667995EE74A50E4AEAF87AA265930FB06BDA7C44E"
+    },
+    {
+      "path": "platform_modules/connectors/teamviewer_sessions.py",
+      "sha256": "D2F01A5F61C8022B42609B547AB2D40CCE394D1C2032003BBCF5913753E2CD2A"
+    },
+    {
+      "path": "platform_modules/connectors/teamviewer_sightings.py",
+      "sha256": "AA036F26657C10E2CBC36C5091688CBCD343353F3B483D2C18A782D9932EED2F"
+    },
+    {
+      "path": "platform_modules/connectors/views.py",
+      "sha256": "22E8CCBFF14C76037C9E517C9E4BFA52442EA3DC5C26791A79F2B414609726B5"
+    },
+    {
+      "path": "platform_modules/governance/policy.py",
+      "sha256": "CA5E05A972BCA0B1AF5A33270DCB709CD0D617B6D0C4C24771ABD6C8227726E5"
+    },
+    {
+      "path": "platform_modules/intelligence/coverage.py",
+      "sha256": "1C525256BE4B3CF36A9F4E1D716B72C80E0CDFB7DACE3995736BB67A269BD1C2"
+    },
+    {
+      "path": "platform_modules/intelligence/projection.py",
+      "sha256": "041F05B17E2A840D5742E08975CFD56F6BE057C7DE80D2D9F3687017CB3889F0"
+    },
+    {
+      "path": "platform_modules/pam/broker.py",
+      "sha256": "75089656CF29DEB78F12E73CF0BC101F4A995037D437709BE74701C920D213C1"
+    },
+    {
+      "path": "platform_modules/pam/mandates.py",
+      "sha256": "74FBB9B071200C5E4132135343AFC749282099572771DB73582AE71E2AA6E906"
+    },
+    {
+      "path": "platform_modules/pam/models.py",
+      "sha256": "3638A87828648B2D883671FB9ABD3D4959391CADCC7288085F9C30B3EC6B72AF"
+    },
+    {
+      "path": "platform_modules/pam/services.py",
+      "sha256": "4329A27D4473684BB92E41F6A6D83247673501E17C6A6E2BA3C17805254A36A9"
+    },
+    {
+      "path": "platform_modules/pam/sessions.py",
+      "sha256": "CBF4FB6EA200D78213E1E5634D7EADA99CC2C8965916AA9D49AEEF38E4CB9782"
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "3C4F1540427AEE6502945E012978B6993DED6ECD66D9E46F885AA578C580E784"
+    },
+    {
+      "path": "requirements.lock",
+      "sha256": "6CBEE48D9EDB5A072C57EEC7E7826B211D6622CB57AC18BC49650122E9C2923F"
+    },
+    {
+      "path": "templates/connectors/index.html",
+      "sha256": "F9F550009D0616E3D772491FCDC8A28939E9FC1DD1E5F8621C49DA2992B8CCE9"
+    },
+    {
+      "path": "templates/governance/approvals.html",
+      "sha256": "254DB2AD9AD40DCC8AA8B0564A42E6F07E1B42A584BE893F8F84AC785D7AB7A8"
+    },
+    {
+      "path": "templates/intelligence/index.html",
+      "sha256": "4FF5A195DB3741BEDF8AA0A3D930A6496D2CF0B3A1DAA1D6BC86703753D4FE42"
+    },
+    {
+      "path": "tests/test_access_attribution.py",
+      "sha256": "C18DB3044F56994A399B902136DF8CE271E1782197A6F4C0B025BD8D1CE2B317"
+    },
+    {
+      "path": "tests/test_access_intervals.py",
+      "sha256": "1B7C9B69EFFD0BC7564D61EF3B4DE9C3E32AC156F0325328A8C3C94160FBE249"
+    },
+    {
+      "path": "tests/test_certificate_holder.py",
+      "sha256": "A675846F6CDE31ED00F4DE062A579DA9012311BD2727A9BE38468A733641385C"
+    },
+    {
+      "path": "tests/test_certificate_possession.py",
+      "sha256": "FB33E1C3FADD35B7D3636C80E0BDC8B4942A3E4A96D0CDA77ECECD0DD1BA2FC7"
+    },
+    {
+      "path": "tests/test_controlled_upgrade.py",
+      "sha256": "EF1886E0055CE1C6DCFDEE0F4A489B7BC636886A1721AE012F969A601DF76F85"
+    },
+    {
+      "path": "tests/test_intelligence.py",
+      "sha256": "086C7A5232BD4C1F1BF657D3197F8F77CDBF6BC96B1C8E1B052D7712F9AC1541"
+    },
+    {
+      "path": "tests/test_pam_mandates.py",
+      "sha256": "BEFD11E79B2E1D8F90EEC0CD6BBE6F0D0A5C4033A8F18194C632D9126E103DB3"
+    },
+    {
+      "path": "tests/test_pam_relay_e2e.py",
+      "sha256": "C1600825FB14B3F6C254B22744D65ED55C2C9FD0CE46540A5D1849A071C16E91"
+    },
+    {
+      "path": "tests/test_pam_sessions.py",
+      "sha256": "7DD852A004BFE0520C5AA91093D6D3459EF0C6717F6623B5919EADCE06C8371B"
+    },
+    {
+      "path": "tests/test_platform.py",
+      "sha256": "D3999D9F301AA5BFF8D04F98671170A8AC07C4916517459D2E12D613F089B3E4"
+    },
+    {
+      "path": "tests/test_provisioning.py",
+      "sha256": "CF6CDCBD07C85FDF2EE3EF0E0FFD2DACD3728959A32DC9DD6CBEF3FED4835A64"
+    },
+    {
+      "path": "tests/test_scim_creation.py",
+      "sha256": "4A58C045DC805D4C54BDDF59EE83018EC75A27685944EE6FEA1C0E3F1DAF8A87"
+    },
+    {
+      "path": "tests/test_teamviewer_access.py",
+      "sha256": "BEFEFF2012ACDBB7BF0E4C9E012C403F9E9384A9BDC00DD54D8ABD47DA3FC5F3"
+    },
+    {
+      "path": ".github/workflows/diagnose-partition.yml",
+      "sha256": "D84EAC57242650433274E25E88420E46C4FF8F960D80BEF481CD840CCCCD1B95"
+    },
+    {
+      "path": "deploy/Dockerfile.partition-probe",
+      "sha256": "33D6E0A6768915FAD3401BAC0927D16463D7A6611CFF18D2724DC0C7B827BE4E"
+    },
+    {
+      "path": "docs/adr-013-pam-quorum-trust.md",
+      "sha256": "925B6CD13AFB46C8AC880BD02185FEF657E3D22024E95AB102E52A01AA57A58B"
+    },
+    {
+      "path": "docs/adr-014-event-provenance.md",
+      "sha256": "FABC366051AD894E91E47F0A27E77FBC3692141561F92740275291028342934E"
+    },
+    {
+      "path": "docs/p0-3-validation.md",
+      "sha256": "019913F2AFF9FE96745E1E0364A3F4B6BAF5DA53993B30C6FCE3A1EFCD92A868"
+    },
+    {
+      "path": "docs/p0-4-analysis.md",
+      "sha256": "B21DFCBD9B202830417CCF3D5AEC59075FF5B2C75FCC864DFBD44D96E6E1A61B"
+    },
+    {
+      "path": "docs/p0-4-validation.md",
+      "sha256": "449ABC8DF2224A3A5CFD751B811737040FAA97F497D7217BC3E4CD4718997AAF"
+    },
+    {
+      "path": "docs/pam-trust-operations.md",
+      "sha256": "0DBE01B8F87196C0F4A6EBF827E4B507DDF532E29D7D6F680479383C381EFADC"
+    },
+    {
+      "path": "platform_core/management/commands/pamolive_trust.py",
+      "sha256": "F7D0A6AD164578348F941C161EB1BB2EAE421E3E583E4701F97F5BCCD713CBAD"
+    },
+    {
+      "path": "platform_core/static/platform_core/pam-trust.js",
+      "sha256": "93418D72618B9E6F4AD4090E46D17015820259E0DD3F290B4D7CF2AE027D03E4"
+    },
+    {
+      "path": "platform_modules/access/migrations/0013_pam_mandate_destination.py",
+      "sha256": "9666980AA3B6798D97F2747C9DF6FB1FB558A13D4F99BB9B54B021F98EBDDE15"
+    },
+    {
+      "path": "platform_modules/access/migrations/0014_accessintent_pam_trust.py",
+      "sha256": "589CB68FF3242BCB36CC83891A9D809F4C4B212E7311D8683AB51EB7E867C16C"
+    },
+    {
+      "path": "platform_modules/access/migrations/0015_event_provenance.py",
+      "sha256": "45D7D1FB33EE62A89432E4442FD9F321AAEDD4990274A0F6FFA27D946D9A56DE"
+    },
+    {
+      "path": "platform_modules/access/migrations/0016_provenance_database_guards.py",
+      "sha256": "70D825A96AA21BBD417E22A1BC48309FBB7BC30E05B180BFE1609E20489AA7C4"
+    },
+    {
+      "path": "platform_modules/access/provenance.py",
+      "sha256": "08DFDA06E8F6969348718954B53A3F57284F14B49CAECF5136C711C5A76E7032"
+    },
+    {
+      "path": "platform_modules/access/provenance_status.py",
+      "sha256": "FF3D6B7BCA349BE686AD9A764C417EC149C622AAF82D66B1F4B61215015F77FD"
+    },
+    {
+      "path": "platform_modules/approvals/migrations/0004_approvaldecision_pam_trust.py",
+      "sha256": "EFC8252E28B83310E9696154E32978EA88D999967AF3E266DB8F9EB02C847517"
+    },
+    {
+      "path": "platform_modules/connectors/migrations/0011_scim_destination_binding.py",
+      "sha256": "9DAB86E4D685A9EB8F654EDAF16B636AFA85A6ED642E69A2AA76E4EB375B75F3"
+    },
+    {
+      "path": "platform_modules/connectors/scim_credentials.py",
+      "sha256": "C36290F719D0316D61FE042ECAD78C3188DD6FA99F7B63C192A4EED648C86E0E"
+    },
+    {
+      "path": "platform_modules/pam/migrations/0004_credential_destination.py",
+      "sha256": "3D63331FAC9BF30B5F255A9A90A570F9ABAD5DA7A13DAB3CFD9ABFC2B7FFD31B"
+    },
+    {
+      "path": "platform_modules/pam/migrations/0005_pamtrustchallenge_pamtrustauthorization_and_more.py",
+      "sha256": "5697112211A666F98500236A3E6F1E7BFCDD354B01ADB11E2149D194A1B25B2F"
+    },
+    {
+      "path": "platform_modules/pam/migrations/0006_trust_database_boundaries.py",
+      "sha256": "C0B3754E2322E7BD4405FDDA0F37ECC8D3FFB1330C83042DE44F10693C4A7571"
+    },
+    {
+      "path": "platform_modules/pam/target_binding.py",
+      "sha256": "59878D0C64886BFEF3068B6F86AA8C9B27D192E640B223BC5213B36915ACFD8D"
+    },
+    {
+      "path": "platform_modules/pam/trust.py",
+      "sha256": "DDB30DEC25AB94ED331E1FB30503A5DBE5FA7578FAC6CEC073FE530CFDD014CD"
+    },
+    {
+      "path": "platform_modules/pam/trust_auth.py",
+      "sha256": "986EF7D85EEB6953B6814642DB6E3B22A9DFA418C8B9458E937E3F20621E0ADC"
+    },
+    {
+      "path": "platform_modules/pam/trust_auth_models.py",
+      "sha256": "CE88F137FEE9955162DD28E07AFF39376E8726BCCC962DBCF30AAEC5E62E6266"
+    },
+    {
+      "path": "platform_modules/pam/trust_models.py",
+      "sha256": "F01325CD6FD145C2B7043861F420B47EB43C2333091F75058A29EA3654B8D9A6"
+    },
+    {
+      "path": "platform_modules/pam/trust_registry.py",
+      "sha256": "373C63A0A0190D5856A0855ABF809C1EF8416B9228EE3D18BAB98C414E599B88"
+    },
+    {
+      "path": "platform_modules/pam/trust_views.py",
+      "sha256": "F5FFF17E4B4A512E40D31DB5DD44FCD7D805D7E37BFBFFD4A966E94C57CF71A1"
+    },
+    {
+      "path": "templates/pam/trust_action.html",
+      "sha256": "18928C9C65992E6751FA0607F9F14FD4C236CCA1DEB09AFF2C3206A342CCE30C"
+    },
+    {
+      "path": "tests/pam_trust_fixtures.py",
+      "sha256": "C43EFBD21F624A10A5EB427BDE38481DE55102973951FDC388CCD876AAFAC5EF"
+    },
+    {
+      "path": "tests/test_event_evidence_key_settings.py",
+      "sha256": "E63BD11EFF83CEB7CC9B09B5C27FB1354F9EA05EF41B2B6956F41243D8D96239"
+    },
+    {
+      "path": "tests/test_event_provenance_appsec.py",
+      "sha256": "72739EDC1641D5679ACA8C6F8F3CE5A780C5B1790EB9F92D779083F6AF7C331C"
+    },
+    {
+      "path": "tests/test_event_provenance_consumers.py",
+      "sha256": "C632507DE860D24EF60D40F3EF795891557EF58D9F7573708A5F56AF066BC81D"
+    },
+    {
+      "path": "tests/test_event_provenance_crypto.py",
+      "sha256": "ABEB96997467E0447299DA9D1B0E40540FCAAFCE0019D7ADA7B9F2BCEB7121F8"
+    },
+    {
+      "path": "tests/test_event_provenance_effects.py",
+      "sha256": "66645283766EC220BD0F5A7DCDAC158811D52D532A6CEAB5853050198955B412"
+    },
+    {
+      "path": "tests/test_event_provenance_guards.py",
+      "sha256": "E7B4F314DD1216C8FA682B1973D1076C8D7572D625DD4EDBBE2A1A555546764C"
+    },
+    {
+      "path": "tests/test_event_provenance_migration.py",
+      "sha256": "1154C3A99DF8FEDEB2028A289C6BEED7825EFF7216AA76052D1E02F87CEF4971"
+    },
+    {
+      "path": "tests/test_event_provenance_reproduction.py",
+      "sha256": "33FB4B74837E3D6A0714349A655329808194D462F3DAE159F7A6EB320E871790"
+    },
+    {
+      "path": "tests/test_event_provenance_restore.py",
+      "sha256": "51988001218881606FD638A183F794F2611AADABB714D1DF993595948FF91882"
+    },
+    {
+      "path": "tests/test_key_configuration.py",
+      "sha256": "76BDAA662E473C0289E97AF870B709138C1AD370084F0589946EBD268487101D"
+    },
+    {
+      "path": "tests/test_pam_quorum_reproduction.py",
+      "sha256": "0094C5BA716A4CFE6C8F62A73BB9CCCADD17224B6C0689392A0D13537D58EE90"
+    },
+    {
+      "path": "tests/test_pam_trust_auth.py",
+      "sha256": "0B096A48C29433158509EFD75324D59A8A3440597D262D9538B1D2A44D6FEAB6"
+    },
+    {
+      "path": "tests/test_pam_trust_concurrency.py",
+      "sha256": "B55B9388FAEE6B226FB3F1E85019F4C6F2D74FA3A6C7FB4A063A94557A6A30E3"
+    },
+    {
+      "path": "tests/test_pam_trust_registry.py",
+      "sha256": "7613D20098304462BF8CD9DF43E59969DCD8C9C96F29FE014AD4ADC632ECED0A"
+    },
+    {
+      "path": "tests/test_pam_trust_restore.py",
+      "sha256": "FC956F630A456ADF45582F08EF7D7DF56E2ED0586DAFCCD82B428F4A78213866"
+    }
+  ],
+  "head": "66bbf5be2e8301f09e36b4c779ee7ccd0d7b0b3a",
+  "status": [
+    " M .env.example",
+    " M .github/workflows/ci.yml",
+    " M config/settings.py",
+    " M config/urls.py",
+    " M deploy/check_active_active.py",
+    " M deploy/check_extensions.py",
+    " M deploy/check_upgrade_ci.py",
+    " M deploy/controlled_upgrade.py",
+    " M deploy/prepare_restore_fixture.py",
+    " M deploy/prepare_upgrade_fixture.py",
+    " M deploy/restore_application_check.py",
+    " M deploy/runtime.py",
+    " M docs/architecture-decisions.md",
+    " M docs/backup-restore.md",
+    " M docs/controlled-upgrade.md",
+    " M docs/pam-transport.md",
+    " M docs/provisioning.md",
+    " M platform_core/view_access.py",
+    " M platform_modules/access/certificate_possession.py",
+    " M platform_modules/access/evidence.py",
+    " M platform_modules/access/models.py",
+    " M platform_modules/access/services.py",
+    " M platform_modules/access/temporal.py",
+    " M platform_modules/access/ui.py",
+    " M platform_modules/approvals/models.py",
+    " M platform_modules/approvals/services.py",
+    " M platform_modules/connectors/creation.py",
+    " M platform_modules/connectors/creation_views.py",
+    " M platform_modules/connectors/models.py",
+    " M platform_modules/connectors/outbound.py",
+    " M platform_modules/connectors/services.py",
+    " M platform_modules/connectors/teamviewer_access.py",
+    " M platform_modules/connectors/teamviewer_collection.py",
+    " M platform_modules/connectors/teamviewer_ingestion.py",
+    " M platform_modules/connectors/teamviewer_mapping.py",
+    " M platform_modules/connectors/teamviewer_restoration.py",
+    " M platform_modules/connectors/teamviewer_sessions.py",
+    " M platform_modules/connectors/teamviewer_sightings.py",
+    " M platform_modules/connectors/views.py",
+    " M platform_modules/governance/policy.py",
+    " M platform_modules/intelligence/coverage.py",
+    " M platform_modules/intelligence/projection.py",
+    " M platform_modules/pam/broker.py",
+    " M platform_modules/pam/mandates.py",
+    " M platform_modules/pam/models.py",
+    " M platform_modules/pam/services.py",
+    " M platform_modules/pam/sessions.py",
+    " M pyproject.toml",
+    " M requirements.lock",
+    " M templates/connectors/index.html",
+    " M templates/governance/approvals.html",
+    " M templates/intelligence/index.html",
+    " M tests/test_access_attribution.py",
+    " M tests/test_access_intervals.py",
+    " M tests/test_certificate_holder.py",
+    " M tests/test_certificate_possession.py",
+    " M tests/test_controlled_upgrade.py",
+    " M tests/test_intelligence.py",
+    " M tests/test_pam_mandates.py",
+    " M tests/test_pam_relay_e2e.py",
+    " M tests/test_pam_sessions.py",
+    " M tests/test_platform.py",
+    " M tests/test_provisioning.py",
+    " M tests/test_scim_creation.py",
+    " M tests/test_teamviewer_access.py",
+    "?? .github/workflows/diagnose-partition.yml",
+    "?? deploy/Dockerfile.partition-probe",
+    "?? docs/adr-013-pam-quorum-trust.md",
+    "?? docs/adr-014-event-provenance.md",
+    "?? docs/p0-3-validation.md",
+    "?? docs/p0-4-analysis.md",
+    "?? docs/p0-4-validation.md",
+    "?? docs/pam-trust-operations.md",
+    "?? platform_core/management/commands/pamolive_trust.py",
+    "?? platform_core/static/platform_core/pam-trust.js",
+    "?? platform_modules/access/migrations/0013_pam_mandate_destination.py",
+    "?? platform_modules/access/migrations/0014_accessintent_pam_trust.py",
+    "?? platform_modules/access/migrations/0015_event_provenance.py",
+    "?? platform_modules/access/migrations/0016_provenance_database_guards.py",
+    "?? platform_modules/access/provenance.py",
+    "?? platform_modules/access/provenance_status.py",
+    "?? platform_modules/approvals/migrations/0004_approvaldecision_pam_trust.py",
+    "?? platform_modules/connectors/migrations/0011_scim_destination_binding.py",
+    "?? platform_modules/connectors/scim_credentials.py",
+    "?? platform_modules/pam/migrations/0004_credential_destination.py",
+    "?? platform_modules/pam/migrations/0005_pamtrustchallenge_pamtrustauthorization_and_more.py",
+    "?? platform_modules/pam/migrations/0006_trust_database_boundaries.py",
+    "?? platform_modules/pam/target_binding.py",
+    "?? platform_modules/pam/trust.py",
+    "?? platform_modules/pam/trust_auth.py",
+    "?? platform_modules/pam/trust_auth_models.py",
+    "?? platform_modules/pam/trust_models.py",
+    "?? platform_modules/pam/trust_registry.py",
+    "?? platform_modules/pam/trust_views.py",
+    "?? templates/pam/trust_action.html",
+    "?? tests/pam_trust_fixtures.py",
+    "?? tests/test_event_evidence_key_settings.py",
+    "?? tests/test_event_provenance_appsec.py",
+    "?? tests/test_event_provenance_consumers.py",
+    "?? tests/test_event_provenance_crypto.py",
+    "?? tests/test_event_provenance_effects.py",
+    "?? tests/test_event_provenance_guards.py",
+    "?? tests/test_event_provenance_migration.py",
+    "?? tests/test_event_provenance_reproduction.py",
+    "?? tests/test_event_provenance_restore.py",
+    "?? tests/test_key_configuration.py",
+    "?? tests/test_pam_quorum_reproduction.py",
+    "?? tests/test_pam_trust_auth.py",
+    "?? tests/test_pam_trust_concurrency.py",
+    "?? tests/test_pam_trust_registry.py",
+    "?? tests/test_pam_trust_restore.py"
+  ]
+}

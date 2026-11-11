@@ -12,6 +12,9 @@ from platform_core.authorization import require_recent_authentication
 from platform_modules.identity.bindings import binding_valid, current_binding
 from platform_modules.identity.models import LoginIdentityBinding
 
+from .models import SessionEndpoint
+from .target_binding import credential_verified, target_scope
+
 NON_HUMAN_KINDS = {"machine", "service", "workload", "application", "api"}
 NATIVE_ACCOUNT_PRIVILEGE = "native_full_account"
 
@@ -43,7 +46,22 @@ def prepare_request(intent, *, actor, organization):
     binding = current_binding(actor, organization=organization, identity_id=intent.identity_id)
     intent.requester_binding = binding
     intent.account_snapshot = account_snapshot(intent.account) if intent.account_id else {}
+    endpoint = mandate_endpoint(intent)
+    if endpoint and credential_verified(endpoint, intent.account):
+        intent.pam_destination = target_scope(endpoint, intent.account)
     validate_request(intent, organization=organization, actor=actor)
+    from .trust import prepare_trust
+
+    prepare_trust(intent, actor=actor, organization=organization)
+
+
+def mandate_endpoint(intent):
+    return SessionEndpoint.objects.filter(
+        organization_id=intent.organization_id,
+        resource_id=intent.resource_id,
+        account_id=intent.account_id,
+        protocol=intent.method.casefold(),
+    ).first()
 
 
 def validate_request(intent, *, organization, actor=None):
@@ -75,6 +93,14 @@ def validate_request(intent, *, organization, actor=None):
             "L’usage partagé PAM concerne un compte d’identité technique, "
             "pas l’emprunt du compte personnel d’un autre intervenant."
         )
+    if intent.pam_destination:
+        endpoint = mandate_endpoint(intent)
+        if (
+            not endpoint
+            or not credential_verified(endpoint, intent.account)
+            or intent.pam_destination != target_scope(endpoint, intent.account)
+        ):
+            raise ValidationError("La cible PAM a changé. Créez et approuvez un nouveau mandat.")
     binding = current_binding(
         actor,
         organization=organization,
@@ -123,27 +149,35 @@ def scope_hash(intent):
         "network_port": intent.network_port,
         "network_vlan": intent.network_vlan,
     }
+    if intent.pam_trust:
+        body["destination"] = intent.pam_destination
+        body["trust"] = intent.pam_trust
+        return _hash("pamolive.pam.mandate-scope.v3", body)
+    if intent.pam_destination:
+        body["destination"] = intent.pam_destination
+        return _hash("pamolive.pam.mandate-scope.v2", body)
     return _hash("pamolive.pam.mandate-scope.v1", body)
 
 
 def decision_signature(decision):
-    return _hash(
-        "pamolive.pam.person-decision.v1",
-        {
-            "id": str(decision.pk),
-            "organization": str(decision.organization_id),
-            "intent": str(decision.intent_id),
-            "reviewer": str(decision.reviewer_id),
-            "binding": str(decision.reviewer_binding_id or ""),
-            "identity": str(decision.reviewer_identity_id or ""),
-            "approved": decision.approved,
-            "comment": decision.comment,
-            "decided_at": _time(decision.decided_at),
-            "mfa_verified_at": _time(decision.mfa_verified_at),
-            "mfa_window_minutes": decision.mfa_window_minutes,
-            "scope_hash": decision.scope_hash,
-        },
-    )
+    body = {
+        "id": str(decision.pk),
+        "organization": str(decision.organization_id),
+        "intent": str(decision.intent_id),
+        "reviewer": str(decision.reviewer_id),
+        "binding": str(decision.reviewer_binding_id or ""),
+        "identity": str(decision.reviewer_identity_id or ""),
+        "approved": decision.approved,
+        "comment": decision.comment,
+        "decided_at": _time(decision.decided_at),
+        "mfa_verified_at": _time(decision.mfa_verified_at),
+        "mfa_window_minutes": decision.mfa_window_minutes,
+        "scope_hash": decision.scope_hash,
+    }
+    if decision.pam_trust:
+        body["trust"] = decision.pam_trust
+        return _hash("pamolive.pam.person-decision.v2", body)
+    return _hash("pamolive.pam.person-decision.v1", body)
 
 
 def binding_at(account_id, at):

@@ -1,0 +1,65 @@
+# P0-4 · Validation locale de la provenance des événements
+
+**Statut : option C de l'[ADR-014](adr-014-event-provenance.md) implémentée localement et validée sur données synthétiques.** Aucun accès au NAS, à un annuaire, à un collecteur ou à une cible privilégiée réelle ; aucun commit, push, déploiement ni modification de données de production. Les modifications locales P0-1, P0-2, P0-3 et préexistantes sont conservées. La [reproduction initiale](p0-4-analysis.md) reste la preuve du comportement antérieur.
+
+## Changements et frontières de confiance
+
+`AccessEvent` porte désormais un canal immuable `manual`, `collector`, `internal` ou `legacy_unknown`, un principal typé, le schéma et l'empreinte des faits. Le serveur attribue ces valeurs ; aucun champ HTTP ne peut les choisir. Une saisie manuelle garde son libellé `source` pour l'affichage, sans pouvoir se présenter comme le collecteur dont elle copie le UUID. L'API collecteur transmet le jeton Bearer brut au service seulement en mémoire ; le service recalcule son empreinte et vérifie sous verrou l'organisation, l'état actif et le jeton courant de l'`EventSource`. Un simple objet ORM `EventSource` ou un faux attribut privé ne suffit plus. L'identité stable du collecteur reste son UUID à travers les rotations de jeton. [Modèle](../platform_modules/access/models.py) · [Service](../platform_modules/access/services.py) · [Authentification](../platform_modules/connectors/services.py)
+
+La déduplication distingue les canaux et principaux : organisation + collecteur + identifiant externe, organisation + acteur manuel + libellé + identifiant, ou organisation + producteur interne + identifiant. Les faits normalisés d'un même principal et identifiant rendent `200` et l'événement initial ; des faits différents rendent `409`, sans écrasement, avec un conflit audité. Les 16 premières empreintes divergentes distinctes sont conservées puis regroupées dans une ligne de dépassement, afin de borner ces preuves. Un reçu V8 à signature HMAC lie l'événement, l'organisation, le principal, l'empreinte des faits, le justificatif présenté, la première réception et l'audit. Les dates sont canonicalisées en UTC avec six décimales ; l'UUID serveur, l'heure de réception et la version du jeton ne participent pas à l'empreinte de contenu. Le reçu atteste l'acceptation par PamOlive, **pas la véracité de la télémétrie distante**. [Canonicalisation et reçu](../platform_modules/access/provenance.py)
+
+Les lecteurs qui attribuent une origine de collecteur, son horloge ou sa couverture vérifient le reçu V8 ; un reçu absent ou invalide est affiché comme `invalid_provenance`. L'export sépare la conformité de l'évaluation de la confiance accordée à l'origine. Le défi de possession de certificat exige une provenance collecteur valide pour une nouvelle demande ; les preuves historiques déjà émises restent vérifiables. TeamViewer devient un producteur `internal` dont les nouvelles observations exigent aussi le lien de session signé et un reçu V8 ; les anciens liens signés conservent `legacy_unknown` et leur vérificateur. Une ancienne ligne `managed:teamviewer` non liée reste refusée pour adoption automatique. [Statut de provenance](../platform_modules/access/provenance_status.py) · [Horloge](../platform_modules/intelligence/coverage.py) · [Certificat](../platform_modules/access/certificate_possession.py) · [TeamViewer](../platform_modules/connectors/teamviewer_access.py)
+
+Les plafonds persistants par organisation et principal limitent les insertions et les tentatives quotidiennes, y compris TeamViewer interne. Le premier refus de quota est audité ; les refus suivants incrémentent un compteur sans nouvelle ligne d'audit. Les paramètres positifs sont définis dans [settings.py](../config/settings.py) et [.env.example](../.env.example). Après le plafond d'essais, même un rejeu exact obtient `429` : c'est la limite de disponibilité explicite au comportement idempotent ordinaire. Les payloads JSON à clés dupliquées ou nombres non finis sont refusés.
+
+## Migrations et historique
+
+La migration [0015](../platform_modules/access/migrations/0015_event_provenance.py) ajoute les champs, reçus, conflits, quotas et contraintes partielles ; elle classe **toutes** les anciennes lignes `legacy_unknown` sans interpréter leur texte `source`, leur UUID ou leur audit. Elle supprime l'ancienne unicité globale `(organisation, source, external_id)` afin qu'une observation authentifiée puisse coexister avec une ancienne ligne portant la même clé textuelle. La migration [0016](../platform_modules/access/migrations/0016_provenance_database_guards.py) ajoute les FK composites tenant PostgreSQL, refuse les nouvelles insertions `legacy_unknown`, protège les colonnes de provenance et les reçus. Le garde PostgreSQL antérieur sur les faits source reste actif. Le retour arrière de 0016 est refusé avant suppression des protections dès qu'un événement, reçu, conflit ou quota nouveau existe. La copie synthétique de migration vérifie la coexistence et ce refus.
+
+Les anciennes évaluations V7 et leur `source_snapshot` ne sont pas réécrits. Les vérificateurs V7, V8, les preuves historiques de possession et les sceaux TeamViewer peuvent utiliser les anciennes clés placées dans `PAMOLIVE_EVIDENCE_VERIFICATION_KEYS`, trousseau de **vérification des preuves seulement**. Les signatures nouvelles utilisent la clé active. Ce réglage ne réactive pas les anciennes signatures de session Django. Une courte clé historique peut y être conservée pour vérification des anciennes preuves, sans signer de nouvelles données ; sa faiblesse passée n'est pas réparée. [Restauration](backup-restore.md)
+
+## Résultats de vérification
+
+| Campagne locale | Résultat |
+| --- | --- |
+| Reproduction avant correction, SQLite | 14 tests : 12 réussis, 2 scénarios concurrents réservés à PostgreSQL. |
+| Reproduction avant correction, PostgreSQL isolé | 14 tests réussis, dont les deux courses qui donnaient le mauvais gagnant ou un faux `200`. |
+| P0-4 + consommateurs étendus, SQLite après correction | 169 tests exécutés, 150 réussis, 19 ignorés pour PostgreSQL ou environnement spécifique. |
+| P0-4 intégré, PostgreSQL 17.11 isolé après correction | 111 tests exécutés, 110 réussis, 1 ignoré, 0 erreur. Inclut concurrence, migration, restauration, FK tenant et révocation. |
+| P0-1/P0-2/P0-3, SQLite après correction | 210 tests exécutés, 189 réussis, 21 ignorés selon environnement. |
+| P0-1/P0-2/P0-3, PostgreSQL 17.11 isolé après correction | 210 tests exécutés, 210 réussis, 0 ignoré ni erreur. |
+| Configuration P0-1 et trousseau de preuves | 19 tests réussis après séparation de la clé de vérification. |
+| TeamViewer, SQLite | 73 tests exécutés, 65 réussis, 8 réservés à PostgreSQL ; rotation d'une preuve historique vérifiée. |
+| TeamViewer, PostgreSQL 17.11 isolé | 73 tests exécutés, 73 réussis, 0 ignoré ni erreur. |
+| Migration PostgreSQL à privilèges limités | `manage.py migrate` réussi sur copie synthétique avec un propriétaire de base `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`. Le rôle d'exécution séparé n'a ni `CREATE` sur le schéma, ni `TRUNCATE` sur les événements ; une tentative de DDL est refusée. |
+| Qualité et état des migrations | `ruff check .` réussi, `manage.py check` sans problème, `makemigrations --check --dry-run` sans changement, `git diff --check` sans erreur. |
+
+Les tests de régression P0-4 sont dans [la reproduction](../tests/test_event_provenance_reproduction.py), [l'AppSec](../tests/test_event_provenance_appsec.py), [la cryptographie](../tests/test_event_provenance_crypto.py), [les consommateurs](../tests/test_event_provenance_consumers.py), [les gardes SQL](../tests/test_event_provenance_guards.py), [les migrations](../tests/test_event_provenance_migration.py) et [la restauration](../tests/test_event_provenance_restore.py).
+
+## Fichiers touchés par P0-4
+
+- **Configuration :** `.env.example`, `config/settings.py`.
+- **Modèle, service, API et preuve :** `platform_modules/access/models.py`, `services.py`, `ui.py`, `provenance.py`, `provenance_status.py`, `evidence.py`, `temporal.py`, `certificate_possession.py`, migrations `0015_event_provenance.py` et `0016_provenance_database_guards.py` ; `platform_modules/connectors/services.py`.
+- **Consommateurs et producteur interne :** `platform_modules/intelligence/coverage.py`, `projection.py`, `templates/intelligence/index.html`, `platform_modules/connectors/teamviewer_access.py`, `teamviewer_collection.py`, `teamviewer_ingestion.py`, `teamviewer_mapping.py`, `teamviewer_restoration.py`, `teamviewer_sessions.py`, `teamviewer_sightings.py`.
+- **Mise à niveau et reprise :** `deploy/controlled_upgrade.py`, `prepare_restore_fixture.py`, `restore_application_check.py`, `docs/adr-014-event-provenance.md`, `p0-4-analysis.md`, `p0-4-validation.md`, `controlled-upgrade.md`, `backup-restore.md`.
+- **Tests nouveaux :** `tests/test_event_evidence_key_settings.py`, `test_event_provenance_appsec.py`, `test_event_provenance_consumers.py`, `test_event_provenance_crypto.py`, `test_event_provenance_effects.py`, `test_event_provenance_guards.py`, `test_event_provenance_migration.py`, `test_event_provenance_reproduction.py`, `test_event_provenance_restore.py`.
+- **Tests adaptés :** `tests/test_access_attribution.py`, `test_access_intervals.py`, `test_certificate_holder.py`, `test_certificate_possession.py`, `test_controlled_upgrade.py`, `test_intelligence.py`, `test_platform.py`, `test_teamviewer_access.py`.
+
+## Revue indépendante et limites
+
+- **AppSec :** la collision et l'usurpation via objet source brut sont fermées ; le service lie un jeton présenté au principal sous verrou. Les conflits, anomalies d'intégrité et quotas ont des résultats distincts. Le service conserve le rejet des autorités ambiguës et l'isolation des organisations.
+- **Cryptographie :** V8 couvre des faits canoniques et une acceptation authentifiée par PamOlive, sans changer les signatures V7. Les clés historiques de vérification sont séparées des secours de session Django. La signature serveur n'établit ni la vérité distante ni l'absence de vol du jeton.
+- **IAM/PAM et infrastructure :** les horloges, couvertures, exports, certificats et observations TeamViewer utilisent une provenance vérifiée. Aucune observation seule ne crée directement de mandat ou session PAM. Les limites opérationnelles P0-3 restent : témoin indépendant non déployé, commissionnement réel absent, transports natifs Linux non qualifiés.
+- **Red Team indépendante :** elle a reproduit en environnement synthétique deux voies supplémentaires avant durcissement (rejeu `200` d'un fait SQL altéré sous SQLite ; attribution `collector` par objet ORM sans jeton). Elles sont maintenant refusées. Elle ne confirme plus de contournement P0 dans les scénarios examinés ; sa revue n'est pas une preuve d'absence universelle de vulnérabilités.
+
+Les quotas ne garantissent pas à eux seuls la résistance à un très fort débit de requêtes authentifiées refusées : chaque tentative encore admise jusqu'au verrou consomme du CPU et une acquisition de verrou. Le débit doit être limité en amont et qualifié en charge avant mise à niveau réelle. Certains lecteurs peuvent répéter les vérifications de reçus ; les requêtes bornées principales préchargent désormais reçus et audits, mais la performance complète demande mesure. La protection du propriétaire PostgreSQL, des clés applicatives et un ancrage externe de l'audit restent des dépendances de confiance. Aucun système client ni transport réel n'a été qualifié par ces tests.
+
+## Opérations requises avant une mise à niveau réelle
+
+1. Désigner l'autorité de changement, inventorier tous les rédacteurs et lecteurs d'événements, arrêter les anciens binaires et leurs travailleurs avant la migration. Un ancien binaire ne comprend ni les espaces séparés ni les reçus V8.
+2. Sauvegarder et tester la restauration hors production. Conserver les clés de chiffrement P0-1 et les anciennes clés de **vérification** nécessaires aux preuves historiques, avec leur garde et leur durée de rétention. Vérifier le témoin indépendant P0-3 et les révocations restaurées.
+3. Migrer avec un rôle propriétaire/migrateur distinct du rôle d'exécution, puis contrôler le nombre de lignes `legacy_unknown`, les index partiels, FK, gardes et les reçus V8. Le qualificateur de restauration doit vérifier chaque nouvelle observation. Examiner les anciennes clés textuelles potentiellement empoisonnées ; une observation authentique perdue avant P0-4 ne peut pas être reconstituée depuis la base.
+4. Configurer les quotas selon le volume mesuré, une limitation de débit avant la base et une surveillance des `409`, `429`, `invalid_provenance` et échecs de reçus. Qualifier sous charge et sur les transports natifs prévus.
+5. Établir un plan de reprise **sans retour à l'ancien binaire** après la première donnée P0-4. Le retour arrière des migrations exige une réconciliation explicite des événements, reçus, conflits et quotas et ne doit pas supprimer des preuves pour satisfaire l'ancienne unicité globale.
+
+Cette validation locale ne vaut pas autorisation de déploiement.

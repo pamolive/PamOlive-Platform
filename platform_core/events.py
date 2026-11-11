@@ -200,6 +200,14 @@ def publish_domain_event(
     if current_organization().pk != organization.pk:
         raise PermissionDenied("Contexte organisationnel incorrect.")
     Organization.objects.select_for_update().get(pk=organization.pk, active=True)
+    from .registry import get_module
+    from .services import require_module
+
+    # A notification does not grant its producer a bypass around tenant module
+    # activation. Core/system safety notifications have no registered product
+    # emitter and keep their existing path.
+    if get_module(emitter) is not None:
+        require_module(organization, emitter)
     if (
         topic == PERIODIC_TOPIC
         or not re.fullmatch(

@@ -8,9 +8,10 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, ed25519, padding, rsa
 from cryptography.x509.oid import NameOID
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import close_old_connections, connection, connections
-from django.test import TransactionTestCase
+from django.test import TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -19,7 +20,7 @@ from platform_core.models import AuditEvent, ModuleActivation, Organization
 from platform_core.tenancy import organization_context
 from platform_modules.access import certificate_possession as proof
 from platform_modules.access.services import ingest_event
-from platform_modules.connectors.services import create_source
+from platform_modules.connectors.services import create_source, source_from_token
 from platform_modules.identity.models import Credential, Identity
 
 
@@ -85,7 +86,8 @@ class CertificatePossessionTests(TransactionTestCase):
             data,
             organization=self.org,
             actor=self.admin if manual else None,
-            source=None if manual else self.source,
+            source=None if manual else source_from_token(self.token),
+            source_token=None if manual else self.token,
         )
         return event
 
@@ -155,6 +157,30 @@ class CertificatePossessionTests(TransactionTestCase):
         self.assertContains(detail, "Vérifiée au moment du défi")
         self.event.action = "altered source"
         self.assertEqual(proof.summary(self.event), {"status": "invalid"})
+
+    def test_historical_proof_remains_verifiable_with_retained_installation_key(self):
+        body = self.answer(self.challenge())
+        self.assertEqual(self.post("certificate-proof", body).status_code, 201)
+        from platform_modules.access.provenance import verify_provenance_receipt
+
+        self.assertTrue(verify_provenance_receipt(self.event.provenance_receipt))
+        original_key = settings.SECRET_KEY
+        rotated_key = "synthetic-rotated-certificate-proof-key-1234567890"
+        with override_settings(
+            SECRET_KEY=rotated_key, PAMOLIVE_EVIDENCE_VERIFICATION_KEYS=[original_key]
+        ):
+            receipt = proof._receipts(self.event, proof.ACTION)[0]
+            self.assertTrue(
+                proof._valid_historical_seal(
+                    receipt.metadata["proof"], receipt.metadata["seal"]
+                )
+            )
+            self.assertTrue(verify_provenance_receipt(self.event.provenance_receipt))
+            self.assertTrue(proof._token_ingested(self.event))
+            self.assertEqual(proof.summary(self.event)["status"], "verified")
+            self.assertEqual(proof.verify_restored_proofs(), 1)
+        with override_settings(SECRET_KEY=rotated_key, PAMOLIVE_EVIDENCE_VERIFICATION_KEYS=[]):
+            self.assertEqual(proof.summary(self.event)["status"], "invalid")
 
     def test_restore_rejects_a_sealed_record_with_an_invalid_public_signature(self):
         from django.core import signing

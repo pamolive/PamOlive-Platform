@@ -1,5 +1,9 @@
-from datetime import datetime
+import hashlib
+import hmac
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q
@@ -7,12 +11,18 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from platform_core.audit import record
-from platform_core.models import Organization
+from platform_core.models import AuditEvent, Organization
 from platform_core.services import authorize, require_module
 from platform_core.tenancy import organization_context
 from platform_modules.identity.models import Credential, ExternalAccount, Grant, Identity, Resource
 
-from .models import AccessEvaluation, AccessEvent, AccessIntent
+from .models import (
+    AccessEvaluation,
+    AccessEvent,
+    AccessEventConflict,
+    AccessEventQuota,
+    AccessIntent,
+)
 
 RECORD_TYPES = {
     "identity": Identity,
@@ -83,64 +93,329 @@ def create_record(kind, data, *, actor, organization):
         return obj
 
 
-@transaction.atomic
-def ingest_event(data, *, organization, actor=None, source=None):
-    if actor:
-        authorize(actor, organization)
-    elif not source or not source.active or source.organization_id != organization.pk:
-        raise ValidationError("Source inactive ou organisation incorrecte.")
-    require_module(organization, "access")
-    if source:
-        require_module(organization, "connectors")
-        data = {**data, "source": str(source.pk)}
-    from .observations import is_managed_source
+@dataclass(frozen=True)
+class EventConflictResult:
+    """A committed, auditable conflict; callers must handle it explicitly."""
 
+    event_id: object
+    conflict_id: object
+
+
+@dataclass(frozen=True)
+class EventRateLimitResult:
+    """A committed quota refusal; never mistaken for a successful ingest."""
+
+    channel: str
+
+
+@dataclass(frozen=True)
+class EventIntegrityResult:
+    """The stored event or its receipt failed verification; ingestion stops."""
+
+    event_id: object
+
+
+_PROVENANCE_FIELDS = frozenset(
+    {
+        "id", "organization", "organization_id", "received_at", "provenance_channel",
+        "collector_source", "collector_source_id", "manual_actor", "manual_actor_id",
+        "internal_principal", "facts_schema", "facts_digest",
+    }
+)
+
+
+def _quota_limit(channel):
+    names = {
+        "manual": ("PAMOLIVE_EVENT_MANUAL_DAILY_LIMIT", 5000),
+        "collector": ("PAMOLIVE_EVENT_COLLECTOR_DAILY_LIMIT", 50000),
+        "internal": ("PAMOLIVE_EVENT_INTERNAL_DAILY_LIMIT", 50000),
+    }
+    setting_name, default = names[channel]
+    return int(getattr(settings, setting_name, default))
+
+
+def _attempt_limit(channel):
+    names = {
+        "manual": ("PAMOLIVE_EVENT_MANUAL_DAILY_ATTEMPT_LIMIT", 20000),
+        "collector": ("PAMOLIVE_EVENT_COLLECTOR_DAILY_ATTEMPT_LIMIT", 200000),
+        "internal": ("PAMOLIVE_EVENT_INTERNAL_DAILY_ATTEMPT_LIMIT", 200000),
+    }
+    setting_name, default = names[channel]
+    return int(
+        getattr(settings, setting_name, default)
+    )
+
+
+def _deny_event_quota(row, *, actor, organization):
+    row.denied_count += 1
+    if row.first_denial_audit_id is None:
+        row.first_denial_audit = record(
+            action="access.event.quota_denied.v1",
+            summary="Limite quotidienne d'ingestion atteinte.",
+            actor=actor,
+            organization=organization,
+            target=row,
+            metadata={"channel": row.channel, "day": row.day.isoformat()},
+        )
+    row.save(update_fields=["denied_count", "first_denial_audit"])
+    return EventRateLimitResult(channel=row.channel)
+
+
+def _event_quota(organization, *, channel, principal_key, actor, count_attempt=True):
+    """Count attempts and enforce persistent per-authority ceilings under the org lock."""
+    day = timezone.localdate()
+    rows = []
+    for quota_channel, key, storage_limit, attempt_limit in (
+        (
+            "organization", "*",
+            int(getattr(settings, "PAMOLIVE_EVENT_ORG_DAILY_LIMIT", 250000)),
+            int(getattr(settings, "PAMOLIVE_EVENT_ORG_DAILY_ATTEMPT_LIMIT", 1000000)),
+        ),
+        (
+            channel, principal_key, _quota_limit(channel),
+            _attempt_limit(channel),
+        ),
+    ):
+        if storage_limit < 1 or attempt_limit < 1:
+            raise ValidationError("Le quota des événements doit être positif.")
+        row, _ = AccessEventQuota.objects.get_or_create(
+            organization=organization,
+            channel=quota_channel,
+            principal_key=key,
+            day=day,
+        )
+        rows.append((row, storage_limit, attempt_limit))
+    if count_attempt:
+        for row, _, attempt_limit in rows:
+            row.attempt_count += 1
+            row.save(update_fields=["attempt_count"])
+            if row.attempt_count > attempt_limit:
+                return _deny_event_quota(row, actor=actor, organization=organization)
+    return rows
+
+
+def _event_storage_quota(rows, *, actor, organization):
+    for row, limit, _ in rows:
+        if row.accepted_count >= limit:
+            return _deny_event_quota(row, actor=actor, organization=organization)
+    return None
+
+
+def _record_event_conflict(existing, *, attempted_digest, actor, organization):
+    existing_conflict = AccessEventConflict.objects.filter(
+        event=existing, attempted_digest=attempted_digest
+    ).first()
+    if existing_conflict is None:
+        distinct = AccessEventConflict.objects.filter(event=existing).exclude(
+            attempted_digest=""
+        ).count()
+        digest_key = attempted_digest if distinct < 16 else ""
+        existing_conflict = AccessEventConflict.objects.filter(
+            event=existing, attempted_digest=digest_key
+        ).first()
+        if existing_conflict is None:
+            existing_conflict = AccessEventConflict.objects.create(
+                organization=organization,
+                event=existing,
+                attempted_digest=digest_key,
+                count=1,
+            )
+            existing_conflict.audit = record(
+                action="access.event.conflict.v1",
+                summary="Identifiant externe réutilisé avec des faits divergents.",
+                actor=actor,
+                organization=organization,
+                target=existing_conflict,
+                metadata={
+                    "event_id": str(existing.pk),
+                    "attempted_digest": digest_key or "overflow",
+                },
+            )
+            existing_conflict.save(update_fields=["audit"])
+            return EventConflictResult(existing.pk, existing_conflict.pk)
+    existing_conflict.count += 1
+    existing_conflict.last_seen_at = timezone.now()
+    existing_conflict.save(update_fields=["count", "last_seen_at"])
+    return EventConflictResult(existing.pk, existing_conflict.pk)
+
+
+def _record_integrity_failure(existing, *, actor, organization):
+    # The first signal is durable and bounded despite repeated attacker replays.
+    if not AuditEvent.objects.filter(
+        organization=organization,
+        action="access.event.integrity_failed.v1",
+        object_id=str(existing.pk),
+    ).exists():
+        record(
+            action="access.event.integrity_failed.v1",
+            summary="Événement ou reçu de provenance V8 non vérifiable.",
+            actor=actor,
+            organization=organization,
+            target=existing,
+        )
+    return EventIntegrityResult(existing.pk)
+
+
+def _lock_ingestion_authority(organization, *, actor, source, source_token):
+    """Recheck the actual authority after acquiring the organization row lock."""
+    from platform_modules.connectors.models import EventSource
+
+    if source is not None and (
+        not isinstance(source, EventSource)
+        or not isinstance(source_token, str)
+        or not source_token
+        or len(source_token) > 256
+    ):
+        raise ValidationError("Une source authentifiée par jeton est requise.")
+    try:
+        Organization.objects.select_for_update().get(pk=organization.pk, active=True)
+    except Organization.DoesNotExist as error:
+        raise ValidationError("Organisation inactive ou inconnue.") from error
+    require_module(organization, "access")
+    if actor is not None:
+        authorize(actor, organization)
+        return "manual", None, str(actor.pk)
+    require_module(organization, "connectors")
+    authenticated_fingerprint = hashlib.sha256(source_token.encode()).hexdigest()
+    current = EventSource.unscoped.select_for_update().filter(
+        pk=source.pk, organization_id=organization.pk, active=True
+    ).first()
+    if current is None or not hmac.compare_digest(
+        current.token_hash, authenticated_fingerprint
+    ):
+        raise ValidationError("Source désactivée ou justificatif révoqué.")
+    return "collector", current, str(current.pk)
+
+
+@transaction.atomic
+def _charge_ingestion_attempt(organization, *, actor, source, source_token):
+    channel, _, principal_key = _lock_ingestion_authority(
+        organization, actor=actor, source=source, source_token=source_token
+    )
+    with organization_context(organization):
+        return _event_quota(
+            organization, channel=channel, principal_key=principal_key, actor=actor
+        )
+
+
+def ingest_event(data, *, organization, actor=None, source=None, source_token=None):
+    """Accept exactly one authority and never deduplicate across authority channels."""
+    if (actor is None) == (source is None):
+        raise ValidationError("Une seule autorité d'ingestion est requise.")
+    if source is None and source_token is not None:
+        raise ValidationError(
+            "Le justificatif collecteur ne peut pas accompagner une saisie manuelle."
+        )
+    if not isinstance(data, dict) or _PROVENANCE_FIELDS.intersection(data):
+        raise ValidationError("Les champs de provenance sont attribués par le serveur.")
+    quota = _charge_ingestion_attempt(
+        organization, actor=actor, source=source, source_token=source_token
+    )
+    if isinstance(quota, EventRateLimitResult):
+        return quota
+    return _ingest_event_locked(
+        data, organization=organization, actor=actor, source=source, source_token=source_token
+    )
+
+
+@transaction.atomic
+def _ingest_event_locked(data, *, organization, actor, source, source_token):
+    from .observations import is_managed_source
+    from .provenance import (
+        create_provenance_receipt,
+        event_facts_digest,
+        verify_provenance_receipt,
+    )
+    channel, source, principal_key = _lock_ingestion_authority(
+        organization, actor=actor, source=source, source_token=source_token
+    )
+
+    data = dict(data)
+    if channel == "collector":
+        data["source"] = str(source.pk)
     if is_managed_source(data.get("source")):
         raise ValidationError(
             "Cet espace de sources est réservé aux collecteurs internes vérifiés."
         )
-    Organization.objects.select_for_update().get(pk=organization.pk)
+    # Capture at the service boundary, not from a caller or a model default.
+    data["received_at"] = timezone.now()
+    for field in ("occurred_at", "ended_at"):
+        value = data.get(field)
+        if value is None:
+            continue
+        if isinstance(value, str):
+            try:
+                value = parse_datetime(value)
+            except ValueError:
+                value = None
+        if not isinstance(value, datetime) or not timezone.is_aware(value):
+            raise ValidationError("Les dates source doivent comporter un fuseau horaire.")
+        data[field] = value
+    data.update(
+        provenance_channel=channel,
+        collector_source=source if channel == "collector" else None,
+        manual_actor=actor if channel == "manual" else None,
+        internal_principal="",
+    )
     with organization_context(organization):
-        existing = AccessEvent.objects.filter(
-            source=data["source"], external_id=data["external_id"]
-        ).first()
-        if existing:
-            return existing, False
-        data = dict(data)
-        # Capture at the service boundary, not from a caller or a bound model
-        # default. Managed collectors use their separately verified source receipt.
-        data["received_at"] = timezone.now()
-        for field in ("occurred_at", "ended_at"):
-            value = data.get(field)
-            if value is None:
-                continue
-            if isinstance(value, str):
-                try:
-                    value = parse_datetime(value)
-                except ValueError:
-                    value = None
-            if not isinstance(value, datetime) or not timezone.is_aware(value):
-                raise ValidationError("Les dates source doivent comporter un fuseau horaire.")
-            data[field] = value
         event = AccessEvent(organization=organization, **data)
-        event.full_clean()
-        from datetime import timedelta
-
-        if max(event.occurred_at, event.ended_at or event.occurred_at) > timezone.now() + timedelta(
-            minutes=5
+        # The unique key is checked explicitly below so a legitimate replay can be
+        # compared before Django's UniqueConstraint validation rejects it.
+        event.clean_fields()
+        event.facts_schema, event.facts_digest = event_facts_digest(event)
+        event.full_clean(validate_unique=False, validate_constraints=False)
+        if max(event.occurred_at, event.ended_at or event.occurred_at) > (
+            timezone.now() + timedelta(minutes=5)
         ):
             raise ValidationError(
                 "Un événement observé ne peut pas être daté de plus de cinq minutes dans le futur."
             )
+        key = {"provenance_channel": channel, "external_id": event.external_id}
+        if channel == "collector":
+            key["collector_source"] = source
+        else:
+            key.update(manual_actor=actor, source=event.source)
+        existing = AccessEvent.objects.filter(**key).first()
+        if existing is not None:
+            receipt = getattr(existing, "provenance_receipt", None)
+            if receipt is None or not verify_provenance_receipt(receipt):
+                return _record_integrity_failure(
+                    existing, actor=actor, organization=organization
+                )
+            if (
+                existing.facts_schema == event.facts_schema
+                and existing.facts_digest == event.facts_digest
+            ):
+                return existing, False
+            return _record_event_conflict(
+                existing,
+                attempted_digest=event.facts_digest,
+                actor=actor,
+                organization=organization,
+            )
+        quota_rows = _event_quota(
+            organization, channel=channel, principal_key=principal_key,
+            actor=actor, count_attempt=False,
+        )
+        storage_limit = _event_storage_quota(quota_rows, actor=actor, organization=organization)
+        if storage_limit is not None:
+            return storage_limit
         event.save()
-        record(
+        audit = record(
             action="access.event.received.v1",
             summary=str(event),
             actor=actor,
             organization=organization,
             target=event,
         )
+        create_provenance_receipt(
+            event, audit,
+            credential_fingerprint=source.token_hash if channel == "collector" else "",
+        )
         evaluate_event(event, organization=organization)
+        for row, _, _ in quota_rows:
+            row.accepted_count += 1
+            row.save(update_fields=["accepted_count"])
         return event, True
 
 

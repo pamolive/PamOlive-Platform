@@ -81,7 +81,10 @@ class ScimHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         state = self.server.state
-        if self.headers.get("Authorization") != "Bearer fixture-token-not-a-real-secret":
+        if "received" in state:
+            state["received"].append(self.headers.get("Authorization"))
+        token = state.get("token", "fixture-token-not-a-real-secret")
+        if self.headers.get("Authorization") != f"Bearer {token}":
             return self.answer(401)
         if state.get("redirect"):
             return self.answer(302, headers={"Location": "https://unapproved.invalid/"})
@@ -102,7 +105,8 @@ class ScimHandler(BaseHTTPRequestHandler):
     def do_PATCH(self):
         state = self.server.state
         payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-        if self.headers.get("Authorization") != "Bearer fixture-token-not-a-real-secret":
+        token = state.get("token", "fixture-token-not-a-real-secret")
+        if self.headers.get("Authorization") != f"Bearer {token}":
             return self.answer(401)
         if state.get("fail_next_patch"):
             code = state.pop("fail_next_patch")
@@ -129,7 +133,7 @@ class ProvisioningTests(TestCase):
         from platform_modules.identity.mover_models import MoveAccess, MoveGrant
         from tests.person_fixtures import bind_person
 
-        connector = self.configured()
+        self.configured()
         for actor, role in ((self.operator, "operator"), (self.reviewer, "reviewer")):
             bind_person(actor, organization=self.org, administrator=self.admin, role=role)
 
@@ -191,10 +195,16 @@ class ProvisioningTests(TestCase):
             approve(replacement)
         self.server.state["ignore_patch"] = False
         # A changed destination must not receive the old withdrawal.
-        ProvisioningConnector.objects.filter(pk=connector.pk).update(base_url=self.url + "/other")
-        with self.assurance():
-            retry_change(removal.pk, actor=self.admin, organization=self.org)
-        self.assertEqual(process_changes(self.org), 0)
+        from platform_modules.connectors.mover_handover import membership_scope
+
+        def drifted_scope(change):
+            scope = membership_scope(change)
+            return {**scope, "endpoint_sha256": "a" * 64} if scope else None
+
+        with patch("platform_modules.connectors.mover_handover.membership_scope", drifted_scope):
+            with self.assurance():
+                retry_change(removal.pk, actor=self.admin, organization=self.org)
+            self.assertEqual(process_changes(self.org), 0)
         self.assertEqual(self.server.state["members"], {"user-1"})
         removal.refresh_from_db()
         self.assertEqual(removal.result_code, "mover_withdrawal_target_changed")
@@ -202,7 +212,6 @@ class ProvisioningTests(TestCase):
         ExternalChange.objects.filter(pk=removal.pk).update(status="succeeded")
         with self.assertRaisesMessage(ValidationError, "ancien retrait SCIM"):
             approve(replacement)
-        ProvisioningConnector.objects.filter(pk=connector.pk).update(base_url=self.url)
         with self.assurance():
             rechecked = retry_change(removal.pk, actor=self.admin, organization=self.org)
         self.assertNotEqual(rechecked.pk, removal.pk)
@@ -630,6 +639,187 @@ class ProvisioningTests(TestCase):
         process_changes(self.org)
         self.assertEqual(ExternalChange.objects.get().status, "succeeded")
 
+    @contextmanager
+    def second_directory(self, **state):
+        peer = ThreadingHTTPServer(("127.0.0.1", 0), ScimHandler)
+        peer.state = {"active": True, "members": set(), "effects": 0, "received": [], **state}
+        peer.socket = self.server.socket.context.wrap_socket(peer.socket, server_side=True)
+        thread = threading.Thread(target=peer.serve_forever, daemon=True)
+        thread.start()
+        host = f"127.0.0.1:{peer.server_port}"
+        try:
+            with override_settings(
+                CONNECTOR_ALLOWED_HOSTS={host, f"127.0.0.1:{self.server.server_port}"}
+            ):
+                yield peer.state, f"https://{host}/scim/v2"
+        finally:
+            peer.shutdown()
+            peer.server_close()
+            thread.join(timeout=3)
+
+    def test_edit_cannot_send_old_bearer_to_another_allowed_directory(self):
+        connector = self.configured()
+        with self.second_directory() as (other, other_url), self.assurance():
+            try:
+                configure_connector(
+                    actor=self.admin,
+                    organization=self.org,
+                    connector_id=connector.pk,
+                    name="Autre annuaire",
+                    base_url=other_url,
+                )
+            except ValidationError:
+                pass
+            else:
+                probe_connector(connector.pk, actor=self.admin, organization=self.org)
+            self.assertEqual(other["received"], [], "The other directory received the old Bearer")
+        connector.refresh_from_db()
+        self.assertEqual(connector.base_url, self.url)
+
+    def test_another_path_requires_a_separate_connector(self):
+        connector = self.configured()
+        with self.assurance(), self.assertRaisesMessage(ValidationError, "Destination immuable"):
+            configure_connector(
+                actor=self.admin,
+                organization=self.org,
+                connector_id=connector.pk,
+                name="Autre chemin",
+                base_url=self.url + "/different",
+                token="new-synthetic-token",
+            )
+
+    def test_token_selected_directory_cannot_inherit_old_mappings_on_the_same_url(self):
+        connector = self.configured()
+        self.grant()
+        previous = ProvisioningConnector.objects.values().get(pk=connector.pk)
+        with self.assurance(), self.assertRaisesMessage(ValidationError, "historique"):
+            configure_connector(
+                actor=self.admin,
+                organization=self.org,
+                connector_id=connector.pk,
+                name=connector.name,
+                base_url=self.url,
+                token="another-directory-token",
+            )
+        self.assertEqual(ProvisioningConnector.objects.values().get(pk=connector.pk), previous)
+
+    def test_copied_ciphertext_and_seal_are_rejected_before_network(self):
+        connector = self.configured()
+        clone = ProvisioningConnector.objects.create(
+            organization=self.org,
+            name="Copied credential",
+            base_url=connector.base_url,
+            encrypted_token=connector.encrypted_token,
+            destination_seal=connector.destination_seal,
+        )
+        with self.assurance(), patch("platform_modules.connectors.outbound.ScimAdapter") as adapter:
+            result = probe_connector(clone.pk, actor=self.admin, organization=self.org)
+        self.assertEqual(result, (False, "connector_destination_unverified"))
+        adapter.assert_not_called()
+
+    def test_migration_preserves_ciphertext_and_blocks_ambiguous_legacy_destination(self):
+        from importlib import import_module
+        from types import SimpleNamespace
+
+        from django.apps import apps
+
+        legacy = ProvisioningConnector.objects.create(
+            organization=self.org,
+            name="Legacy initial",
+            base_url=self.url,
+            encrypted_token="historical-ciphertext",
+            revision=1,
+        )
+        ambiguous = ProvisioningConnector.objects.create(
+            organization=self.org,
+            name="Legacy revised",
+            base_url=self.url,
+            encrypted_token="historical-revised-ciphertext",
+            revision=2,
+            enabled=True,
+            verified_revision=2,
+        )
+        before = ProvisioningConnector.objects.values().get(pk=ambiguous.pk)
+        migration = import_module(
+            "platform_modules.connectors.migrations.0011_scim_destination_binding"
+        )
+        migration.bind_existing(apps, SimpleNamespace(connection=connection))
+        legacy.refresh_from_db()
+        self.assertEqual(legacy.encrypted_token, "historical-ciphertext")
+        self.assertTrue(legacy.destination_seal)
+        self.assertEqual(ProvisioningConnector.objects.values().get(pk=ambiguous.pk), before)
+        with self.assurance(), patch("platform_modules.connectors.outbound.ScimAdapter") as adapter:
+            result = probe_connector(ambiguous.pk, actor=self.admin, organization=self.org)
+        self.assertEqual(result, (False, "connector_destination_unverified"))
+        adapter.assert_not_called()
+
+    @skipUnless(connection.vendor == "postgresql", "Requires PostgreSQL destination guards")
+    def test_postgresql_refuses_retargeting_scim_connectors_and_mappings(self):
+        from platform_modules.connectors.models import AccountBinding, GroupBinding
+
+        connector = self.configured()
+        for query, fields in (
+            (
+                ProvisioningConnector.objects.filter(pk=connector.pk),
+                {"base_url": self.url + "/other"},
+            ),
+            (AccountBinding.objects.filter(connector=connector), {"remote_id": "other-user"}),
+            (GroupBinding.objects.filter(connector=connector), {"remote_id": "other-group"}),
+        ):
+            with self.assertRaises(DatabaseError), transaction.atomic():
+                query.update(**fields)
+
+    def test_pending_withdrawal_cannot_be_reauthorized_on_another_directory(self):
+        connector = self.configured()
+        grant = self.grant()
+        process_changes(self.org)
+        self.assertEqual(self.server.state["members"], {"user-1"})
+        with self.assurance(self.operator):
+            revoke_grant(
+                grant, actor=self.operator, organization=self.org, origin="recertification.revoked"
+            )
+        withdrawal = ExternalChange.objects.get(kind="remove_membership")
+        with (
+            self.second_directory(members={"user-1"}, token="new-synthetic-token") as (
+                other,
+                other_url,
+            ),
+            self.assurance(),
+        ):
+            try:
+                configure_connector(
+                    actor=self.admin,
+                    organization=self.org,
+                    connector_id=connector.pk,
+                    name="Autre annuaire",
+                    base_url=other_url,
+                    token="new-synthetic-token",
+                )
+            except ValidationError:
+                replacement = configure_connector(
+                    actor=self.admin,
+                    organization=self.org,
+                    name="Autre annuaire",
+                    base_url=other_url,
+                    token="new-synthetic-token",
+                )
+            else:
+                replacement = connector
+            self.assertTrue(
+                probe_connector(replacement.pk, actor=self.admin, organization=self.org)[0]
+            )
+            set_connector_enabled(
+                replacement.pk, actor=self.admin, organization=self.org, enabled=True
+            )
+            retry_change(withdrawal.pk, actor=self.admin, organization=self.org)
+            other["received"].clear()
+            process_changes(self.org)
+            self.assertEqual(other["received"], [], "The retry queried the other directory")
+            self.assertEqual(other["members"], {"user-1"})
+        withdrawal.refresh_from_db()
+        self.assertEqual(withdrawal.status, "succeeded")
+        self.assertFalse(self.server.state["members"])
+
     def test_destination_and_dns_rebinding_guards_and_redirects(self):
         with self.assertRaises(IntegrationFailure):
             destination("http://127.0.0.1/scim")
@@ -827,6 +1017,7 @@ class ProvisioningTests(TestCase):
 class ConcurrentClaimTests(TransactionTestCase):
     def test_two_instances_cannot_dispatch_two_changes_for_the_same_account(self):
         from platform_modules.connectors.models import AccountBinding, GroupBinding
+        from platform_modules.connectors.scim_credentials import destination_seal
 
         actor = get_user_model().objects.create_superuser("admin")
         organization = Organization.objects.create(key="concurrency", name="Concurrency")
@@ -846,7 +1037,7 @@ class ConcurrentClaimTests(TransactionTestCase):
             resource = Resource.objects.create(
                 organization=organization, name="App", kind="application"
             )
-            connector = ProvisioningConnector.objects.create(
+            connector = ProvisioningConnector(
                 organization=organization,
                 name="Fixture",
                 base_url="https://not-contacted.invalid/scim",
@@ -854,6 +1045,8 @@ class ConcurrentClaimTests(TransactionTestCase):
                 enabled=True,
                 verified_revision=1,
             )
+            connector.destination_seal = destination_seal(connector)
+            connector.save()
             AccountBinding.objects.create(
                 organization=organization, account=account, connector=connector, remote_id="user"
             )

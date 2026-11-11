@@ -4,7 +4,7 @@ from django.utils import timezone
 
 from platform_core.audit import record
 from platform_core.models import Organization
-from platform_core.services import authorize
+from platform_core.services import authorize, lock_authorized_actor, require_module
 from platform_core.tenancy import organization_context
 from platform_modules.connectors.outbound import queue_grant_state
 
@@ -65,7 +65,14 @@ def expire_grants(organization):
 def grant_from_approval(intent, *, actor, organization):
     from platform_modules.approvals.models import ApprovalDecision
 
-    authorize(actor, organization, roles=("admin", "reviewer"))
+    actor, organization = lock_authorized_actor(
+        actor, organization, roles=("admin", "reviewer")
+    )
+    # A direct domain caller must meet the same activation contract as the
+    # approval endpoint. Mandatory revocation/expiry above remains available.
+    require_module(organization, "identity")
+    require_module(organization, "access")
+    require_module(organization, "approvals")
     if (
         intent.organization_id != organization.pk
         or intent.status != "approved"
@@ -79,7 +86,6 @@ def grant_from_approval(intent, *, actor, organization):
         raise ValidationError("L’intention ne permet pas cette attribution IAM.")
     if not ApprovalDecision.objects.filter(intent=intent, reviewer=actor, approved=True).exists():
         raise ValidationError("La preuve d’approbation correspondante est requise.")
-    Organization.objects.select_for_update().get(pk=organization.pk)
     from .mover import attest_grant, authorize_move_intent
 
     link, _ = authorize_move_intent(intent, actor=actor, organization=organization)

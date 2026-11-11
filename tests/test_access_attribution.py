@@ -286,7 +286,7 @@ class AccessAttributionTests(TestCase):
         node = next(n for n in graph["nodes"] if n["id"] == f"event:{unknown.pk}")
         self.assertIn("Acteur non résolu", node["short_label"])
 
-    def test_api_accepts_independent_actor_and_preserves_unknown_actor_on_replay(self):
+    def test_api_rejects_divergent_actor_replay_and_preserves_unknown_actor(self):
         _, token = create_source("Remote support", actor=self.admin, organization=self.org)
         payload = {
             "external_id": "api-shared-1",
@@ -309,7 +309,7 @@ class AccessAttributionTests(TestCase):
         self.assertEqual(response.status_code, 201, response.content)
         event_id = response.json()["event_id"]
         response = post({**payload, "identity": str(self.identity.pk)})
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json()["event_id"], event_id)
         self.assertIsNone(AccessEvent.objects.get(pk=event_id).identity_id)
         response = post({**payload, "identity": str(self.identity.pk), "external_id": "api-human"})

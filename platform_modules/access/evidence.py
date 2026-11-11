@@ -1,14 +1,32 @@
 """New evaluations authenticate their exact interpretation, not only a verdict label."""
 
+import hashlib
+import hmac
+import json
+
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils.crypto import constant_time_compare
 
 from platform_core.audit import digest
 
-from .observations import context_hash, sign, source_snapshot
+from .observations import sign, source_snapshot
 
 
-def evaluation_body(evaluation):
+def _sign_with_key(value, domain, key):
+    """V7's exact wire format, using a historical evidence key for verification."""
+    if key == settings.SECRET_KEY:
+        return sign(value, domain)
+    payload = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+    return hmac.new(
+        key.encode(),
+        ("pamolive.access." + domain + ".v1\0").encode() + payload,
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def evaluation_body(evaluation, *, key=None):
+    key = settings.SECRET_KEY if key is None else key
     return dict(
         id=str(evaluation.pk),
         organization=str(evaluation.organization_id),
@@ -20,18 +38,20 @@ def evaluation_body(evaluation):
         findings=evaluation.findings,
         context=evaluation.context,
         context_hash=evaluation.context_hash,
-        event_fact_hash=sign(source_snapshot(evaluation.event), "event-facts"),
+        event_fact_hash=_sign_with_key(source_snapshot(evaluation.event), "event-facts", key),
     )
 
 
-def evaluation_signature(evaluation):
-    return sign(
+def evaluation_signature(evaluation, *, key=None):
+    key = settings.SECRET_KEY if key is None else key
+    return _sign_with_key(
         dict(
-            body=evaluation_body(evaluation),
+            body=evaluation_body(evaluation, key=key),
             audit_id=evaluation.audit_id,
             audit_hash=evaluation.audit.event_hash,
         ),
         "evaluation",
+        key,
     )
 
 
@@ -49,7 +69,7 @@ def verify_evaluation(evaluation, *, allow_legacy=False):
                 and not evaluation.signature
             )
         audit = evaluation.audit
-        return bool(
+        if not (
             evaluation.event.organization_id == evaluation.organization_id
             and (
                 not evaluation.intent_id
@@ -61,10 +81,25 @@ def verify_evaluation(evaluation, *, allow_legacy=False):
             and audit.object_type == evaluation._meta.label_lower
             and audit.object_id == str(evaluation.pk)
             and audit.event_hash == digest(audit)
+        ):
+            return False
+        keys = (
+            settings.SECRET_KEY,
+            *getattr(settings, "PAMOLIVE_EVIDENCE_VERIFICATION_KEYS", ()),
+        )
+        return any(
+            isinstance(key, str)
+            and bool(key)
             and audit.metadata.get("body_hash")
-            == sign(evaluation_body(evaluation), "evaluation-body")
-            and evaluation.context_hash == context_hash(evaluation.context)
-            and constant_time_compare(evaluation.signature, evaluation_signature(evaluation))
+            == _sign_with_key(evaluation_body(evaluation, key=key), "evaluation-body", key)
+            and evaluation.context_hash
+            == _sign_with_key(
+                evaluation.context.get("semantic", evaluation.context), "context", key
+            )
+            and constant_time_compare(
+                evaluation.signature, evaluation_signature(evaluation, key=key)
+            )
+            for key in dict.fromkeys(keys)
         )
     except (ValueError, TypeError, AttributeError, KeyError, ValidationError):
         return False

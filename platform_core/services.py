@@ -1,5 +1,6 @@
+from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import transaction
+from django.db import connection, transaction
 
 from .audit import record
 from .models import ModuleActivation, Organization, OrganizationMembership
@@ -21,6 +22,27 @@ def authorize(actor, organization, *, roles=("admin", "operator")):
         organization__active=True,
     ).exists():
         raise PermissionDenied("Droit insuffisant dans cette organisation.")
+
+
+def lock_authorized_actor(actor, organization, *, roles=("admin", "operator")):
+    """Revalidate mutation authority after the shared membership/activation lock.
+
+    The caller owns the transaction for the entire protected mutation. Returning
+    refreshed objects prevents a request's cached account or organization flags
+    from retaining authority after a concurrent administrative revocation.
+    """
+    if not connection.in_atomic_block or current_organization().pk != organization.pk:
+        raise PermissionDenied("Cette opération exige une transaction organisationnelle.")
+    organization = (
+        Organization.objects.select_for_update().filter(pk=organization.pk, active=True).first()
+    )
+    if organization is None or actor is None:
+        raise PermissionDenied
+    actor = get_user_model().objects.filter(pk=actor.pk, is_active=True).first()
+    if actor is None:
+        raise PermissionDenied
+    authorize(actor, organization, roles=roles)
+    return actor, organization
 
 
 def require_module(organization, key):

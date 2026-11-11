@@ -19,7 +19,7 @@
   <time>{{ row.event.occurred_at }}</time>{% if row.event.ended_at %} → <time>{{ row.event.ended_at }}</time>{% endif %}
   <h3><a href="{% url 'record-detail' 'event' row.event.pk %}">{{ row.event.identity|default:'Identité non résolue' }} → {{ row.event.resource }}</a></h3>
   <p>{{ row.event.method }} · {{ row.event.action }} · {{ row.event.result }} · {{ row.event.get_domain_display|default:'Domaine non renseigné' }}</p>
-  <p>Source : {{ row.event.source }} / {{ row.event.external_id }} · reçue {{ row.event.received_at }}{% if row.arrived_late %} · <b>arrivée tardive ({{ row.delay_seconds }} s après la fin observée)</b>{% endif %}</p>
+  <p>Source déclarée : {{ row.event.source }} / {{ row.event.external_id }} · provenance : <b>{{ row.provenance_status }}</b> · reçue {{ row.event.received_at }}{% if row.arrived_late %} · <b>arrivée tardive ({{ row.delay_seconds }} s après la fin observée)</b>{% endif %}</p>
   <p>Précision d’horloge déclarée : {% if row.clock_uncertainty != None %}± {{ row.clock_uncertainty }} s{% else %}inconnue{% endif %}{% if row.order_uncertain %} · <b>ordre relatif incertain</b>{% endif %}</p>
   {% if row.reference %}<p>Référence(s) déclarée(s) : {{ row.reference }}{% if not row.reference_complete %} · <b>certaines parties restent sans référence</b>{% endif %} — rapprochement métier, pas une causalité démontrée.</p>{% endif %}
   {% if row.evaluation %}<span class="verdict {{ row.evaluation.verdict }}">{{ row.evaluation.get_verdict_display }}</span>{% endif %}

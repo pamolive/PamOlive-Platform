@@ -26,7 +26,17 @@ def scoped(module=None, roles=("admin", "operator", "reviewer", "auditor")):
                 with recent_authentication(
                     request.user, organization, request.session.get("mfa_verified_at", 0)
                 ):
-                    return view(request, *args, **kwargs)
+                    from platform_modules.pam.trust_auth import (
+                        PAMActionRequired,
+                        action_authentication,
+                    )
+                    from platform_modules.pam.trust_views import challenge_response
+
+                    try:
+                        with action_authentication(request):
+                            return view(request, *args, **kwargs)
+                    except PAMActionRequired as exc:
+                        return challenge_response(request, exc)
             return view(request, *args, **kwargs)
 
         return wrapped

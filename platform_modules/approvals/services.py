@@ -4,8 +4,7 @@ from django.utils import timezone
 
 from platform_core.audit import record
 from platform_core.authorization import assurance_datetime, require_recent_authentication
-from platform_core.models import Organization
-from platform_core.services import authorize, require_module
+from platform_core.services import lock_authorized_actor, require_module
 from platform_core.tenancy import organization_context
 from platform_modules.access.models import AccessIntent
 
@@ -14,9 +13,10 @@ from .models import ApprovalDecision
 
 @transaction.atomic
 def decide(intent_id, *, actor, organization, approved, comment):
-    authorize(actor, organization, roles=("admin", "reviewer"))
+    actor, organization = lock_authorized_actor(
+        actor, organization, roles=("admin", "reviewer")
+    )
     require_module(organization, "approvals")
-    Organization.objects.select_for_update().get(pk=organization.pk)
     with organization_context(organization):
         intent = AccessIntent.objects.select_for_update().get(pk=intent_id)
         if intent.requested_by_id == actor.pk:
@@ -74,7 +74,12 @@ def decide(intent_id, *, actor, organization, approved, comment):
         )
         if intent.fulfillment == "pam":
             from platform_modules.pam.mandates import decision_signature, scope_hash
+            from platform_modules.pam.trust import authorize_vote
 
+            decision.pam_trust = authorize_vote(
+                intent, actor=actor, organization=organization, approved=approved,
+                comment=comment, binding=binding,
+            )
             decision.scope_hash = scope_hash(intent)
             decision.signature = decision_signature(decision)
         decision.full_clean()

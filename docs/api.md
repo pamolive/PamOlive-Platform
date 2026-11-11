@@ -131,3 +131,26 @@ L’administrateur active le module Graphe et investigations, puis crée un pér
 Un nouveau rapport renvoie 201. Le même couple périmètre/identifiant renvoie 200 avec le rapport initial, sans réécriture. Pour corriger une déclaration, envoyer un nouvel identifiant : la séquence serveur détermine quelle déclaration l’emporte sur chaque sous-intervalle, même si deux réceptions ont la même heure. Les anciens rapports restent conservés.
 
 L’absence d’événement n’est interprétable que pour les sources et périodes effectivement couvertes. Même une déclaration complète n’est pas une preuve universelle qu’aucun accès n’a eu lieu. Les événements arrivés tardivement conservent leur heure source et leur heure de réception ; la proximité horaire de deux activités n’établit pas leur causalité.
+# Contrat transverse de lecture P1
+
+`GET /api/v1/access-contracts/<intent UUID>/` expose `pamolive.access-contract/1`
+avec la session du portail. Les rôles admin, operator, reviewer et auditor de
+l'organisation peuvent lire ; Identity et Access ainsi que leurs dépendances
+doivent être actifs. Les autres domaines sont explicitement disponibles ou
+indisponibles. Le service relit les autorisations après le verrou d'organisation.
+
+Les sections séparent intention, décisions, droit demandé, droit local,
+effets fournisseur confirmés, tentatives, baux/relais PAM, observations et preuves.
+Elles ne créent aucune autorisation. Le contrat est une lecture non signée et
+ne remplace pas les preuves historiques V7/V8. Une confirmation est un résultat
+enregistré à une date, sans assertion d'inventaire distant actuel.
+
+Les collections indiquent `availability`, `items` et `truncated` ; une section
+`module_disabled` ne signifie pas qu'aucune activité historique n'existe. La
+projection n'expose ni jeton, ni ciphertext, ni configuration de cible, ni
+payload fournisseur arbitraire. Réponse `Cache-Control: no-store` ; `403` pour
+capacité/rôle refusé, `404` pour UUID absent du tenant, `405` hors GET. Une
+session absente suit le parcours de connexion du portail.
+
+L'écran `/access/intents/<UUID>/contract/` et son export `/contract/export/`
+utilisent le même service. Voir [ADR-015](adr-015-access-read-contract.md).

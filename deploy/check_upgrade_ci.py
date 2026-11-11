@@ -103,7 +103,7 @@ def main():
             raise RuntimeError("Historical data were not prepared")
         plan_args = ["-m", "deploy.controlled_upgrade", "plan", "--database", scope.database]
         plan = application(plan_args)
-        if len(plan["migrations"]) != 12:
+        if len(plan["migrations"]) != 19:
             raise RuntimeError("Unexpected historical upgrade path")
         common = ["--database", scope.database, "--reviewed-plan", "-", "--offline-ack"]
         encoded = json.dumps(plan).encode()
@@ -115,7 +115,7 @@ def main():
         if application(plan_args) != plan:
             raise RuntimeError("The rollback did not preserve the migration journal")
         applied = application(["-m", "deploy.controlled_upgrade", "apply"] + common, encoded)
-        if not applied["committed"] or applied["new_models"] != 27:
+        if not applied["committed"] or applied["new_models"] != 32:
             raise RuntimeError("Upgrade commit or schema delta is unexpected")
         verified = application(
             [

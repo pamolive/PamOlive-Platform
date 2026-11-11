@@ -4,8 +4,8 @@ from django.db import transaction
 from platform_core.attestations import seal
 from platform_core.authorization import assurance_datetime, require_recent_authentication
 from platform_core.events import publish_domain_event
-from platform_core.models import Organization, OrganizationMembership
-from platform_core.services import authorize, require_module
+from platform_core.models import OrganizationMembership
+from platform_core.services import lock_authorized_actor, require_module
 from platform_core.tenancy import current_organization
 from platform_modules.identity.review_contract import apply_review
 
@@ -19,7 +19,9 @@ from .models import Review
 def review_grant(review_id, *, actor, organization, keep, comment):
     if current_organization().pk != organization.pk or type(keep) is not bool:
         raise PermissionDenied
-    authorize(actor, organization, roles=("admin", "reviewer"))
+    actor, organization = lock_authorized_actor(
+        actor, organization, roles=("admin", "reviewer")
+    )
     require_module(organization, "recertification")
     assurance = require_recent_authentication(actor, organization)
     if (
@@ -29,7 +31,6 @@ def review_grant(review_id, *, actor, organization, keep, comment):
         or any(ord(c) < 32 and c not in "\n\t\r" for c in comment)
     ):
         raise ValidationError("Un motif de 2000 caractères maximum est requis.")
-    Organization.objects.select_for_update().get(pk=organization.pk, active=True)
     review = Review.objects.select_for_update().get(pk=review_id)
     scope = ReviewScope.objects.select_related("run__audit", "review").filter(review=review).first()
     if not scope:

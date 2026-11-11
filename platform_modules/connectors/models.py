@@ -24,6 +24,7 @@ class ProvisioningConnector(ScopedModel):
     adapter = models.CharField(max_length=20, default="scim2", choices=[("scim2", "SCIM 2.0")])
     base_url = models.URLField("URL de base HTTPS SCIM", max_length=500)
     encrypted_token = models.TextField()
+    destination_seal = models.CharField(max_length=64, blank=True, editable=False)
     revision = models.PositiveIntegerField(default=1)
     enabled = models.BooleanField(default=False)
     verified_revision = models.PositiveIntegerField(null=True, blank=True)

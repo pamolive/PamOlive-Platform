@@ -5,6 +5,7 @@ from datetime import timedelta
 from django.db.models import Q
 
 from platform_core.tenancy import current_organization
+from platform_modules.access.provenance_status import verified_origin_status
 from platform_modules.access.temporal import overlapping_events
 
 from .models import DOMAINS, CollectionReport, CollectionScope
@@ -95,19 +96,23 @@ def collection_coverage(start, end, *, resource=None):
 
 
 def event_clock(event):
-    if not event.domain:
+    # The display label is supplied by a manual operator. Only the principal
+    # assigned to an authenticated collector may claim its clock reports.
+    if (
+        not event.domain
+        or verified_origin_status(event) != "collector"
+        or not event.collector_source_id
+    ):
         return None, None
     reports = (
         CollectionReport.objects.filter(
-            scope__source_id=event.source,
+            scope__source_id=event.collector_source_id,
             scope__domain=event.domain,
             covered_from__lte=event.occurred_at,
             covered_until__gt=event.occurred_at,
         )
         .filter(Q(scope__resource__isnull=True) | Q(scope__resource_id=event.resource_id))
         .order_by("scope_id", "-sequence")[:500]
-        if _uuid(event.source)
-        else []
     )
     latest = {}
     for report in reports:
@@ -116,16 +121,6 @@ def event_clock(event):
         return None, None
     report = max(latest.values(), key=lambda r: r.clock_uncertainty_seconds)
     return report.clock_uncertainty_seconds, str(report.pk)
-
-
-def _uuid(value):
-    import uuid
-
-    try:
-        uuid.UUID(value)
-        return True
-    except (ValueError, TypeError, AttributeError):
-        return False
 
 
 def event_timeline(queryset, start, end, *, identity=None):
@@ -137,12 +132,16 @@ def event_timeline(queryset, start, end, *, identity=None):
     validate_window(start, end)
     events = list(
         overlapping_events(queryset.filter(organization=current_organization()), start, end)
-        .select_related("identity", "account", "resource", "credential")
+        .select_related(
+            "identity", "account", "resource", "credential",
+            "collector_source", "provenance_receipt__audit",
+        )
         .prefetch_related("evaluations__intent")
         .order_by("occurred_at", "pk")[:501]
     )
     rows, previous = [], None
     for event in events[:500]:
+        origin_status = verified_origin_status(event)
         context = observation_context(event, organization=current_organization())
         event = context.event
         if identity is not None and event.identity_id != identity.pk:
@@ -190,6 +189,7 @@ def event_timeline(queryset, start, end, *, identity=None):
         rows.append(
             {
                 "event": event,
+                "provenance_status": origin_status,
                 "evaluation": evaluation,
                 "historical_evaluation": historical if stale else None,
                 "interpretation_stale": stale,

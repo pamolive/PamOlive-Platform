@@ -30,10 +30,12 @@ from platform_modules.governance.policy import approval_requirements, enforce_au
 
 from .context import network_context
 from .destination import TransportFailure, host_port
-from .mandates import account_can_use_pam, scope_hash, validate_request
+from .mandates import account_can_use_pam, mandate_endpoint, scope_hash, validate_request
 from .models import LIVE_CONNECTION_STATES, RecordingChunk, RelayConnection, SessionEndpoint
 from .probe import certificate_pin, probe_rdp, probe_ssh, ssh_host_key
 from .services import open_lease
+from .target_binding import credential_seal, credential_verified, target_scope
+from .trust import authorize_launch, require_live, verify_launch
 
 
 def browser_hash(key):
@@ -128,10 +130,9 @@ def configure_endpoint(
             raise PermissionDenied
         if not account.active or account.identity.status != "active":
             raise ValidationError("Le compte et son identité doivent être actifs.")
-        secret_changed = bool(password or private_key or passphrase)
-        if not endpoint_id or endpoint.auth_method != auth_method or secret_changed:
-            material = _secret(auth_method, protocol, password, private_key, passphrase)
-            endpoint.encrypted_secret = cipher().encrypt(json.dumps(material).encode()).decode()
+        previous_scope = (
+            target_scope(endpoint) if endpoint_id and credential_verified(endpoint) else None
+        )
         endpoint.name, endpoint.resource, endpoint.account = name.strip(), resource, account
         endpoint.protocol, endpoint.hostname, endpoint.port = protocol, hostname, port
         endpoint.domain, endpoint.auth_method = domain, auth_method
@@ -139,6 +140,13 @@ def configure_endpoint(
             ssh_host_key(host_key).export_public_key().decode().strip() if protocol == "ssh" else ""
         )
         endpoint.certificate_pin = certificate_pin(rdp_pin) if protocol == "rdp" else ""
+        destination_changed = previous_scope != target_scope(endpoint, account)
+        if destination_changed and endpoint_id:
+            endpoint.destination_epoch += 1
+        if destination_changed or password or private_key or passphrase:
+            material = _secret(auth_method, protocol, password, private_key, passphrase)
+            endpoint.encrypted_secret = cipher().encrypt(json.dumps(material).encode()).decode()
+            endpoint.credential_seal = credential_seal(endpoint, account)
         endpoint.revision += int(bool(endpoint_id))
         endpoint.enabled, endpoint.verified_revision = False, None
         endpoint.tested_at, endpoint.test_code = None, ""
@@ -212,6 +220,8 @@ def set_endpoint_enabled(endpoint_id, *, actor, organization, enabled):
             ):
                 raise ValidationError("Testez cette révision avant de l’activer (moins de 15 min).")
             host_port(endpoint.hostname, endpoint.port)
+            if not credential_verified(endpoint):
+                raise ValidationError("Configurez un secret lié à cette cible avant activation.")
         endpoint.enabled = enabled
         endpoint.save(update_fields=["enabled"])
         record(
@@ -295,6 +305,8 @@ def _check_authority(item, *, session_key, client_ip):
         or endpoint.protocol != intent.method.casefold()
         or endpoint.resource_id != intent.resource_id
         or endpoint.account_id != intent.account_id
+        or not credential_verified(endpoint, intent.account)
+        or intent.pam_destination != target_scope(endpoint, intent.account)
         or not constant_time_compare(item.authority_seal, authority_seal(item))
         or item.authority_snapshot.get("intent_id") != str(intent.pk)
         or item.authority_snapshot.get("identity_id") != str(intent.identity_id)
@@ -313,10 +325,13 @@ def _check_authority(item, *, session_key, client_ip):
         raise PermissionDenied("L’autorisation du relais n’est plus applicable.")
     try:
         validate_request(intent, actor=actor, organization=organization)
+        require_live(intent, organization, actor=actor)
     except ValidationError:
         raise PermissionDenied(
             "Le lien de personne ou le compte du mandat n’est plus applicable."
         ) from None
+    if not verify_launch(intent, item.authority_snapshot.get("pam_trust_launch")):
+        raise PermissionDenied("La preuve d’ouverture PAM ne peut pas être vérifiée.")
     host_port(endpoint.hostname, endpoint.port)
     observed = copy(intent)
     observed.location, observed.country_code = network_context(client_ip)
@@ -351,11 +366,14 @@ def launch_session(intent_id, *, actor, organization, session_key, client_ip):
     with organization_context(organization):
         lease = open_lease(intent_id, actor=actor, organization=organization)
         intent = lease.intent
-        endpoint = SessionEndpoint.objects.get(
-            resource_id=intent.resource_id,
-            account_id=intent.account_id,
-            protocol=intent.method.casefold(),
-        )
+        endpoint = mandate_endpoint(intent)
+        if (
+            not endpoint
+            or not intent.pam_destination
+            or not credential_verified(endpoint, intent.account)
+            or intent.pam_destination != target_scope(endpoint, intent.account)
+        ):
+            raise ValidationError("Un mandat approuvé pour cette cible PAM précise est requis.")
         now = timezone.now()
         reap_connections(organization)
         active = RelayConnection.objects.filter(status__in=LIVE_CONNECTION_STATES)
@@ -367,6 +385,7 @@ def launch_session(intent_id, *, actor, organization, session_key, client_ip):
             raise ValidationError(
                 "Un relais est déjà ouvert ou la limite de sessions est atteinte."
             )
+        launch_evidence = authorize_launch(intent, actor=actor, organization=organization)
         token = secrets.token_urlsafe(32)
         item = RelayConnection(
             organization=organization,
@@ -405,6 +424,7 @@ def launch_session(intent_id, *, actor, organization, session_key, client_ip):
                 "portal_login": actor.get_username(),
                 "mfa_verified_at": assurance.verified_at,
                 "approved_at": intent.approved_at.isoformat() if intent.approved_at else "",
+                "pam_trust_launch": launch_evidence,
                 "decisions": sorted(
                     str(value)
                     for value in intent.decisions.filter(approved=True).values_list("pk", flat=True)
@@ -543,11 +563,51 @@ def check_startup_session(connection_id, organization, owner_token, *, session_k
     )
 
 
-def endpoint_credentials(item):
-    try:
-        return json.loads(cipher().decrypt(item.endpoint.encrypted_secret.encode()))
-    except (InvalidToken, ValueError):
-        raise TransportFailure("session_credentials_unavailable") from None
+@transaction.atomic
+def endpoint_credentials(item, *, session_key=None, client_ip=None):
+    if database_connection.vendor == "postgresql":
+        with database_connection.cursor() as cursor:
+            cursor.execute("SET LOCAL lock_timeout = '1s'")
+            cursor.execute("SET LOCAL statement_timeout = '2s'")
+    organization = Organization.objects.select_for_update().get(pk=item.organization_id)
+    with organization_context(organization):
+        current = _related(RelayConnection.objects.select_for_update(of=("self",))).get(pk=item.pk)
+        intent = current.lease.intent
+        now = timezone.now()
+        if (
+            current.owner_token != item.owner_token
+            or not current.owner_token
+            or current.status not in ("connecting", "active")
+            or current.stop_requested_at
+            or current.lease.status != "active"
+            or now >= min(current.lease.expires_at, current.expires_at)
+            or intent.status != "approved"
+            or not intent.starts_at <= now < intent.ends_at
+            or not current.endpoint.enabled
+            or current.endpoint.revision != current.endpoint_revision
+            or current.endpoint.verified_revision != current.endpoint.revision
+            or not constant_time_compare(current.authority_seal, authority_seal(current))
+            or not constant_time_compare(
+                current.authority_snapshot.get("endpoint_digest", ""),
+                endpoint_digest(current.endpoint),
+            )
+            or endpoint_digest(item.endpoint) != endpoint_digest(current.endpoint)
+            or not credential_verified(current.endpoint, intent.account)
+            or intent.pam_destination != target_scope(current.endpoint, intent.account)
+        ):
+            raise TransportFailure("session_credentials_unavailable")
+        try:
+            require_live(intent, organization, actor=current.opened_by)
+        except ValidationError:
+            raise PermissionDenied("La confiance PAM n’est plus applicable.") from None
+        if not verify_launch(intent, current.authority_snapshot.get("pam_trust_launch")):
+            raise PermissionDenied("La preuve d’ouverture PAM ne peut pas être vérifiée.")
+        if session_key is not None:
+            _check_authority(current, session_key=session_key, client_ip=client_ip)
+        try:
+            return json.loads(cipher().decrypt(current.endpoint.encrypted_secret.encode()))
+        except (InvalidToken, ValueError):
+            raise TransportFailure("session_credentials_unavailable") from None
 
 
 def chunk_digest(item, sequence, previous, elapsed_ms, payload_size, encrypted):

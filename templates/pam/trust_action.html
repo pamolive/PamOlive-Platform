@@ -1,0 +1,25 @@
+{% extends 'base.html' %}{% load static %}
+{% block content %}
+<h1>{{ action_name }}</h1>
+{% if payload_display %}
+<p>Vérifiez le compte, la cible et le périmètre avant de confirmer.</p>
+<pre class="workflow-card">{{ payload_display }}</pre>
+{% else %}
+<p>Votre personne doit avoir été attestée dans le registre indépendant. La nouvelle clé sera proposée aux dépositaires pour validation.</p>
+{% endif %}
+<form id="pam-trust-form" class="workflow-card">
+  {% csrf_token %}
+  <label id="pam-trust-credential-label" hidden>Authentificateur
+    <select id="pam-trust-credential"></select>
+  </label>
+  <button type="submit" class="button">Confirmer avec mon authentificateur PAM</button>
+  <p id="pam-trust-status" role="status" aria-live="polite"></p>
+</form>
+<section id="pam-trust-enrollment-result" hidden>
+  <h2>Proposition d’enrôlement</h2>
+  <p>Transmettez ce reçu public aux dépositaires. L’authentificateur sera utilisable après leur validation indépendante.</p>
+  <pre id="pam-trust-enrollment-json"></pre>
+</section>
+{{ ceremony|json_script:'pam-trust-ceremony' }}
+<script src="{% static 'platform_core/pam-trust.js' %}" defer></script>
+{% endblock %}

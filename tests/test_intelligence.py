@@ -19,9 +19,9 @@ from platform_core.authorization import recent_authentication
 from platform_core.models import AccountSecurity
 from platform_core.services import install_module
 from platform_modules.access.models import AccessEvent
-from platform_modules.access.services import create_record, reevaluate_event
+from platform_modules.access.services import create_record, ingest_event, reevaluate_event
 from platform_modules.approvals.services import decide
-from platform_modules.connectors.services import create_source
+from platform_modules.connectors.services import create_source, source_from_token
 from platform_modules.identity.models import Credential, Grant, Identity, Resource
 from platform_modules.intelligence import services
 from platform_modules.intelligence.coverage import collection_coverage, event_timeline
@@ -102,6 +102,21 @@ class IntelligenceTests(TestCase):
             source=self.source,
             organization=self.org,
         )
+
+    def collector_event(self, **overrides):
+        data = {
+            "external_id": "collector-event-1",
+            "identity": self.identity,
+            "account": self.account,
+            "resource": self.resource,
+            "method": "SSH",
+            "action": "session.start",
+            "occurred_at": timezone.now(),
+        }
+        return ingest_event(
+            {**data, **overrides}, source=source_from_token(self.token),
+            source_token=self.token, organization=self.org,
+        )[0]
 
     def domain(self, name, resource=None):
         return next(
@@ -578,7 +593,7 @@ class IntelligenceTests(TestCase):
         scope = self.scope()
         self.report(scope, clock_uncertainty_seconds=30)
         at = self.base + timedelta(minutes=15)
-        first = self.event(source=str(self.source.pk), domain="pam", occurred_at=at)
+        first = self.collector_event(domain="pam", occurred_at=at)
         second = self.event(
             source="badge-source",
             domain="physical",
@@ -600,9 +615,7 @@ class IntelligenceTests(TestCase):
         scope = self.scope()
         self.report(scope, clock_uncertainty_seconds=30)
         at = self.base + timedelta(minutes=15)
-        event = AccessEvent(
-            organization=self.org,
-            source=str(self.source.pk),
+        event = self.collector_event(
             domain="pam",
             resource=self.resource,
             occurred_at=at,

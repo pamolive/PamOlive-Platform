@@ -1,7 +1,7 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
-from platform_core import event_backfill_views
+from platform_core import access_contract_views, event_backfill_views
 from platform_core.extensions.urls import extension_patterns
 from platform_core.oidc import views as oidc_views
 from platform_core.security import security_settings
@@ -12,10 +12,25 @@ from platform_modules.governance import views as governance_views
 from platform_modules.identity import binding_views as identity_views
 from platform_modules.identity import mover_views
 from platform_modules.intelligence import views as intelligence_views
+from platform_modules.pam import trust_views
 from platform_modules.pam import views as pam_views
 from platform_modules.recertification import views as recertification_views
 
 urlpatterns = [
+    path(
+        "access/intents/<uuid:intent_id>/contract/",
+        access_contract_views.detail, name="access-contract-detail",
+    ),
+    path(
+        "access/intents/<uuid:intent_id>/contract/export/",
+        access_contract_views.detail, {"export": True}, name="access-contract-export",
+    ),
+    path(
+        "api/v1/access-contracts/<uuid:intent_id>/",
+        access_contract_views.detail, {"api": True}, name="api-access-contract",
+    ),
+    path("pam/trust/action/", trust_views.authenticate, name="pam-trust-action"),
+    path("pam/trust/enrollment/", trust_views.enrollment, name="pam-trust-enrollment"),
     path("identities/mobility/", mover_views.home, name="mover-home"),
     path("identities/business-roles/", mover_views.catalog, name="mover-catalog"),
     path("identities/business-roles/new/", mover_views.role_config, name="mover-role-new"),

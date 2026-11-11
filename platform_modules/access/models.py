@@ -1,3 +1,4 @@
+import re
 import uuid
 
 from django.conf import settings
@@ -64,6 +65,8 @@ class AccessIntent(ScopedModel):
         on_delete=models.PROTECT,
     )
     account_snapshot = models.JSONField(default=dict, blank=True, editable=False)
+    pam_destination = models.JSONField(default=dict, blank=True, editable=False)
+    pam_trust = models.JSONField(default=dict, blank=True, editable=False)
     status = models.CharField(
         max_length=16,
         default="pending",
@@ -124,6 +127,27 @@ class AccessEvent(ScopedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     source = models.CharField("Source", max_length=180)
     external_id = models.CharField("Identifiant source", max_length=180)
+    provenance_channel = models.CharField(
+        max_length=20,
+        editable=False,
+        choices=[
+            ("legacy_unknown", "Provenance historique indéterminée"),
+            ("manual", "Saisie manuelle"),
+            ("collector", "Collecteur authentifié"),
+            ("internal", "Producteur interne vérifié"),
+        ],
+    )
+    collector_source = models.ForeignKey(
+        "connectors.EventSource", null=True, blank=True, editable=False,
+        on_delete=models.PROTECT, related_name="access_events",
+    )
+    manual_actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, editable=False,
+        on_delete=models.PROTECT, related_name="manual_access_events",
+    )
+    internal_principal = models.CharField(max_length=80, blank=True, editable=False)
+    facts_schema = models.CharField(max_length=40, blank=True, editable=False)
+    facts_digest = models.CharField(max_length=64, blank=True, editable=False)
     occurred_at = models.DateTimeField("Date source")
     ended_at = models.DateTimeField(
         "Fin de la période observée",
@@ -219,18 +243,87 @@ class AccessEvent(ScopedModel):
                 | models.Q(ended_at__gte=models.F("occurred_at")),
                 name="access_event_time_order",
             ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        provenance_channel="legacy_unknown", collector_source__isnull=True,
+                        manual_actor__isnull=True, internal_principal="", facts_schema="",
+                        facts_digest="",
+                    )
+                    | models.Q(
+                        provenance_channel="manual", collector_source__isnull=True,
+                        manual_actor__isnull=False, internal_principal="",
+                        facts_schema="event-facts/8", facts_digest__gt="",
+                    )
+                    | models.Q(
+                        provenance_channel="collector", collector_source__isnull=False,
+                        manual_actor__isnull=True, internal_principal="",
+                        facts_schema="event-facts/8", facts_digest__gt="",
+                    )
+                    | models.Q(
+                        provenance_channel="internal", collector_source__isnull=True,
+                        manual_actor__isnull=True, internal_principal__gt="",
+                        facts_schema="event-facts/8", facts_digest__gt="",
+                    )
+                ),
+                name="access_event_provenance_shape",
+            ),
             models.UniqueConstraint(
-                fields=["organization", "source", "external_id"], name="unique_access_source_event"
+                fields=["organization", "source", "external_id"],
+                condition=models.Q(provenance_channel="legacy_unknown"),
+                name="unique_legacy_access_source_event",
+            ),
+            models.UniqueConstraint(
+                fields=["organization", "manual_actor", "source", "external_id"],
+                condition=models.Q(provenance_channel="manual"),
+                name="unique_manual_access_event",
+            ),
+            models.UniqueConstraint(
+                fields=["organization", "collector_source", "external_id"],
+                condition=models.Q(provenance_channel="collector"),
+                name="unique_collector_access_event",
+            ),
+            models.UniqueConstraint(
+                fields=["organization", "internal_principal", "external_id"],
+                condition=models.Q(provenance_channel="internal"),
+                name="unique_internal_access_event",
             ),
         ]
+        indexes = [models.Index(fields=["organization", "provenance_channel", "received_at"])]
 
     def save(self, *args, **kwargs):
         if not self._state.adding:
             raise ValidationError("Un fait source ne peut pas être réécrit.")
+        if self.provenance_channel == "legacy_unknown":
+            raise ValidationError("Une nouvelle observation exige une provenance authentifiée.")
+        from .provenance import event_facts_digest
+
+        if (self.facts_schema, self.facts_digest) != event_facts_digest(self):
+            raise ValidationError("L'empreinte V8 ne correspond pas aux faits source.")
         return super().save(*args, **kwargs)
 
     def clean(self):
         super().clean()
+        channel = self.provenance_channel
+        principal_shape = {
+            "manual": bool(self.manual_actor_id)
+            and not self.collector_source_id and not self.internal_principal,
+            "collector": bool(self.collector_source_id)
+            and not self.manual_actor_id and not self.internal_principal,
+            "internal": bool(self.internal_principal)
+            and not self.manual_actor_id and not self.collector_source_id,
+        }
+        if channel not in principal_shape or not principal_shape[channel]:
+            raise ValidationError("Une seule autorité de provenance vérifiée est requise.")
+        if self.facts_schema != "event-facts/8" or not re.fullmatch(
+            r"[0-9a-f]{64}", self.facts_digest or ""
+        ):
+            raise ValidationError("L'empreinte canonique V8 est requise.")
+        if (
+            self.collector_source_id
+            and self.collector_source.organization_id != self.organization_id
+        ):
+            raise ValidationError("Collecteur d'une autre organisation.")
         if any(
             value is not None and timezone.is_naive(value)
             for value in (self.occurred_at, self.ended_at)
@@ -244,6 +337,80 @@ class AccessEvent(ScopedModel):
     def __str__(self):
         target = self.resource or "Ressource non résolue"
         return f"{self.occurred_at:%d/%m %H:%M} · {self.action} · {target}"
+
+
+class AccessProvenanceReceipt(ScopedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event = models.OneToOneField(
+        AccessEvent, on_delete=models.PROTECT, related_name="provenance_receipt"
+    )
+    audit = models.OneToOneField(
+        "platform_core.AuditEvent", on_delete=models.PROTECT,
+        related_name="access_provenance_receipt",
+    )
+    version = models.CharField(max_length=32, default="event-provenance/8", editable=False)
+    channel = models.CharField(max_length=20, editable=False)
+    principal_id = models.CharField(max_length=180, editable=False)
+    credential_fingerprint = models.CharField(max_length=64, blank=True, editable=False)
+    facts_schema = models.CharField(max_length=40, editable=False)
+    facts_digest = models.CharField(max_length=64, editable=False)
+    first_received_at = models.DateTimeField(editable=False)
+    key_id = models.CharField(max_length=64, editable=False)
+    signature = models.CharField(max_length=64, editable=False)
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("Le reçu de provenance est immuable.")
+        return super().save(*args, **kwargs)
+
+    def clean(self):
+        super().clean()
+        if self.event_id and (
+            self.event.provenance_channel != self.channel
+            or self.event.facts_schema != self.facts_schema
+            or self.event.facts_digest != self.facts_digest
+            or self.event.received_at != self.first_received_at
+        ):
+            raise ValidationError("Le reçu ne correspond pas au fait source.")
+
+
+class AccessEventConflict(ScopedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event = models.ForeignKey(AccessEvent, on_delete=models.PROTECT, related_name="conflicts")
+    attempted_digest = models.CharField(max_length=64, blank=True)
+    count = models.PositiveIntegerField(default=1)
+    first_seen_at = models.DateTimeField(default=timezone.now)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+    audit = models.OneToOneField(
+        "platform_core.AuditEvent", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="access_event_conflict",
+    )
+
+    class Meta(ScopedModel.Meta):
+        constraints = [models.UniqueConstraint(
+            fields=["organization", "event", "attempted_digest"],
+            name="unique_access_event_conflict",
+        )]
+
+
+class AccessEventQuota(ScopedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    channel = models.CharField(max_length=20)
+    principal_key = models.CharField(max_length=180)
+    day = models.DateField()
+    accepted_count = models.PositiveIntegerField(default=0)
+    attempt_count = models.PositiveIntegerField(default=0)
+    denied_count = models.PositiveIntegerField(default=0)
+    first_denial_audit = models.ForeignKey(
+        "platform_core.AuditEvent", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="first_event_quota_denials",
+    )
+
+    class Meta(ScopedModel.Meta):
+        constraints = [models.UniqueConstraint(
+            fields=["organization", "channel", "principal_key", "day"],
+            name="unique_access_event_quota",
+        )]
 
 
 class AccessEvaluation(ScopedModel):

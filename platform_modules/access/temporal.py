@@ -5,10 +5,11 @@ Calendar schedules are checked over each whole interval by assess_contract, not
 sampled at the two endpoints. Excessive histories remain explicitly unknown.
 """
 
-import uuid
 from datetime import timedelta
 
 from django.db.models import Q
+
+from .provenance_status import verified_origin_status
 
 MAX_SEGMENTS = 32
 MAX_DURATION = timedelta(days=31)
@@ -119,24 +120,23 @@ def observation_segments(event):
                 ("valid_from", "valid_until", "recorded_at", "retired_at"),
             )
         )
-    if event.domain:
-        try:
-            source_id = uuid.UUID(event.source)
-        except (ValueError, TypeError, AttributeError):
-            source_id = None
-        if source_id:
-            scopes = CollectionScope.objects.filter(
-                source_id=source_id, domain=event.domain
-            ).filter(Q(resource__isnull=True) | Q(resource_id=event.resource_id))
-            queries.extend(
-                [
-                    (scopes, ("effective_at", "retired_at")),
-                    (
-                        CollectionReport.objects.filter(scope__in=scopes),
-                        ("covered_from", "covered_until"),
-                    ),
-                ]
-            )
+    if (
+        event.domain
+        and verified_origin_status(event) == "collector"
+        and event.collector_source_id
+    ):
+        scopes = CollectionScope.objects.filter(
+            source_id=event.collector_source_id, domain=event.domain
+        ).filter(Q(resource__isnull=True) | Q(resource_id=event.resource_id))
+        queries.extend(
+            [
+                (scopes, ("effective_at", "retired_at")),
+                (
+                    CollectionReport.objects.filter(scope__in=scopes),
+                    ("covered_from", "covered_until"),
+                ),
+            ]
+        )
     for queryset, fields in queries:
         if not collect(queryset, fields):
             return [], "interval_boundary_limit"

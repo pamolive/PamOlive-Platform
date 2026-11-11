@@ -16,6 +16,8 @@ def legacy_targets(executor):
     excluded.update(
         graph.backwards_plan(("recertification", "0002_periodic_campaigns_and_review_evidence"))
     )
+    excluded.update(graph.backwards_plan(("pam", "0004_credential_destination")))
+    excluded.update(graph.backwards_plan(("approvals", "0004_approvaldecision_pam_trust")))
     return [
         key
         for key, node in graph.node_map.items()
@@ -98,6 +100,40 @@ def seed():
         username="synthetic-service",
         system="TeamViewer",
         kind="service",
+    )
+    for revision in (1, 2):
+        registry.get_model("connectors", "ProvisioningConnector").objects.create(
+            organization_id=org.pk,
+            name=f"Historical SCIM revision {revision}",
+            base_url=f"https://synthetic-directory-{revision}.invalid/scim",
+            encrypted_token=cipher().encrypt(b"synthetic-historical-scim-token").decode(),
+            revision=revision,
+        )
+    import asyncssh
+
+    registry.get_model("pam", "SessionEndpoint").objects.create(
+        organization_id=org.pk,
+        resource_id=resource.pk,
+        account_id=account.pk,
+        name="Historical PAM endpoint",
+        protocol="ssh",
+        hostname="synthetic-ssh.invalid",
+        port=22,
+        auth_method="password",
+        encrypted_secret=cipher().encrypt(b'{"password":"synthetic-historical-secret"}').decode(),
+        ssh_host_key=asyncssh.generate_private_key("ssh-ed25519").export_public_key().decode(),
+    )
+    registry.get_model("access", "AccessIntent").objects.create(
+        organization_id=org.pk,
+        identity_id=person.pk,
+        account_id=account.pk,
+        resource_id=resource.pk,
+        requested_by_id=user.pk,
+        method="SSH",
+        fulfillment="pam",
+        reason="Historical logical mandate",
+        starts_at=datetime(2026, 1, 1, tzinfo=UTC),
+        ends_at=datetime(2026, 1, 2, tzinfo=UTC),
     )
     event = registry.get_model("access", "AccessEvent").objects.create(
         organization_id=org.pk,

@@ -34,6 +34,7 @@ n’est actuellement accepté par le contrat de module.
 | ADR-010 | AGPL pour le noyau, modules commerciaux séparés | À valider | Transparence du socle et modèle économique clair |
 | ADR-011 | Audit chaîné et protégé par PostgreSQL | À valider | Détection de modification et valeur probante renforcée |
 | ADR-012 | Vues serveur et JavaScript léger pour la V1 | À valider | Simplicité, sécurité et expérience cohérente type ERP |
+| [ADR-013](adr-013-pam-quorum-trust.md) | Autorité de confiance du quorum PAM | Accepté | Registre signé 2/3, personnes indépendantes et preuves d’action WebAuthn |
 
 ## Conséquence pour le prototype
 

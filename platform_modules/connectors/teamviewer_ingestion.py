@@ -24,7 +24,14 @@ from platform_core.tenancy import organization_context
 
 from .scim import IntegrationFailure
 from .teamviewer import TeamViewerClient
-from .teamviewer_collection import collector_config, enabled_ready, scan_proof, tag
+from .teamviewer_collection import (
+    collector_config,
+    enabled_ready,
+    scan_proof,
+    tag,
+    verify_signature,
+    verify_tag,
+)
 from .teamviewer_models import TeamViewerCollector, TeamViewerReport, TeamViewerRun
 
 
@@ -40,7 +47,7 @@ def report_content(report, notes):
     )
 
 
-def report_signature(report):
+def report_signature(report, *, key=None):
     return tag(
         dict(
             id=str(report.pk),
@@ -51,6 +58,7 @@ def report_signature(report):
             encrypted_notes=report.encrypted_notes,
         ),
         "report",
+        key=key,
     )
 
 
@@ -64,10 +72,8 @@ def verify_report(report):
         return bool(
             (report.notes_included or report.encrypted_notes == "")
             and report.started_at <= report.ended_at <= report.observed_at
-            and constant_time_compare(
-                report.content_hash, tag(report_content(report, notes), "content")
-            )
-            and constant_time_compare(report.signature, report_signature(report))
+            and verify_tag(report_content(report, notes), "content", report.content_hash)
+            and verify_signature(report.signature, report_signature, report)
         )
     except (InvalidToken, UnicodeError, ValueError, TypeError, AttributeError):
         return False
@@ -123,10 +129,11 @@ def run_content(run):
     )
 
 
-def run_signature(run):
+def run_signature(run, *, key=None):
     return tag(
         dict(body=run_content(run), audit_id=run.audit_id, audit_hash=run.audit.event_hash),
         "run",
+        key=key,
     )
 
 
@@ -138,9 +145,9 @@ def verify_run(run):
             or run.audit.object_id != str(run.pk)
             or run.audit.object_type != run._meta.label_lower
             or run.audit.event_hash != digest(run.audit)
-            or run.audit.metadata.get("run_hash") != tag(run_content(run), "run-body")
-            or not constant_time_compare(run.signature, run_signature(run))
-            or not constant_time_compare(run.manifest_hash, tag(run.report_manifest, "manifest"))
+            or not verify_tag(run_content(run), "run-body", run.audit.metadata.get("run_hash"))
+            or not verify_signature(run.signature, run_signature, run)
+            or not verify_tag(run.report_manifest, "manifest", run.manifest_hash)
         ):
             return False
         if not isinstance(run.report_manifest, list) or len(run.report_manifest) > 1000:
@@ -233,8 +240,8 @@ def claim_page(organization):
         if collector is None:
             return None
         collector.organization = organization
-        if not enabled_ready(collector) or not constant_time_compare(
-            collector.scan_proof, scan_proof(collector)
+        if not enabled_ready(collector) or not verify_signature(
+            collector.scan_proof, scan_proof, collector
         ):
             collector.enabled, collector.last_code = False, "collection_proof_invalid"
             collector.save(update_fields=["enabled", "last_code"])
@@ -288,7 +295,7 @@ def finish_page(claim, *, page=None, error=None):
             and collector.revision == claim.revision
             and collector.activation_proof == claim.activation_proof
             and constant_time_compare(collector.scan_proof, claim.scan_proof)
-            and constant_time_compare(collector.scan_proof, scan_proof(collector))
+            and verify_signature(collector.scan_proof, scan_proof, collector)
         )
         if not valid:
             return _retain_run(claim, status="discarded", code="late_or_revoked_result")

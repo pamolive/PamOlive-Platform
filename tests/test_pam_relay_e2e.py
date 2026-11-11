@@ -51,7 +51,9 @@ from platform_modules.pam.models import (
 )
 from platform_modules.pam.protocol import Instruction, Parser
 from platform_modules.pam.recordings import issue_recording_grant, recording_page
+from platform_modules.pam.trust import launch_payload
 
+from .pam_trust_fixtures import TrustFixture
 from .person_fixtures import bind_person
 
 BINARY = Path("/opt/pamolive-guac/sbin/guacd")
@@ -161,7 +163,7 @@ class RelayHarness(TransactionTestCase):
                 administrator=self.reviewer,
                 identity=self.identity,
             )
-            bind_person(
+            self.reviewer_binding = bind_person(
                 self.reviewer, organization=self.org, administrator=self.reviewer, role="reviewer"
             )
         self.client = Client(enforce_csrf_checks=True)
@@ -190,7 +192,9 @@ class RelayHarness(TransactionTestCase):
     def make_endpoint(
         self, host_key, target_port, private_key, protocol, certificate_pin, password
     ):
-        return SessionEndpoint.objects.create(
+        from platform_modules.pam.target_binding import credential_seal
+
+        endpoint = SessionEndpoint(
             organization=self.org,
             resource=self.resource,
             account=self.account,
@@ -213,6 +217,9 @@ class RelayHarness(TransactionTestCase):
             verified_revision=1,
             tested_at=timezone.now(),
         )
+        endpoint.credential_seal = credential_seal(endpoint, self.account)
+        endpoint.save()
+        return endpoint
 
     def create_launch(
         self,
@@ -239,22 +246,30 @@ class RelayHarness(TransactionTestCase):
             endpoint = self.make_endpoint(
                 host_key, target_port, private_key, protocol, certificate_pin, password
             )
-            intent = create_record(
-                "intent",
-                {
-                    "identity": self.identity,
-                    "account": self.account,
-                    "resource": self.resource,
-                    "method": protocol.upper(),
-                    "reason": "Fixture test",
-                    "fulfillment": "pam",
-                    "starts_at": timezone.now() - timedelta(seconds=15),
-                    "ends_at": timezone.now() + timedelta(hours=1),
-                },
-                actor=self.actor,
-                organization=self.org,
-            )
-            with recent_authentication(self.reviewer, self.org, time.time()):
+            self.trust = TrustFixture(self, self.org, [endpoint], [
+                (self.actor, self.identity, ["requester"]),
+                (self.reviewer, self.reviewer_binding.identity, ["reviewer", "sponsor"]),
+            ])
+            with self.trust.personal_action(self.actor):
+                intent = create_record(
+                    "intent",
+                    {
+                        "identity": self.identity,
+                        "account": self.account,
+                        "resource": self.resource,
+                        "method": protocol.upper(),
+                        "reason": "Fixture test",
+                        "fulfillment": "pam",
+                        "starts_at": timezone.now() - timedelta(seconds=15),
+                        "ends_at": timezone.now() + timedelta(hours=1),
+                    },
+                    actor=self.actor,
+                    organization=self.org,
+                )
+            with (
+                recent_authentication(self.reviewer, self.org, time.time()),
+                self.trust.personal_action(self.reviewer),
+            ):
                 decide(
                     intent.pk,
                     actor=self.reviewer,
@@ -264,8 +279,12 @@ class RelayHarness(TransactionTestCase):
                 )
         self.client.get(reverse("pam-home"))
         token = self.client.cookies[settings.CSRF_COOKIE_NAME].value
+        browser = self.trust.request(self.actor)
+        browser.session = self.client.session
+        proof = self.trust.proof(self.actor, "launch", launch_payload(intent), request=browser)
         response = self.client.post(
-            reverse("pam-launch", args=[intent.pk]), {"csrfmiddlewaretoken": token}
+            reverse("pam-launch", args=[intent.pk]),
+            {"csrfmiddlewaretoken": token, "_pam_trust_proof": proof},
         )
         self.assertEqual(response.status_code, 200, response.content[:1000])
         match = re.search(

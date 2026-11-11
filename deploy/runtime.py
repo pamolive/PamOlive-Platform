@@ -14,14 +14,25 @@ children = []
 stopping = False
 
 secret = os.environ.get("SECRET_KEY", "")
-if len(secret) < 40 or secret.startswith(("change-", "insecure-")):
+if (
+    len(secret) < 40
+    or secret.startswith(("change-", "insecure-"))
+    or not secret.strip()
+    or not secret.isprintable()
+):
     raise SystemExit("Configurez une SECRET_KEY aléatoire d’au moins 40 caractères.")
+encryption_key = os.environ.get("PAMOLIVE_ENCRYPTION_KEY")
+if encryption_key is not None and (
+    len(encryption_key) < 40 or not encryption_key.strip() or not encryption_key.isprintable()
+):
+    raise SystemExit(
+        "PAMOLIVE_ENCRYPTION_KEY doit contenir au moins 40 caractères imprimables "
+        "et ne peut pas être composée uniquement d’espaces."
+    )
 if not os.environ.get("DATABASE_URL", "").startswith(("postgresql://", "postgres://")):
     raise SystemExit("Le conteneur serveur requiert une DATABASE_URL PostgreSQL.")
 if os.geteuid() != 0:
     raise SystemExit("Le superviseur doit pouvoir démarrer ses deux utilisateurs isolés.")
-if os.environ.get("PAMOLIVE_ENCRYPTION_KEY") and len(os.environ["PAMOLIVE_ENCRYPTION_KEY"]) < 40:
-    raise SystemExit("PAMOLIVE_ENCRYPTION_KEY doit contenir au moins 40 caractères aléatoires.")
 web_env = dict(os.environ, HOME="/home/pamolive")
 
 

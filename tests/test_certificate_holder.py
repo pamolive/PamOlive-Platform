@@ -16,7 +16,7 @@ from platform_core.models import AuditEvent, ModuleActivation, Organization
 from platform_core.tenancy import organization_context
 from platform_modules.access import certificate_possession as proof
 from platform_modules.access.services import ingest_event
-from platform_modules.connectors.services import create_source
+from platform_modules.connectors.services import create_source, source_from_token
 from platform_modules.identity.models import Credential, Identity
 
 from .fixtures.oidc import tls_material
@@ -78,7 +78,8 @@ class HolderHTTPSRoundTripTests(TransactionTestCase):
                     "action": "connect",
                 },
                 organization=org,
-                source=source,
+                source=source_from_token(token),
+                source_token=token,
             )
 
         seen = []

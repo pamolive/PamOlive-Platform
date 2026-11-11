@@ -2,6 +2,10 @@
 
 Le document de vision décrit la cible complète. Cette branche construit progressivement cette cible ; elle ne constitue pas encore une version de production.
 
+## Lecture du checkout P1
+
+Les capacités ci-dessous décrivent des livraisons de périmètres différents. Pour le checkout local après remédiation, consulter [P0-3](p0-3-validation.md) et [P0-4](p0-4-validation.md). Les anciennes qualifications NAS, image et transport ne qualifient pas automatiquement les modifications locales non publiées. Le témoin indépendant, le commissionnement réel et la qualification native Linux du contrôle P0-3 restent des portes explicites. Les onze noms produit de la roadmap correspondent aux applications techniques existantes ; ils ne désignent pas onze modules déjà achevés.
+
 ## Fonctionnel et testé
 
 - Organisations, appartenances et rôles techniques distincts des identités gouvernées.
@@ -106,7 +110,7 @@ la sauvegarde du NAS ne contient pas de fournisseur réel. Les procédures sont 
 
 Les expirations du budget de base du relais sont distinguées des révocations : `database_unavailable`, phase interne bornée dans le journal, fermeture du transport avant finalisation et capture partielle. Un cas RDP natif vérifie cette dégradation avec la limite réelle de quatre secondes après clavier et pixels confirmés. Cela ne résout pas la saturation du stockage : les constructions et qualifications lourdes doivent rester séparées des sessions réelles, et la capacité sous charge reste à qualifier.
 
-- Étendre les contrôles MFA aux contrats des futurs services exécutant des actions externes ; ajouter WebAuthn et revue spécialisée des parcours d’authentification.
+- Étendre les contrôles MFA aux contrats des futurs services exécutant des actions externes ; conserver les cérémonies WebAuthn PAM P0-3 déjà livrées et qualifier leurs authentificateurs réels avec revue spécialisée.
 - Adaptateurs spécifiques AD/Entra, ticketing, accès physiques, PAM et collecte réseau/certificats ; synchronisation d’inventaire et extensions de schéma. Le client SCIM couvre les comptes existants et une création initiale bornée, pas tous les fournisseurs SCIM.
 - Vérification des tickets/contrats dans leurs systèmes sources, catalogue de pays de confiance, gestion des délégations et escalades d’approbation. Les horaires sont vérifiés sur la fenêtre d’autorisation entière, pas appliqués nativement à chaque application SCIM.
 - Étendre les matrices de compatibilité SSH et Windows/RDP, les politiques AD/Kerberos, les scénarios de panne et la charge. Les fermes RDS à redirection et RD Gateway ne sont pas prises en charge. Le bail seul reste une autorisation ; les sondes testent le serveur, pas les identifiants. Ajouter rétention contrôlée des captures, quotas configurables, restauration et rotation de clé sans perte de preuves.

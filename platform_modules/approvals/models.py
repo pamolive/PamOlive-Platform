@@ -30,6 +30,7 @@ class ApprovalDecision(ScopedModel):
     )
     scope_hash = models.CharField(max_length=64, blank=True, editable=False)
     signature = models.CharField(max_length=64, blank=True, editable=False)
+    pam_trust = models.JSONField(default=dict, blank=True, editable=False)
     mfa_verified_at = models.DateTimeField(null=True, blank=True, editable=False)
     mfa_window_minutes = models.PositiveSmallIntegerField(default=0, editable=False)
     approved = models.BooleanField()
