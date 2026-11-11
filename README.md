@@ -6,6 +6,8 @@ PAM-olive rapproche une identité, ses comptes et ressources, une autorisation o
 
 **Version en développement : 0.2.0 alpha.** [L’état réel des fonctions et le travail restant](docs/implementation-status.md) distinguent le code opérationnel de l’architecture cible. Le PAM historique reste un produit séparé pendant cette évolution.
 
+Le candidat P0/P1 ajoute [Identity 360°](docs/p1-c-identity360.md), [Governance](docs/p1-d-governance.md) et [Observe avec le démonstrateur PC-483/PC-991](docs/p1-e-observe.md). Consulter le [rapport de validation](docs/p1-cde-validation.md) et la PR de revue avant toute utilisation : les résultats locaux, la qualification GitHub et un déploiement sont distincts. La [préparation Synology N0](docs/synology-p1-preparation.md) ne modifie pas une installation existante.
+
 ## Un seul conteneur applicatif
 
 L’image contient Django, l’interface, tous les modules livrés, le traitement des expirations et le moteur natif privé de sessions PAM. Aucun conteneur worker, scheduler, Redis ou proxy n’est nécessaire à cette version. Les tâches durables et verrous utilisent PostgreSQL. Plusieurs instances applicatives peuvent partager la même base ; la validation HA complète reste à effectuer, et une session SSH ne migre pas entre instances en cas de panne.
@@ -18,7 +20,7 @@ La [recertification périodique](docs/recertification.md) configure des règles 
 
 La [mobilité interne](docs/mobility.md) relie les changements de poste aux rôles métier versionnés. Elle retire les accès attribués par les rôles remplacés, préserve les droits indépendants et fait approuver les nouveaux accès par le circuit IAM.
 
-`0.2.0a14` ajoute les lectures RH et métier vérifiées aux demandes de mobilité. Depuis `0.2.0a13`, aucune migration PostgreSQL supplémentaire n’est requise ; vérifier la sauvegarde et l’absence de migrations en attente avant de remplacer l’image.
+`0.2.0a14` ajoutait les lectures RH et métier vérifiées aux demandes de mobilité sans changement de schéma par rapport à `0.2.0a13`. Cette observation historique ne couvre pas le candidat P0/P1 actuel : il contient des migrations supplémentaires, dont le registre d'exceptions P1-D. Examiner le plan exact, qualifier sauvegarde/restauration et préserver les clés avant toute mise à niveau réelle ; aucun ancien binaire ne doit rejoindre aveuglément une base migrée.
 
 PostgreSQL 16+ doit être disponible sur un serveur existant, éventuellement une autre VM. `compose.yml` contient **un seul service**, `web`. Si vous souhaitez une base locale distincte, le fichier optionnel `compose.local-db.yml` ajoute un second conteneur PostgreSQL.
 

@@ -154,3 +154,17 @@ session absente suit le parcours de connexion du portail.
 
 L'écran `/access/intents/<UUID>/contract/` et son export `/contract/export/`
 utilisent le même service. Voir [ADR-015](adr-015-access-read-contract.md).
+
+## Lectures Identity, Governance et Observe P1
+
+Ces routes utilisent la session du portail et les rôles admin/operator/reviewer/auditor de l'organisation. Ce ne sont pas des points d'ingestion par jeton de collecteur. Les lectures sont GET uniquement, privées (`no-store`, `nosniff`), bornées et sans autorité nouvelle :
+
+| Route | Contrat | Modules requis |
+| --- | --- | --- |
+| `/api/v1/identities/<UUID>/360/` | `pamolive.identity360/1` | Identity ; sections Access/Connect conditionnelles |
+| `/api/v1/governance/workspace/` | `pamolive.governance-workspace/1` | Governance et ses dépendances ; sections conditionnelles |
+| `/api/v1/observations/<UUID>/story/` | `pamolive.observation-story/1` | Identity, Access, Intelligence ; Connect pour collector/internal |
+
+Les interfaces natives et exports partagent les mêmes services et contrôles sous verrou. Un UUID étranger au tenant n'est pas recherché globalement. Une capacité refusée retourne 403, un objet absent du tenant 404, une méthode non admise 405 ; une session absente suit le parcours de connexion. `compare_intent=<UUID>` sur Observe est une comparaison explicite dans le même tenant, sans causalité ni autorisation implicite. Les preuves et limites V7/V8 restent séparées du verdict et de la projection non signée.
+
+`/identities/reconciliation/simulate/` accepte des fixtures synthétiques AD/LDAP/Entra via formulaire ou JSON, avec session, MFA récente, CSRF et Identity/Connect actifs. Ce prévisualiseur ne contacte aucun serveur, n'applique aucune correspondance et ne retire aucun droit. Les nouvelles actions de suivi d'exception sont des formulaires natifs MFA/CSRF ; aucune API de dérogation n'est ajoutée.

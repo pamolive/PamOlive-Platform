@@ -42,6 +42,7 @@ La restauration vérifie aussi les attestations d'exception, ancres, acteurs/MFA
 | Revue crypto/PAM, V7/V8, rotation, restauration et Observe | 30/30 PostgreSQL, 5,602 s, aucun ignoré |
 | Parseur Compose réel sans Engine | 5/5, sans connexion NAS ni conteneur lancé |
 | Campagne locale complète, régressions P0 incluses | 903 tests : 863 réussis, 40 ignorés ; 1046,723 s |
+| Correction de fixture HA P0-3, après campagne complète | 19/19 PostgreSQL, 2,456 s ; relecture indépendante 19/19 en 2,435 s |
 
 Les 40 exclusions locales sont explicites : 19 tests de l'image avec extension signée, un test du signal périodique V3 signé installé séparément, 10 tests de relais SSH natif, 9 tests RDP de l'image dédiée et un test SQLite de suppression de reçu V8 que PostgreSQL interdit par trigger. Les gates Linux séparées ont passé sur 802d560 ; elles devront repasser sur le candidat final. Aucune de ces exclusions n'est comptée comme un test réussi.
 
@@ -54,6 +55,8 @@ Les contrôles Ruff, Django, cohérence des migrations, dépendances et diff son
 Branche dédiée : [agent/p1-a-b1-review](https://github.com/pamolive/PamOlive-Platform/tree/agent/p1-a-b1-review). [PR de revue nº 1](https://github.com/pamolive/PamOlive-Platform/pull/1), en brouillon, sans merge. Les quatre commits locaux préexistants et le consolidé P0/P1-A/B1 sont déclarés dans la PR. Les deux fichiers de diagnostic indépendants restent locaux et préservés.
 
 Le SHA `802d560` a passé le job sécurité, 804 tests PostgreSQL en 645,402 s (40 ignorés, testés par gates distinctes ou non applicables), OIDC/extensions, image et transports natifs SSH/RDP/WebSocket/captures puis séparation du runtime. Le scénario HA échoue sur une fixture qui ne commissionnait pas le registre PAM P0-3 ; le refus est légitime et ne doit pas être neutralisé. Cette exécution ne qualifie pas P1-C/D/E, qui seront associés au SHA publié exact. Le résultat GitHub final doit être consigné sans appeler verte une CI partielle.
+
+Le commit fonctionnel local `c66a1cf` contient les 67 fichiers P1-C/D/E et N0 listés ci-dessous. Un changement indépendant corrige ensuite la qualification HA : autorités et authentificateurs logiciels privés sur l'hôte, enveloppes/assertions par pipes privés, checkpoints publics frais en montage readonly exact dans les deux nœuds, véritables vérificateurs P0-3 conservés. La simulation ne prouve pas l'indépendance de personnes physiques, un navigateur réel ou TLS. Les compteurs du gate d'upgrade sont réconciliés avec les 22 migrations et 37 nouveaux modèles réellement vérifiés. Voir [qualification HA](ha-p0-trust-qualification.md) ; aucun fichier du contrôle PAM produit n'est modifié par cette adaptation.
 
 ## Synology : N0 seulement
 
@@ -144,3 +147,5 @@ tests/test_synology_preparation.py
 ```
 
 Diagnostics preserves hors publication : `.github/workflows/diagnose-partition.yml` et `deploy/Dockerfile.partition-probe`.
+
+Fichiers de qualification et documentation complémentaires : `deploy/active_active_fixture.py`, `deploy/active_active_rdp.py`, `deploy/active_active_ssh.py`, `deploy/active_active_trust.py`, `deploy/check_active_active.py`, `deploy/check_upgrade_ci.py`, `tests/test_active_active.py`, `tests/test_active_active_trust.py`, `docs/active-active.md`, `docs/ha-p0-trust-qualification.md`, `README.md`, `docs/api.md` et mise à jour de ce rapport. La baseline ne reçoit que des métadonnées de ligne pour les empreintes déjà approuvées, sauf nouvelle revue explicite.

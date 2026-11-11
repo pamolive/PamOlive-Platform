@@ -25,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 from html.parser import HTMLParser
 from http.cookies import SimpleCookie
 from pathlib import Path
-from threading import Thread
+from threading import Event, Thread
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 PROJECT = "pamolive-platform-ha-check"
@@ -37,7 +37,7 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
-def validate_configuration(config):
+def validate_configuration(config, *, checkpoint_directory=None):
     services = config.get("services", {})
     require(set(services) == {"node-a", "node-b"}, "Unexpected qualification services.")
     urls, images = set(), set()
@@ -61,7 +61,20 @@ def validate_configuration(config):
         require(
             len(ports) == 1 and ports[0].get("host_ip") == "127.0.0.1", "Non-private test port."
         )
-        require(not service.get("volumes"), "Qualification must not mount business files.")
+        mounts = service.get("volumes", [])
+        if checkpoint_directory is None:
+            require(not mounts, "Qualification must not mount business files.")
+        else:
+            from .active_active_trust import CHECKPOINT_TARGET
+
+            require(
+                len(mounts) == 1 and mounts[0].get("type") == "bind"
+                and mounts[0].get("read_only") is True
+                and mounts[0].get("target") == CHECKPOINT_TARGET
+                and Path(mounts[0].get("source", "")).resolve()
+                == Path(checkpoint_directory).resolve(),
+                "Only the exact generated public checkpoint directory may be mounted.",
+            )
         urls.add(url)
         images.add(service.get("image"))
     require(len(urls) == len(images) == 1, "Nodes must share the same database and image.")
@@ -71,6 +84,18 @@ def validate_configuration(config):
             first.get(key) == second.get(key) and len(first.get(key, "")) >= 40,
             "Shared test keys required.",
         )
+    if checkpoint_directory is not None:
+        from .active_active_trust import CHECKPOINT_TARGET, INSTALLATION, ORIGIN, RP
+
+        for key, expected in (
+            ("PAM_TRUST_INSTALLATION_ID", INSTALLATION), ("PAM_TRUST_RP_ID", RP),
+            ("PAM_TRUST_ORIGIN", ORIGIN), ("PAM_TRUST_CHECKPOINT_DIRECTORY", CHECKPOINT_TARGET),
+        ):
+            require(first.get(key) == second.get(key) == expected,
+                    "Both nodes require the exact synthetic PAM trust configuration.")
+        for key in ("PAM_TRUST_COMMISSIONING_KEYS", "PAM_TRUST_CHECKPOINT_KEYS"):
+            require(first.get(key) == second.get(key) and bool(json.loads(first.get(key, "{}"))),
+                    "Both nodes require identical public synthetic trust anchors.")
 
 
 def validate_rdp_network(info, node_ids):
@@ -241,6 +266,49 @@ class Qualification:
         self.native_pam = native_pam
         self.native_rdp = native_rdp
         self.database_partition = database_partition
+        self.authority = None
+        self.trust_stop, self.trust_thread = Event(), None
+        self.trust_error = None
+        self.trust_organizations = {}
+
+    def prepare_authority(self):
+        from .active_active_trust import CHECKPOINT_TARGET, QualificationAuthority
+
+        self.authority = QualificationAuthority()
+        override = Path(self.authority.temporary.name) / "compose.public-trust.json"
+        override.write_text(json.dumps({"services": {
+            node: {"environment": self.authority.settings(), "volumes": [{
+                "type": "bind", "source": str(self.authority.directory.resolve()),
+                "target": CHECKPOINT_TARGET, "read_only": True,
+            }]} for node in ("node-a", "node-b")
+        }}), encoding="utf-8")
+        self.prefix.extend(["-f", str(override)])
+
+    def start_witness(self):
+        def refresh():
+            try:
+                while not self.trust_stop.is_set():
+                    heads = json.loads(self.compose(
+                        "exec", "-T", "--user", "1000:1000", "node-b", "python", "-m",
+                        "deploy.active_active_trust", timeout=20,
+                        content=json.dumps({"organizations": list(self.authority.keys)}) + "\n",
+                    ))
+                    for head in heads:
+                        self.authority.checkpoint(head)
+                    self.trust_stop.wait(1)
+            except Exception as error:
+                self.trust_error = type(error).__name__
+
+        self.trust_thread = Thread(target=refresh, daemon=True)
+        self.trust_thread.start()
+
+    def trust_signature(self, run, report):
+        require(self.authority is not None and self.trust_error is None,
+                "The external synthetic witness is unavailable.")
+        organization = self.trust_organizations[run]
+        if report.get("stage") == "trust-authenticate":
+            return self.authority.authenticate(organization, report)
+        return self.authority.sign_registry(organization, report["body"])
 
     def command(self, *arguments, timeout=90, content=None):
         return subprocess.run(
@@ -294,7 +362,13 @@ class Qualification:
         ]
         if run:
             arguments.extend(["--run", run])
-        return json.loads(self.compose(*arguments, content=content))
+        if action == "prepare" and self.authority:
+            organization = list(self.authority.keys)[len(self.trust_organizations)]
+            arguments.extend(["--organization", organization])
+        result = json.loads(self.compose(*arguments, content=content))
+        if action == "prepare" and self.authority:
+            self.trust_organizations[result["run"]] = result["organization"]
+        return result
 
     def kill_node_a(self):
         identifier, _ = self.node("node-a")
@@ -422,13 +496,21 @@ class Qualification:
 
             def read_reports():
                 for line in worker.stdout:
+                    report = json.loads(line)
+                    if report.get("stage") in ("trust-sign", "trust-authenticate"):
+                        worker.stdin.write(json.dumps(self.trust_signature(run, report)) + "\n")
+                        worker.stdin.flush()
+                        continue
                     messages.put(line)
                 messages.put("")
 
             Thread(target=read_reports, daemon=True).start()
             try:
                 worker.stdin.write(
-                    json.dumps(dict(run=run, peer_ip=peer_ip, session=session, csrf=csrf))
+                    json.dumps(dict(
+                        run=run, peer_ip=peer_ip, session=session, csrf=csrf,
+                        authority=self.authority.commissioning(self.trust_organizations[run]),
+                    ))
                 )
                 worker.stdin.write("\n")
                 worker.stdin.flush()
@@ -504,21 +586,37 @@ class Qualification:
         ]
 
         def database(action, payload):
-            result = json.loads(
-                self.compose(
-                    "exec",
-                    "-T",
-                    "--user",
-                    "1000:1000",
-                    "node-b",
-                    "python",
-                    "-m",
-                    "deploy.active_active_rdp",
-                    action,
-                    content=json.dumps(payload) + "\n",
-                    timeout=25,
-                )
-            )
+            arguments = self.prefix + ["exec", "-T", "--user", "1000:1000", "node-b",
+                                       "python", "-m", "deploy.active_active_rdp", action]
+            with subprocess.Popen(arguments, text=True, stdin=subprocess.PIPE,
+                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as helper:
+                reports = queue.Queue()
+
+                def read_helper():
+                    for line in helper.stdout:
+                        reports.put(line)
+                    reports.put("")
+
+                Thread(target=read_helper, daemon=True).start()
+                try:
+                    helper.stdin.write(json.dumps(payload) + "\n")
+                    helper.stdin.flush()
+                    deadline = time.monotonic() + 90
+                    for _ in range(32):
+                        line = reports.get(timeout=max(0.1, deadline - time.monotonic()))
+                        require(bool(line), "The scoped RDP helper did not return a result.")
+                        result = json.loads(line)
+                        if result.get("stage") in ("trust-sign", "trust-authenticate"):
+                            helper.stdin.write(json.dumps(self.trust_signature(run, result)) + "\n")
+                            helper.stdin.flush()
+                        else:
+                            break
+                    else:
+                        raise RuntimeError("Too many synthetic RDP commissioning messages.")
+                    require(helper.wait(timeout=15) == 0, "The scoped RDP helper failed.")
+                finally:
+                    if helper.poll() is None:
+                        helper.kill()
             require(
                 result.pop("stage") == {"prepare": "prepared", "state": "state"}[action],
                 "RDP database fixture refused.",
@@ -569,6 +667,11 @@ class Qualification:
 
             def receive_lines():
                 for line in worker.stdout:
+                    report = json.loads(line)
+                    if report.get("stage") == "trust-authenticate":
+                        worker.stdin.write(json.dumps(self.trust_signature(run, report)) + "\n")
+                        worker.stdin.flush()
+                        continue
                     messages.put(line)
                 messages.put("")
 
@@ -603,13 +706,19 @@ class Qualification:
                     and re.fullmatch(r"[a-zA-Z0-9_-]{32}", ready["password"]),
                     "Unexpected RDP test credentials.",
                 )
-                prepared = database("prepare", {"run": run, **ready})
+                prepared = database("prepare", {
+                    "run": run, **ready,
+                    "session": browser.cookies["pamolive_platform_session"].value,
+                    "authority": self.authority.commissioning(self.trust_organizations[run]),
+                })
+                authenticator = prepared.pop("authenticator")
                 validate_ids(prepared, ("organization", "intent_a", "intent_b"))
                 org = prepared.pop("organization")
                 send(
                     json.dumps(
                         {
                             **prepared,
+                            "authenticator": authenticator,
                             "session": browser.cookies["pamolive_platform_session"].value,
                             "csrf": browser.cookies["pamolive_platform_csrftoken"].value,
                         }
@@ -684,6 +793,10 @@ class Qualification:
     def execute(self):
         config = json.loads(self.compose("config", "--format", "json"))
         validate_configuration(config)
+        if self.native_pam or self.native_rdp:
+            self.prepare_authority()
+            config = json.loads(self.compose("config", "--format", "json"))
+            validate_configuration(config, checkpoint_directory=self.authority.directory)
         database_network = config.get("networks", {}).get("database", {})
         network_name = database_network.get("name", "")
         if self.database_partition:
@@ -726,6 +839,8 @@ class Qualification:
             self.node("node-a")[1]["Image"] == self.node("node-b")[1]["Image"],
             "Different node images.",
         )
+        if self.authority:
+            self.start_witness()
         data = self.fixture("prepare")
         browser = Browser()
         self.stage = "A login, B session and MFA replay rejection"
@@ -930,8 +1045,14 @@ class Qualification:
         }
 
     def cleanup(self):
+        self.trust_stop.set()
+        if self.trust_thread:
+            self.trust_thread.join(timeout=25)
+            require(not self.trust_thread.is_alive(), "The synthetic witness did not stop.")
         if self.started:
             self.compose("down", "--remove-orphans", timeout=120)
+        if self.authority:
+            self.authority.close()
 
     def preserve_failure(self, error):
         directory = Path(tempfile.mkdtemp(prefix="pamolive-ha-failure-"))

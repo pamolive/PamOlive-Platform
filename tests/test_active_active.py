@@ -278,7 +278,7 @@ class ActiveActiveGuardTests(TestCase):
 
     def test_fixture_refuses_sqlite_and_every_nonqualification_database(self):
         with patch.dict("os.environ", {"PAMOLIVE_HA_QUALIFICATION": "1"}):
-            with self.assertRaises(RuntimeError):
+            with patch("django.db.connection.vendor", "sqlite"), self.assertRaises(RuntimeError):
                 require_test_database()
             with patch("django.db.connection.vendor", "postgresql"):
                 for name in (

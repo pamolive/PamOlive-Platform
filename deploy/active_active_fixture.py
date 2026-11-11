@@ -54,7 +54,7 @@ def partition_probe():
     }
 
 
-def prepare():
+def prepare(organization_id=None):
     import pyotp
     from django.contrib.auth import get_user_model
     from django.contrib.auth.hashers import make_password
@@ -77,7 +77,10 @@ def prepare():
     )
     with transaction.atomic():
         user = get_user_model().objects.create_user("ha-" + run, password=password)
-        org = Organization.objects.create(key="ha-" + run, name="A qualification " + run)
+        org = Organization.objects.create(
+            **({"id": uuid.UUID(organization_id)} if organization_id else {}),
+            key="ha-" + run, name="A qualification " + run,
+        )
         other = Organization.objects.create(key="hb-" + run, name="B qualification " + run)
         for organization in (org, other):
             membership = OrganizationMembership.objects.create(
@@ -165,11 +168,12 @@ def main():
         "action", choices=("prepare", "arm", "inspect", "database-route", "partition-probe")
     )
     parser.add_argument("--run", default="")
+    parser.add_argument("--organization", default="")
     args = parser.parse_args()
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
     django.setup()
     fixture = {
-        "prepare": prepare,
+        "prepare": lambda: prepare(args.organization or None),
         "database-route": database_route,
         "partition-probe": partition_probe,
     }.get(args.action)

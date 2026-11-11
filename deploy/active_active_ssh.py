@@ -39,7 +39,10 @@ def require(condition, message):
         raise FixtureError(message)
 
 
-def prepare(run, public_key, password, *, protocol="ssh", hostname=TARGET, port=PORT):
+def prepare(
+    run, public_key, password, *, authority, browser_session,
+    protocol="ssh", hostname=TARGET, port=PORT,
+):
     import pyotp
     from django.contrib.auth import get_user_model
     from django.utils import timezone
@@ -58,6 +61,8 @@ def prepare(run, public_key, password, *, protocol="ssh", hostname=TARGET, port=
         probe_endpoint,
         set_endpoint_enabled,
     )
+
+    from .active_active_trust import CommissionedFixture
 
     require_test_database()
     require(re.fullmatch(r"[0-9a-f]{32}", run), "Invalid qualification run.")
@@ -113,10 +118,15 @@ def prepare(run, public_key, password, *, protocol="ssh", hostname=TARGET, port=
         verified, _ = probe_endpoint(endpoint.pk, actor=actor, organization=org)
         require(verified, f"The {label} identity probe failed.")
         set_endpoint_enabled(endpoint.pk, actor=actor, organization=org, enabled=True)
-        intents = [
-            create_record(
-                "intent",
-                dict(
+        endpoint.refresh_from_db()
+        trust = CommissionedFixture(
+            org, endpoint,
+            [(actor, identity, ["requester"]), (reviewer, independent, ["reviewer", "sponsor"])],
+            authority, browser_session=browser_session,
+        )
+        intents = []
+        for node in ("A", "B"):
+            values = dict(
                     identity=identity,
                     resource=resource,
                     account=account,
@@ -125,36 +135,38 @@ def prepare(run, public_key, password, *, protocol="ssh", hostname=TARGET, port=
                     fulfillment="pam",
                     starts_at=timezone.now() - timedelta(seconds=5),
                     ends_at=timezone.now() + timedelta(minutes=10),
-                ),
-                actor=actor,
-                organization=org,
             )
-            for node in ("A", "B")
-        ]
+            intents.append(trust.perform(actor, lambda: create_record(
+                "intent", values, actor=actor, organization=org,
+            )))
     with organization_context(org), recent_authentication(reviewer, org, time.time()):
         for intent in intents:
-            decide(
+            trust.perform(reviewer, lambda: decide(
                 intent.pk,
                 actor=reviewer,
                 organization=org,
                 approved=True,
                 comment="Fixture approved",
-            )
-    return org.pk, *(item.pk for item in intents)
+            ))
+    return org.pk, *(item.pk for item in intents), trust.devices[actor.pk].document()
 
 
-def post(node, path, session, csrf):
+def post(node, path, session, csrf, *, fields=None, json_payload=None):
     connection = http.client.HTTPConnection(node, 8000, timeout=10)
     try:
         connection.request(
             "POST",
             path,
-            urlencode({"csrfmiddlewaretoken": csrf}),
+            json.dumps(json_payload) if json_payload is not None else urlencode(
+                {"csrfmiddlewaretoken": csrf, **(fields or {})}
+            ),
             {
                 "Cookie": (
                     f"pamolive_platform_session={session}; pamolive_platform_csrftoken={csrf}"
                 ),
-                "Content-Type": "application/x-www-form-urlencoded",
+                "Content-Type": "application/json" if json_payload is not None
+                else "application/x-www-form-urlencoded",
+                "X-CSRFToken": csrf,
             },
         )
         response = connection.getresponse()
@@ -163,8 +175,25 @@ def post(node, path, session, csrf):
         connection.close()
 
 
-def launch(node, intent, session, csrf):
+def launch(node, intent, session, csrf, authenticator):
     status, html = post(node, f"/pam/intents/{intent}/open/", session, csrf)
+    ceremony = re.search(
+        r'<script id="pam-trust-ceremony" type="application/json">(.*?)</script>', html
+    )
+    require(status == 200 and ceremony, "The launch did not require a personal PAM ceremony.")
+    options = json.loads(ceremony[1])
+    require(options.get("endpoint") == "/pam/trust/action/", "Unexpected PAM ceremony route.")
+    status, answer = post(node, options["endpoint"], session, csrf, json_payload={
+        "operation": "finish", "challenge": options["challenge"],
+        "credential": authenticator.response(options),
+    })
+    require(status == 200, "The signed personal launch action was refused.")
+    proof = json.loads(answer)
+    require(proof["resume"]["path"] == f"/pam/intents/{intent}/open/",
+            "The launch action targeted another path.")
+    status, html = post(node, proof["resume"]["path"], session, csrf, fields={
+        **dict(proof["resume"]["fields"]), "_pam_trust_proof": proof["proof"],
+    })
     match = re.search(
         r'<script id="pam-player-config" type="application/json">(.*?)</script>', html
     )
@@ -296,12 +325,16 @@ async def exercise(info):
     )
     try:
         PHASE = "synthetic mandates and endpoint probe"
-        org, intent_a, intent_b = await sync_to_async(prepare)(
-            info["run"], key.export_public_key().decode(), password
+        org, intent_a, intent_b, device = await sync_to_async(prepare)(
+            info["run"], key.export_public_key().decode(), password,
+            authority=info["authority"], browser_session=info["session"],
         )
+        from .active_active_trust import RemoteAuthenticator
+
+        authenticator = RemoteAuthenticator(device)
         session, csrf = info["session"], info["csrf"]
         PHASE = "first launch and cross-node replay"
-        aid, cfg_a = await asyncio.to_thread(launch, WEB_A, intent_a, session, csrf)
+        aid, cfg_a = await asyncio.to_thread(launch, WEB_A, intent_a, session, csrf, authenticator)
         async with relay(WEB_A, cfg_a, session) as (a, display_a):
             commands_a, disconnected_a = await asyncio.wait_for(opened.get(), 15)
             await asyncio.wait_for(display_a.wait(), 12)
@@ -310,7 +343,9 @@ async def exercise(info):
                 await asyncio.wait_for(replay.wait_closed(), 10)
             require(opened.empty(), "Replay established another native SSH connection.")
             PHASE = "independent native relays on both nodes"
-            bid, cfg_b = await asyncio.to_thread(launch, WEB_B, intent_b, session, csrf)
+            bid, cfg_b = await asyncio.to_thread(
+                launch, WEB_B, intent_b, session, csrf, authenticator
+            )
             async with relay(WEB_B, cfg_b, session) as (b, display_b):
                 commands_b, _ = await asyncio.wait_for(opened.get(), 15)
                 await asyncio.wait_for(display_b.wait(), 12)
@@ -331,7 +366,9 @@ async def exercise(info):
                     org, aid, ("ended", "qualification-a", "stop_requested", False, True)
                 )
                 PHASE = "new ticket on node A"
-                cid, cfg_c = await asyncio.to_thread(launch, WEB_A, intent_a, session, csrf)
+                cid, cfg_c = await asyncio.to_thread(
+                    launch, WEB_A, intent_a, session, csrf, authenticator
+                )
                 PHASE = "new native relay on node A"
                 async with relay(WEB_A, cfg_c, session) as (c, display_c):
                     commands_c, disconnected_c = await asyncio.wait_for(opened.get(), 15)
