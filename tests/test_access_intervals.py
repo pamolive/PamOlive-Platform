@@ -680,11 +680,15 @@ class AccessIntervalTests(TestCase):
                     "(id, organization_id, source, external_id, occurred_at, ended_at, "
                     "received_at, resource_id, method, action, location, privilege, "
                     "result, country_code, evidence, "
-                    "domain, network_port, network_vlan, credential_observation) "
+                    "domain, network_port, network_vlan, credential_observation, "
+                    "provenance_channel, collector_source_id, manual_actor_id, "
+                    "internal_principal, facts_schema, facts_digest) "
                     "SELECT gen_random_uuid(), organization_id, source, 'negative', occurred_at, "
                     "occurred_at - interval '1 second', received_at, resource_id, method, action, "
                     "location, privilege, result, country_code, evidence, domain, network_port, "
-                    "network_vlan, credential_observation FROM access_accessevent WHERE id = %s",
+                    "network_vlan, credential_observation, provenance_channel, "
+                    "collector_source_id, manual_actor_id, internal_principal, facts_schema, "
+                    "facts_digest FROM access_accessevent WHERE id = %s",
                     [event.pk],
                 )
         self.assertEqual(raised.exception.__cause__.sqlstate, "23514")
