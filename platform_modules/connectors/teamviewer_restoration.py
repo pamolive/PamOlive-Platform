@@ -1,5 +1,7 @@
 """Offline recovery verification, including inactive collectors and old evidence."""
 
+from platform_core.tenancy import organization_context
+
 from .teamviewer_access import verify_observation
 from .teamviewer_access_models import TeamViewerAccessObservation
 from .teamviewer_collection import (
@@ -75,9 +77,14 @@ def verify_evidence():
             raise RuntimeError("Restored TeamViewer session observation proof is invalid.")
         signed += 1
     for link in TeamViewerAccessObservation.unscoped.select_related(
-        "audit", "event", "session__audit", "session__origin__run__audit", "session__origin__report"
+        "organization", "audit", "event", "session__audit", "session__origin__run__audit",
+        "session__origin__report",
     ).iterator(chunk_size=100):
-        if not verify_observation(link):
-            raise RuntimeError("Restored TeamViewer normalized source link is invalid.")
+        # The offline verifier spans all organizations. The normal observation
+        # verifier deliberately resolves its V8 receipt through a scoped manager.
+        # Supply each link's own context instead of bypassing that tenant guard.
+        with organization_context(link.organization):
+            if not verify_observation(link):
+                raise RuntimeError("Restored TeamViewer normalized source link is invalid.")
         signed += 1
     return encrypted, signed
