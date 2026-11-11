@@ -38,13 +38,13 @@ def fixture_directory_parent(platform, configured=None):
     if configured is None:
         return "/var/tmp" if platform == "posix" else None
     parent = Path(configured)
-    if (platform != "posix" or not parent.is_absolute() or parent.is_symlink()
+    if (platform != "posix" or not parent.is_absolute()
             or parent.parent != Path("/var/lib/ldap")
             or not re.fullmatch(
                 r"pamolive-fixtures-[1-9][0-9]{0,19}-[1-9][0-9]{0,3}", parent.name)):
         raise RuntimeError("Synthetic LDAP private parent refused.")
     try:
-        if parent.resolve(strict=True) != parent:
+        if parent.is_symlink() or parent.resolve(strict=True) != parent:
             raise RuntimeError("Synthetic LDAP private parent refused.")
         metadata = parent.stat()
     except OSError:
