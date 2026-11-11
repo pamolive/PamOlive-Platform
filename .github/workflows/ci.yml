@@ -96,7 +96,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install native directory build and isolated wire-test prerequisites
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential libldap2-dev libsasl2-dev libpq-dev slapd ldap-utils
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential libldap2-dev libsasl2-dev libpq-dev slapd ldap-utils ripgrep
       - name: Prepare a new private LDAP fixture area under the existing confined database path
         id: ldap_fixture
         shell: bash
