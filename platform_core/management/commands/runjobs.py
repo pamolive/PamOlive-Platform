@@ -1,9 +1,10 @@
+import logging
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 
 from django.core.management.base import BaseCommand
-from django.db import close_old_connections, connections
+from django.db import InterfaceError, OperationalError, close_old_connections, connections
 
 from platform_core.events import process_events
 from platform_core.models import Organization
@@ -22,6 +23,7 @@ from platform_modules.pam.sessions import reap_connections
 from platform_modules.recertification.schedules import process_schedules
 
 WORKER_COUNT = 4
+logger = logging.getLogger(__name__)
 
 
 def deliver(organization):
@@ -76,30 +78,40 @@ class Command(BaseCommand):
         queue = deque()
         with ThreadPoolExecutor(max_workers=WORKER_COUNT) as executor:
             while True:
-                close_old_connections()
-                cleanup_expired()
-                organizations = list(Organization.objects.filter(active=True))
-                for organization in Organization.objects.all():
-                    reap_connections(organization)
-                for organization in organizations:
-                    expire_leases(organization)
-                    expire_grants(organization)
-                    reconcile_contracts(organization)
-                if options["once"]:
+                try:
+                    close_old_connections()
+                    cleanup_expired()
+                    organizations = list(Organization.objects.filter(active=True))
+                    for organization in Organization.objects.all():
+                        reap_connections(organization)
                     for organization in organizations:
-                        enqueue_periodic_signals(organization)
-                        process_events(organization)
-                        process_schedules(organization, limit=10)
-                        process_creations(organization)
-                        process_changes(organization)
-                        process_collectors(organization, limit=1)
-                        process_sightings(organization)
-                        process_sessions(organization)
-                        process_access_observations(organization)
-                    return
-                for key, future in list(pending.items()):
-                    if future.done():
-                        future.result()
-                        del pending[key]
-                queue = refill(executor, pending, organizations, queue)
+                        expire_leases(organization)
+                        expire_grants(organization)
+                        reconcile_contracts(organization)
+                    if options["once"]:
+                        for organization in organizations:
+                            enqueue_periodic_signals(organization)
+                            process_events(organization)
+                            process_schedules(organization, limit=10)
+                            process_creations(organization)
+                            process_changes(organization)
+                            process_collectors(organization, limit=1)
+                            process_sightings(organization)
+                            process_sessions(organization)
+                            process_access_observations(organization)
+                        return
+                    for key, future in list(pending.items()):
+                        if future.done():
+                            # A failed completed delivery must not remain a
+                            # permanently failing future. In-flight work stays
+                            # registered and is never submitted a second time.
+                            del pending[key]
+                            future.result()
+                    queue = refill(executor, pending, organizations, queue)
+                except (OperationalError, InterfaceError):
+                    if options["once"]:
+                        raise
+                    connections.close_all()
+                    # Driver exception text can contain DSNs, SQL or credentials.
+                    logger.warning("Database unavailable; durable jobs paused before retry.")
                 time.sleep(5)
