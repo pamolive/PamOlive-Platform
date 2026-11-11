@@ -103,6 +103,7 @@ jobs:
           tests.test_governance_workspace tests.test_governance_workspace_concurrency
           tests.test_governance_exception_restore tests.test_module_activation_authority
           tests.test_observe_story tests.test_observe_concurrency tests.test_synology_preparation
+          tests.test_jobs_database_recovery tests.test_jobs_security_recovery
           --noinput
       - name: Verify real P0 trust ceremonies in the synthetic HA fixture
         env:

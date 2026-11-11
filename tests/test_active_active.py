@@ -1,4 +1,5 @@
 import json
+import subprocess
 from copy import deepcopy
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
@@ -15,6 +16,7 @@ from deploy.check_active_active import (
     Qualification,
     partition_scope,
     safe_relay_state,
+    subprocess_category,
     totp,
     validate_configuration,
     validate_rdp_network,
@@ -156,6 +158,37 @@ class ActiveActiveGuardTests(TestCase):
         ):
             check.check_database_partition(info["Name"], 1234, Mock(), {}, {})
         self.assertEqual(command.call_count, 2)
+
+    def test_route_cleanup_failure_keeps_the_primary_error_and_safe_category(self):
+        info, a, b, route = partition_topology()
+        check = Qualification("docker", "/not-used", database_partition=True)
+        primary = RuntimeError("Synthetic primary probe failure")
+        cleanup = subprocess.CalledProcessError(
+            1, ["fixed-fixture-command"], stderr="nsenter: cannot open synthetic-private-path"
+        )
+        with (
+            patch.object(check, "command", side_effect=[json.dumps([info]), "", "", cleanup]),
+            patch.object(check, "node", side_effect=[(a["Id"], a), (b["Id"], b), (a["Id"], a)]),
+            patch.object(check, "fixture", side_effect=[route, {}, primary]),
+            self.assertRaises(RuntimeError) as raised,
+        ):
+            check.check_database_partition(
+                info["Name"], 1234, Mock(), {"run": "run", "source_token": "synthetic"}, {}
+            )
+        self.assertIs(raised.exception, primary)
+        self.assertEqual(check.stage, "probe isolated A loopback HTTP health and ingestion")
+        self.assertEqual(check.secondary_failures, [{
+            "stage": "remove only the installed database route",
+            "error": "CalledProcessError", "category": "namespace-unavailable",
+        }])
+        self.assertNotIn("synthetic-private-path", json.dumps(check.secondary_failures))
+
+    def test_subprocess_diagnostics_never_echo_raw_stderr(self):
+        error = subprocess.CalledProcessError(
+            1, ["synthetic"], stderr=b"Container synthetic-private-name is not running"
+        )
+        self.assertEqual(subprocess_category(error), "container-not-running")
+        self.assertEqual(subprocess_category(ValueError("synthetic-secret")), "unknown")
 
     def test_partition_survivor_commits_then_recovered_node_deduplicates_the_exact_event(self):
         info, a, b, route = partition_topology()

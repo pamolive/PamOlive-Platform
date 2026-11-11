@@ -37,6 +37,34 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
+def subprocess_category(error):
+    """Return a fixed diagnostic label, never driver/command output or values."""
+    details = getattr(error, "stderr", "") or ""
+    if isinstance(details, bytes):
+        details = details.decode(errors="replace")
+    details = details.lower()
+    for needle, label in (
+        ("is not running", "container-not-running"),
+        ("cannot open", "namespace-unavailable"),
+        ("operation not permitted", "namespace-or-route-permission"),
+        ("permission denied", "permission-denied"),
+        ("file exists", "existing-route"),
+        ("no such process", "missing-route"),
+        ("no such file or directory", "missing-namespace-or-file"),
+        ("command not found", "missing-command"),
+        ("timed out", "timeout"),
+        ("connection refused", "connection-refused"),
+        ("invalid argument", "invalid-argument"),
+        ("undefined variable", "undefined-variable"),
+        ("error:", "subprocess-error"),
+    ):
+        if needle in details:
+            return label
+    if isinstance(error, subprocess.TimeoutExpired):
+        return "timeout"
+    return "unknown"
+
+
 def validate_configuration(config, *, checkpoint_directory=None):
     services = config.get("services", {})
     require(set(services) == {"node-a", "node-b"}, "Unexpected qualification services.")
@@ -270,6 +298,7 @@ class Qualification:
         self.trust_stop, self.trust_thread = Event(), None
         self.trust_error = None
         self.trust_organizations = {}
+        self.secondary_failures = []
 
     def prepare_authority(self):
         from .active_active_trust import CHECKPOINT_TARGET, QualificationAuthority
@@ -392,6 +421,7 @@ class Qualification:
         self.stage = "install unreachable route for the exact database address"
         rule = ("unreachable", destination, "proto", "static")
         self.command(*route_command, "add", *rule)
+        primary_error = None
         try:
             self.stage = "inspect live node A with database address blocked"
             isolated = self.node("node-a")[1]
@@ -427,11 +457,29 @@ class Qualification:
             )
             require(status == 201, "Node B could not commit during node A's database partition.")
             event_id = json.loads(response)["event_id"]
+        except BaseException as error:
+            primary_error = error
+            raise
         finally:
             previous_stage = self.stage
             self.stage = "remove only the installed database route"
-            self.command(*route_command, "del", *rule)
-            self.stage = previous_stage
+            try:
+                self.command(*route_command, "del", *rule)
+            except Exception as cleanup_error:
+                if primary_error is None:
+                    raise
+                # A vanished test namespace must not hide the probe failure
+                # that caused cleanup. Do not touch another namespace/route.
+                self.secondary_failures.append({
+                    "stage": "remove only the installed database route",
+                    "error": type(cleanup_error).__name__,
+                    "category": subprocess_category(cleanup_error),
+                })
+            finally:
+                if primary_error is not None:
+                    self.stage = previous_stage
+            if primary_error is None:
+                self.stage = previous_stage
         self.stage = "original node A's published port becomes healthy again"
         a = self.wait_ready("node-a")
         returned = self.node("node-a")[1]
@@ -1058,6 +1106,8 @@ class Qualification:
         directory = Path(tempfile.mkdtemp(prefix="pamolive-ha-failure-"))
         os.chmod(directory, 0o700)
         items = {"stage.txt": self.stage + "\n" + type(error).__name__}
+        if self.secondary_failures:
+            items["secondary-failures.json"] = json.dumps(self.secondary_failures)
         if isinstance(error, subprocess.CalledProcessError):
             items["command.stderr.txt"] = error.stderr or ""
             items["command.stdout.txt"] = error.stdout or ""
@@ -1110,22 +1160,9 @@ def main():
             "captured output and credentials suppressed."
         )
         if isinstance(error, subprocess.CalledProcessError):
-            details = (error.stderr or "").lower()
-            for needle, label in (
-                ("operation not permitted", "namespace-or-route-permission"),
-                ("permission denied", "permission-denied"),
-                ("file exists", "existing-route"),
-                ("no such process", "missing-route"),
-                ("command not found", "missing-command"),
-                ("timed out", "timeout"),
-                ("connection refused", "connection-refused"),
-                ("invalid argument", "invalid-argument"),
-                ("undefined variable", "undefined-variable"),
-                ("error:", "subprocess-error"),
-            ):
-                if needle in details:
-                    print("Restricted subprocess category: " + label)
-                    break
+            print("Restricted subprocess category: " + subprocess_category(error))
+        for secondary in check.secondary_failures:
+            print("Secondary route cleanup category: " + secondary["category"])
         print("Private failure evidence: " + str(check.preserve_failure(error)))
         raise SystemExit(1) from None
     finally:
