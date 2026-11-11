@@ -77,7 +77,7 @@ def run_check(check=inspect_plugins):
             ],
             env={
                 "PATH": "/usr/local/bin:/usr/bin:/bin",
-                "LD_LIBRARY_PATH": "/opt/pamolive-guac/lib",
+                "LD_LIBRARY_PATH": "/opt/pamolive-freerdp/lib:/opt/pamolive-guac/lib",
                 "LANG": "C.UTF-8",
                 "HOME": directory,
                 "GUACAMOLE_HOME": directory,

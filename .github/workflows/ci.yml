@@ -18,8 +18,11 @@ jobs:
           python-version: '3.12'
       - name: Install the isolated security toolchain
         run: |
+          python -m pip install --only-binary=:all: --no-deps --require-hashes -r requirements-bootstrap.lock
           python -m pip install -r requirements-security.lock
           python -m pip check
+      - name: Verify native inventory and SBOM qualification tools
+        run: python -m unittest tests.test_native_inventory tests.test_native_sbom tests.test_native_dns tests.test_image_scan_policy tests.test_database_driver
       - name: Reject known vulnerabilities in the application lock
         run: python -m pip_audit --strict --no-deps --disable-pip -r requirements.lock -f json -o "$RUNNER_TEMP/pamolive-dependency-audit.json"
       - name: Produce the application CycloneDX SBOM
@@ -83,6 +86,8 @@ jobs:
       SECRET_KEY: ci-only-secret-not-used-outside-isolated-ci-jobs
       PAMOLIVE_ENCRYPTION_KEY: ci-only-encryption-key-not-used-outside-isolated-ci-jobs
       PAMOLIVE_TEST_DATABASE_NAME: test_pamolive_ci
+      PAMOLIVE_LDAP_FIXTURE_PARENT: /var/lib/ldap/pamolive-fixtures-${{ github.run_id }}-${{ github.run_attempt }}
+      PSYCOPG_IMPL: c
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
@@ -91,8 +96,26 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install native directory build and isolated wire-test prerequisites
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential libldap2-dev libsasl2-dev slapd ldap-utils
-      - run: python -m pip install -r requirements-dev.lock
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential libldap2-dev libsasl2-dev libpq-dev slapd ldap-utils
+      - name: Prepare a new private LDAP fixture area under the existing confined database path
+        id: ldap_fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PAMOLIVE_LDAP_FIXTURE_PARENT" =~ ^/var/lib/ldap/pamolive-fixtures-[1-9][0-9]{0,19}-[1-9][0-9]{0,3}$ ]]
+          test "$(readlink -f /var/lib/ldap)" = /var/lib/ldap
+          test ! -e "$PAMOLIVE_LDAP_FIXTURE_PARENT"
+          sudo install -d -m 700 -o "$(id -u)" -g "$(id -g)" "$PAMOLIVE_LDAP_FIXTURE_PARENT"
+          printf 'created=true\n' >> "$GITHUB_OUTPUT"
+          if test -f /etc/apparmor.d/usr.sbin.slapd; then
+            rg -n '/var/(lib/ldap|tmp)' /etc/apparmor.d/usr.sbin.slapd
+          fi
+      - name: Install locked application and qualification dependencies
+        run: |
+          python -m pip install --only-binary=:all: --no-deps --require-hashes -r requirements-bootstrap.lock
+          python -m pip install --only-binary=:all: --no-deps --require-hashes -r requirements-native-build.lock
+          python -m pip wheel --no-build-isolation --no-deps --require-hashes --wheel-dir "$RUNNER_TEMP/pamolive-database-wheels" -r requirements-database-build.lock
+          python -m pip install --find-links="$RUNNER_TEMP/pamolive-database-wheels" -r requirements-dev.lock -r requirements-security.lock
       - run: python -m pip check
       - run: ruff check .
       - run: python manage.py check
@@ -101,8 +124,10 @@ jobs:
         env:
           PAMOLIVE_TEST_DATABASE_NAME: test_pamolive_directory
         run: |
+          set -o pipefail
+          python -c "import resource; print('Runner RLIMIT_NOFILE:', resource.getrlimit(resource.RLIMIT_NOFILE)); print('LDAP peer child cap: 256; parent unchanged')"
           python -c "from tests.fixtures.ldap_directory import available; assert available(), 'Native LDAP gate must run, not skip'"
-          python manage.py test tests.test_directory_adapters tests.test_directory_ldap_wire tests.test_directory_inventory tests.test_directory_inventory_concurrency tests.test_directory_redteam tests.test_directory_views tests.test_directory_views_redteam tests.test_directory_restore --noinput
+          python manage.py test tests.test_directory_adapters tests.test_directory_ldap_wire tests.test_directory_peer_limits tests.test_directory_inventory tests.test_directory_inventory_concurrency tests.test_directory_redteam tests.test_directory_views tests.test_directory_views_redteam tests.test_directory_restore --noinput 2>&1 | tee "$RUNNER_TEMP/pamolive-directory-tests.log"
       - name: Verify P1 contracts, Identity, Governance, Observe and module isolation
         run: >-
           python manage.py test tests.test_access_contract tests.test_p1_module_isolation
@@ -127,12 +152,14 @@ jobs:
         run: |
           set -o pipefail
           python manage.py test --noinput 2>&1 | tee "$RUNNER_TEMP/pamolive-postgres-tests.log"
-      - name: Retain the PostgreSQL test result, including failures and skips
+      - name: Retain PostgreSQL and directory results, including failures and skips
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: pamolive-postgres-tests-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/pamolive-postgres-tests.log
+          path: |
+            ${{ runner.temp }}/pamolive-postgres-tests.log
+            ${{ runner.temp }}/pamolive-directory-tests.log
           if-no-files-found: warn
           retention-days: 7
       - name: Verify real HTTPS OIDC round-trip, local MFA and tenant boundaries
@@ -186,11 +213,13 @@ jobs:
       - name: Build test-only headless RDP peer
         run: docker build --target native-test -t pamolive-platform:native-test .
       - name: Verify native RDP NLA, certificate pin and keyboard round-trip
-        run: docker run --rm --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:native-test -m deploy.check_native_rdp
+        run: docker run --rm --user 1000:1000 --network none --dns 127.0.0.1 --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:native-test -m deploy.check_native_rdp
+      - name: Verify synthetic NLA behavior under negative and silent loopback DNS
+        run: docker run --rm --user 1000:1000 --network none --dns 127.0.0.1 --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:native-test -m deploy.check_native_dns
       - name: Verify real WebSocket SSH transport and recording on PostgreSQL
         run: docker run --rm --user 1000:1000 --network host --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 -e DATABASE_URL -e SECRET_KEY -e PAM_REQUIRE_NATIVE=1 --entrypoint python pamolive-platform:ci manage.py test tests.test_pam_relay_e2e --noinput
       - name: Verify real WebSocket RDP NLA, revocation, capture and redirection defense
-        run: docker run --rm --user 1000:1000 --network host --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 -e DATABASE_URL -e SECRET_KEY -e PAM_REQUIRE_NATIVE=1 -e PAM_REQUIRE_RDP=1 --entrypoint python pamolive-platform:native-test manage.py test tests.test_pam_rdp_e2e --noinput
+        run: docker run --rm --user 1000:1000 --network host --dns 127.0.0.1 --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 -e DATABASE_URL -e SECRET_KEY -e PAM_REQUIRE_NATIVE=1 -e PAM_REQUIRE_RDP=1 --entrypoint python pamolive-platform:native-test manage.py test tests.test_pam_rdp_e2e --noinput
       - name: Verify single-container runtime privilege separation
         run: |
           docker run --rm --network host -e DATABASE_URL -e SECRET_KEY --entrypoint python pamolive-platform:ci manage.py migrate --noinput
@@ -227,11 +256,36 @@ jobs:
           python -m deploy.qualified_image verify "$RUNNER_TEMP/pamolive-qualified-image" --revision "$GITHUB_SHA"
           docker image load --input "$RUNNER_TEMP/pamolive-qualified-image/pamolive-linux-amd64.tar"
           python -m deploy.qualified_image verify "$RUNNER_TEMP/pamolive-qualified-image" --revision "$GITHUB_SHA" --loaded
+      - name: Verify installed native binaries and bind the combined SBOM to the tested image
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof="$RUNNER_TEMP/pamolive-image-security"
+          mkdir -m 700 "$proof"
+          image_ref=$(docker image inspect pamolive-platform:ci --format '{{.Id}}')
+          config_id=$(python -c 'import json,os; from pathlib import Path; print(json.loads((Path(os.environ["RUNNER_TEMP"])/"pamolive-qualified-image/qualified-image.json").read_text())["image_id"])')
+          docker run --rm --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --entrypoint python "$image_ref" -c 'from pathlib import Path; import sys; sys.stdout.buffer.write(Path("/opt/pamolive-native-manifest.json").read_bytes())' > "$proof/native-manifest.json"
+          docker run --rm --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -m deploy.native_inventory --output /proof/native-report.json
+          docker run --rm --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -m deploy.check_database_driver --output /proof/database-driver.json
+          python -m pip_audit --strict --no-deps --disable-pip -r requirements.lock -f cyclonedx-json -o "$proof/application.cdx.json"
+          python -m deploy.native_sbom --app-sbom "$proof/application.cdx.json" --native-manifest "$proof/native-manifest.json" --native-report "$proof/native-report.json" --image-digest-kind image_config --image-digest "$config_id" --output "$proof/combined.cdx.json"
       - name: Verify a fresh Compose installation of the loaded image without building
         run: |
           export PAMOLIVE_TEST_DATABASE_NETWORK
           PAMOLIVE_TEST_DATABASE_NETWORK=$(docker inspect '${{ job.services.postgres.id }}' --format '{{json .NetworkSettings.Networks}}' | python -c "import json,sys; print(next(iter(json.load(sys.stdin))))")
           bash deploy/check_registry_install_ci.sh
+      - name: Scan the exact image, qualify native matching and enforce individually reviewed findings
+        run: bash deploy/check_image_scan_ci.sh
+      - name: Retain image identity and full security evidence even when promotion is blocked
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: pamolive-image-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/pamolive-image-security/
+            ${{ runner.temp }}/pamolive-qualified-image/qualified-image.json
+          if-no-files-found: warn
+          retention-days: 7
       - name: Retain the qualified image for main publication
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'pamolive/PamOlive-Platform'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -241,3 +295,9 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
+      - name: Remove only the empty private LDAP fixture parent
+        if: always() && steps.ldap_fixture.outputs.created == 'true'
+        run: |
+          if test -d "$PAMOLIVE_LDAP_FIXTURE_PARENT"; then
+            rmdir "$PAMOLIVE_LDAP_FIXTURE_PARENT"
+          fi

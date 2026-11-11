@@ -1,12 +1,13 @@
 # Isolated protocol qualification image; never a production deployment image.
-FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libldap2-dev libsasl2-dev slapd ldap-utils ca-certificates \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+    build-essential libldap2-dev libsasl2-dev libpq-dev slapd ldap-utils ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY requirements.lock requirements-dev.lock requirements-directory.lock ./
-RUN pip install --no-cache-dir -r requirements-dev.lock -r requirements-directory.lock
+COPY requirements.lock requirements-dev.lock requirements-directory.lock requirements-bootstrap.lock requirements-native-build.lock requirements-database-build.lock ./
+RUN python -m pip install --no-cache-dir --only-binary=:all: --no-deps --require-hashes -r requirements-bootstrap.lock && python -m pip install --no-cache-dir --only-binary=:all: --no-deps --require-hashes -r requirements-native-build.lock && python -m pip wheel --no-cache-dir --no-build-isolation --no-deps --require-hashes --wheel-dir /tmp/database-wheels -r requirements-database-build.lock && python -m pip install --no-cache-dir --find-links=/tmp/database-wheels -r requirements-dev.lock -r requirements-directory.lock && rm -r /tmp/database-wheels
+ENV PSYCOPG_IMPL=c
 COPY manage.py pyproject.toml ./
 COPY config ./config
 COPY platform_core ./platform_core

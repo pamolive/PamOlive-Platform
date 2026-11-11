@@ -1,0 +1,1579 @@
+{
+  "baseline_observation": {
+    "accepted_exceptions": 0,
+    "archive_sha256": "bf5d0075a25d2fc834aa5b21690fac709c62244a5f3330eee8296e1f58512cca",
+    "binary_high_matches": 102,
+    "high_source_cve_groups": 35,
+    "note": "Historical witness only; current candidate must be scanned and individually reviewed."
+  },
+  "coverage": "OS archive plus declared FreeRDP/Guacamole and application SBOM; bundled wheel libraries are not automatically covered",
+  "findings": [
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-16554",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libcjson1",
+            "purl": "pkg:deb/debian/libcjson1@1.7.18-3.1%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=cjson",
+            "type": "deb",
+            "version": "1.7.18-3.1+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "cjson",
+        "vulnerability_id": "CVE-2026-16554"
+      },
+      "fingerprint": "sha256:074bcf1e533be27c96671d9e18890eddd2433545aebbcf1eebe8de21e24d5dec",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-119373",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libsqlite3-0",
+            "purl": "pkg:deb/debian/libsqlite3-0@3.46.1-7%2Bdeb13u2?arch=amd64&distro=debian-13.7&upstream=sqlite3",
+            "type": "deb",
+            "version": "3.46.1-7+deb13u2"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "sqlite3",
+        "vulnerability_id": "CVE-2026-119373"
+      },
+      "fingerprint": "sha256:1cc62188c93bc534def3c442b99fbca77c85d1f082e6763f186d0385201eeaed",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-88806",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libx11-6",
+            "purl": "pkg:deb/debian/libx11-6@2%3A1.8.12-1?arch=amd64&distro=debian-13.7&upstream=libx11",
+            "type": "deb",
+            "version": "2:1.8.12-1"
+          },
+          {
+            "name": "libx11-data",
+            "purl": "pkg:deb/debian/libx11-data@2%3A1.8.12-1?arch=all&distro=debian-13.7&upstream=libx11",
+            "type": "deb",
+            "version": "2:1.8.12-1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "libx11",
+        "vulnerability_id": "CVE-2026-88806"
+      },
+      "fingerprint": "sha256:1e96909006730bdc3ed40a7b41c013bc0608609f332bad7da91e890b29371547",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-9538",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "perl-base",
+            "purl": "pkg:deb/debian/perl-base@5.40.1-6%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=perl",
+            "type": "deb",
+            "version": "5.40.1-6+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "perl",
+        "vulnerability_id": "CVE-2026-9538"
+      },
+      "fingerprint": "sha256:205c357d928e5250ef71b73c7822b02305b734ac4effd54721506be6657affdc",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-54370",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libacl1",
+            "purl": "pkg:deb/debian/libacl1@2.3.2-2%2Bb1?arch=amd64&distro=debian-13.7&upstream=acl%402.3.2-2",
+            "type": "deb",
+            "version": "2.3.2-2+b1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "acl",
+        "vulnerability_id": "CVE-2026-54370"
+      },
+      "fingerprint": "sha256:2c5a5ac121ec06509eed83c65fd364a78984d88b77396fc6c7eaa5e817ae3783",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-112321",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libgssapi-krb5-2",
+            "purl": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libk5crypto3",
+            "purl": "pkg:deb/debian/libk5crypto3@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libkrb5-3",
+            "purl": "pkg:deb/debian/libkrb5-3@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libkrb5support0",
+            "purl": "pkg:deb/debian/libkrb5support0@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "krb5",
+        "vulnerability_id": "CVE-2026-112321"
+      },
+      "fingerprint": "sha256:338131189970944bd47276a7cf3ca2e51535c0cb5b4ada4c48b1117d200c3227",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-82560",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "perl-base",
+            "purl": "pkg:deb/debian/perl-base@5.40.1-6%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=perl",
+            "type": "deb",
+            "version": "5.40.1-6+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "perl",
+        "vulnerability_id": "CVE-2026-82560"
+      },
+      "fingerprint": "sha256:363e7a09fe77f5832869ce7fa14b346e2f869bbbcb81dece32d408ae8d5302a2",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-29036",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libcjson1",
+            "purl": "pkg:deb/debian/libcjson1@1.7.18-3.1%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=cjson",
+            "type": "deb",
+            "version": "1.7.18-3.1+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "cjson",
+        "vulnerability_id": "CVE-2026-29036"
+      },
+      "fingerprint": "sha256:37b89bd55bb07c0599166cc807c9fad74277ae7f9b978c89611561f0795ed078",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-107778",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libgssapi-krb5-2",
+            "purl": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libk5crypto3",
+            "purl": "pkg:deb/debian/libk5crypto3@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libkrb5-3",
+            "purl": "pkg:deb/debian/libkrb5-3@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libkrb5support0",
+            "purl": "pkg:deb/debian/libkrb5support0@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "krb5",
+        "vulnerability_id": "CVE-2026-107778"
+      },
+      "fingerprint": "sha256:4898e7d901c1e79c146a8312c74a293047f11ed91d84646b4d1dffc10fe8df9a",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-117610",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libexpat1",
+            "purl": "pkg:deb/debian/libexpat1@2.9.0-1~deb13u1?arch=amd64&distro=debian-13.7&upstream=expat",
+            "type": "deb",
+            "version": "2.9.0-1~deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "expat",
+        "vulnerability_id": "CVE-2026-117610"
+      },
+      "fingerprint": "sha256:4b656e414b16942384275facdd2222106ed838c468ddd3282c5223e94a3786f6",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-119379",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libsqlite3-0",
+            "purl": "pkg:deb/debian/libsqlite3-0@3.46.1-7%2Bdeb13u2?arch=amd64&distro=debian-13.7&upstream=sqlite3",
+            "type": "deb",
+            "version": "3.46.1-7+deb13u2"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "sqlite3",
+        "vulnerability_id": "CVE-2026-119379"
+      },
+      "fingerprint": "sha256:5127613e11f425fdcc8e816dbbdb2aef72e9a49e979b82d184123e4e7f7cef9a",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-112322",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libgssapi-krb5-2",
+            "purl": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libk5crypto3",
+            "purl": "pkg:deb/debian/libk5crypto3@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libkrb5-3",
+            "purl": "pkg:deb/debian/libkrb5-3@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libkrb5support0",
+            "purl": "pkg:deb/debian/libkrb5support0@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "krb5",
+        "vulnerability_id": "CVE-2026-112322"
+      },
+      "fingerprint": "sha256:55a2444d3590ba5244e8cc12ee89889de056cdc8e3d9901cf22d6fb771942e07",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-107161",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libsasl2-2",
+            "purl": "pkg:deb/debian/libsasl2-2@2.1.28%2Bdfsg1-9?arch=amd64&distro=debian-13.7&upstream=cyrus-sasl2",
+            "type": "deb",
+            "version": "2.1.28+dfsg1-9"
+          },
+          {
+            "name": "libsasl2-modules-db",
+            "purl": "pkg:deb/debian/libsasl2-modules-db@2.1.28%2Bdfsg1-9?arch=amd64&distro=debian-13.7&upstream=cyrus-sasl2",
+            "type": "deb",
+            "version": "2.1.28+dfsg1-9"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "cyrus-sasl2",
+        "vulnerability_id": "CVE-2026-107161"
+      },
+      "fingerprint": "sha256:577c7cd091a5ced7ebc6e0f8c4043286c73b3d7f8a8b6aa90b3a888a3f37a2ed",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-5435",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libc-bin",
+            "purl": "pkg:deb/debian/libc-bin@2.41-12%2Bdeb13u4?arch=amd64&distro=debian-13.7&upstream=glibc",
+            "type": "deb",
+            "version": "2.41-12+deb13u4"
+          },
+          {
+            "name": "libc6",
+            "purl": "pkg:deb/debian/libc6@2.41-12%2Bdeb13u4?arch=amd64&distro=debian-13.7&upstream=glibc",
+            "type": "deb",
+            "version": "2.41-12+deb13u4"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "glibc",
+        "vulnerability_id": "CVE-2026-5435"
+      },
+      "fingerprint": "sha256:5ae5860c23b10f76416a8fa0a8d5f8c37fd4f10192b005a93be73dacea2da3f5",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-115506",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libexpat1",
+            "purl": "pkg:deb/debian/libexpat1@2.9.0-1~deb13u1?arch=amd64&distro=debian-13.7&upstream=expat",
+            "type": "deb",
+            "version": "2.9.0-1~deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "expat",
+        "vulnerability_id": "CVE-2026-115506"
+      },
+      "fingerprint": "sha256:5cc934055d7de91236760497eaccffea85e06404d8afed60a89b57431052355d",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-119374",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libsqlite3-0",
+            "purl": "pkg:deb/debian/libsqlite3-0@3.46.1-7%2Bdeb13u2?arch=amd64&distro=debian-13.7&upstream=sqlite3",
+            "type": "deb",
+            "version": "3.46.1-7+deb13u2"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "sqlite3",
+        "vulnerability_id": "CVE-2026-119374"
+      },
+      "fingerprint": "sha256:6341b475b1a8f7660ef3e0534c39611fd5bbf436d8bf9a7aef4619ccbdaa9a24",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-78409",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "bsdutils",
+            "purl": "pkg:deb/debian/bsdutils@1%3A2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux%402.41.5-0%2Bdeb13u1",
+            "type": "deb",
+            "version": "1:2.41.5-0+deb13u1"
+          },
+          {
+            "name": "libblkid1",
+            "purl": "pkg:deb/debian/libblkid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "liblastlog2-2",
+            "purl": "pkg:deb/debian/liblastlog2-2@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "libmount1",
+            "purl": "pkg:deb/debian/libmount1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "libsmartcols1",
+            "purl": "pkg:deb/debian/libsmartcols1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "libuuid1",
+            "purl": "pkg:deb/debian/libuuid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "login",
+            "purl": "pkg:deb/debian/login@1%3A4.16.0-2%2Breally2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux%402.41.5-0%2Bdeb13u1",
+            "type": "deb",
+            "version": "1:4.16.0-2+really2.41.5-0+deb13u1"
+          },
+          {
+            "name": "mount",
+            "purl": "pkg:deb/debian/mount@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "util-linux",
+            "purl": "pkg:deb/debian/util-linux@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "util-linux",
+        "vulnerability_id": "CVE-2026-78409"
+      },
+      "fingerprint": "sha256:6db180ea7379f0ef73c326f486c6a41d087936756cd6bf2d55650a09f4ad4f6e",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-54369",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libacl1",
+            "purl": "pkg:deb/debian/libacl1@2.3.2-2%2Bb1?arch=amd64&distro=debian-13.7&upstream=acl%402.3.2-2",
+            "type": "deb",
+            "version": "2.3.2-2+b1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "acl",
+        "vulnerability_id": "CVE-2026-54369"
+      },
+      "fingerprint": "sha256:7203b85ca38f05c829c6c64f8fe5b8982cb25df6dff5d073b57dadffefa4284e",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-112314",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libgssapi-krb5-2",
+            "purl": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libk5crypto3",
+            "purl": "pkg:deb/debian/libk5crypto3@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libkrb5-3",
+            "purl": "pkg:deb/debian/libkrb5-3@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libkrb5support0",
+            "purl": "pkg:deb/debian/libkrb5support0@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "krb5",
+        "vulnerability_id": "CVE-2026-112314"
+      },
+      "fingerprint": "sha256:76513154ac9b9eb49e1022cb40e213b3b4ac544372ad7895651cd5602aa559c0",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-88807",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libxrender1",
+            "purl": "pkg:deb/debian/libxrender1@1%3A0.9.12-1?arch=amd64&distro=debian-13.7&upstream=libxrender",
+            "type": "deb",
+            "version": "1:0.9.12-1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "libxrender",
+        "vulnerability_id": "CVE-2026-88807"
+      },
+      "fingerprint": "sha256:79df9fb4de7ee0364f03fbe48382cce5389bfc94b2d145a784a30d9d1cb8686c",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-76642",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "bsdutils",
+            "purl": "pkg:deb/debian/bsdutils@1%3A2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux%402.41.5-0%2Bdeb13u1",
+            "type": "deb",
+            "version": "1:2.41.5-0+deb13u1"
+          },
+          {
+            "name": "libblkid1",
+            "purl": "pkg:deb/debian/libblkid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "liblastlog2-2",
+            "purl": "pkg:deb/debian/liblastlog2-2@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "libmount1",
+            "purl": "pkg:deb/debian/libmount1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "libsmartcols1",
+            "purl": "pkg:deb/debian/libsmartcols1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "libuuid1",
+            "purl": "pkg:deb/debian/libuuid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "login",
+            "purl": "pkg:deb/debian/login@1%3A4.16.0-2%2Breally2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux%402.41.5-0%2Bdeb13u1",
+            "type": "deb",
+            "version": "1:4.16.0-2+really2.41.5-0+deb13u1"
+          },
+          {
+            "name": "mount",
+            "purl": "pkg:deb/debian/mount@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "util-linux",
+            "purl": "pkg:deb/debian/util-linux@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "util-linux",
+        "vulnerability_id": "CVE-2026-76642"
+      },
+      "fingerprint": "sha256:80daf095dde7e58d752b6541b4f1fb6634aa55b0222439f96f4c27f1ddbccb99",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-118370",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libexpat1",
+            "purl": "pkg:deb/debian/libexpat1@2.9.0-1~deb13u1?arch=amd64&distro=debian-13.7&upstream=expat",
+            "type": "deb",
+            "version": "2.9.0-1~deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "expat",
+        "vulnerability_id": "CVE-2026-118370"
+      },
+      "fingerprint": "sha256:8fbe8c36ef60649a8e53a2af6fab4404a79f49fc1e65cf0c547e089f7bc6ec01",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-67215",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libcjson1",
+            "purl": "pkg:deb/debian/libcjson1@1.7.18-3.1%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=cjson",
+            "type": "deb",
+            "version": "1.7.18-3.1+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "cjson",
+        "vulnerability_id": "CVE-2026-67215"
+      },
+      "fingerprint": "sha256:a408cc27069bd4478896c864f6c95238e95e7a0b2024b722c2d493d974709486",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-78410",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "bsdutils",
+            "purl": "pkg:deb/debian/bsdutils@1%3A2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux%402.41.5-0%2Bdeb13u1",
+            "type": "deb",
+            "version": "1:2.41.5-0+deb13u1"
+          },
+          {
+            "name": "libblkid1",
+            "purl": "pkg:deb/debian/libblkid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "liblastlog2-2",
+            "purl": "pkg:deb/debian/liblastlog2-2@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "libmount1",
+            "purl": "pkg:deb/debian/libmount1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "libsmartcols1",
+            "purl": "pkg:deb/debian/libsmartcols1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "libuuid1",
+            "purl": "pkg:deb/debian/libuuid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "login",
+            "purl": "pkg:deb/debian/login@1%3A4.16.0-2%2Breally2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux%402.41.5-0%2Bdeb13u1",
+            "type": "deb",
+            "version": "1:4.16.0-2+really2.41.5-0+deb13u1"
+          },
+          {
+            "name": "mount",
+            "purl": "pkg:deb/debian/mount@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "util-linux",
+            "purl": "pkg:deb/debian/util-linux@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "util-linux",
+        "vulnerability_id": "CVE-2026-78410"
+      },
+      "fingerprint": "sha256:a5ce7edfdd72e240e9d5f800d5c7a4efbae4434b3a3cffc9f8b7c3951e538f88",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-112323",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libgssapi-krb5-2",
+            "purl": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libk5crypto3",
+            "purl": "pkg:deb/debian/libk5crypto3@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libkrb5-3",
+            "purl": "pkg:deb/debian/libkrb5-3@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libkrb5support0",
+            "purl": "pkg:deb/debian/libkrb5support0@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "krb5",
+        "vulnerability_id": "CVE-2026-112323"
+      },
+      "fingerprint": "sha256:a6f8928ca06b118840ffd09c5b60577e2f3b2620a260f45a04f657ca112a3ccf",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-19499",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libc-bin",
+            "purl": "pkg:deb/debian/libc-bin@2.41-12%2Bdeb13u4?arch=amd64&distro=debian-13.7&upstream=glibc",
+            "type": "deb",
+            "version": "2.41-12+deb13u4"
+          },
+          {
+            "name": "libc6",
+            "purl": "pkg:deb/debian/libc6@2.41-12%2Bdeb13u4?arch=amd64&distro=debian-13.7&upstream=glibc",
+            "type": "deb",
+            "version": "2.41-12+deb13u4"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "glibc",
+        "vulnerability_id": "CVE-2026-19499"
+      },
+      "fingerprint": "sha256:b379d3456d1de8e83b86c0723f13e5dc5d252a2a054fa6a6729698c8b3a0d161",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-102010",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "gcc-14-base",
+            "purl": "pkg:deb/debian/gcc-14-base@14.2.0-19?arch=amd64&distro=debian-13.7&upstream=gcc-14",
+            "type": "deb",
+            "version": "14.2.0-19"
+          },
+          {
+            "name": "libatomic1",
+            "purl": "pkg:deb/debian/libatomic1@14.2.0-19?arch=amd64&distro=debian-13.7&upstream=gcc-14",
+            "type": "deb",
+            "version": "14.2.0-19"
+          },
+          {
+            "name": "libgcc-s1",
+            "purl": "pkg:deb/debian/libgcc-s1@14.2.0-19?arch=amd64&distro=debian-13.7&upstream=gcc-14",
+            "type": "deb",
+            "version": "14.2.0-19"
+          },
+          {
+            "name": "libstdc++6",
+            "purl": "pkg:deb/debian/libstdc%2B%2B6@14.2.0-19?arch=amd64&distro=debian-13.7&upstream=gcc-14",
+            "type": "deb",
+            "version": "14.2.0-19"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "gcc-14",
+        "vulnerability_id": "CVE-2026-102010"
+      },
+      "fingerprint": "sha256:b45caece4e766e43d988d7d213b6a9d8674762c70a8d9c0f5cfc223ce4a38d24",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-112320",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libgssapi-krb5-2",
+            "purl": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libk5crypto3",
+            "purl": "pkg:deb/debian/libk5crypto3@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libkrb5-3",
+            "purl": "pkg:deb/debian/libkrb5-3@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libkrb5support0",
+            "purl": "pkg:deb/debian/libkrb5support0@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "krb5",
+        "vulnerability_id": "CVE-2026-112320"
+      },
+      "fingerprint": "sha256:b779544820793f1e88b97e3ffd0903824afd36ac779f88b088d895246cf92510",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2025-69720",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libncursesw6",
+            "purl": "pkg:deb/debian/libncursesw6@6.5%2B20250216-2?arch=amd64&distro=debian-13.7&upstream=ncurses",
+            "type": "deb",
+            "version": "6.5+20250216-2"
+          },
+          {
+            "name": "libtinfo6",
+            "purl": "pkg:deb/debian/libtinfo6@6.5%2B20250216-2?arch=amd64&distro=debian-13.7&upstream=ncurses",
+            "type": "deb",
+            "version": "6.5+20250216-2"
+          },
+          {
+            "name": "ncurses-base",
+            "purl": "pkg:deb/debian/ncurses-base@6.5%2B20250216-2?arch=all&distro=debian-13.7&upstream=ncurses",
+            "type": "deb",
+            "version": "6.5+20250216-2"
+          },
+          {
+            "name": "ncurses-bin",
+            "purl": "pkg:deb/debian/ncurses-bin@6.5%2B20250216-2?arch=amd64&distro=debian-13.7&upstream=ncurses",
+            "type": "deb",
+            "version": "6.5+20250216-2"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "ncurses",
+        "vulnerability_id": "CVE-2025-69720"
+      },
+      "fingerprint": "sha256:b9cfcd7163c72846a4e552fc8088429a91601b43f6f2b18750125e31f7733cd0",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-78408",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "bsdutils",
+            "purl": "pkg:deb/debian/bsdutils@1%3A2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux%402.41.5-0%2Bdeb13u1",
+            "type": "deb",
+            "version": "1:2.41.5-0+deb13u1"
+          },
+          {
+            "name": "libblkid1",
+            "purl": "pkg:deb/debian/libblkid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "liblastlog2-2",
+            "purl": "pkg:deb/debian/liblastlog2-2@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "libmount1",
+            "purl": "pkg:deb/debian/libmount1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "libsmartcols1",
+            "purl": "pkg:deb/debian/libsmartcols1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "libuuid1",
+            "purl": "pkg:deb/debian/libuuid1@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "login",
+            "purl": "pkg:deb/debian/login@1%3A4.16.0-2%2Breally2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux%402.41.5-0%2Bdeb13u1",
+            "type": "deb",
+            "version": "1:4.16.0-2+really2.41.5-0+deb13u1"
+          },
+          {
+            "name": "mount",
+            "purl": "pkg:deb/debian/mount@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=util-linux",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          },
+          {
+            "name": "util-linux",
+            "purl": "pkg:deb/debian/util-linux@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
+            "type": "deb",
+            "version": "2.41.5-0+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "util-linux",
+        "vulnerability_id": "CVE-2026-78408"
+      },
+      "fingerprint": "sha256:dc6fe72a0ff2ee9816b004284a188d002bed37d0d5e7bf3712b70e8b57528da6",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-84243",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libc-bin",
+            "purl": "pkg:deb/debian/libc-bin@2.41-12%2Bdeb13u4?arch=amd64&distro=debian-13.7&upstream=glibc",
+            "type": "deb",
+            "version": "2.41-12+deb13u4"
+          },
+          {
+            "name": "libc6",
+            "purl": "pkg:deb/debian/libc6@2.41-12%2Bdeb13u4?arch=amd64&distro=debian-13.7&upstream=glibc",
+            "type": "deb",
+            "version": "2.41-12+deb13u4"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "glibc",
+        "vulnerability_id": "CVE-2026-84243"
+      },
+      "fingerprint": "sha256:e1f8549eacd492ef1c4036063e7951d2a328dabcba95e5deeec3113811a96e54",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-95619",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "gcc-14-base",
+            "purl": "pkg:deb/debian/gcc-14-base@14.2.0-19?arch=amd64&distro=debian-13.7&upstream=gcc-14",
+            "type": "deb",
+            "version": "14.2.0-19"
+          },
+          {
+            "name": "libatomic1",
+            "purl": "pkg:deb/debian/libatomic1@14.2.0-19?arch=amd64&distro=debian-13.7&upstream=gcc-14",
+            "type": "deb",
+            "version": "14.2.0-19"
+          },
+          {
+            "name": "libgcc-s1",
+            "purl": "pkg:deb/debian/libgcc-s1@14.2.0-19?arch=amd64&distro=debian-13.7&upstream=gcc-14",
+            "type": "deb",
+            "version": "14.2.0-19"
+          },
+          {
+            "name": "libstdc++6",
+            "purl": "pkg:deb/debian/libstdc%2B%2B6@14.2.0-19?arch=amd64&distro=debian-13.7&upstream=gcc-14",
+            "type": "deb",
+            "version": "14.2.0-19"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "gcc-14",
+        "vulnerability_id": "CVE-2026-95619"
+      },
+      "fingerprint": "sha256:f5a013cee2b3bc52b7eabbcca80d6e89254f9500b5949ad94eeba41a973e8238",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-67216",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libcjson1",
+            "purl": "pkg:deb/debian/libcjson1@1.7.18-3.1%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=cjson",
+            "type": "deb",
+            "version": "1.7.18-3.1+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "cjson",
+        "vulnerability_id": "CVE-2026-67216"
+      },
+      "fingerprint": "sha256:fad6c455a53b11fd29738c3e373c7fd42db37ec6d05faad48911a2ba91b5c100",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-113351",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libexpat1",
+            "purl": "pkg:deb/debian/libexpat1@2.9.0-1~deb13u1?arch=amd64&distro=debian-13.7&upstream=expat",
+            "type": "deb",
+            "version": "2.9.0-1~deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "expat",
+        "vulnerability_id": "CVE-2026-113351"
+      },
+      "fingerprint": "sha256:fbe5efc9673fb48a857e22be85bcfb83b696237a5d8f726350a9bdae709d172f",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    },
+    {
+      "analysis": "",
+      "analyst": "",
+      "conditions": [],
+      "disposition": "untriaged",
+      "expires": null,
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-119079",
+        "distro": {
+          "name": "debian",
+          "version": "13.7"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libgssapi-krb5-2",
+            "purl": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libk5crypto3",
+            "purl": "pkg:deb/debian/libk5crypto3@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libkrb5-3",
+            "purl": "pkg:deb/debian/libkrb5-3@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          },
+          {
+            "name": "libkrb5support0",
+            "purl": "pkg:deb/debian/libkrb5support0@1.21.3-5%2Bdeb13u1?arch=amd64&distro=debian-13.7&upstream=krb5",
+            "type": "deb",
+            "version": "1.21.3-5+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "krb5",
+        "vulnerability_id": "CVE-2026-119079"
+      },
+      "fingerprint": "sha256:fda0f48007c188f0ea13cea3f082af02dd3847bea47ceebf6a58a27bf8f575a5",
+      "local_evidence": [],
+      "reviewed_at": null,
+      "reviewers": [],
+      "vendor_evidence": []
+    }
+  ],
+  "positive_control": {
+    "file": "native-positive-control.cdx.json",
+    "sha256": "0b5b2fdb78bd471dd2b811e49ef9678b93b9b5e56ea94aa0ddd4ba3a3dac3e6c"
+  },
+  "scanner_pin": {
+    "file": "grype-0.121.3-linux-amd64.json",
+    "sha256": "7a26c95ecd6904fd36bd967896d788de7e47e164b516ff9b6374ede974ac4864"
+  },
+  "schema": "pamolive.image-scan-policy.v1",
+  "version": 1
+}

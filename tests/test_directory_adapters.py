@@ -424,11 +424,20 @@ class LdapProtocolTests(SimpleTestCase):
 
 
 class NullableDirectoryTests(SimpleTestCase):
-    def test_fixture_uses_existing_apparmor_permitted_temporary_parent(self):
+    def test_fixture_default_uses_private_temporary_parent_without_host_changes(self):
         from tests.fixtures.ldap_directory import fixture_directory_parent
 
         self.assertEqual(fixture_directory_parent("posix"), "/var/tmp")
         self.assertIsNone(fixture_directory_parent("nt"))
+
+    def test_explicit_fixture_parent_cannot_select_an_existing_directory_or_arbitrary_path(self):
+        from tests.fixtures.ldap_directory import fixture_directory_parent
+
+        for parent in ("", "/tmp", "/var/tmp", "/var/lib/ldap", "relative",
+                       "/var/lib/ldap/other-directory",
+                       "/var/lib/ldap/../ldap/pamolive-fixtures-1-1"):
+            with self.subTest(parent=parent), self.assertRaises(RuntimeError):
+                fixture_directory_parent("posix", parent)
 
     def test_fixture_startup_codes_never_echo_private_diagnostic_text(self):
         from tests.fixtures.ldap_directory import startup_failure_code

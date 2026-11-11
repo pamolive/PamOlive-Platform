@@ -6,6 +6,9 @@
 !manage.py
 !pyproject.toml
 !requirements.lock
+!requirements-bootstrap.lock
+!requirements-native-build.lock
+!requirements-database-build.lock
 !requirements-dev.lock
 !requirements-directory.lock
 !requirements-native-test.lock
@@ -66,4 +69,5 @@
 **/dist
 deploy/bootstrap-nas.sh
 deploy/Dockerfile.partition-probe
+deploy/check_image_scan_ci.sh
 !.env.example

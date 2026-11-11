@@ -6,10 +6,13 @@ Config, TLS material, password and server diagnostics stay in a private tempdir.
 
 import hashlib
 import os
+import re
 import secrets
 import shutil
 import socket
+import stat
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -28,11 +31,28 @@ def available():
     return bool(shutil.which("slapd") and shutil.which("slapadd") and ldap.INIT_FD_AVAIL)
 
 
-def fixture_directory_parent(platform):
-    # Ubuntu's packaged slapd AppArmor profile permits private test files in
-    # /var/tmp but can refuse inherited logs/config/keys under /tmp. Use the
-    # existing permitted directory; never disable or rewrite that profile.
-    return "/var/tmp" if platform == "posix" else None
+def fixture_directory_parent(platform, configured=None):
+    # A private /var/tmp is sufficient for the isolated Debian test container.
+    # A confined Ubuntu host may require the package's existing MDB rwk path.
+    # CI creates a NEW private child there; no AppArmor profile is changed.
+    if configured is None:
+        return "/var/tmp" if platform == "posix" else None
+    parent = Path(configured)
+    if (platform != "posix" or not parent.is_absolute() or parent.is_symlink()
+            or parent.parent != Path("/var/lib/ldap")
+            or not re.fullmatch(
+                r"pamolive-fixtures-[1-9][0-9]{0,19}-[1-9][0-9]{0,3}", parent.name)):
+        raise RuntimeError("Synthetic LDAP private parent refused.")
+    try:
+        if parent.resolve(strict=True) != parent:
+            raise RuntimeError("Synthetic LDAP private parent refused.")
+        metadata = parent.stat()
+    except OSError:
+        raise RuntimeError("Synthetic LDAP private parent unavailable.") from None
+    if (not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(metadata.st_mode) & 0o077):
+        raise RuntimeError("Synthetic LDAP private parent permissions refused.")
+    return str(parent)
 
 
 def startup_failure_code(diagnostic):
@@ -48,13 +68,34 @@ def startup_failure_code(diagnostic):
     return "fixture_startup_failed"
 
 
+def bounded_command(command):
+    """Limit only the new peer process, without a threaded-parent preexec hook.
+
+    slapd may size connection tables from RLIMIT_NOFILE. A runner's huge hard
+    limit must not turn this tiny peer into an unbounded memory allocation.
+    """
+    program = (
+        "import os,resource,sys; "
+        "limits=resource.getrlimit(resource.RLIMIT_NOFILE); "
+        "bound=min([256]+[v for v in limits if v!=resource.RLIM_INFINITY]); "
+        "resource.setrlimit(resource.RLIMIT_NOFILE,(bound,bound)); "
+        "os.execv(sys.argv[1],sys.argv[1:])"
+    )
+    executable = shutil.which(command[0])
+    if not executable:
+        raise RuntimeError("Synthetic LDAP executable unavailable.")
+    return [sys.executable, "-I", "-c", program, executable, *command[1:]]
+
+
 class LdapDirectoryPeer:
     base_dn = "ou=people,dc=lab"
     bind_dn = "cn=reader,dc=lab"
 
     def __init__(self):
         self.directory = tempfile.TemporaryDirectory(
-            prefix="pamolive-openldap-", dir=fixture_directory_parent(os.name)
+            prefix="pamolive-openldap-", dir=fixture_directory_parent(
+                os.name, os.environ.get("PAMOLIVE_LDAP_FIXTURE_PARENT")
+            )
         )
         self.folder = Path(self.directory.name)
         os.chmod(self.folder, 0o700)
@@ -134,22 +175,24 @@ class LdapDirectoryPeer:
         self.log = (self.folder / "server.private.log").open("wb")
         os.chmod(self.folder / "server.private.log", 0o600)
         subprocess.run(
-            ["slapadd", "-f", str(config), "-l", str(ldif)],
+            bounded_command(["slapadd", "-f", str(config), "-l", str(ldif)]),
             stdout=self.log,
             stderr=self.log,
             check=True,
             timeout=15,
         )
         self.process = subprocess.Popen(
-            [
-                "slapd",
-                "-f",
-                str(config),
-                "-h",
-                f"ldap://127.0.0.1:{self.port} ldaps://127.0.0.1:{self.tls_port}",
-                "-d",
-                "256",
-            ],
+            bounded_command(
+                [
+                    "slapd",
+                    "-f",
+                    str(config),
+                    "-h",
+                    f"ldap://127.0.0.1:{self.port} ldaps://127.0.0.1:{self.tls_port}",
+                    "-d",
+                    "256",
+                ]
+            ),
             stdout=self.log,
             stderr=self.log,
         )

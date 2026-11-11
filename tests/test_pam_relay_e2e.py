@@ -88,7 +88,7 @@ class RelayHarness(TransactionTestCase):
             env={
                 "PATH": "/usr/local/bin:/usr/bin:/bin",
                 "LANG": "C.UTF-8",
-                "LD_LIBRARY_PATH": "/opt/pamolive-guac/lib",
+                "LD_LIBRARY_PATH": "/opt/pamolive-freerdp/lib:/opt/pamolive-guac/lib",
                 "HOME": self.directory.name,
             },
             stdout=self.log,

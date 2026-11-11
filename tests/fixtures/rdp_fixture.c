@@ -150,8 +150,10 @@ static BOOL mouse(rdpInput* input, UINT16 flags, UINT16 x, UINT16 y) {
 static void* serve(void* pointer) {
     PeerArguments arguments = *(PeerArguments*)pointer;
     free(pointer);
+    event("accepted");
     freerdp_peer* peer = freerdp_peer_new(arguments.socket_fd);
     if (!peer) {
+        event("peer_failed");
         close(arguments.socket_fd);
         return NULL;
     }
@@ -162,13 +164,16 @@ static void* serve(void* pointer) {
         freerdp_peer_free(peer);
         return NULL;
     }
+    event("context_ready");
     FixtureContext* context = (FixtureContext*)peer->context;
     context->redirect = arguments.redirect_mode;
     rdpSettings* settings = peer->context->settings;
     rdpPrivateKey* key = freerdp_key_new_from_file(arguments.key_path);
     rdpCertificate* cert = freerdp_certificate_new_from_file(arguments.cert_path);
-    if (!key || !cert)
+    if (!key || !cert) {
+        event("certificate_failed");
         goto cleanup;
+    }
     if (!freerdp_settings_set_pointer_len(settings, FreeRDP_RdpServerRsaKey, key, 1)
         || !freerdp_settings_set_pointer_len(settings, FreeRDP_RdpServerCertificate, cert, 1)
         || !freerdp_settings_set_bool(settings, FreeRDP_NlaSecurity, TRUE)
@@ -180,8 +185,10 @@ static void* serve(void* pointer) {
         || !freerdp_settings_set_uint32(settings, FreeRDP_ColorDepth, 32)
         || !freerdp_settings_set_bool(settings, FreeRDP_RemoteFxCodec, FALSE)
         || !freerdp_settings_set_bool(settings, FreeRDP_NSCodec, FALSE)
-        || !freerdp_settings_set_bool(settings, FreeRDP_SupportGraphicsPipeline, FALSE))
+        || !freerdp_settings_set_bool(settings, FreeRDP_SupportGraphicsPipeline, FALSE)) {
+        event("settings_failed");
         goto cleanup;
+    }
     peer->PostConnect = post_connect;
     peer->Logon = logon;
     peer->Activate = activate;
@@ -202,6 +209,8 @@ static void* serve(void* pointer) {
                 break;
         }
     }
+    else
+        event("initialize_failed");
     if (context->authenticated)
         event("disconnected");
     peer->Disconnect(peer);

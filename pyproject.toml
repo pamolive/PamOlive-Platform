@@ -8,7 +8,8 @@ license = {text = "AGPL-3.0-or-later"}
 dependencies = [
   "Django>=5.2.19,<5.3",
   "dj-database-url>=3.1,<4",
-  "psycopg[binary]>=3.2,<4",
+  "psycopg[c]>=3.2,<4; platform_system == 'Linux'",
+  "psycopg[binary]>=3.2,<4; platform_system != 'Linux'",
   "gunicorn>=23,<24",
   "whitenoise>=6.8,<7",
   "pyotp>=2.9,<3",
