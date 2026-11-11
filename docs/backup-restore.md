@@ -23,6 +23,8 @@ Les identifiants de séquences, rôles globaux, propriétaires et ACL ne constit
 
 ## Protection des fichiers et des copies
 
+P1-D ajoute la vérification des demandes et décisions d'exception Governance : signatures et ancres, tenants, acteur/MFA historiques, ordre et cardinalité des décisions, période et absence de preuve orpheline. Le compteur `governance_exception_proofs_checked` indique le nombre réellement présent, y compris zéro. Cette vérification ne réactive aucune autorité. Les attestations utilisent `PAMOLIVE_ENCRYPTION_KEY`, dont la valeur exacte doit être conservée ; le trousseau V7/V8 ne remplace pas cette clé. Le downgrade du registre peuplé est refusé.
+
 L'archive, les clés de l'installation et les éventuels diagnostics sont sensibles. Utiliser un répertoire privé, hors du dépôt, du contexte Docker et de tout partage Web. Sur Linux/NAS, dossiers 700 et fichiers 600 ; sur Windows, vérifier les ACL NTFS : le mode POSIX ne suffit pas à prouver cette protection. Sur Synology, enlever les ACL héritées du **nouveau répertoire de rapport privé**, sans modifier les ACL d'un partage existant.
 
 Les clés ne sont pas dans le dump : conserver `SECRET_KEY`, `PAMOLIVE_ENCRYPTION_KEY` et les paramètres nécessaires dans une sauvegarde séparée, protégée et restaurable. Un compagnon chiffré lié au SHA-256 de l'archive permet de vérifier la clé choisie. Pour une archive ancienne, ce compagnon créé au moment du test ne prouve pas à lui seul quelle clé était utilisée autrefois ; les valeurs chiffrées et signatures réellement présentes fournissent cette preuve. Le rapport indique leur nombre, y compris zéro.

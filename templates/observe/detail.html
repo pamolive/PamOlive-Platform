@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Observation · PamOlive{% endblock %}
+{% block content %}
+<h1>Parcours de l’observation</h1>
+<p><strong>{{ story.verdict.label }}</strong> · conclusion de l’évaluation enregistrée, selon les preuves disponibles.</p>
+<dl><dt>Ressource</dt><dd>{{ story.observation.resource|default:"Non résolue" }}</dd><dt>Identité rapportée</dt><dd>{{ story.observation.identity|default:"Non résolue" }}</dd><dt>Méthode / privilège</dt><dd>{{ story.observation.method }} / {{ story.observation.privilege|default:"Non rapporté" }}</dd><dt>Date source</dt><dd>{{ story.observation.occurred_at }}</dd><dt>Provenance</dt><dd>{{ story.provenance.status }} · vérifiée : {{ story.provenance.verified|yesno:"oui,non" }}</dd><dt>Reçu V8</dt><dd>{{ story.provenance.receipt_id|default:"Absent ou historique" }}</dd><dt>Principal authentifié</dt><dd>{{ story.provenance.principal_id|default:"Inconnu" }}</dd><dt>Évaluation</dt><dd>{{ story.evaluation.rule_version }} · vérifiée : {{ story.evaluation.verified|yesno:"oui,non" }}</dd></dl>
+<p>Le reçu atteste l’acceptation par PamOlive ; il ne prouve pas indépendamment la vérité de la télémétrie envoyée.</p>
+<h2>Conclusion expliquée</h2><ul>{% for finding in story.evaluation.findings %}<li><strong>{{ finding.state }} · {{ finding.code }}</strong> : {{ finding.detail }}</li>{% empty %}<li>Preuves insuffisantes ou invalides : aucune conformité présumée.</li>{% endfor %}</ul>
+<h2>Chronologie des faits enregistrés</h2><ol>{% for item in story.timeline %}<li>{{ item.at }} · {{ item.kind }} · {{ item.state }} · {{ item.id }}</li>{% endfor %}</ol>
+{% if story.access_contract %}<h2>Demande et exécution corrélées</h2><p><a href="{% url 'access-contract-detail' story.access_contract.intention.id %}">Consulter demande, décisions, droit, provisioning, exécutions et preuves</a></p><p>Association par référence d’évaluation vérifiée ; aucune causalité présumée.</p>{% else %}<p>Aucune demande liée par une évaluation vérifiée. Aucun rapprochement par nom ou compte n’est inventé.</p>{% endif %}
+{% if story.comparison %}<h2>Comparaison explicite : {{ story.comparison.reference }}</h2><ul>{% for dimension in story.comparison.dimensions %}<li>{{ dimension.dimension }} : {{ dimension.state }}</li>{% endfor %}</ul><p>Une divergence avec cette intention ne suffit pas à exclure une autre autorisation valable.</p>{% endif %}
+<h2>Historique des évaluations</h2><ul>{% for evaluation in story.evaluation_history.items %}<li>{{ evaluation.evaluated_at }} · {{ evaluation.verdict }} · vérifiée : {{ evaluation.verified|yesno:"oui,non" }}</li>{% empty %}<li>Aucune évaluation.</li>{% endfor %}</ul>{% if story.evaluation_history.truncated %}<p>Historique tronqué.</p>{% endif %}
+<p><a href="{% url 'observe-export' story.observation.id %}">Exporter le parcours JSON</a> · <a href="{% url 'event-export' story.observation.id %}">Exporter l’observation et ses preuves V7/V8 vérifiables</a></p>
+{% endblock %}

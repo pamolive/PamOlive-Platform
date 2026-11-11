@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block content %}
+<p class="eyebrow">Identity</p><h1>Identités à 360°</h1>
+<p>Inventaire local des personnes et identités non humaines. Les comptes et droits enregistrés ne prouvent pas leur état courant dans un annuaire.</p>
+<p><a href="{% url 'identity-home' %}">Gérer les identités</a> · <a href="{% url 'identity-directory-simulation' %}">Réconciliation sur simulateurs</a></p>
+<section><h2>Identités humaines et non humaines</h2><ul>
+{% for item in inventory.identities.items %}<li><a href="{% url 'identity360-detail' item.id %}">{{ item.name }}</a> · {{ item.kind }} · {{ item.status }} · responsable déclaré : {{ item.responsible_owner|default:'Non renseigné' }}</li>{% empty %}<li>Aucune identité enregistrée.</li>{% endfor %}</ul>
+{% if inventory.identities.truncated %}<p>Inventaire limité : d’autres identités existent.</p>{% endif %}</section>
+<section><h2>Comptes sans responsabilité active</h2><p>Un compte actif est signalé si son identité est inactive, ou si son identité non humaine n’a aucun responsable déclaré. Le modèle impose un rattachement d’identité ; cette alerte ne suppose pas un inventaire distant complet.</p><ul>
+{% for item in inventory.orphaned_accounts.items %}<li>{{ item.username }} · {{ item.system }} · {{ item.identity_name }} · {% for reason in item.reasons %}{{ reason }} {% endfor %}</li>{% empty %}<li>Aucun signalement dans cette lecture.</li>{% endfor %}</ul>{% if inventory.orphaned_accounts.truncated %}<p>Lecture limitée : d’autres signalements existent.</p>{% endif %}</section>
+{% endblock %}

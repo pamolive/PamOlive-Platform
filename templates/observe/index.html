@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Observe · PamOlive{% endblock %}
+{% block content %}
+<h1>Observe · parcours des observations</h1>
+<p>Chaque observation conserve sa provenance. Son évaluation distingue Conforme, Non conforme et Indéterminé.</p>
+<nav aria-label="Filtrer les observations"><a href="?">Toutes</a> · <a href="?verdict=expected">Conforme</a> · <a href="?verdict=deviation">Non conforme / hors périmètre</a> · <a href="?verdict=unknown">Indéterminé</a></nav>
+<p>Le filtre porte sur les 100 observations les plus récentes disponibles, sans constituer un inventaire exhaustif.</p>
+<table><thead><tr><th>Ressource</th><th>Date source</th><th>Verdict</th><th>Parcours</th></tr></thead><tbody>
+{% for item in observations.items %}<tr><td>{{ item.resource }}</td><td>{{ item.occurred_at }}</td><td>{{ item.verdict_label }}</td><td><a href="{% url 'observe-detail' item.id %}">Examiner l’observation</a></td></tr>{% empty %}<tr><td colspan="4">Aucune observation disponible dans cette fenêtre et ce filtre.</td></tr>{% endfor %}
+</tbody></table>
+{% if observations.truncated %}<p>Liste limitée aux 100 observations les plus récentes.</p>{% endif %}
+{% endblock %}

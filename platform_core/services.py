@@ -5,7 +5,7 @@ from django.db import connection, transaction
 from .audit import record
 from .models import ModuleActivation, Organization, OrganizationMembership
 from .registry import ModuleDependencyError, all_modules, dependency_closure, get_module
-from .tenancy import current_organization, enforce_federated_scope
+from .tenancy import current_organization, enforce_federated_scope, organization_context
 
 
 def authorize(actor, organization, *, roles=("admin", "operator")):
@@ -139,8 +139,10 @@ def module_catalog(organization=None):
 @transaction.atomic
 def install_module(module_key, *, actor, organization=None, request=None):
     organization = organization or current_organization()
-    authorize(actor, organization, roles=("admin",))
-    Organization.objects.select_for_update().get(pk=organization.pk)
+    # Explicit organization administration is also used before a UI context
+    # exists (bootstrap). Federation remains checked by the shared authorizer.
+    with organization_context(organization):
+        actor, organization = lock_authorized_actor(actor, organization, roles=("admin",))
     definition = get_module(module_key)
     if not definition:
         raise ValidationError("Module inconnu ou paquet absent de ce déploiement.")
@@ -209,13 +211,13 @@ def install_module(module_key, *, actor, organization=None, request=None):
 @transaction.atomic
 def disable_module(module_key, *, actor, organization=None, request=None):
     organization = organization or current_organization()
-    authorize(actor, organization, roles=("admin",))
+    with organization_context(organization):
+        actor, organization = lock_authorized_actor(actor, organization, roles=("admin",))
     definition = get_module(module_key)
     if definition and definition.metadata.get("extension_release"):
         from .authorization import require_recent_authentication
 
         require_recent_authentication(actor, organization)
-    Organization.objects.select_for_update().get(pk=organization.pk)
     dependents = [
         d.name
         for d in all_modules()

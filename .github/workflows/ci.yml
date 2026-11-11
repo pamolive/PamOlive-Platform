@@ -94,8 +94,15 @@ jobs:
       - run: ruff check .
       - run: python manage.py check
       - run: python manage.py makemigrations --check --dry-run
-      - name: Verify P1 contracts and multi-organization module isolation
-        run: python manage.py test tests.test_access_contract tests.test_p1_module_isolation tests.test_access_contract_views tests.test_access_contract_concurrency --noinput
+      - name: Verify P1 contracts, Identity, Governance, Observe and module isolation
+        run: >-
+          python manage.py test tests.test_access_contract tests.test_p1_module_isolation
+          tests.test_access_contract_views tests.test_access_contract_concurrency
+          tests.test_identity360 tests.test_identity360_concurrency tests.test_mover_authority
+          tests.test_governance_workspace tests.test_governance_workspace_concurrency
+          tests.test_governance_exception_restore tests.test_module_activation_authority
+          tests.test_observe_story tests.test_observe_concurrency tests.test_synology_preparation
+          --noinput
       - name: Run all local contracts, isolation and P0 regressions on PostgreSQL
         shell: bash
         run: |

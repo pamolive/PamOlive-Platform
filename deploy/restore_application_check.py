@@ -258,6 +258,10 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
     from platform_modules.identity.mover import verify_mover
 
     result["signed_proofs_checked"] += verify_mover()
+    from platform_modules.governance.exceptions import verify_exceptions
+
+    result["governance_exception_proofs_checked"] = verify_exceptions()
+    result["signed_proofs_checked"] += result["governance_exception_proofs_checked"]
     for evaluation in AccessEvaluation.unscoped.select_related("audit", "event", "intent").iterator(
         chunk_size=100
     ):

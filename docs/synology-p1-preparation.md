@@ -1,0 +1,35 @@
+# Synology P1 — préparation N0, aucun déploiement
+
+Le fichier [Compose dédié](../deploy/synology-test/compose.yml) prépare une instance **synthétique distincte**, sans modifier le projet NAS existant. La demande actuelle autorise N0 seulement ; le choix antérieur d'une mise à niveau existante n'autorise aucune écriture et doit être réconcilié avec ce nouveau laboratoire avant N2. Aucun accès NAS n'est nécessaire pour développer P1-C/D/E.
+
+## Architecture réutilisée
+
+L'image applicative conserve son architecture qualifiée : un superviseur minimal, Web/API et worker `runjobs` sous UID 1000, moteur natif sous UID 1001 sans environnement applicatif. Le worker est donc un **processus existant**, pas un nouveau service redondant. Le conteneur PostgreSQL 17 est dédié. Aucune réécriture ni séparation improvisée du broker PAM ; les autres fichiers Compose restent intacts.
+
+Le projet possède un réseau `internal` neuf et un volume nommé par le préfixe du projet. Aucun réseau externe, host-network, montage d'un partage existant, socket Docker, conteneur privilégié ou port PostgreSQL publié. Seul HTTP loopback est proposé ; aucun accès LAN ni terminaison TLS n'est préparé implicitement. Les allowlists cibles/collecteurs/IdP sont vides. Le réseau interne bloque l'egress ordinaire ; ce dispositif n'est pas une protection contre un administrateur Docker/hôte compromis.
+
+Les images doivent être approuvées par digest après CI, PostgreSQL 17 Debian avec UID 999. Le Compose ne lance ni migration ni création de compte applicatif automatiquement. Un service sain ne prouve pas l'existence d'un schéma prêt. L'initialisation SQL s'exécute seulement sur le nouveau volume vide ; elle crée un rôle applicatif propriétaire de sa base sans SUPERUSER/CREATEDB/CREATEROLE/BYPASSRLS. Ne jamais monter ce script dans une base existante.
+
+## Secrets et données
+
+Les fichiers `config.example` et `application.example` ne contiennent aucun secret. Préparer les copies hors dépôt et contexte Docker, avec droits privés (700/600 POSIX et ACL DSM explicitement contrôlées). Générer des valeurs aléatoires exclusivement synthétiques ; le mot de passe applicatif est constitué de 64 caractères hexadécimaux minuscules. Le fichier de mot de passe PostgreSQL propriétaire est distinct, monté seulement dans PostgreSQL. Le portail reçoit uniquement le rôle restreint dans son DATABASE_URL, jamais le rôle propriétaire initial PostgreSQL.
+
+Attention aux permissions des secrets Compose fichier : `database_app_password` est lu par le serveur PostgreSQL UID/GID 999, pas par l’entrypoint root. Pour ce seul nouveau fichier synthétique, prévoir propriétaire 999:999 et mode 0400 dans le répertoire privé 0700 ; le fichier applicatif et le secret propriétaire initial restent sous leur propriétaire administratif et mode 0600. Contrôler la traduction des ACL DSM et la lecture UID 999 sur le clone : ne pas supposer que `uid/gid/mode` de Compose remappe un secret fichier. Ne modifier aucune ACL ou ownership existant. L’absence de cette qualification est bloquante avant N2.
+
+Le fichier applicatif est injecté par `env_file`, mécanisme actuel ; les variables sont accessibles aux administrateurs Docker/hôte. Compose local ne chiffre pas ses fichiers secrets : les protéger et ne jamais publier `compose config`, inspect complet ou diagnostics d'environnement. Les clés de test et volumes n'ont aucun rapport avec l'installation existante. Les preuves, captures et journaux métier durables restent dans cette base, les logs Docker sont bornés à 3×5 Mio par service. Vérifier la politique de rétention métier séparément.
+
+## Ressources, santé et limites
+
+CPU, RAM et swap (sans swap supplémentaire) sont obligatoires sans valeur NAS implicite. Un processus `runjobs` utilise actuellement jusqu'à quatre threads ; la limite CPU ne le transforme pas en ordonnanceur mono-thread. PostgreSQL est borné à 30 connexions ; vérifier cette capacité avec le worker et le Web avant qualification. PID et tmpfs sont bornés, restart automatique désactivé. Le healthcheck Web interroge la base ; la survie du worker est surveillée par le superviseur qui arrête le conteneur en cas de sortie. Il ne détecte pas tous les blocages logiques ; compléter l'observation des files et horodatages dans la qualification.
+
+Le superviseur et l'initialisation officielle PostgreSQL démarrent en root **dans leur conteneur**, avec capacités réduites ; les charges applicatives sont démises de privilèges. Cette réalité doit être explicitement examinée au regard des conditions d'arrêt du PDF avant toute proposition N2 : aucune conformité « zéro processus root » n'est revendiquée. Aucun privilège DSM ni accès Docker ne doit être accordé à l'application. Une séparation supplémentaire nécessite sa propre revue, pas une modification silencieuse du PAM.
+
+## Validation locale et portes restantes
+
+La validation de syntaxe Compose ne crée aucun conteneur. `python -m deploy.synology_preflight --env-file CHEMIN_PRIVE` contrôle la configuration résolue du fichier dédié sans afficher les secrets ; elle ne certifie pas un fichier Compose arbitraire modifié et ne donne aucune autorisation NAS. Cinq tests utilisant le vrai parseur Compose sans Engine vérifient le cas accepté et le refus de montages existants, réseau hôte/privilèges, port LAN, mauvais rôle/base et images non épinglées, capacités ajoutées et namespaces/devices hôte. La base se nomme `test_pamolive_p1` pour rester compatible avec le garde strict du démonstrateur, sans élargir ce garde. Docker Engine local était indisponible au début de cette préparation ; les exécutions réelles non effectuées doivent rester signalées. Les tests PostgreSQL P1 utilisent un cluster loopback distinct. La CI Linux doit qualifier l'image, ses transports, puis la création synthétique/restauration avant usage NAS. Les plafonds de stockage/IOPS, durée, température/latence et seuils d'arrêt ne sont pas déduits de plafonds RAM : ils restent à approuver après N1.
+
+Avant toute nouvelle connexion N1, confirmer périmètre et accès puis compléter : modèle/DSM/CPU/RAM, filesystem/espace, RAID/SMART, services et ports, sauvegardes/restaurabilité et fenêtres. Les anciennes métadonnées N1 ne remplacent pas un état courant. Ne pas relire de secret pour cet inventaire.
+
+Avant N2/N3, présenter répertoire nominatif neuf, projet/réseau/volume, port effectivement libre, digests, ACL, budgets CPU/RAM/swap/disque/IO/durée, seuils et opérateur de surveillance, sauvegarde synthétique et restauration sur clone, liste exacte des commandes. Attendre l'accord explicite. Aucune commande `up`, migration ou copie n'est autorisée ici sur NAS.
+
+En cas de problème, arrêter uniquement les services de test nommés, sans nettoyage automatique. Ne pas supprimer un volume ou restaurer une sauvegarde sur des données existantes. Le nettoyage N5 demande inventaire et autorisation ciblés ; aucune commande récursive, prune, reset Docker, modification RAID/DSM ou test de charge des services existants. La mise à niveau réelle de PamOlive conserve les conditions de `controlled-upgrade.md`, P0-2, commissionnement P0-3 et limites de rollback P0-4.

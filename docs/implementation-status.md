@@ -8,6 +8,8 @@ Les capacités ci-dessous décrivent des livraisons de périmètres différents.
 
 ## Fonctionnel et testé
 
+Les lots locaux P1-A/B1 puis P1-C/D/E ajoutent le contrat transverse versionné, Identity 360 et les prévisualisations AD/LDAP/Entra sans transport, le cockpit Governance et son registre d'exceptions non dérogatoire, Observe et le démonstrateur synthétique PC-483/PC-991. Les nouveaux lecteurs et les parcours administratifs IAM/IGA réutilisés rechargent leur autorité sous verrou. Voir les rapports [P1-A/B1](p1-a-b1-validation.md), [Identity](p1-c-identity360.md), [Governance](p1-d-governance.md), [Observe](p1-e-observe.md) et la [revue contradictoire](p1-cde-redteam.md). Ces implémentations ne qualifient ni un annuaire réel, ni un nouveau déploiement NAS ; la préparation [Synology N0](synology-p1-preparation.md) reste distincte de toute installation. Les résultats de CI doivent être associés au SHA exact, pas inférés des tests locaux.
+
 - Organisations, appartenances et rôles techniques distincts des identités gouvernées.
 - Appartenances administrées dans les formulaires natifs de Paramètres : modification et désactivation limitées à l’organisation, service protégé par rôle/MFA récente et verrou PostgreSQL empêchant le retrait du dernier administrateur. Le rattachement d’un compte existant extérieur à l’organisation est réservé à l’administrateur de plateforme local ; une session OIDC n’hérite pas de cette autorité globale. Aucune réinitialisation de mot de passe ni désactivation globale n’est effectuée par ce formulaire.
 - MFA TOTP chiffrée, codes de récupération à usage unique et refus du rejeu de code.

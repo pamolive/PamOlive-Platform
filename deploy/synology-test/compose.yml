@@ -1,0 +1,87 @@
+# N0 preparation only. No relation to the existing NAS Compose project.
+name: ${PAMOLIVE_TEST_PROJECT:?Choose a new isolated project name}
+x-logging: &logs
+  driver: json-file
+  options:
+    max-size: "5m"
+    max-file: "3"
+services:
+  web:
+    # The existing supervisor runs Web/API + worker + isolated native engine.
+    # Do not add a second runjobs process or change PAM trust boundaries here.
+    image: ${PAMOLIVE_TEST_IMAGE:?Provide a CI-qualified image by digest}
+    env_file: ${PAMOLIVE_TEST_APP_ENV:?Provide a private synthetic application env file}
+    environment:
+      WEB_WORKERS: "1"
+      DEBUG: "false"
+      ALLOWED_HOSTS: "localhost,127.0.0.1"
+      PAMOLIVE_CONNECTOR_HOSTS: ""
+      PAMOLIVE_CONNECTOR_NETWORKS: ""
+      PAMOLIVE_TARGET_HOSTS: ""
+      PAMOLIVE_TARGET_NETWORKS: ""
+      PAMOLIVE_OIDC_HOSTS: ""
+    ports: ["127.0.0.1:${PAMOLIVE_TEST_PORT:?Choose an unused test port}:8000"]
+    networks: [isolated]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    init: true
+    stop_grace_period: 20s
+    read_only: true
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, KILL]
+    security_opt: [no-new-privileges:true]
+    cpus: ${PAMOLIVE_TEST_WEB_CPUS:?Approve a web CPU ceiling}
+    mem_limit: ${PAMOLIVE_TEST_WEB_MEMORY:?Approve a web memory ceiling}
+    memswap_limit: ${PAMOLIVE_TEST_WEB_MEMORY:?Approve a web memory ceiling}
+    pids_limit: 128
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging: *logs
+  postgres:
+    image: ${PAMOLIVE_TEST_POSTGRES_IMAGE:?Provide a PostgreSQL 17 image by digest}
+    environment:
+      POSTGRES_DB: test_pamolive_p1
+      POSTGRES_USER: pamolive_test_owner
+      POSTGRES_PASSWORD_FILE: /run/secrets/database_owner_password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    secrets: [database_owner_password, database_app_password]
+    volumes:
+      - postgres_test:/var/lib/postgresql/data
+      - ./init-test-db.sql:/docker-entrypoint-initdb.d/10-pamolive-test.sql:ro
+    networks: [isolated]
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+      - /var/run/postgresql:size=8m,mode=0775,uid=999,gid=999
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE, SETUID, SETGID]
+    security_opt: [no-new-privileges:true]
+    cpus: ${PAMOLIVE_TEST_DB_CPUS:?Approve a database CPU ceiling}
+    mem_limit: ${PAMOLIVE_TEST_DB_MEMORY:?Approve a database memory ceiling}
+    memswap_limit: ${PAMOLIVE_TEST_DB_MEMORY:?Approve a database memory ceiling}
+    pids_limit: 96
+    command: [postgres, -c, max_connections=30, -c, shared_buffers=64MB, -c, log_statement=none]
+    healthcheck:
+      test: [CMD, pg_isready, -U, pamolive_test_owner, -d, test_pamolive_p1]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    logging: *logs
+networks:
+  isolated:
+    internal: true
+volumes:
+  postgres_test: {}
+secrets:
+  database_owner_password:
+    file: ${PAMOLIVE_TEST_OWNER_PASSWORD_FILE:?Provide a private synthetic owner password file}
+  database_app_password:
+    file: ${PAMOLIVE_TEST_APP_PASSWORD_FILE:?Provide a private synthetic app password file}

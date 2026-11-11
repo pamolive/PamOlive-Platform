@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block content %}
+<p class="eyebrow">Identity / Connect</p><h1>Réconciliation sur simulateurs</h1>
+<p>Prévisualisation sans connexion réseau ni modification. Les correspondances sont explicites ; aucun nom ou e-mail ne rattache automatiquement un compte à une personne.</p>
+<p>Identifiants stables attendus : AD <code>objectGUID</code>, LDAP <code>entryUUID</code>, Entra <code>id</code> (UUID). Champs de login : <code>sAMAccountName</code>, <code>uid</code> ou <code>userPrincipalName</code>. Chaque ligne comporte aussi l’état booléen <code>enabled</code> (Entra : <code>accountEnabled</code>) et la liste <code>memberOf</code> (Entra : <code>groups</code>).</p>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Comparer la fixture synthétique</button></form>
+{% if result %}<section><h2>Résultat de la simulation</h2><p>Source déclarée {{ result.source_id }} · {{ result.provider }} · empreinte du scénario {{ result.snapshot_sha256 }}.</p><ul>{% for item in result.comparisons %}<li>{{ item.username }} · {{ item.remote_id }} · {{ item.state }} {% for warning in item.warnings %} · {{ warning }}{% endfor %}</li>{% empty %}<li>Aucun enregistrement observé dans cette fixture.</li>{% endfor %}</ul><h3>Correspondances absentes de la fixture</h3><ul>{% for item in result.not_observed %}<li>{{ item.remote_id }} · compte {{ item.account_id }} · revue humaine requise</li>{% empty %}<li>Aucune correspondance absente.</li>{% endfor %}</ul><p>Aucune application de changement n’est disponible. Une absence ne prouve pas un retrait ; les listes peuvent être incomplètes. Les groupes comparés sont des libellés, sans résolution de droits effectifs.</p></section>{% endif %}
+{% endblock %}

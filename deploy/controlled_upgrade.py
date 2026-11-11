@@ -35,6 +35,7 @@ REVIEWED = {
     ("connectors", "0011_scim_destination_binding"),
     ("recertification", "0002_periodic_campaigns_and_review_evidence"),
     ("identity", "0008_business_roles_and_mobility"),
+    ("governance", "0003_exception_register"),
     ("pam", "0004_credential_destination"),
     ("pam", "0005_pamtrustchallenge_pamtrustauthorization_and_more"),
     ("pam", "0006_trust_database_boundaries"),

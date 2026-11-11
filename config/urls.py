@@ -5,18 +5,42 @@ from platform_core import access_contract_views, event_backfill_views
 from platform_core.extensions.urls import extension_patterns
 from platform_core.oidc import views as oidc_views
 from platform_core.security import security_settings
-from platform_modules.access import certificate_views, ui
+from platform_modules.access import certificate_views, observe_views, ui
 from platform_modules.connectors import business_views, creation_views, teamviewer_views
 from platform_modules.connectors import views as connector_views
 from platform_modules.governance import views as governance_views
+from platform_modules.governance import workspace_views
 from platform_modules.identity import binding_views as identity_views
-from platform_modules.identity import mover_views
+from platform_modules.identity import directory_simulation_views, identity360_views, mover_views
 from platform_modules.intelligence import views as intelligence_views
 from platform_modules.pam import trust_views
 from platform_modules.pam import views as pam_views
 from platform_modules.recertification import views as recertification_views
 
 urlpatterns = [
+    path("identities/360/", identity360_views.inventory, name="identity360-inventory"),
+    path("identities/360/<uuid:identity_id>/", identity360_views.detail, name="identity360-detail"),
+    path("identities/360/<uuid:identity_id>/export/", identity360_views.export,
+         name="identity360-export"),
+    path("api/v1/identities/<uuid:identity_id>/360/", identity360_views.api,
+         name="api-identity360"),
+    path("identities/reconciliation/simulate/", directory_simulation_views.simulation,
+         name="identity-directory-simulation"),
+    path("governance/workspace/", workspace_views.workspace, name="governance-workspace"),
+    path("api/v1/governance/workspace/", workspace_views.workspace,
+         {"api": True}, name="api-governance-workspace"),
+    path("governance/workspace/export/", workspace_views.workspace,
+         {"export": True}, name="governance-workspace-export"),
+    path("governance/exceptions/new/", workspace_views.exception_create,
+         name="governance-exception-create"),
+    path("governance/exceptions/<uuid:case_id>/decide/", workspace_views.exception_decide,
+         name="governance-exception-decide"),
+    path("observe/", observe_views.index, name="observe-home"),
+    path("observe/events/<uuid:event_id>/", observe_views.detail, name="observe-detail"),
+    path("observe/events/<uuid:event_id>/export/", observe_views.detail,
+         {"export": True}, name="observe-export"),
+    path("api/v1/observations/<uuid:event_id>/story/", observe_views.detail,
+         {"api": True}, name="api-observation-story"),
     path(
         "access/intents/<uuid:intent_id>/contract/",
         access_contract_views.detail, name="access-contract-detail",

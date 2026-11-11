@@ -1,0 +1,7 @@
+# Private synthetic configuration only. Never copy existing installation keys.
+# Generate distinct random values locally; do not commit the resulting file.
+SECRET_KEY=
+PAMOLIVE_ENCRYPTION_KEY=
+# Use user pamolive_test, host postgres, database test_pamolive_p1;
+# password must equal the synthetic app password file (64 lowercase hex).
+DATABASE_URL=

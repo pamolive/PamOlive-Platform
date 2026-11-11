@@ -35,6 +35,9 @@ n’est actuellement accepté par le contrat de module.
 | ADR-011 | Audit chaîné et protégé par PostgreSQL | À valider | Détection de modification et valeur probante renforcée |
 | ADR-012 | Vues serveur et JavaScript léger pour la V1 | À valider | Simplicité, sécurité et expérience cohérente type ERP |
 | [ADR-013](adr-013-pam-quorum-trust.md) | Autorité de confiance du quorum PAM | Accepté | Registre signé 2/3, personnes indépendantes et preuves d’action WebAuthn |
+| [ADR-014](adr-014-event-provenance.md) | Provenance des événements | Option C acceptée et implémentée | Canaux et autorités séparés, déduplication par principal, reçus V8 et preuves V7 conservées |
+| [ADR-015](adr-015-access-read-contract.md) | Contrat transverse de lecture | Implémenté localement, revue en PR | Intention, décision, droit, exécution, observation et preuve restent distincts |
+| [ADR-016](adr-016-governance-exception-evidence.md) | Justifications d'exception | Implémenté localement, revue en PR | Registre signé et immuable sans dérogation exécutable ni autorité PAM |
 
 ## Conséquence pour le prototype
 

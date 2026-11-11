@@ -18,6 +18,7 @@ def legacy_targets(executor):
     )
     excluded.update(graph.backwards_plan(("pam", "0004_credential_destination")))
     excluded.update(graph.backwards_plan(("approvals", "0004_approvaldecision_pam_trust")))
+    excluded.update(graph.backwards_plan(("governance", "0003_exception_register")))
     return [
         key
         for key, node in graph.node_map.items()

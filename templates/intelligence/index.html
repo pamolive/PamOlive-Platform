@@ -1,6 +1,7 @@
 {% extends 'base.html' %}{% load static %}{% block content %}
 <script src="{% static 'platform_core/intelligence.js' %}" defer></script>
 <h1>Graphe et investigations</h1><p>Relier les identités, leurs accès numériques et physiques, l’intention et les observations — avec preuves et limites de collecte.</p>
+<p><a href="{% url 'observe-home' %}">Observe : observations, conformité et preuves</a></p>
 <nav class="domain-tabs"><a href="{% url 'intelligence-configuration' %}">Relations et couverture des sources</a></nav>
 <section class="workflow-card"><form method="get" class="erp-form"><div class="form-grid">{{ form.as_p }}</div><button class="button">Explorer la période</button></form></section>
 {% if query_notice %}<section class="workflow-card"><h2>Résultat de l’investigation</h2><p>{{ query_notice }}</p>{% if query_truncated %}<p class="field-error">Résultats partiels : limite de parcours atteinte. Affinez le périmètre.</p>{% endif %}<div class="table-wrap"><table><thead><tr><th>Identité</th><th>Ressource</th><th>Constat et preuves</th></tr></thead><tbody>{% for result in results %}<tr><td>{{ result.identity|default:'Non résolue' }}</td><td>{{ result.resource }}</td><td>{{ result.detail }}<small>Preuves : {{ result.evidence|join:', ' }}</small>{% if result.event %}<a href="{% url 'record-detail' 'event' result.event.pk %}">Expliquer l’accès →</a>{% endif %}</td></tr>{% empty %}<tr><td colspan="3">Aucun résultat dans les données collectées. Ce n’est pas une preuve d’absence d’accès.</td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
