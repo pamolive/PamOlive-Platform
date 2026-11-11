@@ -153,7 +153,12 @@ class Relay:
             session_key=self.session_key,
             client_ip=self.client_ip,
         )
-        credentials = endpoint_credentials(item)
+        credentials = await self.state(
+            endpoint_credentials,
+            item,
+            session_key=self.session_key,
+            client_ip=self.client_ip,
+        )
         async with asyncio.timeout(3):
             reader, writer = await asyncio.open_connection("127.0.0.1", settings.PAM_GUACD_PORT)
         self.native = NativeSession(reader, writer)

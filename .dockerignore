@@ -36,6 +36,8 @@
 **/.docker
 **/.env
 **/.env.*
+**/*.env
+**/*.secret
 **/.bootstrap-admin
 **/id_rsa
 **/id_ed25519

@@ -11,7 +11,7 @@ from platform_core.attestations import seal, signature
 from platform_core.authorization import assurance_datetime, require_recent_authentication
 from platform_core.events import publish_domain_event
 from platform_core.models import Organization, OrganizationMembership
-from platform_core.services import authorize, require_module
+from platform_core.services import authorize, lock_authorized_actor, require_module
 from platform_core.tenancy import current_organization
 from platform_modules.identity.review_contract import capture_for_review, normalize_scope
 
@@ -126,7 +126,7 @@ def _commit(prepared, organization, *, actor=None):
                 )
             return None
     else:
-        authorize(actor, locked, roles=("admin", "reviewer"))
+        actor, locked = lock_authorized_actor(actor, locked, roles=("admin", "reviewer"))
         require_recent_authentication(actor, locked)
         if actor.pk != run.owner_id and not owner_eligible(run.owner, locked):
             raise ValidationError("Choisissez un responsable actif de cette organisation.")

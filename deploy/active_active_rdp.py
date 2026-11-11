@@ -122,9 +122,12 @@ async def peer():
         emit("ready", pin=fixture.pin, password=fixture.password)
         data = await asyncio.to_thread(input_json)
         session, csrf = data["session"], data["csrf"]
+        from .active_active_trust import RemoteAuthenticator
+
+        authenticator = RemoteAuthenticator(data["authenticator"])
         intent_a, intent_b = UUID(data["intent_a"]), UUID(data["intent_b"])
         PHASE = "first pinned NLA session and replay refusal"
-        aid, cfg_a = await asyncio.to_thread(launch, WEB_A, intent_a, session, csrf)
+        aid, cfg_a = await asyncio.to_thread(launch, WEB_A, intent_a, session, csrf, authenticator)
         async with relay(WEB_A, cfg_a, session) as a:
             first = await confirmed(fixture, a, 0)
             after = len(fixture.events)
@@ -136,7 +139,9 @@ async def peer():
                 "Replay established another native RDP session.",
             )
             PHASE = "second independent pinned NLA session"
-            bid, cfg_b = await asyncio.to_thread(launch, WEB_B, intent_b, session, csrf)
+            bid, cfg_b = await asyncio.to_thread(
+                launch, WEB_B, intent_b, session, csrf, authenticator
+            )
             async with relay(WEB_B, cfg_b, session) as b:
                 second = await confirmed(fixture, b, after)
                 require(first != second, "Both nodes must have distinct RDP sessions.")
@@ -151,7 +156,9 @@ async def peer():
                 await fixture.wait("disconnected", connection=first, timeout=12)
                 PHASE = "new node A RDP relay"
                 after = len(fixture.events)
-                cid, cfg_c = await asyncio.to_thread(launch, WEB_A, intent_a, session, csrf)
+                cid, cfg_c = await asyncio.to_thread(
+                    launch, WEB_A, intent_a, session, csrf, authenticator
+                )
                 async with relay(WEB_A, cfg_c, session) as c:
                     third = await confirmed(fixture, c, after)
                     require(third not in (first, second), "The reopened relay reused a peer.")
@@ -174,19 +181,21 @@ def database(action):
     require_test_database()
     data = input_json()
     if action == "prepare":
-        organization, intent_a, intent_b = prepare(
+        organization, intent_a, intent_b, authenticator = prepare(
             data["run"],
             data["pin"],
             data["password"],
             protocol="rdp",
             hostname=TARGET,
             port=HA_PORT,
+            authority=data["authority"], browser_session=data["session"],
         )
         emit(
             "prepared",
             organization=str(organization),
             intent_a=str(intent_a),
             intent_b=str(intent_b),
+            authenticator=authenticator,
         )
     else:
         keys = data["keys"]

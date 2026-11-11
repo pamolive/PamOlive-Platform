@@ -10,6 +10,7 @@ from platform_modules.access.models import AccessIntent
 
 from .mandates import validate_request
 from .models import SessionLease
+from .trust import require_live
 
 
 @transaction.atomic
@@ -34,6 +35,7 @@ def open_lease(intent_id, *, actor, organization):
             )
         if actor.pk != intent.requested_by_id:
             raise ValidationError("Seul le demandeur peut ouvrir son accès.")
+        require_live(intent, organization, actor=actor)
         from platform_modules.governance.policy import approval_requirements, enforce_authorization
 
         validate_request(intent, actor=actor, organization=organization)

@@ -383,7 +383,7 @@ def approval_requirements(intent, *, at=None):
         or sponsor_id in approved
         or sponsor_same_person
     )
-    return {
+    result = {
         "minimum": minimum,
         "approved": count,
         "unit": "personnes liées" if intent.fulfillment == "pam" else "comptes de connexion",
@@ -392,6 +392,11 @@ def approval_requirements(intent, *, at=None):
         "complete": count >= minimum and sponsor_satisfied,
         "policy_id": str(policy.pk) if policy else "baseline/1",
     }
+    if intent.fulfillment == "pam" and intent.pam_trust:
+        from platform_modules.pam.trust import trusted_requirements
+
+        return trusted_requirements(intent, at, result)
+    return result
 
 
 def account_contract_live(account, *, at=None):

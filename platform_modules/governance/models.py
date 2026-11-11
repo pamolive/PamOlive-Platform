@@ -210,3 +210,6 @@ class SeparationRule(ScopedModel):
             and self.left_entitlement == self.right_entitlement
         ):
             raise ValidationError("Les deux droits doivent être distincts.")
+
+
+from .exception_models import ExceptionCase, ExceptionDecision  # noqa: E402,F401

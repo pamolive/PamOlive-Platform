@@ -41,6 +41,24 @@ Le fournisseur doit utiliser HTTPS. Pour une autorité interne, indiquer son fic
 
 Pour qualifier le pilote, utiliser un dossier de test par outil, y compris deux dossiers qui ont le même identifiant externe. Dans PAM-olive, vérifier qu’ils appartiennent à leurs sources respectives, rattacher l’un à une demande et faire approuver l’accès localement. Dans le détail de l’accès observé, comparer le dossier rattaché avec sa lecture source. Un état source `approved` ne doit jamais suffire à accorder un droit.
 
+### Essayer avec plusieurs outils
+
+Ces trois configurations lisent des dossiers publics sans jeton fournisseur. Lancez les commandes depuis la racine du dépôt, sans `--publish` : elles affichent le type et l’état normalisés sans écrire dans PamOlive.
+
+```text
+python -m integrations.business_bridge integrations/business-bridge.github.example.json 42
+python -m integrations.business_bridge integrations/business-bridge.gitlab.example.json 42
+python -m integrations.business_bridge integrations/business-bridge.jira.example.json 138883
+```
+
+- [GitHub Issues](https://docs.github.com/en/rest/issues/issues#get-an-issue) : le numéro est propre au dépôt. Le même point d’accès peut aussi retourner une pull request ; utilisez un numéro de ticket dans cet exemple.
+- [GitLab Issues](https://docs.gitlab.com/api/issues/#retrieve-a-project-issue) : l’`iid` est propre au projet ; la configuration inclut l’identifiant du projet dans l’URL.
+- Jira : utilisez l’identifiant numérique renvoyé par l’API pour l’appel et conservez la clé lisible, ici `JRASERVER-24886`, comme référence. L’exemple utilise l’API REST v2 du site public Atlassian ; adaptez l’URL à celle de votre instance.
+
+Pour publier depuis vos outils, copiez les configurations, remplacez les URL et les UUID d’exemple et créez une source PamOlive par périmètre de numérotation. Pour un outil privé, renseignez un en-tête d’authentification pris en charge dans `headers_env`, avec le **nom** de sa variable de secret. Le jeton de publication PamOlive est un secret distinct pour chaque source. Les états des trois exemples sont limités à `open` et `closed` ; aucun ne devient une approbation PamOlive.
+
+Pour reproduire le parcours complet sur une base de test isolée, lancez `python manage.py test tests.qualify_public_business_sources --noinput`. Ce test opt-in contacte les trois API publiques et utilise uniquement des jetons créés dans sa base temporaire.
+
 ## Publier une lecture
 
 `POST /api/v1/business-records/` exige `Content-Type: application/json` et `Authorization: Bearer <jeton métier>`. Le jeton détermine l’organisation et la source ; ces deux valeurs ne sont jamais acceptées dans le corps.

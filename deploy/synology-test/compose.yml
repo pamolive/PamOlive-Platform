@@ -1,0 +1,126 @@
+# N0 preparation only. No relation to the existing NAS Compose project.
+name: ${PAMOLIVE_TEST_PROJECT:?Choose a new isolated project name}
+x-logging: &logs
+  driver: json-file
+  options:
+    max-size: "5m"
+    max-file: "3"
+services:
+  web:
+    # The existing supervisor runs Web/API + worker + isolated native engine.
+    # Do not add a second runjobs process or change PAM trust boundaries here.
+    image: ${PAMOLIVE_TEST_IMAGE:?Provide a CI-qualified image by digest}
+    env_file: ${PAMOLIVE_TEST_APP_ENV:?Provide a private synthetic application env file}
+    environment:
+      WEB_WORKERS: "1"
+      DEBUG: "false"
+      SECURE_COOKIES: "true"
+      ALLOWED_HOSTS: "localhost,127.0.0.1"
+      PAMOLIVE_CONNECTOR_HOSTS: ""
+      PAMOLIVE_CONNECTOR_NETWORKS: ""
+      PAMOLIVE_TARGET_HOSTS: ""
+      PAMOLIVE_TARGET_NETWORKS: ""
+      PAMOLIVE_OIDC_HOSTS: ""
+    networks: [frontend, database]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    init: true
+    stop_grace_period: 20s
+    read_only: true
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, KILL]
+    security_opt: [no-new-privileges:true]
+    cpus: ${PAMOLIVE_TEST_WEB_CPUS:?Approve a web CPU ceiling}
+    mem_limit: ${PAMOLIVE_TEST_WEB_MEMORY:?Approve a web memory ceiling}
+    memswap_limit: ${PAMOLIVE_TEST_WEB_MEMORY:?Approve a web memory ceiling}
+    pids_limit: 128
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging: *logs
+  gateway:
+    # Only this non-root TLS gateway joins ingress; no application egress.
+    image: ${PAMOLIVE_TEST_GATEWAY_IMAGE:?Provide an approved nginx-unprivileged image by digest}
+    user: "101:101"
+    command: [nginx, -g, "daemon off;"]
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    secrets: [tls_certificate, tls_private_key]
+    ports: ["127.0.0.1:${PAMOLIVE_TEST_PORT:?Choose an unused TLS test port}:8443"]
+    networks: [frontend, ingress]
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: "no"
+    init: true
+    stop_grace_period: 15s
+    read_only: true
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: ${PAMOLIVE_TEST_GATEWAY_CPUS:?Approve a gateway CPU ceiling}
+    mem_limit: ${PAMOLIVE_TEST_GATEWAY_MEMORY:?Approve a gateway memory ceiling}
+    memswap_limit: ${PAMOLIVE_TEST_GATEWAY_MEMORY:?Approve a gateway memory ceiling}
+    pids_limit: 32
+    healthcheck:
+      # Certificate trust is verified separately by the external TLS client.
+      test: [CMD, wget, --no-check-certificate, -q, -O, /dev/null, "https://127.0.0.1:8443/health/"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging: *logs
+  postgres:
+    image: ${PAMOLIVE_TEST_POSTGRES_IMAGE:?Provide a PostgreSQL 17 image by digest}
+    environment:
+      POSTGRES_DB: test_pamolive_p1
+      POSTGRES_USER: pamolive_test_owner
+      POSTGRES_PASSWORD_FILE: /run/secrets/database_owner_password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    secrets: [database_owner_password, database_app_password]
+    volumes:
+      - postgres_test:/var/lib/postgresql/data
+      - ./init-test-db.sql:/docker-entrypoint-initdb.d/10-pamolive-test.sql:ro
+    networks: [database]
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+      - /var/run/postgresql:size=8m,mode=0775,uid=999,gid=999
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE, SETUID, SETGID]
+    security_opt: [no-new-privileges:true]
+    cpus: ${PAMOLIVE_TEST_DB_CPUS:?Approve a database CPU ceiling}
+    mem_limit: ${PAMOLIVE_TEST_DB_MEMORY:?Approve a database memory ceiling}
+    memswap_limit: ${PAMOLIVE_TEST_DB_MEMORY:?Approve a database memory ceiling}
+    pids_limit: 96
+    command: [postgres, -c, max_connections=30, -c, shared_buffers=64MB, -c, log_statement=none]
+    healthcheck:
+      test: [CMD, pg_isready, -U, pamolive_test_owner, -d, test_pamolive_p1]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    logging: *logs
+networks:
+  frontend:
+    internal: true
+  database:
+    internal: true
+  ingress: {}
+volumes:
+  postgres_test: {}
+secrets:
+  database_owner_password:
+    file: ${PAMOLIVE_TEST_OWNER_PASSWORD_FILE:?Provide a private synthetic owner password file}
+  database_app_password:
+    file: ${PAMOLIVE_TEST_APP_PASSWORD_FILE:?Provide a private synthetic app password file}
+  tls_certificate:
+    file: ${PAMOLIVE_TEST_TLS_CERTIFICATE_FILE:?Provide a private synthetic TLS certificate file}
+  tls_private_key:
+    file: ${PAMOLIVE_TEST_TLS_KEY_FILE:?Provide a private synthetic TLS key file}

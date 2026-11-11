@@ -7,7 +7,6 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import Max, Q
 from django.utils import timezone
-from django.utils.crypto import constant_time_compare
 
 from platform_core.audit import digest, record
 from platform_core.authorization import assurance_datetime
@@ -17,7 +16,7 @@ from platform_modules.identity.models import ExternalAccount, Identity, Resource
 
 from .scim import IntegrationFailure
 from .teamviewer import _time
-from .teamviewer_collection import _admin, tag, verify_configuration
+from .teamviewer_collection import _admin, tag, verify_configuration, verify_signature, verify_tag
 from .teamviewer_mapping_models import TeamViewerMapping, TeamViewerSighting
 from .teamviewer_models import TeamViewerCollector
 from .teamviewer_sightings import verify_sighting
@@ -91,7 +90,7 @@ def mapping_body(mapping):
     )
 
 
-def mapping_signature(mapping):
+def mapping_signature(mapping, *, key=None):
     return tag(
         dict(
             body=mapping_body(mapping),
@@ -99,6 +98,7 @@ def mapping_signature(mapping):
             audit_hash=mapping.audit.event_hash,
         ),
         "mapping",
+        key=key,
     )
 
 
@@ -128,9 +128,10 @@ def verify_mapping(mapping, *, check_target=True):
             and mapping.audit.object_id == str(mapping.pk)
             and mapping.audit.object_type == mapping._meta.label_lower
             and mapping.audit.event_hash == digest(mapping.audit)
-            and mapping.audit.metadata.get("mapping_hash")
-            == tag(mapping_body(mapping), "mapping-body")
-            and constant_time_compare(mapping.signature, mapping_signature(mapping))
+            and verify_tag(
+                mapping_body(mapping), "mapping-body", mapping.audit.metadata.get("mapping_hash")
+            )
+            and verify_signature(mapping.signature, mapping_signature, mapping)
         )
         if not valid or not check_target:
             return valid

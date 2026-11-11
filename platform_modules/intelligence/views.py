@@ -11,9 +11,9 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from platform_core.tenancy import organization_context
+from platform_core.view_access import scoped
 from platform_modules.access.models import AccessEvent
 from platform_modules.access.observations import related_event_candidates
-from platform_modules.access.ui import scoped
 from platform_modules.connectors.services import source_from_token
 from platform_modules.identity.models import Identity
 

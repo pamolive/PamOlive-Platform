@@ -5,6 +5,7 @@ from datetime import timedelta
 from unittest import skipUnless
 from unittest.mock import patch
 
+import asyncssh
 import pyotp
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -30,12 +31,26 @@ from platform_modules.access.services import create_record, ingest_event, revoke
 from platform_modules.approvals.services import decide
 from platform_modules.connectors.services import create_source
 from platform_modules.identity.models import Grant, Identity, Resource
-from platform_modules.pam.models import SessionLease
+from platform_modules.pam.models import SessionEndpoint, SessionLease
 from platform_modules.pam.services import expire_leases, open_lease
+from platform_modules.pam.target_binding import credential_seal
 from platform_modules.recertification.models import Review
 from platform_modules.recertification.services import review_grant, start_campaign
 
 from .person_fixtures import bind_person
+
+
+def synthetic_pam_endpoint(organization, resource, account):
+    endpoint = SessionEndpoint(
+        organization=organization, resource=resource, account=account,
+        name=f"Synthetic PAM {account.username}", protocol="ssh", hostname="fixture.invalid",
+        port=22, auth_method="password",
+        encrypted_secret=cipher().encrypt(b'{"password":"synthetic-pam-fixture"}').decode(),
+        ssh_host_key=asyncssh.generate_private_key("ssh-ed25519").export_public_key().decode(),
+    )
+    endpoint.credential_seal = credential_seal(endpoint, account)
+    endpoint.save()
+    return endpoint
 
 
 class PlatformTests(TestCase):
@@ -84,6 +99,7 @@ class PlatformTests(TestCase):
 
     def intent(self, **overrides):
         assurance = nullcontext()
+        personal = nullcontext()
         if overrides.get("fulfillment") == "pam":
             bind_person(
                 self.operator,
@@ -91,11 +107,20 @@ class PlatformTests(TestCase):
                 administrator=self.admin,
                 identity=self.identity,
             )
-            bind_person(
+            reviewer = bind_person(
                 self.reviewer, organization=self.org, administrator=self.admin, role="reviewer"
             )
+            if not hasattr(self, "trust"):
+                from .pam_trust_fixtures import TrustFixture
+
+                endpoint = synthetic_pam_endpoint(self.org, self.resource, self.account)
+                self.trust = TrustFixture(self, self.org, [endpoint], [
+                    (self.operator, self.identity, ["requester"]),
+                    (self.reviewer, reviewer.identity, ["reviewer", "sponsor"]),
+                ])
             assurance = recent_authentication(self.operator, self.org, time.time())
-        with assurance:
+            personal = self.trust.personal_action(self.operator)
+        with assurance, personal:
             return create_record(
                 "intent",
                 {
@@ -205,7 +230,10 @@ class PlatformTests(TestCase):
 
     def test_departure_revokes_accounts_grants_intents_and_leases(self):
         intent = self.intent(fulfillment="pam")
-        with recent_authentication(self.reviewer, self.org, time.time()):
+        with (
+            recent_authentication(self.reviewer, self.org, time.time()),
+            self.trust.personal_action(self.reviewer),
+        ):
             decide(
                 intent.pk,
                 actor=self.reviewer,
@@ -264,7 +292,10 @@ class PlatformTests(TestCase):
             )
         self.assertEqual(Grant.objects.get().status, "revoked")
         intent = self.intent(fulfillment="pam")
-        with recent_authentication(self.reviewer, self.org, time.time()):
+        with (
+            recent_authentication(self.reviewer, self.org, time.time()),
+            self.trust.personal_action(self.reviewer),
+        ):
             decide(
                 intent.pk,
                 actor=self.reviewer,
@@ -284,8 +315,9 @@ class PlatformTests(TestCase):
         )
 
     def test_event_replay_is_deduplicated_and_sources_are_immutable(self):
-        event = self.event()
-        self.assertEqual(self.event().pk, event.pk)
+        # Idempotency applies to the same normalized facts, including source time.
+        event = self.event(occurred_at=self.now)
+        self.assertEqual(self.event(occurred_at=self.now).pk, event.pk)
         self.assertEqual(AccessEvent.objects.count(), 1)
         event.action = "tamper"
         with self.assertRaises(ValidationError):

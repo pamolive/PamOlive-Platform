@@ -1,0 +1,25 @@
+{
+  "source": {
+    "url": "https://jira.atlassian.com/rest/api/2/issue/{id}?fields=summary,status,updated",
+    "headers_env": {},
+    "fields": {
+      "external_id": "/id",
+      "reference": "/key",
+      "source_updated_at": "/fields/updated",
+      "state": "/fields/status/statusCategory/key",
+      "title": "/fields/summary"
+    },
+    "kind": "ticket",
+    "states": {
+      "new": "open",
+      "indeterminate": "open",
+      "done": "closed"
+    }
+  },
+  "pamolive": {
+    "url": "https://pamolive.example.test",
+    "organization_id": "00000000-0000-0000-0000-000000000001",
+    "source_id": "00000000-0000-0000-0000-000000000004",
+    "token_env": "PAMOLIVE_JIRA_PUBLISH_TOKEN"
+  }
+}

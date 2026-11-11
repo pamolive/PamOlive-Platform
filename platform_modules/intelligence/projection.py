@@ -14,6 +14,7 @@ from platform_modules.access.observations import (
     observation_context,
     related_event_candidates,
 )
+from platform_modules.access.provenance_status import verified_origin_status
 from platform_modules.access.services import identity_status_at
 from platform_modules.access.temporal import overlapping_events
 from platform_modules.governance.models import ContractParticipant
@@ -238,11 +239,15 @@ def graph_for_identity(identity, *, at=None):
             at - timedelta(days=1),
             at + timedelta(microseconds=1),
         )
-        .select_related("identity", "resource", "account__identity", "credential__identity")
+        .select_related(
+            "identity", "resource", "account__identity", "credential__identity",
+            "collector_source", "provenance_receipt__audit",
+        )
         .order_by("-occurred_at")[:101]
     )
     truncated |= len(observed) > 100
     for event in observed[:100]:
+        origin_status = verified_origin_status(event)
         context = observation_context(event, organization=current_organization())
         event = context.event
         if not (
@@ -265,7 +270,9 @@ def graph_for_identity(identity, *, at=None):
             "observation",
             event.pk,
             f"{event.occurred_at.isoformat()} · {event.method} · {event.action} · "
-            f"résultat {event.result} · source {event.source}",
+            f"résultat {event.result} · source déclarée {event.source} · "
+            f"provenance {origin_status}",
+            f"recorded_{origin_status}",
         )
         for kind, subject in (("account", event.account), ("credential", event.credential)):
             if subject:
@@ -485,7 +492,8 @@ def investigate(kind, *, at, start, end, zone=None):
                         "identity": event.identity,
                         "resource": event.resource,
                         "detail": (
-                            f"{event.occurred_at.isoformat()} · {event.method} · {event.action}. "
+                            f"{event.occurred_at.isoformat()} · {event.method} · {event.action} "
+                            f"(provenance {row['provenance_status']}). "
                             "Pas de référence dans une intention rapprochée."
                         ),
                         "evidence": [str(event.pk)],

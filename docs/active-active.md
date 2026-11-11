@@ -89,6 +89,8 @@ Le pilote vérifie successivement :
 
 Ajouter `--native-pam` pour tester SSH et `--native-rdp` pour tester RDP. Pour l’essai RDP, construire depuis la même révision l’image réservée à la cible de test. Elle n’est pas utilisée pour installer PAM-olive ni pour démarrer les deux nœuds applicatifs.
 
+Depuis P0-3, ces modes commissionnent une autorité synthétique et utilisent des signatures WebAuthn réelles, sans déduire une autorité PAM des seuls comptes IAM/TOTP. Ils nécessitent `cryptography` et `cbor2` sur l'hôte (environnement `requirements-dev.lock` recommandé) ; le mode non natif conserve ses dépendances standard. Les clés privées restent sur l'hôte et seul un répertoire public de checkpoints est monté en lecture seule. Voir [périmètre, limites et validation de cette qualification](ha-p0-trust-qualification.md).
+
 ```sh
 docker build --target native-test -t pamolive-platform:native-test .
 python -m deploy.check_active_active --env-file /chemin/prive/ha.env --native-pam --native-rdp

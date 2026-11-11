@@ -15,8 +15,8 @@ from platform_core.authorization import (
 )
 from platform_core.events import publish_domain_event
 from platform_core.models import ModuleActivation, Organization
-from platform_core.services import authorize, require_module
-from platform_core.tenancy import current_organization, organization_context
+from platform_core.services import lock_authorized_actor, require_module
+from platform_core.tenancy import organization_context
 from platform_modules.identity.review_contract import database_now, normalize_scope
 
 from .campaigns import open_scheduled_campaign, owner_eligible
@@ -38,9 +38,7 @@ def current_publication(schedule):
 
 
 def _operator(actor, organization):
-    if current_organization().pk != organization.pk:
-        raise PermissionDenied
-    authorize(actor, organization, roles=("admin",))
+    actor, organization = lock_authorized_actor(actor, organization, roles=("admin",))
     require_module(organization, "recertification")
     return require_recent_authentication(actor, organization)
 
@@ -128,7 +126,6 @@ def publish_schedule(
     data, *, key=None, schedule_id=None, expected_revision=None, actor, organization
 ):
     assurance = _operator(actor, organization)
-    Organization.objects.select_for_update().get(pk=organization.pk, active=True)
     value = _validated(data, organization)
     if schedule_id:
         schedule = Schedule.objects.get(pk=schedule_id)
@@ -159,7 +156,6 @@ def set_schedule_enabled(schedule_id, enabled, *, expected_revision, actor, orga
     assurance = _operator(actor, organization)
     if type(enabled) is not bool:
         raise ValidationError("Commande d’activation invalide.")
-    Organization.objects.select_for_update().get(pk=organization.pk, active=True)
     schedule = Schedule.objects.get(pk=schedule_id)
     current = current_publication(schedule)
     if not current or current.revision != expected_revision or not verify_publication(current):

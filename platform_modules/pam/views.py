@@ -13,7 +13,7 @@ from django.views.decorators.http import require_POST
 from platform_core.audit import record
 from platform_core.authorization import recent_authentication
 from platform_core.security import ensure_recent
-from platform_modules.access.ui import scoped
+from platform_core.view_access import scoped
 from platform_modules.identity.models import ExternalAccount, Resource
 
 from .context import client_address

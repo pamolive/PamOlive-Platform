@@ -11,6 +11,7 @@ import base64
 import hashlib
 import hmac
 import http.client
+import ipaddress
 import json
 import os
 import queue
@@ -24,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 from html.parser import HTMLParser
 from http.cookies import SimpleCookie
 from pathlib import Path
-from threading import Thread
+from threading import Event, Thread
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 PROJECT = "pamolive-platform-ha-check"
@@ -36,7 +37,35 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
-def validate_configuration(config):
+def subprocess_category(error):
+    """Return a fixed diagnostic label, never driver/command output or values."""
+    details = getattr(error, "stderr", "") or ""
+    if isinstance(details, bytes):
+        details = details.decode(errors="replace")
+    details = details.lower()
+    for needle, label in (
+        ("is not running", "container-not-running"),
+        ("cannot open", "namespace-unavailable"),
+        ("operation not permitted", "namespace-or-route-permission"),
+        ("permission denied", "permission-denied"),
+        ("file exists", "existing-route"),
+        ("no such process", "missing-route"),
+        ("no such file or directory", "missing-namespace-or-file"),
+        ("command not found", "missing-command"),
+        ("timed out", "timeout"),
+        ("connection refused", "connection-refused"),
+        ("invalid argument", "invalid-argument"),
+        ("undefined variable", "undefined-variable"),
+        ("error:", "subprocess-error"),
+    ):
+        if needle in details:
+            return label
+    if isinstance(error, subprocess.TimeoutExpired):
+        return "timeout"
+    return "unknown"
+
+
+def validate_configuration(config, *, checkpoint_directory=None):
     services = config.get("services", {})
     require(set(services) == {"node-a", "node-b"}, "Unexpected qualification services.")
     urls, images = set(), set()
@@ -60,7 +89,20 @@ def validate_configuration(config):
         require(
             len(ports) == 1 and ports[0].get("host_ip") == "127.0.0.1", "Non-private test port."
         )
-        require(not service.get("volumes"), "Qualification must not mount business files.")
+        mounts = service.get("volumes", [])
+        if checkpoint_directory is None:
+            require(not mounts, "Qualification must not mount business files.")
+        else:
+            from .active_active_trust import CHECKPOINT_TARGET
+
+            require(
+                len(mounts) == 1 and mounts[0].get("type") == "bind"
+                and mounts[0].get("read_only") is True
+                and mounts[0].get("target") == CHECKPOINT_TARGET
+                and Path(mounts[0].get("source", "")).resolve()
+                == Path(checkpoint_directory).resolve(),
+                "Only the exact generated public checkpoint directory may be mounted.",
+            )
         urls.add(url)
         images.add(service.get("image"))
     require(len(urls) == len(images) == 1, "Nodes must share the same database and image.")
@@ -70,6 +112,18 @@ def validate_configuration(config):
             first.get(key) == second.get(key) and len(first.get(key, "")) >= 40,
             "Shared test keys required.",
         )
+    if checkpoint_directory is not None:
+        from .active_active_trust import CHECKPOINT_TARGET, INSTALLATION, ORIGIN, RP
+
+        for key, expected in (
+            ("PAM_TRUST_INSTALLATION_ID", INSTALLATION), ("PAM_TRUST_RP_ID", RP),
+            ("PAM_TRUST_ORIGIN", ORIGIN), ("PAM_TRUST_CHECKPOINT_DIRECTORY", CHECKPOINT_TARGET),
+        ):
+            require(first.get(key) == second.get(key) == expected,
+                    "Both nodes require the exact synthetic PAM trust configuration.")
+        for key in ("PAM_TRUST_COMMISSIONING_KEYS", "PAM_TRUST_CHECKPOINT_KEYS"):
+            require(first.get(key) == second.get(key) and bool(json.loads(first.get(key, "{}"))),
+                    "Both nodes require identical public synthetic trust anchors.")
 
 
 def validate_rdp_network(info, node_ids):
@@ -81,6 +135,52 @@ def validate_rdp_network(info, node_ids):
         and set(info.get("Containers") or {}) == set(node_ids),
         "Wrong RDP test network scope.",
     )
+
+
+def partition_scope(network, node_a, node_b, route):
+    """Prove the exact disposable node endpoint carries the dedicated DB connection."""
+    name = network.get("Name", "")
+    network_id = network.get("Id", "")
+    members = network.get("Containers") or {}
+    a, b = (item["Id"] for item in (node_a, node_b))
+    links_a, links_b = (item["NetworkSettings"]["Networks"] for item in (node_a, node_b))
+    default = PROJECT + "_default"
+    require(
+        name != default
+        and network.get("Driver") == "bridge"
+        and re.fullmatch(r"[a-f0-9]{64}", network_id)
+        and a != b
+        and a in members
+        and b in members
+        and all(set(links) == {default, name} for links in (links_a, links_b))
+        and all(links[name].get("NetworkID") == network_id for links in (links_a, links_b)),
+        "The qualification database network must be a distinct shared bridge.",
+    )
+    addresses = {key: item.get("IPv4Address", "").split("/")[0] for key, item in members.items()}
+    require(
+        bool(route.get("client"))
+        and route["client"] == links_a[name]["IPAddress"] == addresses[a]
+        and bool(route.get("server"))
+        and sum(value == route["server"] for value in addresses.values()) == 1
+        and route["server"] not in (addresses[a], addresses[b]),
+        "The live PostgreSQL route does not use the expected network endpoints.",
+    )
+    namespace, other_namespace = (
+        item["NetworkSettings"].get("SandboxKey", "") for item in (node_a, node_b)
+    )
+    require(
+        namespace != other_namespace
+        and all(
+            re.fullmatch(r"/(?:var/)?run/docker/netns/[a-f0-9]{12,64}", value)
+            for value in (namespace, other_namespace)
+        )
+        and all(
+            item.get("HostConfig", {}).get("NetworkMode") in (default, name)
+            for item in (node_a, node_b)
+        ),
+        "The qualification requires two distinct Docker-managed network namespaces.",
+    )
+    return namespace, f"{ipaddress.IPv4Address(route['server'])}/32"
 
 
 def safe_relay_state(values):
@@ -175,7 +275,9 @@ def totp(secret, timestamp=None):
 
 
 class Qualification:
-    def __init__(self, docker, env_file, *, native_pam=False, native_rdp=False):
+    def __init__(
+        self, docker, env_file, *, native_pam=False, native_rdp=False, database_partition=False
+    ):
         self.docker = docker
         self.prefix = [
             docker,
@@ -191,6 +293,51 @@ class Qualification:
         self.started = False
         self.native_pam = native_pam
         self.native_rdp = native_rdp
+        self.database_partition = database_partition
+        self.authority = None
+        self.trust_stop, self.trust_thread = Event(), None
+        self.trust_error = None
+        self.trust_organizations = {}
+        self.secondary_failures = []
+
+    def prepare_authority(self):
+        from .active_active_trust import CHECKPOINT_TARGET, QualificationAuthority
+
+        self.authority = QualificationAuthority()
+        override = Path(self.authority.temporary.name) / "compose.public-trust.json"
+        override.write_text(json.dumps({"services": {
+            node: {"environment": self.authority.settings(), "volumes": [{
+                "type": "bind", "source": str(self.authority.directory.resolve()),
+                "target": CHECKPOINT_TARGET, "read_only": True,
+            }]} for node in ("node-a", "node-b")
+        }}), encoding="utf-8")
+        self.prefix.extend(["-f", str(override)])
+
+    def start_witness(self):
+        def refresh():
+            try:
+                while not self.trust_stop.is_set():
+                    heads = json.loads(self.compose(
+                        "exec", "-T", "--user", "1000:1000", "node-b", "python", "-m",
+                        "deploy.active_active_trust", timeout=20,
+                        content=json.dumps({"organizations": list(self.authority.keys)}) + "\n",
+                    ))
+                    for head in heads:
+                        self.authority.checkpoint(head)
+                    self.trust_stop.wait(1)
+            except Exception as error:
+                self.trust_error = type(error).__name__
+
+        self.trust_thread = Thread(target=refresh, daemon=True)
+        self.trust_thread.start()
+
+    def trust_signature(self, run, report):
+        require(self.authority is not None and self.trust_error is None,
+                "The external synthetic witness is unavailable.")
+        organization = self.trust_organizations[run]
+        if report.get("stage") == "trust-authenticate":
+            return self.authority.authenticate(organization, report)
+        return self.authority.sign_registry(organization, report["body"])
 
     def command(self, *arguments, timeout=90, content=None):
         return subprocess.run(
@@ -214,7 +361,7 @@ class Qualification:
 
     def port(self, name):
         _, data = self.node(name)
-        ports = data["NetworkSettings"]["Ports"]["8000/tcp"]
+        ports = (data["NetworkSettings"].get("Ports") or {}).get("8000/tcp") or []
         require(len(ports) == 1 and ports[0]["HostIp"] == "127.0.0.1", "Unsafe test listener.")
         return int(ports[0]["HostPort"])
 
@@ -230,13 +377,13 @@ class Qualification:
             time.sleep(1)
         raise RuntimeError("Qualification node did not become ready.")
 
-    def fixture(self, action, run=""):
+    def fixture(self, action, run="", *, node="node-b", content=None):
         arguments = [
             "exec",
             "-T",
             "--user",
             "1000:1000",
-            "node-b",
+            node,
             "python",
             "-m",
             "deploy.active_active_fixture",
@@ -244,11 +391,132 @@ class Qualification:
         ]
         if run:
             arguments.extend(["--run", run])
-        return json.loads(self.compose(*arguments))
+        if action == "prepare" and self.authority:
+            organization = list(self.authority.keys)[len(self.trust_organizations)]
+            arguments.extend(["--organization", organization])
+        result = json.loads(self.compose(*arguments, content=content))
+        if action == "prepare" and self.authority:
+            self.trust_organizations[result["run"]] = result["organization"]
+        return result
 
     def kill_node_a(self):
         identifier, _ = self.node("node-a")
         self.command(self.docker, "kill", "--signal", "KILL", identifier)
+
+    def check_database_partition(self, network_name, b, browser, data, event):
+        self.stage = "validate the dedicated PostgreSQL network path"
+        _, node_a = self.node("node-a")
+        _, node_b = self.node("node-b")
+        network = json.loads(self.command(self.docker, "network", "inspect", network_name))[0]
+        require(network.get("Name") == network_name, "Unexpected database network.")
+        route = self.fixture("database-route", node="node-a")
+        namespace, destination = partition_scope(network, node_a, node_b, route)
+        route_command = ("sudo", "-n", "nsenter", f"--net={namespace}", "ip", "-4", "route")
+        require(
+            not self.command(*route_command, "show", "exact", destination).strip(),
+            "Refusing to replace an existing database host route.",
+        )
+        baseline = self.fixture("inspect", data["run"])
+        payload = {**event, "external_id": "ha-database-partition"}
+        self.stage = "install unreachable route for the exact database address"
+        rule = ("unreachable", destination, "proto", "static")
+        self.command(*route_command, "add", *rule)
+        primary_error = None
+        try:
+            self.stage = "inspect live node A with database address blocked"
+            isolated = self.node("node-a")[1]
+            require(
+                isolated["Id"] == node_a["Id"]
+                and isolated["NetworkSettings"]["SandboxKey"] == namespace
+                and isolated["State"]["StartedAt"] == node_a["State"]["StartedAt"],
+                "Node A did not remain alive in its private test network namespace.",
+            )
+            self.stage = "probe isolated A loopback HTTP health and ingestion"
+            observed = self.fixture(
+                "partition-probe",
+                node="node-a",
+                content=json.dumps({"event": payload, "token": data["source_token"]}),
+            )
+            require(
+                observed["health"] == 503 and observed["ingest"] in (500, 503),
+                "An isolated node must fail its health check and refuse writes.",
+            )
+            self.stage = "validate no isolated write and healthy surviving B"
+            require(
+                self.fixture("inspect", data["run"]) == baseline,
+                "The rejected write changed authoritative state.",
+            )
+            require(
+                Browser().request(b, "/health/")[0] == 200
+                and browser.request(b, "/identities/")[0] == 200,
+                "Node B became unavailable during node A's database partition.",
+            )
+            self.stage = "commit the same event on B during database isolation"
+            status, _, response = Browser().request(
+                b, "/api/v1/events/", payload=payload, bearer=data["source_token"]
+            )
+            require(status == 201, "Node B could not commit during node A's database partition.")
+            event_id = json.loads(response)["event_id"]
+        except BaseException as error:
+            primary_error = error
+            raise
+        finally:
+            previous_stage = self.stage
+            self.stage = "remove only the installed database route"
+            try:
+                self.command(*route_command, "del", *rule)
+            except Exception as cleanup_error:
+                if primary_error is None:
+                    raise
+                # A vanished test namespace must not hide the probe failure
+                # that caused cleanup. Do not touch another namespace/route.
+                self.secondary_failures.append({
+                    "stage": "remove only the installed database route",
+                    "error": type(cleanup_error).__name__,
+                    "category": subprocess_category(cleanup_error),
+                })
+            finally:
+                if primary_error is not None:
+                    self.stage = previous_stage
+            if primary_error is None:
+                self.stage = previous_stage
+        self.stage = "original node A's published port becomes healthy again"
+        a = self.wait_ready("node-a")
+        returned = self.node("node-a")[1]
+        require(
+            returned["Id"] == node_a["Id"]
+            and returned["NetworkSettings"]["SandboxKey"] == namespace
+            and returned["State"]["StartedAt"] == node_a["State"]["StartedAt"],
+            "Node A was restarted instead of recovering its database route.",
+        )
+        require(
+            browser.request(a, "/identities/")[0] == 200,
+            "The shared session did not survive the database partition.",
+        )
+        self.stage = "recovered node A deduplicates the committed event"
+        status, _, response = Browser().request(
+            a, "/api/v1/events/", payload=payload, bearer=data["source_token"]
+        )
+        require(
+            status == 200 and json.loads(response)["event_id"] == event_id,
+            "Node A did not deduplicate the event committed by node B.",
+        )
+        require(
+            self.fixture("inspect", data["run"])
+            == {
+                **baseline,
+                "events": baseline["events"] + 1,
+                "received_audits": baseline["received_audits"] + 1,
+            },
+            "Recovery must preserve one event, one audit, and the other tenant's state.",
+        )
+        return {
+            "isolated_health_unavailable": True,
+            "isolated_write_refused": True,
+            "surviving_node_committed": True,
+            "original_node_rejoined_without_restart": True,
+            "replay_deduplicated": True,
+        }
 
     def native_ssh(self, run, browser):
         _, b = self.node("node-b")
@@ -276,13 +544,21 @@ class Qualification:
 
             def read_reports():
                 for line in worker.stdout:
+                    report = json.loads(line)
+                    if report.get("stage") in ("trust-sign", "trust-authenticate"):
+                        worker.stdin.write(json.dumps(self.trust_signature(run, report)) + "\n")
+                        worker.stdin.flush()
+                        continue
                     messages.put(line)
                 messages.put("")
 
             Thread(target=read_reports, daemon=True).start()
             try:
                 worker.stdin.write(
-                    json.dumps(dict(run=run, peer_ip=peer_ip, session=session, csrf=csrf))
+                    json.dumps(dict(
+                        run=run, peer_ip=peer_ip, session=session, csrf=csrf,
+                        authority=self.authority.commissioning(self.trust_organizations[run]),
+                    ))
                 )
                 worker.stdin.write("\n")
                 worker.stdin.flush()
@@ -358,21 +634,37 @@ class Qualification:
         ]
 
         def database(action, payload):
-            result = json.loads(
-                self.compose(
-                    "exec",
-                    "-T",
-                    "--user",
-                    "1000:1000",
-                    "node-b",
-                    "python",
-                    "-m",
-                    "deploy.active_active_rdp",
-                    action,
-                    content=json.dumps(payload) + "\n",
-                    timeout=25,
-                )
-            )
+            arguments = self.prefix + ["exec", "-T", "--user", "1000:1000", "node-b",
+                                       "python", "-m", "deploy.active_active_rdp", action]
+            with subprocess.Popen(arguments, text=True, stdin=subprocess.PIPE,
+                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as helper:
+                reports = queue.Queue()
+
+                def read_helper():
+                    for line in helper.stdout:
+                        reports.put(line)
+                    reports.put("")
+
+                Thread(target=read_helper, daemon=True).start()
+                try:
+                    helper.stdin.write(json.dumps(payload) + "\n")
+                    helper.stdin.flush()
+                    deadline = time.monotonic() + 90
+                    for _ in range(32):
+                        line = reports.get(timeout=max(0.1, deadline - time.monotonic()))
+                        require(bool(line), "The scoped RDP helper did not return a result.")
+                        result = json.loads(line)
+                        if result.get("stage") in ("trust-sign", "trust-authenticate"):
+                            helper.stdin.write(json.dumps(self.trust_signature(run, result)) + "\n")
+                            helper.stdin.flush()
+                        else:
+                            break
+                    else:
+                        raise RuntimeError("Too many synthetic RDP commissioning messages.")
+                    require(helper.wait(timeout=15) == 0, "The scoped RDP helper failed.")
+                finally:
+                    if helper.poll() is None:
+                        helper.kill()
             require(
                 result.pop("stage") == {"prepare": "prepared", "state": "state"}[action],
                 "RDP database fixture refused.",
@@ -423,6 +715,11 @@ class Qualification:
 
             def receive_lines():
                 for line in worker.stdout:
+                    report = json.loads(line)
+                    if report.get("stage") == "trust-authenticate":
+                        worker.stdin.write(json.dumps(self.trust_signature(run, report)) + "\n")
+                        worker.stdin.flush()
+                        continue
                     messages.put(line)
                 messages.put("")
 
@@ -457,13 +754,19 @@ class Qualification:
                     and re.fullmatch(r"[a-zA-Z0-9_-]{32}", ready["password"]),
                     "Unexpected RDP test credentials.",
                 )
-                prepared = database("prepare", {"run": run, **ready})
+                prepared = database("prepare", {
+                    "run": run, **ready,
+                    "session": browser.cookies["pamolive_platform_session"].value,
+                    "authority": self.authority.commissioning(self.trust_organizations[run]),
+                })
+                authenticator = prepared.pop("authenticator")
                 validate_ids(prepared, ("organization", "intent_a", "intent_b"))
                 org = prepared.pop("organization")
                 send(
                     json.dumps(
                         {
                             **prepared,
+                            "authenticator": authenticator,
                             "session": browser.cookies["pamolive_platform_session"].value,
                             "csrf": browser.cookies["pamolive_platform_csrftoken"].value,
                         }
@@ -536,7 +839,20 @@ class Qualification:
                             worker.kill()
 
     def execute(self):
-        validate_configuration(json.loads(self.compose("config", "--format", "json")))
+        config = json.loads(self.compose("config", "--format", "json"))
+        validate_configuration(config)
+        if self.native_pam or self.native_rdp:
+            self.prepare_authority()
+            config = json.loads(self.compose("config", "--format", "json"))
+            validate_configuration(config, checkpoint_directory=self.authority.directory)
+        database_network = config.get("networks", {}).get("database", {})
+        network_name = database_network.get("name", "")
+        if self.database_partition:
+            require(
+                database_network.get("external") is True
+                and re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}", network_name),
+                "The partition requires an explicit external database bridge.",
+            )
         existing = self.command(
             self.docker, "ps", "-aq", "--filter", "label=com.docker.compose.project=" + PROJECT
         )
@@ -571,6 +887,8 @@ class Qualification:
             self.node("node-a")[1]["Image"] == self.node("node-b")[1]["Image"],
             "Different node images.",
         )
+        if self.authority:
+            self.start_witness()
         data = self.fixture("prepare")
         browser = Browser()
         self.stage = "A login, B session and MFA replay rejection"
@@ -716,6 +1034,10 @@ class Qualification:
             },
             "Final shared state differs from expected proofs.",
         )
+        partition = {}
+        if self.database_partition:
+            partition = self.check_database_partition(network_name, b, browser, data, event)
+            a = self.port("node-a")
         native_rdp = {}
         if self.native_rdp:
             self.stage = "independent test organization for RDP"
@@ -766,17 +1088,26 @@ class Qualification:
             "audit_valid": True,
             "native_ssh": native,
             "native_rdp": native_rdp,
+            "database_partition": partition,
             "scope": scope + ", same-host fault injection; not VM/database HA or live PAM handover",
         }
 
     def cleanup(self):
+        self.trust_stop.set()
+        if self.trust_thread:
+            self.trust_thread.join(timeout=25)
+            require(not self.trust_thread.is_alive(), "The synthetic witness did not stop.")
         if self.started:
             self.compose("down", "--remove-orphans", timeout=120)
+        if self.authority:
+            self.authority.close()
 
     def preserve_failure(self, error):
         directory = Path(tempfile.mkdtemp(prefix="pamolive-ha-failure-"))
         os.chmod(directory, 0o700)
         items = {"stage.txt": self.stage + "\n" + type(error).__name__}
+        if self.secondary_failures:
+            items["secondary-failures.json"] = json.dumps(self.secondary_failures)
         if isinstance(error, subprocess.CalledProcessError):
             items["command.stderr.txt"] = error.stderr or ""
             items["command.stdout.txt"] = error.stdout or ""
@@ -808,9 +1139,18 @@ def main():
     parser.add_argument("--env-file", type=Path, required=True)
     parser.add_argument("--native-pam", action="store_true")
     parser.add_argument("--native-rdp", action="store_true")
+    parser.add_argument(
+        "--database-partition",
+        action="store_true",
+        help="block the proved database address in node A's private Linux network namespace",
+    )
     args = parser.parse_args()
     check = Qualification(
-        args.docker, args.env_file.resolve(), native_pam=args.native_pam, native_rdp=args.native_rdp
+        args.docker,
+        args.env_file.resolve(),
+        native_pam=args.native_pam,
+        native_rdp=args.native_rdp,
+        database_partition=args.database_partition,
     )
     try:
         report = check.execute()
@@ -819,6 +1159,10 @@ def main():
             f"Active-active check failed at {check.stage} ({type(error).__name__}); "
             "captured output and credentials suppressed."
         )
+        if isinstance(error, subprocess.CalledProcessError):
+            print("Restricted subprocess category: " + subprocess_category(error))
+        for secondary in check.secondary_failures:
+            print("Secondary route cleanup category: " + secondary["category"])
         print("Private failure evidence: " + str(check.preserve_failure(error)))
         raise SystemExit(1) from None
     finally:

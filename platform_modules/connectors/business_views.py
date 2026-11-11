@@ -12,8 +12,8 @@ from django.views.decorators.http import require_http_methods
 
 from platform_core.security import ensure_recent
 from platform_core.tenancy import organization_context
+from platform_core.view_access import scoped
 from platform_modules.access.models import AccessIntent
-from platform_modules.access.ui import scoped
 
 from .business import (
     BusinessConflict,

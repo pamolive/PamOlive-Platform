@@ -6,6 +6,13 @@ from django.db import models
 
 from platform_core.tenancy import ScopedModel
 
+from .trust_auth_models import (  # noqa: F401
+    PAMTrustAuthorization,
+    PAMTrustChallenge,
+    PAMTrustEnrollment,
+)
+from .trust_models import PAMAuthenticatorState, PAMTrustRevision  # noqa: F401
+
 
 class SessionLease(ScopedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -31,6 +38,8 @@ class SessionEndpoint(ScopedModel):
         max_length=16, choices=[("password", "Mot de passe"), ("private_key", "Clé privée SSH")]
     )
     encrypted_secret = models.TextField(editable=False)
+    credential_seal = models.CharField(max_length=64, blank=True, editable=False)
+    destination_epoch = models.PositiveIntegerField(default=1, editable=False)
     ssh_host_key = models.TextField(blank=True)
     certificate_pin = models.CharField(max_length=64, blank=True)
     revision = models.PositiveIntegerField(default=1)

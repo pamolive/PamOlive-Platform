@@ -4,6 +4,16 @@ Le module PAM comprend une autorisation temporaire et des relais SSH et RDP/NLA 
 
 ## Parcours administrateur puis opérateur
 
+### Liaison des identifiants et du mandat
+
+Le secret chiffré porte un sceau sur l’organisation, la cible, le compte et son nom de connexion, la ressource, le protocole, l’hôte, le port, le domaine, le mode d’authentification et l’empreinte du pair. Une modification de cette identité exige la saisie explicite d’identifiants pour la nouvelle destination, puis un test et une activation séparés. Les sondes ne déchiffrent aucun secret de compte.
+
+La demande conserve la cible et son empreinte dans son périmètre signé. Le réviseur voit ces valeurs. Un changement de cible invalide le mandat pour l’ouverture d’un relais, même après un retour à l’ancienne adresse et à l’ancienne empreinte. Une rotation du secret sur la même identité conserve le mandat, mais invalide les tickets et relais de la révision précédente.
+
+À la mise à niveau, les secrets existants doivent être saisis à nouveau et les anciennes demandes doivent être recréées pour ouvrir un relais. Les anciennes captures et signatures gardent leur format et restent vérifiables. Un bail logique sans cible figée conserve ses usages de gouvernance. Pour ouvrir le transport, créer la demande après configuration de la cible.
+
+### Étapes
+
 1. Autoriser côté déploiement un couple exact `hôte:port` dans `PAMOLIVE_TARGET_HOSTS` et son réseau dans `PAMOLIVE_TARGET_NETWORKS`. Préférer une IP `/32` ou `/128`. Les deux listes sont obligatoires ; elles sont vides initialement. Les destinations de métadonnées, link-local, multicast et les contournements IPv4-mappés sont refusés.
 2. Activer IAM, Accès, Approbations et PAM pour l’organisation. Créer la personne intervenante et les personnes approbatrices dans IAM, puis leurs liens explicites dans **Identités → Liens comptes / personnes** (également accessible depuis Paramètres ou Accès privilégiés). Chacun doit avoir une appartenance active et sa MFA personnelle. Créer la ressource serveur/appareil/cloud et le compte externe privilégié ou technique ; pour un compte partagé, son propriétaire reste une identité technique distincte.
 3. Dans **Accès privilégiés → Cibles**, configurer le DNS/IP, le port, la clé publique SSH d’hôte attendue obtenue par un canal indépendant et le secret distant. Une clé privée SSH peut être fournie ; sa phrase de déverrouillage n’est utilisée qu’à l’import. Les secrets sont chiffrés en base et ne sont jamais réaffichés dans le formulaire.
@@ -87,6 +97,8 @@ Les tests de service couvrent l’isolation organisationnelle, le nonce, les rô
 `tests.test_pam_rdp_e2e` fait de même avec un peer FreeRDP/NLA factice : refus de pin et de mot de passe, contrôle des identifiants délégués par CredSSP après vérification NTLM, clavier et pixels réellement produits par la cible, MFA périmée sans interruption, coupures par déconnexion/expiration/désactivation, puis lecture des blocs chiffrés. Une cible leurre surveille l’adresse d’une redirection ; le test exige aussi la preuve que le hook natif de refus a été exécuté. Le peer, son SAM temporaire et Pillow restent dans l’image de tests, pas dans l’image de production. Aucun compte Windows ni shell système n’est créé.
 
 `deploy.check_runtime` vérifie les UID, les capacités et l’absence de secrets applicatifs dans l’environnement natif.
+
+P0-3 ajoute le [registre PAM sous contrôle partagé](pam-trust-operations.md). La demande, le vote et l’ouverture requièrent chacun une preuve WebAuthn de la personne attestée. Les comptes ordinaires, le TOTP et leur récupération ne donnent aucune voix PAM. Le bail, le ticket, le claim, le démarrage et le contrôle continu relisent la confiance actuelle. La remise du secret recharge le relais revendiqué sous le même verrou d’organisation que les révocations. Les anciennes preuves et captures restent lisibles, mais les anciens mandats doivent être recréés après commissionnement. Un checkpoint absent ou périmé ferme les accès.
 
 Les portes SSH et RDP couvrent chacune un compte technique partagé, puis la révocation de son lien de personne pendant une session réellement établie : le transport est coupé, le compte partagé reste actif et sa capture scellée est relue par un lecteur autorisé. Les tests adverses couvrent les alias de personne, les preuves copiées, les périmètres modifiés et les références inter-organisations. Un test PostgreSQL migre une ancienne base de tests contenant déjà votes, observations, évaluations et audit, puis vérifie leur conservation et le refus d’exécuter l’ancien mandat sans attestation. Ce n’est pas un test de restauration des sauvegardes de production.
 

@@ -8,7 +8,6 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
-from django.utils.crypto import constant_time_compare
 
 from platform_core.audit import record
 from platform_core.models import AuditEvent, Organization
@@ -21,15 +20,39 @@ from platform_modules.access.observations import (
     blocked_context,
     source_snapshot,
 )
-from platform_modules.access.services import evaluate_event
+from platform_modules.access.provenance import (
+    create_provenance_receipt,
+    event_facts_digest,
+    verify_provenance_receipt,
+)
+from platform_modules.access.services import (
+    EventRateLimitResult,
+    _event_quota,
+    _event_storage_quota,
+    evaluate_event,
+)
 
 from .teamviewer_access_models import TeamViewerAccessCursor, TeamViewerAccessObservation
-from .teamviewer_collection import tag
+from .teamviewer_collection import tag, verify_signature
 from .teamviewer_mapping_models import TeamViewerMapping
 from .teamviewer_session_models import TeamViewerSession
 from .teamviewer_sessions import _anchored, _seal, resolve_session, verify_session
 
 SOURCE = "managed:teamviewer"
+INTERNAL_PRINCIPAL = "teamviewer"
+
+
+def _verified_origin(event):
+    # Historic events stay legacy_unknown. Their independently signed session
+    # link is checked by verify_observation below, without upgrading history.
+    if event.provenance_channel == "legacy_unknown":
+        return True
+    if event.provenance_channel != "internal" or event.internal_principal != INTERNAL_PRINCIPAL:
+        return False
+    from platform_modules.access.models import AccessProvenanceReceipt
+
+    receipt = AccessProvenanceReceipt.objects.filter(event=event).first()
+    return bool(receipt and verify_provenance_receipt(receipt))
 
 
 def event_snapshot(event):
@@ -53,6 +76,7 @@ def verify_observation(link):
         return bool(
             link.organization_id == link.session.organization_id == event.organization_id
             and verify_session(link.session)
+            and _verified_origin(event)
             and event.source == SOURCE
             and event.external_id == str(link.session.remote_id)
             and event.occurred_at == report.started_at
@@ -204,10 +228,26 @@ def _ensure_observation(session, organization):
         raise ValidationError("teamviewer_session_invalid")
     if AccessEvent.objects.filter(source=SOURCE, external_id=str(session.remote_id)).exists():
         raise ValidationError("managed_source_collision")
+    # The normalization worker is a trusted internal writer, but its event
+    # volume is bounded like collector ingestion. The organization row is
+    # already locked by normalize_sessions.
+    quota_rows = _event_quota(
+        organization,
+        channel="internal",
+        principal_key=INTERNAL_PRINCIPAL,
+        actor=None,
+    )
+    if isinstance(quota_rows, EventRateLimitResult):
+        return quota_rows
+    storage_limit = _event_storage_quota(quota_rows, actor=None, organization=organization)
+    if storage_limit is not None:
+        return storage_limit
     report = session.origin.report
     event = AccessEvent(
         organization=organization,
         source=SOURCE,
+        provenance_channel="internal",
+        internal_principal=INTERNAL_PRINCIPAL,
         external_id=str(session.remote_id),
         occurred_at=report.started_at,
         ended_at=report.ended_at,
@@ -218,14 +258,16 @@ def _ensure_observation(session, organization):
         result="reported_completed",
         evidence=f"teamviewer-session:{session.pk}",
     )
+    event.facts_schema, event.facts_digest = event_facts_digest(event)
     event.full_clean()
     event.save()
-    record(
+    audit = record(
         organization=organization,
         target=event,
         action="access.event.received.v1",
         summary="Observation source TeamViewer conservée sans attribution implicite",
     )
+    create_provenance_receipt(event, audit)
     link = TeamViewerAccessObservation(organization=organization, session=session, event=event)
     _seal(
         link,
@@ -234,10 +276,13 @@ def _ensure_observation(session, organization):
         "connectors.teamviewer.access.normalized.v1",
         "Événement lié aux preuves de session TeamViewer",
     )
+    for row, _, _ in quota_rows:
+        row.accepted_count += 1
+        row.save(update_fields=["accepted_count"])
     return link
 
 
-def _cursor_signature(cursor):
+def _cursor_signature(cursor, *, key=None):
     return tag(
         dict(
             id=str(cursor.pk),
@@ -246,6 +291,7 @@ def _cursor_signature(cursor):
             checked_at=cursor.checked_at.isoformat(),
         ),
         "access-cursor",
+        key=key,
     )
 
 
@@ -282,7 +328,7 @@ def normalize_sessions(organization, *, limit=5):
         if not TeamViewerSession.objects.exists():
             return 0
         cursor, _ = TeamViewerAccessCursor.objects.get_or_create(organization=organization)
-        if not constant_time_compare(cursor.signature, _cursor_signature(cursor)):
+        if not verify_signature(cursor.signature, _cursor_signature, cursor):
             cursor.last_session_id = None
         query = TeamViewerSession.objects.select_related(
             "audit", "origin__report", "origin__run__audit"
@@ -300,18 +346,22 @@ def normalize_sessions(organization, *, limit=5):
             try:
                 with transaction.atomic():
                     link = _ensure_observation(session, organization)
-                    context = observation_context(link.event, organization=organization)
-                    latest = (
-                        link.event.evaluations.select_related("audit", "event", "intent")
-                        .order_by("-evaluated_at")
-                        .first()
-                    )
-                    if (
-                        not latest
-                        or latest.context_hash != context.fingerprint
-                        or not verify_evaluation(latest)
-                    ):
-                        evaluate_event(link.event, organization=organization)
+                    # _event_quota records the first denial on its persisted
+                    # quota row. Avoid one audit per denied session, which
+                    # would defeat the storage cap during a source flood.
+                    if not isinstance(link, EventRateLimitResult):
+                        context = observation_context(link.event, organization=organization)
+                        latest = (
+                            link.event.evaluations.select_related("audit", "event", "intent")
+                            .order_by("-evaluated_at")
+                            .first()
+                        )
+                        if (
+                            not latest
+                            or latest.context_hash != context.fingerprint
+                            or not verify_evaluation(latest)
+                        ):
+                            evaluate_event(link.event, organization=organization)
             except ValidationError as error:
                 code = (
                     error.messages[0]

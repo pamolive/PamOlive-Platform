@@ -19,8 +19,7 @@ from platform_core.tenancy import organization_context
 from platform_modules.access.models import AccessEvaluation, AccessEvent, AccessIntent
 from platform_modules.access.services import ingest_event, reevaluate_event
 from platform_modules.access.temporal import MAX_SEGMENTS
-from platform_modules.connectors.models import EventSource
-from platform_modules.connectors.services import create_source
+from platform_modules.connectors.services import create_source, source_from_token
 from platform_modules.governance.models import (
     ApprovalPolicyRevision,
     ContractParticipant,
@@ -131,7 +130,7 @@ class AccessIntervalTests(TestCase):
                 )
             )
 
-    def observed(self, **changes):
+    def observed(self, *, collector=None, collector_token=None, **changes):
         return ingest_event(
             dict(
                 source="interval-fixture",
@@ -148,7 +147,10 @@ class AccessIntervalTests(TestCase):
             )
             | changes,
             organization=self.org,
-            actor=self.admin,
+            **(
+                {"source": collector, "source_token": collector_token}
+                if collector is not None else {"actor": self.admin}
+            ),
         )[0]
 
     def evaluation(self, event):
@@ -498,9 +500,7 @@ class AccessIntervalTests(TestCase):
 
     def test_clock_uncertainty_also_checks_temporary_grant_expiration(self):
         self.grant(expires_at=self.end)
-        source = EventSource.objects.create(
-            organization=self.org, name="Grant clock", token_hash="e" * 64
-        )
+        source, token = create_source("Grant clock", actor=self.admin, organization=self.org)
         scope = CollectionScope.objects.create(
             organization=self.org,
             source=source,
@@ -518,7 +518,11 @@ class AccessIntervalTests(TestCase):
             state="complete",
             clock_uncertainty_seconds=2,
         )
-        evaluation = self.evaluation(self.observed(source=str(source.pk)))
+        evaluation = self.evaluation(
+            self.observed(
+                collector=source_from_token(token), collector_token=token, source=str(source.pk)
+            )
+        )
         self.assertEqual(evaluation.verdict, "unknown")
         self.assertTrue(any(item["code"] == "time_boundary" for item in evaluation.findings))
 
@@ -557,9 +561,7 @@ class AccessIntervalTests(TestCase):
 
     def test_clock_uncertainty_covers_observed_end_and_half_open_equality(self):
         self.intent()
-        source = EventSource.objects.create(
-            organization=self.org, name="Clock fixture", token_hash="f" * 64
-        )
+        source, token = create_source("Clock fixture", actor=self.admin, organization=self.org)
         scope = CollectionScope.objects.create(
             organization=self.org,
             source=source,
@@ -577,7 +579,9 @@ class AccessIntervalTests(TestCase):
             state="complete",
             clock_uncertainty_seconds=0,
         )
-        event = self.observed(source=str(source.pk))
+        event = self.observed(
+            collector=source_from_token(token), collector_token=token, source=str(source.pk)
+        )
         self.assertEqual(self.evaluation(event).verdict, "expected")
         CollectionReport.objects.create(
             organization=self.org,
@@ -676,11 +680,15 @@ class AccessIntervalTests(TestCase):
                     "(id, organization_id, source, external_id, occurred_at, ended_at, "
                     "received_at, resource_id, method, action, location, privilege, "
                     "result, country_code, evidence, "
-                    "domain, network_port, network_vlan, credential_observation) "
+                    "domain, network_port, network_vlan, credential_observation, "
+                    "provenance_channel, collector_source_id, manual_actor_id, "
+                    "internal_principal, facts_schema, facts_digest) "
                     "SELECT gen_random_uuid(), organization_id, source, 'negative', occurred_at, "
                     "occurred_at - interval '1 second', received_at, resource_id, method, action, "
                     "location, privilege, result, country_code, evidence, domain, network_port, "
-                    "network_vlan, credential_observation FROM access_accessevent WHERE id = %s",
+                    "network_vlan, credential_observation, provenance_channel, "
+                    "collector_source_id, manual_actor_id, internal_principal, facts_schema, "
+                    "facts_digest FROM access_accessevent WHERE id = %s",
                     [event.pk],
                 )
         self.assertEqual(raised.exception.__cause__.sqlstate, "23514")

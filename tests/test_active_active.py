@@ -1,7 +1,9 @@
+import json
+import subprocess
 from copy import deepcopy
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, Mock, call, patch
 
 from websockets.exceptions import ConnectionClosed
 
@@ -12,7 +14,9 @@ from deploy.check_active_active import (
     Browser,
     CSRFParser,
     Qualification,
+    partition_scope,
     safe_relay_state,
+    subprocess_category,
     totp,
     validate_configuration,
     validate_rdp_network,
@@ -41,6 +45,34 @@ def configuration():
     return {"services": services}
 
 
+def partition_topology():
+    network, name = "a" * 64, "private-postgresql"
+    a, b, db = "b" * 64, "c" * 64, "d" * 64
+    ips = {a: "172.20.0.2", b: "172.20.0.3", db: "172.20.0.4"}
+    info = {
+        "Name": name,
+        "Id": network,
+        "Driver": "bridge",
+        "Containers": {key: {"IPv4Address": ip + "/16"} for key, ip in ips.items()},
+    }
+    nodes = [
+        {
+            "Id": key,
+            "State": {"StartedAt": "fixture-start"},
+            "HostConfig": {"NetworkMode": PROJECT + "_default"},
+            "NetworkSettings": {
+                "SandboxKey": "/var/run/docker/netns/" + key[:12],
+                "Networks": {
+                    PROJECT + "_default": {},
+                    name: {"NetworkID": network, "IPAddress": ips[key], "Aliases": ["node-" + tag]},
+                },
+            },
+        }
+        for key, tag in ((a, "a"), (b, "b"))
+    ]
+    return info, *nodes, {"client": ips[a], "server": ips[db]}
+
+
 class RDPKeepaliveTests(IsolatedAsyncioTestCase):
     async def test_browser_protocol_keepalive_only_sends_nop_and_exits_when_closed(self):
         websocket = SimpleNamespace(
@@ -53,6 +85,145 @@ class RDPKeepaliveTests(IsolatedAsyncioTestCase):
 
 
 class ActiveActiveGuardTests(TestCase):
+    def test_partition_only_targets_a_database_route_proved_on_the_external_bridge(self):
+        info, a, b, route = partition_topology()
+        self.assertEqual(
+            partition_scope(info, a, b, route),
+            (a["NetworkSettings"]["SandboxKey"], route["server"] + "/32"),
+        )
+        for mutation in (
+            {"client": "172.17.0.1"},
+            {"server": "172.17.0.1"},
+            {"server": route["client"]},
+            {"server": None},
+        ):
+            with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
+                partition_scope(info, a, b, {**route, **mutation})
+        for mutation in (
+            {"Name": PROJECT + "_default"},
+            {"Driver": "host"},
+            {"Containers": {a["Id"]: info["Containers"][a["Id"]]}},
+        ):
+            with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
+                partition_scope({**info, **mutation}, a, b, route)
+
+        for namespace in ("/proc/1/ns/net", b["NetworkSettings"]["SandboxKey"], ""):
+            bad = deepcopy(a)
+            bad["NetworkSettings"]["SandboxKey"] = namespace
+            with self.subTest(namespace=namespace), self.assertRaises(RuntimeError):
+                partition_scope(info, bad, b, route)
+
+    def test_partition_removes_only_owned_route_even_when_probe_fails(self):
+        info, a, b, route = partition_topology()
+        check = Qualification("docker", "/not-used", database_partition=True)
+        with (
+            patch.object(check, "command", side_effect=[json.dumps([info]), "", "", ""]) as command,
+            patch.object(check, "node", side_effect=[(a["Id"], a), (b["Id"], b), (a["Id"], a)]),
+            patch.object(check, "fixture", side_effect=[route, {}, {"health": 200, "ingest": 201}]),
+            self.assertRaisesRegex(RuntimeError, "must fail its health check"),
+        ):
+            check.check_database_partition(
+                info["Name"], 1234, Mock(), {"run": "run", "source_token": "fixture-only"}, {}
+            )
+        prefix = (
+            "sudo",
+            "-n",
+            "nsenter",
+            "--net=" + a["NetworkSettings"]["SandboxKey"],
+            "ip",
+            "-4",
+            "route",
+        )
+        destination = route["server"] + "/32"
+        self.assertEqual(
+            command.call_args_list,
+            [
+                call("docker", "network", "inspect", info["Name"]),
+                call(*prefix, "show", "exact", destination),
+                call(*prefix, "add", "unreachable", destination, "proto", "static"),
+                call(*prefix, "del", "unreachable", destination, "proto", "static"),
+            ],
+        )
+
+    def test_partition_refuses_to_replace_existing_database_route(self):
+        info, a, b, route = partition_topology()
+        check = Qualification("docker", "/not-used", database_partition=True)
+        with (
+            patch.object(
+                check, "command", side_effect=[json.dumps([info]), "existing route"]
+            ) as command,
+            patch.object(check, "node", side_effect=[(a["Id"], a), (b["Id"], b)]),
+            patch.object(check, "fixture", return_value=route),
+            self.assertRaisesRegex(RuntimeError, "existing database host route"),
+        ):
+            check.check_database_partition(info["Name"], 1234, Mock(), {}, {})
+        self.assertEqual(command.call_count, 2)
+
+    def test_route_cleanup_failure_keeps_the_primary_error_and_safe_category(self):
+        info, a, b, route = partition_topology()
+        check = Qualification("docker", "/not-used", database_partition=True)
+        primary = RuntimeError("Synthetic primary probe failure")
+        cleanup = subprocess.CalledProcessError(
+            1, ["fixed-fixture-command"], stderr="nsenter: cannot open synthetic-private-path"
+        )
+        with (
+            patch.object(check, "command", side_effect=[json.dumps([info]), "", "", cleanup]),
+            patch.object(check, "node", side_effect=[(a["Id"], a), (b["Id"], b), (a["Id"], a)]),
+            patch.object(check, "fixture", side_effect=[route, {}, primary]),
+            self.assertRaises(RuntimeError) as raised,
+        ):
+            check.check_database_partition(
+                info["Name"], 1234, Mock(), {"run": "run", "source_token": "synthetic"}, {}
+            )
+        self.assertIs(raised.exception, primary)
+        self.assertEqual(check.stage, "probe isolated A loopback HTTP health and ingestion")
+        self.assertEqual(check.secondary_failures, [{
+            "stage": "remove only the installed database route",
+            "error": "CalledProcessError", "category": "namespace-unavailable",
+        }])
+        self.assertNotIn("synthetic-private-path", json.dumps(check.secondary_failures))
+
+    def test_subprocess_diagnostics_never_echo_raw_stderr(self):
+        error = subprocess.CalledProcessError(
+            1, ["synthetic"], stderr=b"Container synthetic-private-name is not running"
+        )
+        self.assertEqual(subprocess_category(error), "container-not-running")
+        self.assertEqual(subprocess_category(ValueError("synthetic-secret")), "unknown")
+
+    def test_partition_survivor_commits_then_recovered_node_deduplicates_the_exact_event(self):
+        info, a, b, route = partition_topology()
+        nodes = [(a["Id"], a), (b["Id"], b), (a["Id"], a), (a["Id"], a)]
+        initial = {"events": 2, "received_audits": 2, "other_events": 0, "audit_valid": True}
+        final = {**initial, "events": 3, "received_audits": 3}
+        event_body = json.dumps({"event_id": "fixture-event"})
+        browser = Mock()
+        browser.request.return_value = (200, None, "")
+        check = Qualification("docker", "/not-used", database_partition=True)
+        with (
+            patch.object(check, "command", side_effect=[json.dumps([info]), "", "", ""]),
+            patch.object(check, "node", side_effect=nodes),
+            patch.object(
+                check,
+                "fixture",
+                side_effect=[route, initial, {"health": 503, "ingest": 500}, initial, final],
+            ),
+            patch.object(check, "wait_ready", return_value=4321),
+            patch("deploy.check_active_active.Browser") as peer,
+        ):
+            peer.return_value.request.side_effect = [
+                (200, None, ""),
+                (201, None, event_body),
+                (200, None, event_body),
+            ]
+            report = check.check_database_partition(
+                info["Name"], 1234, browser, {"run": "run", "source_token": "fixture-only"}, {}
+            )
+        self.assertTrue(all(report.values()))
+        write, replay = peer.return_value.request.call_args_list[1:]
+        self.assertEqual(write.args, (1234, "/api/v1/events/"))
+        self.assertEqual(replay.args, (4321, "/api/v1/events/"))
+        self.assertEqual(write.kwargs, replay.kwargs)
+
     def test_rdp_state_diagnostics_report_only_known_values(self):
         self.assertEqual(
             safe_relay_state(["failed", "qualification-a", "relay_owner_lost", False, True]),
@@ -140,7 +311,7 @@ class ActiveActiveGuardTests(TestCase):
 
     def test_fixture_refuses_sqlite_and_every_nonqualification_database(self):
         with patch.dict("os.environ", {"PAMOLIVE_HA_QUALIFICATION": "1"}):
-            with self.assertRaises(RuntimeError):
+            with patch("django.db.connection.vendor", "sqlite"), self.assertRaises(RuntimeError):
                 require_test_database()
             with patch("django.db.connection.vendor", "postgresql"):
                 for name in (

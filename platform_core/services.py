@@ -1,10 +1,11 @@
+from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import transaction
+from django.db import connection, transaction
 
 from .audit import record
 from .models import ModuleActivation, Organization, OrganizationMembership
 from .registry import ModuleDependencyError, all_modules, dependency_closure, get_module
-from .tenancy import current_organization, enforce_federated_scope
+from .tenancy import current_organization, enforce_federated_scope, organization_context
 
 
 def authorize(actor, organization, *, roles=("admin", "operator")):
@@ -21,6 +22,27 @@ def authorize(actor, organization, *, roles=("admin", "operator")):
         organization__active=True,
     ).exists():
         raise PermissionDenied("Droit insuffisant dans cette organisation.")
+
+
+def lock_authorized_actor(actor, organization, *, roles=("admin", "operator")):
+    """Revalidate mutation authority after the shared membership/activation lock.
+
+    The caller owns the transaction for the entire protected mutation. Returning
+    refreshed objects prevents a request's cached account or organization flags
+    from retaining authority after a concurrent administrative revocation.
+    """
+    if not connection.in_atomic_block or current_organization().pk != organization.pk:
+        raise PermissionDenied("Cette opération exige une transaction organisationnelle.")
+    organization = (
+        Organization.objects.select_for_update().filter(pk=organization.pk, active=True).first()
+    )
+    if organization is None or actor is None:
+        raise PermissionDenied
+    actor = get_user_model().objects.filter(pk=actor.pk, is_active=True).first()
+    if actor is None:
+        raise PermissionDenied
+    authorize(actor, organization, roles=roles)
+    return actor, organization
 
 
 def require_module(organization, key):
@@ -117,8 +139,10 @@ def module_catalog(organization=None):
 @transaction.atomic
 def install_module(module_key, *, actor, organization=None, request=None):
     organization = organization or current_organization()
-    authorize(actor, organization, roles=("admin",))
-    Organization.objects.select_for_update().get(pk=organization.pk)
+    # Explicit organization administration is also used before a UI context
+    # exists (bootstrap). Federation remains checked by the shared authorizer.
+    with organization_context(organization):
+        actor, organization = lock_authorized_actor(actor, organization, roles=("admin",))
     definition = get_module(module_key)
     if not definition:
         raise ValidationError("Module inconnu ou paquet absent de ce déploiement.")
@@ -187,13 +211,13 @@ def install_module(module_key, *, actor, organization=None, request=None):
 @transaction.atomic
 def disable_module(module_key, *, actor, organization=None, request=None):
     organization = organization or current_organization()
-    authorize(actor, organization, roles=("admin",))
+    with organization_context(organization):
+        actor, organization = lock_authorized_actor(actor, organization, roles=("admin",))
     definition = get_module(module_key)
     if definition and definition.metadata.get("extension_release"):
         from .authorization import require_recent_authentication
 
         require_recent_authentication(actor, organization)
-    Organization.objects.select_for_update().get(pk=organization.pk)
     dependents = [
         d.name
         for d in all_modules()

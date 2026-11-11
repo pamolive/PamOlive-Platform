@@ -1,6 +1,7 @@
 """Native forms for business role publication, preparation and independent review."""
 
 import hashlib
+from uuid import UUID
 
 from django import forms
 from django.contrib import messages
@@ -14,17 +15,11 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from platform_core.attestations import canonical
-from platform_core.models import ModuleActivation, OrganizationMembership
+from platform_core.models import OrganizationMembership
 from platform_core.security import ensure_recent
-from platform_core.services import require_module
-from platform_modules.access.ui import scoped
-from platform_modules.connectors.business_models import BusinessSource
-from platform_modules.connectors.business_references import (
-    MAX_REFERENCES,
-    preview_references,
-    reference_context,
-)
+from platform_core.view_access import scoped
 
+from . import business_port
 from .models import ExternalAccount, Identity, Resource
 from .mover import (
     current_move,
@@ -187,24 +182,22 @@ class MoveForm(forms.Form):
 
 
 class SourceReferenceForm(forms.Form):
-    source = forms.ModelChoiceField(
+    source = forms.TypedChoiceField(
         label="Source métier",
-        queryset=BusinessSource.unscoped.none(),
+        coerce=UUID,
+        empty_value=None,
         required=False,
     )
     external_id = forms.CharField(
         label="Identifiant dans cette source", max_length=180, required=False
     )
 
-    def __init__(self, *args, enabled, **kwargs):
+    def __init__(self, *args, sources, **kwargs):
         super().__init__(*args, **kwargs)
-        if enabled:
-            self.fields["source"].queryset = BusinessSource.objects.filter(active=True).order_by(
-                "key"
-            )
-            self.fields["source"].label_from_instance = (
-                lambda source: f"{source.name} · {source.key}"
-            )
+        self.fields["source"].choices = [
+            ("", "---------"),
+            *((str(item.id), f"{item.name} · {item.key}") for item in sources),
+        ]
 
     def clean(self):
         data = super().clean()
@@ -215,9 +208,9 @@ class SourceReferenceForm(forms.Form):
 
 SourceReferences = forms.formset_factory(
     SourceReferenceForm,
-    extra=MAX_REFERENCES,
-    max_num=MAX_REFERENCES,
-    absolute_max=MAX_REFERENCES,
+    extra=business_port.MAX_REFERENCES,
+    max_num=business_port.MAX_REFERENCES,
+    absolute_max=business_port.MAX_REFERENCES,
     validate_max=True,
 )
 PREVIEW_SALT = "pamolive.mover.business.preview/1"
@@ -259,7 +252,10 @@ def _submit_or_preview(request, identity, form, references):
     if command == "preview":
         if not references:
             raise ValidationError("Sélectionnez au moins un dossier à examiner.")
-        readings = preview_references(references, organization=request.organization)
+        provider = business_port.active_provider(request.organization)
+        readings = provider.preview_references(references, organization=request.organization)
+        if len(readings) != len(references):
+            raise ValidationError("Le fournisseur n’a pas confirmé les lectures sélectionnées.")
         return (
             None,
             readings,
@@ -315,15 +311,18 @@ def prepare(request, identity_id):
     )
     picker.fields["roles"] = choice
     form = None
-    business_enabled = ModuleActivation.objects.filter(
-        organization=request.organization,
-        module_key="connectors",
-        enabled=True,
-    ).exists()
+    business_enabled = business_port.available(request.organization)
+    sources = (
+        business_port.active_provider(request.organization).source_choices(
+            organization=request.organization
+        )
+        if business_enabled
+        else ()
+    )
     references = SourceReferences(
         request.POST if any(key.startswith("business-") for key in request.POST) else None,
         prefix="business",
-        form_kwargs={"enabled": business_enabled},
+        form_kwargs={"sources": sources},
     )
     preview, preview_token = [], ""
     if picker.is_bound and picker.is_valid():
@@ -350,7 +349,7 @@ def prepare(request, identity_id):
                 try:
                     chosen = (
                         [
-                            (item["source"].pk, item["external_id"])
+                            (item["source"], item["external_id"])
                             for item in references.cleaned_data
                             if item.get("source")
                         ]
@@ -435,7 +434,7 @@ def detail(request, proposal_id):
 
 @scoped("identity")
 def business_proof(request, proposal_id, *, export=False):
-    require_module(request.organization, "connectors")
+    provider = business_port.active_provider(request.organization)
     proposal = get_object_or_404(MoveProposal.objects.select_related("audit"), pk=proposal_id)
     if not verified(proposal):
         raise PermissionDenied("Preuve de proposition invalide.")
@@ -453,7 +452,7 @@ def business_proof(request, proposal_id, *, export=False):
     ):
         raise PermissionDenied("Preuve de décision invalide.")
     try:
-        context = reference_context(
+        context = provider.reference_context(
             proposal.body["business"],
             decision.body.get("business_checked") if decision else None,
             organization=request.organization,

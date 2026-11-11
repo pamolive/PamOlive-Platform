@@ -12,6 +12,7 @@ from cryptography import x509
 from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, ed25519, padding, rsa
+from django.conf import settings
 from django.core import signing
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import connection, transaction
@@ -25,6 +26,7 @@ from platform_modules.connectors.models import EventSource
 from platform_modules.connectors.services import source_from_token
 from platform_modules.identity.models import Credential
 
+from .evidence import _sign_with_key
 from .models import AccessEvent
 from .observations import sign, source_snapshot
 
@@ -67,6 +69,21 @@ def _message(payload):
 
 def _sha(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def _valid_historical_seal(body, seal):
+    """Verify the unchanged V1 proof with retained installation keys."""
+    if not isinstance(seal, str):
+        return False
+    keys = (
+        settings.SECRET_KEY,
+        *getattr(settings, "PAMOLIVE_EVIDENCE_VERIFICATION_KEYS", ()),
+    )
+    return any(
+        hmac.compare_digest(seal, _sign_with_key(body, "certificate-possession", key))
+        for key in dict.fromkeys(keys)
+        if isinstance(key, str) and key
+    )
 
 
 def _encode(data):
@@ -150,16 +167,36 @@ def _receipts(event, action):
 
 def _token_ingested(event):
     receipts = _receipts(event, "access.event.received.v1")
-    return (
+    audited = (
         len(receipts) == 1
         and receipts[0].actor_id is None
         and receipts[0].event_hash == digest(receipts[0])
     )
+    if not audited:
+        return False
+    if event.provenance_channel == "legacy_unknown":
+        # Permit verification of a proof issued before the P0-4 migration.
+        # _scope refuses new challenges for legacy rows below.
+        return bool(_receipts(event, ACTION))
+    if event.provenance_channel != "collector" or not event.collector_source_id:
+        return False
+    from .models import AccessProvenanceReceipt
+    from .provenance import verify_provenance_receipt
+
+    receipt = AccessProvenanceReceipt.unscoped.filter(
+        event=event, organization_id=event.organization_id, audit=receipts[0]
+    ).first()
+    return bool(receipt and verify_provenance_receipt(receipt))
 
 
 def _scope(source, event_id, now):
     event = AccessEvent.objects.filter(
-        pk=event_id, source=str(source.pk), domain="certificate", credential__isnull=False
+        pk=event_id,
+        source=str(source.pk),
+        provenance_channel="collector",
+        collector_source=source,
+        domain="certificate",
+        credential__isnull=False,
     ).first()
     if event is None:
         raise Unavailable
@@ -320,9 +357,7 @@ def summary(event):
             }
             if (
                 proof.event_hash == digest(proof)
-                and hmac.compare_digest(
-                    proof.metadata["seal"], sign(body, "certificate-possession")
-                )
+                and _valid_historical_seal(body, proof.metadata["seal"])
                 and all(payload[key] == value for key, value in bound.items())
                 and timezone.is_aware(verified_at)
                 and type(payload["issued_at"]) is int

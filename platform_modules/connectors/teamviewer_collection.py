@@ -32,12 +32,27 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
 
 
-def tag(value, domain):
+def tag(value, domain, *, key=None):
     return hmac.new(
-        settings.SECRET_KEY.encode(),
+        (settings.SECRET_KEY if key is None else key).encode(),
         ("pamolive.teamviewer." + domain + ".v1\0").encode() + canonical(value),
         "sha256",
     ).hexdigest()
+
+
+def verify_tag(value, domain, signature):
+    """Verify an existing V1 seal with active or retired evidence keys."""
+    if not isinstance(signature, str) or len(signature) != 64:
+        return False
+    keys = (settings.SECRET_KEY, *getattr(settings, "PAMOLIVE_EVIDENCE_VERIFICATION_KEYS", ()))
+    return any(constant_time_compare(signature, tag(value, domain, key=key)) for key in keys)
+
+
+def verify_signature(signature, signer, *args):
+    if not isinstance(signature, str) or len(signature) != 64:
+        return False
+    keys = (settings.SECRET_KEY, *getattr(settings, "PAMOLIVE_EVIDENCE_VERIFICATION_KEYS", ()))
+    return any(constant_time_compare(signature, signer(*args, key=key)) for key in keys)
 
 
 def _admin(actor, organization):
@@ -186,7 +201,7 @@ def collector_config(collector):
     )
 
 
-def config_proof(collector):
+def config_proof(collector, *, key=None):
     return tag(
         dict(
             id=str(collector.pk),
@@ -201,6 +216,7 @@ def config_proof(collector):
             mfa_window=collector.mfa_window_minutes,
         ),
         "configuration",
+        key=key,
     )
 
 
@@ -213,8 +229,8 @@ def verify_configuration(collector):
             <= (collector.configured_at - collector.mfa_verified_at).total_seconds()
             < collector.mfa_window_minutes * 60
             and collector.tested_at <= collector.configured_at <= timezone.now()
-            and constant_time_compare(collector.config_hash, tag(config, "config"))
-            and constant_time_compare(collector.config_proof, config_proof(collector))
+            and verify_tag(config, "config", collector.config_hash)
+            and verify_signature(collector.config_proof, config_proof, collector)
         )
     except (InvalidToken, ValueError, TypeError, AttributeError):
         return False
@@ -224,7 +240,7 @@ def ready(collector):
     return bool(collector.organization.active and verify_configuration(collector))
 
 
-def activation_proof(collector):
+def activation_proof(collector, *, key=None):
     return tag(
         dict(
             id=str(collector.pk),
@@ -235,6 +251,7 @@ def activation_proof(collector):
             activation=collector.activation,
         ),
         "activation",
+        key=key,
     )
 
 
@@ -251,7 +268,7 @@ def verify_activation(collector):
             and proof["window"] in {2, 5, 10, 15}
             and 0 <= (at - mfa_at).total_seconds() < proof["window"] * 60
             and at <= timezone.now()
-            and constant_time_compare(collector.activation_proof, activation_proof(collector))
+            and verify_signature(collector.activation_proof, activation_proof, collector)
         )
     except (ValueError, TypeError, KeyError, AttributeError, IntegrationFailure):
         return False
@@ -269,7 +286,7 @@ def enabled_ready(collector):
     )
 
 
-def scan_proof(collector):
+def scan_proof(collector, *, key=None):
     return tag(
         dict(
             collector=str(collector.pk),
@@ -281,6 +298,7 @@ def scan_proof(collector):
             last_end=collector.scan_last_end.isoformat() if collector.scan_last_end else None,
         ),
         "scan",
+        key=key,
     )
 
 

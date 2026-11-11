@@ -14,7 +14,6 @@ from django.utils.crypto import constant_time_compare
 from platform_core.audit import record
 from platform_core.authorization import assurance_datetime, require_recent_authentication
 from platform_core.models import Organization
-from platform_core.security import cipher
 from platform_core.services import authorize, module_available, require_module
 from platform_core.tenancy import current_organization, organization_context
 from platform_modules.access.models import AccessIntent
@@ -29,6 +28,7 @@ from .creation_models import (
 )
 from .models import AccountBinding, ExternalChange, GroupBinding, ProvisioningConnector
 from .scim import IntegrationFailure, ScimAdapter
+from .scim_credentials import connector_token
 
 REQUEST_ACTION = "connectors.account_creation.requested.v1"
 DISPATCH_ACTION = "connectors.account_creation.reserved.v1"
@@ -600,7 +600,7 @@ def process_creations(organization, *, limit=1):
                 req = claim.request
                 adapter = ScimAdapter(
                     req.connector.base_url,
-                    cipher().decrypt(req.connector.encrypted_token.encode()).decode(),
+                    connector_token(req.connector),
                     before_write=lambda: _reserve_creation(claim, organization),
                 )
                 dispatch = ScimCreationDispatch.objects.filter(job=claim).first()

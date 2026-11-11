@@ -46,7 +46,7 @@ def main():
                 "PAMOLIVE_EXTENSION_CATALOG": str(catalog),
                 "PAMOLIVE_EXTENSION_TRUST_KEYS": json.dumps(trust),
                 "SECRET_KEY": "isolated-extension-gate-only",
-                "PAMOLIVE_ENCRYPTION_KEY": "isolated-extension-gate-only",
+                "PAMOLIVE_ENCRYPTION_KEY": "synthetic-key-for-isolated-extension-tests-only",
             }
         )
         if options.postgres:

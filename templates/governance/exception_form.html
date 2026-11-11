@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Enregistrer une exception de gouvernance</h1>
+<p>Ce registre suit une justification et ses mesures compensatoires. Une acceptation ne crée aucun droit et ne déroge jamais aux politiques, à la séparation des tâches ou au quorum PAM.</p>
+<p>Un autre compte habilité doit examiner la demande. La durée est limitée à trente jours ; une MFA récente est nécessaire.</p>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Soumettre pour examen</button></form>
+<p><a href="{% url 'governance-workspace' %}">Revenir à la gouvernance</a></p>
+{% endblock %}

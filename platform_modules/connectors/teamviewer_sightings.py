@@ -4,18 +4,17 @@ import logging
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.utils.crypto import constant_time_compare
 
 from platform_core.models import Organization
 from platform_core.services import require_module
 from platform_core.tenancy import organization_context
 
-from .teamviewer_collection import tag
+from .teamviewer_collection import tag, verify_signature
 from .teamviewer_mapping_models import TeamViewerSighting
 from .teamviewer_models import TeamViewerRun
 
 
-def sighting_signature(sighting):
+def sighting_signature(sighting, *, key=None):
     return tag(
         dict(
             id=str(sighting.pk),
@@ -28,6 +27,7 @@ def sighting_signature(sighting):
             indexed_at=sighting.indexed_at.isoformat(),
         ),
         "sighting",
+        key=key,
     )
 
 
@@ -43,7 +43,7 @@ def _verify_sighting_link(sighting):
                 item == dict(id=str(sighting.report_id), signature=sighting.report.signature)
                 for item in sighting.run.report_manifest
             )
-            and constant_time_compare(sighting.signature, sighting_signature(sighting))
+            and verify_signature(sighting.signature, sighting_signature, sighting)
         )
     except (ValueError, TypeError, AttributeError, KeyError, ValidationError):
         return False

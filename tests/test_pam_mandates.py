@@ -1,4 +1,6 @@
 import time
+import uuid
+from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 from unittest import skipUnless
 from unittest.mock import patch
@@ -33,6 +35,7 @@ from platform_modules.pam.mandates import account_snapshot, authorized_at, scope
 from platform_modules.pam.services import open_lease
 
 from . import test_platform as baseline
+from .pam_trust_fixtures import TrustFixture
 
 
 class PersonMandateTests(TestCase):
@@ -71,12 +74,23 @@ class PersonMandateTests(TestCase):
                 actor=self.admin,
                 organization=self.org,
             )
+        endpoints = [
+            baseline.synthetic_pam_endpoint(self.org, self.resource, account)
+            for account in (self.account, self.shared)
+        ]
+        self.trust = TrustFixture(self, self.org, endpoints, [
+            (self.operator, self.identity, ["requester"]),
+            (self.reviewer, self.reviewer_person, ["reviewer", "sponsor"]),
+        ])
 
     def assurance(self):
         return recent_authentication(self.admin, self.org, time.time())
 
     def request(self, **changes):
-        with recent_authentication(self.operator, self.org, time.time()):
+        with (
+            recent_authentication(self.operator, self.org, time.time()),
+            self.trust.personal_action(self.operator),
+        ):
             return create_record(
                 "intent",
                 {
@@ -97,7 +111,11 @@ class PersonMandateTests(TestCase):
 
     def approve(self, intent, actor=None):
         actor = actor or self.reviewer
-        with recent_authentication(actor, self.org, time.time()):
+        personal = (
+            self.trust.personal_action(actor) if actor.pk in self.trust.authenticators
+            else nullcontext()
+        )
+        with recent_authentication(actor, self.org, time.time()), personal:
             decision = decide(
                 intent.pk,
                 actor=actor,
@@ -108,7 +126,7 @@ class PersonMandateTests(TestCase):
         intent.refresh_from_db()
         return decision
 
-    def linked_user(self, username, identity=None, role="reviewer"):
+    def linked_user(self, username, identity=None, role="reviewer", *, attest=False):
         account = get_user_model().objects.create_user(username, password="fixture-password")
         AccountSecurity.objects.create(
             account=account,
@@ -126,6 +144,39 @@ class PersonMandateTests(TestCase):
                 actor=self.admin,
                 organization=self.org,
             )
+        if attest:
+            canonical = next((
+                person_id for person_id, person in self.trust.body["persons"].items()
+                if str(identity.pk) in person["identity_ids"]
+            ), None)
+            if canonical:
+                source_account = next(
+                    account_id for account_id, person_id in self.trust.people.items()
+                    if person_id == canonical
+                )
+
+                def add_alias(body):
+                    person = body["persons"][canonical]
+                    person["account_ids"].append(str(account.pk))
+                    if role not in person["roles"]:
+                        person["roles"].append(role)
+
+                self.trust.update(add_alias)
+                self.trust.people[account.pk] = canonical
+                self.trust.authenticators[account.pk] = self.trust.authenticators[source_account]
+            else:
+                canonical = str(uuid.uuid4())
+
+                def add_person(body):
+                    body["persons"][canonical] = {
+                        "active": True, "identity_ids": [str(identity.pk)],
+                        "account_ids": [str(account.pk)], "roles": [role],
+                        "endpoint_ids": list(body["targets"]), "authenticators": [],
+                    }
+
+                self.trust.update(add_person)
+                self.trust.people[account.pk] = canonical
+                self.trust.enroll(account)
         return account, binding
 
     def policy(self, minimum):
@@ -292,7 +343,7 @@ class PersonMandateTests(TestCase):
             self.request(account=personal)
 
     def test_self_approval_through_a_second_login_is_rejected(self):
-        alias, _ = self.linked_user("requester-alias", identity=self.identity)
+        alias, _ = self.linked_user("requester-alias", identity=self.identity, attest=True)
         intent = self.request()
         with self.assertRaisesMessage(ValidationError, "un autre compte"):
             self.approve(intent, actor=alias)
@@ -300,8 +351,10 @@ class PersonMandateTests(TestCase):
 
     def test_two_logins_of_one_reviewer_never_count_as_two_people(self):
         self.policy(2)
-        alias, _ = self.linked_user("reviewer-alias", identity=self.reviewer_person)
-        another, _ = self.linked_user("second-real-person")
+        alias, _ = self.linked_user(
+            "reviewer-alias", identity=self.reviewer_person, attest=True,
+        )
+        another, _ = self.linked_user("second-real-person", attest=True)
         intent = self.request()
         self.approve(intent)
         self.assertEqual(intent.status, "pending")

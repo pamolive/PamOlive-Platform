@@ -30,10 +30,13 @@ def create_source(name, *, actor, organization):
 
 
 def source_from_token(token):
+    if not token or len(token) > 256:
+        return None
+    fingerprint = hashlib.sha256(token.encode()).hexdigest()
     return (
         EventSource.unscoped.select_related("organization")
         .filter(
-            token_hash=hashlib.sha256(token.encode()).hexdigest(),
+            token_hash=fingerprint,
             active=True,
             organization__active=True,
         )

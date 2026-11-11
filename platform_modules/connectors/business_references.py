@@ -8,11 +8,12 @@ from django.utils import timezone
 
 from platform_core.services import require_module
 from platform_core.tenancy import current_organization
+from platform_modules.identity.business_port import CONTRACT, MAX_REFERENCES, SourceChoice
 
 from .business import _receipt_snapshot, lock_organization, verify_business_receipt
-from .business_models import BusinessReceipt
+from .business_models import BusinessReceipt, BusinessSource
 
-MAX_REFERENCES = 5
+contract = CONTRACT
 
 
 def _key(value):
@@ -90,6 +91,18 @@ def _guard(organization):
         raise PermissionDenied
     lock_organization(organization)
     require_module(organization, "connectors")
+
+
+def source_choices(*, organization):
+    if current_organization().pk != organization.pk:
+        raise PermissionDenied
+    require_module(organization, "connectors")
+    return tuple(
+        SourceChoice(source_id, name, key)
+        for source_id, name, key in BusinessSource.objects.filter(active=True)
+        .order_by("key")
+        .values_list("pk", "name", "key")
+    )
 
 
 def _latest(receipt, organization, now):

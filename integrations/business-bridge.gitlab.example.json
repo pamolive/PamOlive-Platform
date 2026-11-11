@@ -1,0 +1,25 @@
+{
+  "source": {
+    "url": "https://gitlab.com/api/v4/projects/278964/issues/{id}",
+    "headers_env": {},
+    "fields": {
+      "external_id": "/iid",
+      "reference": "/references/full",
+      "source_updated_at": "/updated_at",
+      "state": "/state",
+      "title": "/title",
+      "url": "/web_url"
+    },
+    "kind": "ticket",
+    "states": {
+      "opened": "open",
+      "closed": "closed"
+    }
+  },
+  "pamolive": {
+    "url": "https://pamolive.example.test",
+    "organization_id": "00000000-0000-0000-0000-000000000001",
+    "source_id": "00000000-0000-0000-0000-000000000003",
+    "token_env": "PAMOLIVE_GITLAB_PUBLISH_TOKEN"
+  }
+}

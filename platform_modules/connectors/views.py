@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from platform_modules.access.ui import scoped
+from platform_core.view_access import scoped
 from platform_modules.identity.models import ExternalAccount, Resource
 
 from .creation_models import ScimCreationJob
@@ -54,7 +54,8 @@ def configure(request, connector_id=None):
     form.fields["base_url"] = forms.URLField(
         label="URL HTTPS de base SCIM",
         initial=connector.base_url if connector else "",
-        help_text="Exemple : https://annuaire.example/scim/v2",
+        disabled=connector is not None,
+        help_text="Pour une autre destination, créez un nouveau connecteur.",
     )
     form.fields["token"] = forms.CharField(
         label="Jeton API",

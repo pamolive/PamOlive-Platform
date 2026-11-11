@@ -131,3 +131,40 @@ L’administrateur active le module Graphe et investigations, puis crée un pér
 Un nouveau rapport renvoie 201. Le même couple périmètre/identifiant renvoie 200 avec le rapport initial, sans réécriture. Pour corriger une déclaration, envoyer un nouvel identifiant : la séquence serveur détermine quelle déclaration l’emporte sur chaque sous-intervalle, même si deux réceptions ont la même heure. Les anciens rapports restent conservés.
 
 L’absence d’événement n’est interprétable que pour les sources et périodes effectivement couvertes. Même une déclaration complète n’est pas une preuve universelle qu’aucun accès n’a eu lieu. Les événements arrivés tardivement conservent leur heure source et leur heure de réception ; la proximité horaire de deux activités n’établit pas leur causalité.
+# Contrat transverse de lecture P1
+
+`GET /api/v1/access-contracts/<intent UUID>/` expose `pamolive.access-contract/1`
+avec la session du portail. Les rôles admin, operator, reviewer et auditor de
+l'organisation peuvent lire ; Identity et Access ainsi que leurs dépendances
+doivent être actifs. Les autres domaines sont explicitement disponibles ou
+indisponibles. Le service relit les autorisations après le verrou d'organisation.
+
+Les sections séparent intention, décisions, droit demandé, droit local,
+effets fournisseur confirmés, tentatives, baux/relais PAM, observations et preuves.
+Elles ne créent aucune autorisation. Le contrat est une lecture non signée et
+ne remplace pas les preuves historiques V7/V8. Une confirmation est un résultat
+enregistré à une date, sans assertion d'inventaire distant actuel.
+
+Les collections indiquent `availability`, `items` et `truncated` ; une section
+`module_disabled` ne signifie pas qu'aucune activité historique n'existe. La
+projection n'expose ni jeton, ni ciphertext, ni configuration de cible, ni
+payload fournisseur arbitraire. Réponse `Cache-Control: no-store` ; `403` pour
+capacité/rôle refusé, `404` pour UUID absent du tenant, `405` hors GET. Une
+session absente suit le parcours de connexion du portail.
+
+L'écran `/access/intents/<UUID>/contract/` et son export `/contract/export/`
+utilisent le même service. Voir [ADR-015](adr-015-access-read-contract.md).
+
+## Lectures Identity, Governance et Observe P1
+
+Ces routes utilisent la session du portail et les rôles admin/operator/reviewer/auditor de l'organisation. Ce ne sont pas des points d'ingestion par jeton de collecteur. Les lectures sont GET uniquement, privées (`no-store`, `nosniff`), bornées et sans autorité nouvelle :
+
+| Route | Contrat | Modules requis |
+| --- | --- | --- |
+| `/api/v1/identities/<UUID>/360/` | `pamolive.identity360/1` | Identity ; sections Access/Connect conditionnelles |
+| `/api/v1/governance/workspace/` | `pamolive.governance-workspace/1` | Governance et ses dépendances ; sections conditionnelles |
+| `/api/v1/observations/<UUID>/story/` | `pamolive.observation-story/1` | Identity, Access, Intelligence ; Connect pour collector/internal |
+
+Les interfaces natives et exports partagent les mêmes services et contrôles sous verrou. Un UUID étranger au tenant n'est pas recherché globalement. Une capacité refusée retourne 403, un objet absent du tenant 404, une méthode non admise 405 ; une session absente suit le parcours de connexion. `compare_intent=<UUID>` sur Observe est une comparaison explicite dans le même tenant, sans causalité ni autorisation implicite. Les preuves et limites V7/V8 restent séparées du verdict et de la projection non signée.
+
+`/identities/reconciliation/simulate/` accepte des fixtures synthétiques AD/LDAP/Entra via formulaire ou JSON, avec session, MFA récente, CSRF et Identity/Connect actifs. Ce prévisualiseur ne contacte aucun serveur, n'applique aucune correspondance et ne retire aucun droit. Les nouvelles actions de suivi d'exception sont des formulaires natifs MFA/CSRF ; aucune API de dérogation n'est ajoutée.

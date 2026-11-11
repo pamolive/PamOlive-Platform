@@ -4,7 +4,7 @@ import json
 from datetime import timedelta
 from uuid import UUID
 
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -13,10 +13,9 @@ from django.utils.dateparse import parse_datetime
 from platform_core.attestations import canonical, seal, verify_anchor
 from platform_core.authorization import assurance_datetime, require_recent_authentication
 from platform_core.events import publish_domain_event
-from platform_core.models import Organization
-from platform_core.services import authorize, require_module
-from platform_core.tenancy import current_organization
+from platform_core.services import authorize, lock_authorized_actor, require_module
 
+from . import business_port
 from .bindings import current_binding
 from .models import ExternalAccount, Identity, Resource
 from .mover_models import MoveAccess, MoveDecision, MoveGrant, MoveProposal, RoleRevision
@@ -163,15 +162,13 @@ def observed_business_origin(link, grant=None):
 
 
 def _guard(actor, organization, roles, *, workflow=True):
-    if current_organization().pk != organization.pk:
-        raise PermissionDenied
-    locked = Organization.objects.select_for_update().get(pk=organization.pk)
-    authorize(actor, locked, roles=roles)
-    require_module(locked, "identity")
+    actor, organization = lock_authorized_actor(actor, organization, roles=roles)
+    require_module(organization, "identity")
     if workflow:
-        require_module(locked, "access")
-        require_module(locked, "approvals")
-    require_recent_authentication(actor, locked)
+        require_module(organization, "access")
+        require_module(organization, "approvals")
+    require_recent_authentication(actor, organization)
+    return actor, organization
 
 
 def _text(value, maximum):
@@ -193,7 +190,7 @@ def latest_role(key):
 
 @transaction.atomic
 def publish_role(*, key, name, entries, enabled, expected_revision, actor, organization):
-    _guard(actor, organization, ("admin",), workflow=False)
+    actor, organization = _guard(actor, organization, ("admin",), workflow=False)
     key, name = _text(key, 64), _text(name, 160)
     latest = latest_role(key)
     number = _proof(latest).revision if latest else 0
@@ -383,7 +380,7 @@ def propose_move(
     organization,
     business_receipts=None,
 ):
-    _guard(actor, organization, ("admin", "operator"))
+    actor, organization = _guard(actor, organization, ("admin", "operator"))
     binding = current_binding(actor, organization=organization)
     identity = (
         Identity.objects.select_for_update().filter(pk=_id(identity_id), status="active").first()
@@ -400,12 +397,13 @@ def propose_move(
     if set(target) == set(before["roles"]) and department == before["department"]:
         raise ValidationError("Aucun changement de poste ou de rôle à examiner.")
     business = {}
-    if business_receipts is not None:
-        from platform_modules.connectors.business_references import capture_references
-
-        provenance = capture_references(business_receipts, organization=organization)
-        if provenance:
-            business["business"] = provenance
+    if business_receipts is not None and business_receipts != []:
+        provenance = business_port.active_provider(organization).capture_references(
+            business_receipts, organization=organization
+        )
+        if not provenance:
+            raise ValidationError("Le fournisseur n’a pas confirmé les lectures sélectionnées.")
+        business["business"] = provenance
     return _attest(
         MoveProposal(organization=organization, identity=identity),
         actor,
@@ -424,7 +422,7 @@ def propose_move(
 
 @transaction.atomic
 def decide_move(proposal_id, *, approved, comment, actor, organization):
-    _guard(actor, organization, ("admin", "reviewer"))
+    actor, organization = _guard(actor, organization, ("admin", "reviewer"))
     if type(approved) is not bool:
         raise ValidationError("Décision de mobilité invalide.")
     proposal = MoveProposal.objects.filter(pk=_id(proposal_id)).first()
@@ -474,9 +472,9 @@ def decide_move(proposal_id, *, approved, comment, actor, organization):
     if withdrawals != data["withdrawals"]:
         raise ValidationError("Les accès à retirer ont changé. Préparez une nouvelle demande.")
     if "business" in data:
-        from platform_modules.connectors.business_references import recheck_references
-
-        facts["business_checked"] = recheck_references(data["business"], organization=organization)
+        facts["business_checked"] = business_port.active_provider(organization).recheck_references(
+            data["business"], organization=organization
+        )
     from platform_modules.access.models import AccessIntent
     from platform_modules.access.services import create_record
 
@@ -565,7 +563,7 @@ def authorize_move_intent(intent, *, actor, organization, approved=True):
     link = MoveAccess.objects.filter(intent=intent).select_related("decision", "role").first()
     if not link:
         return None, None
-    _guard(actor, organization, ("admin", "reviewer"))
+    actor, organization = _guard(actor, organization, ("admin", "reviewer"))
     _check_access(link)
     if intent_scope(intent) != link.body["scope"]:
         raise ValidationError("La demande d’accès a changé.")
@@ -605,14 +603,14 @@ def attest_grant(link, grant, *, actor, organization):
 
 
 def verify_mover():
-    from platform_modules.connectors.business_references import verify_reference_history
-
     count = 0
     for model in (RoleRevision, MoveProposal, MoveDecision, MoveAccess, MoveGrant):
         for obj in model.unscoped.select_related("audit").iterator():
             _proof(obj)
             if model is MoveProposal and "business" in obj.body:
-                verify_reference_history(obj.body["business"], None, organization=obj.organization)
+                business_port.verify_history(
+                    obj.body["business"], None, organization=obj.organization
+                )
             if model is MoveDecision:
                 _proof(obj.proposal)
                 if (
@@ -628,7 +626,7 @@ def verify_mover():
                 ):
                     raise ValidationError("Provenance de décision de mobilité incomplète.")
                 if obj.applied and "business" in obj.proposal.body:
-                    verify_reference_history(
+                    business_port.verify_history(
                         obj.proposal.body["business"],
                         obj.body["business_checked"],
                         organization=obj.organization,

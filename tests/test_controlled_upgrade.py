@@ -112,19 +112,36 @@ class ControlledUpgradeTests(TransactionTestCase):
         self.assertEqual(upgrade.snapshot(self.old_specs), self.before)
         report = upgrade.upgrade(self.database, self.approved, offline=True)
         self.assertTrue(report["committed"])
-        self.assertEqual(report["migrations"], 12)
-        self.assertEqual(report["new_models"], 27)
+        self.assertEqual(report["migrations"], 22)
+        self.assertEqual(report["new_models"], 37)
         upgrade.assert_preserved(self.before, upgrade.snapshot(self.old_specs, after=True))
         from platform_modules.access.models import AccessEvaluation, AccessEvent
 
         source = AccessEvent.unscoped.get()
         self.assertEqual(source.occurred_at.microsecond, 123456)
         self.assertIsNone(source.ended_at)
+        self.assertEqual(source.provenance_channel, "legacy_unknown")
+        self.assertIsNone(source.collector_source_id)
+        self.assertIsNone(source.manual_actor_id)
+        self.assertEqual(
+            (source.internal_principal, source.facts_schema, source.facts_digest),
+            ("", "", ""),
+        )
         old = AccessEvaluation.unscoped.get()
         self.assertEqual(
             (old.context, old.context_hash, old.signature, old.audit_id), ({}, "", "", None)
         )
         self.assertEqual(old.rule_version, "access-context/5")
+        from platform_modules.access.models import AccessIntent
+        from platform_modules.connectors.models import ProvisioningConnector
+        from platform_modules.connectors.scim_credentials import destination_verified
+        from platform_modules.pam.models import SessionEndpoint
+
+        self.assertEqual(AccessIntent.unscoped.get().pam_destination, {})
+        self.assertEqual(AccessIntent.unscoped.get().pam_trust, {})
+        self.assertEqual(SessionEndpoint.unscoped.get().credential_seal, "")
+        for connector in ProvisioningConnector.unscoped.all():
+            self.assertEqual(destination_verified(connector), connector.revision == 1)
 
     def test_changed_plan_is_refused_without_schema_or_data_changes(self):
         forged = copy.deepcopy(self.approved)

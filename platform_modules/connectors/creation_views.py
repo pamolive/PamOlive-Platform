@@ -8,9 +8,9 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from platform_core.security import cipher, ensure_recent
+from platform_core.security import ensure_recent
+from platform_core.view_access import scoped
 from platform_modules.access.models import AccessIntent
-from platform_modules.access.ui import scoped
 
 from .business import sign
 from .creation import (
@@ -28,6 +28,7 @@ from .creation import (
 from .creation_models import ScimCreationDispatch, ScimCreationJob, ScimCreationProof
 from .models import ExternalChange, GroupBinding, ProvisioningConnector
 from .scim import USER_SCHEMA, IntegrationFailure, ScimAdapter
+from .scim_credentials import connector_token
 
 
 class CreationForm(forms.Form):
@@ -82,9 +83,7 @@ def configure(request):
             ).first()
             if not group or connector.verified_revision != connector.revision:
                 raise ValidationError("Testez le connecteur et reliez le droit à son groupe SCIM.")
-            adapter = ScimAdapter(
-                connector.base_url, cipher().decrypt(connector.encrypted_token.encode()).decode()
-            )
+            adapter = ScimAdapter(connector.base_url, connector_token(connector))
             adapter.creation_capabilities()
             if adapter.find_user("userName", intent.account.username):
                 raise ValidationError(

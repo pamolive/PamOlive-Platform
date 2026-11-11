@@ -1,10 +1,15 @@
 """Offline recovery verification, including inactive collectors and old evidence."""
 
-from django.utils.crypto import constant_time_compare
+from platform_core.tenancy import organization_context
 
 from .teamviewer_access import verify_observation
 from .teamviewer_access_models import TeamViewerAccessObservation
-from .teamviewer_collection import scan_proof, verify_activation, verify_configuration
+from .teamviewer_collection import (
+    scan_proof,
+    verify_activation,
+    verify_configuration,
+    verify_signature,
+)
 from .teamviewer_ingestion import verify_report, verify_run
 from .teamviewer_mapping import verify_mapping
 from .teamviewer_mapping_models import TeamViewerMapping, TeamViewerSighting
@@ -22,7 +27,7 @@ def verify_evidence():
         encrypted += 1
         signed += 1 + bool(collector.activation_proof)
         if collector.scan_proof:
-            if not constant_time_compare(collector.scan_proof, scan_proof(collector)):
+            if not verify_signature(collector.scan_proof, scan_proof, collector):
                 raise RuntimeError("Restored TeamViewer scan proof is invalid.")
             signed += 1
         elif collector.enabled:
@@ -72,9 +77,14 @@ def verify_evidence():
             raise RuntimeError("Restored TeamViewer session observation proof is invalid.")
         signed += 1
     for link in TeamViewerAccessObservation.unscoped.select_related(
-        "audit", "event", "session__audit", "session__origin__run__audit", "session__origin__report"
+        "organization", "audit", "event", "session__audit", "session__origin__run__audit",
+        "session__origin__report",
     ).iterator(chunk_size=100):
-        if not verify_observation(link):
-            raise RuntimeError("Restored TeamViewer normalized source link is invalid.")
+        # The offline verifier spans all organizations. The normal observation
+        # verifier deliberately resolves its V8 receipt through a scoped manager.
+        # Supply each link's own context instead of bypassing that tenant guard.
+        with organization_context(link.organization):
+            if not verify_observation(link):
+                raise RuntimeError("Restored TeamViewer normalized source link is invalid.")
         signed += 1
     return encrypted, signed

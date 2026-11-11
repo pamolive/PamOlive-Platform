@@ -1,0 +1,20 @@
+# Copy outside the repository/context; these examples contain no usable secrets.
+# Do not use the existing installation's project, paths, volume or network.
+PAMOLIVE_TEST_PROJECT=pamolive-p1-synthetic-review
+PAMOLIVE_TEST_IMAGE=
+PAMOLIVE_TEST_POSTGRES_IMAGE=
+PAMOLIVE_TEST_GATEWAY_IMAGE=
+PAMOLIVE_TEST_APP_ENV=
+PAMOLIVE_TEST_OWNER_PASSWORD_FILE=
+PAMOLIVE_TEST_APP_PASSWORD_FILE=
+PAMOLIVE_TEST_TLS_CERTIFICATE_FILE=
+PAMOLIVE_TEST_TLS_KEY_FILE=
+# Proposed test port only; no NAS port availability has been established.
+PAMOLIVE_TEST_PORT=18443
+# Required ceilings intentionally unset pending approved host baseline.
+PAMOLIVE_TEST_WEB_CPUS=
+PAMOLIVE_TEST_WEB_MEMORY=
+PAMOLIVE_TEST_DB_CPUS=
+PAMOLIVE_TEST_DB_MEMORY=
+PAMOLIVE_TEST_GATEWAY_CPUS=
+PAMOLIVE_TEST_GATEWAY_MEMORY=

@@ -9,8 +9,8 @@ from django.utils import timezone
 
 from platform_core.audit import record
 from platform_core.authorization import require_recent_authentication
-from platform_core.models import Organization, OrganizationMembership
-from platform_core.services import authorize, require_module
+from platform_core.models import OrganizationMembership
+from platform_core.services import lock_authorized_actor, require_module
 from platform_core.tenancy import organization_context
 
 from .models import (
@@ -25,10 +25,9 @@ from .models import (
 
 
 def _publisher(actor, organization):
-    authorize(actor, organization, roles=("admin",))
+    actor, organization = lock_authorized_actor(actor, organization, roles=("admin",))
     require_module(organization, "governance")
     assurance = require_recent_authentication(actor, organization)
-    Organization.objects.select_for_update().get(pk=organization.pk)
     return datetime.fromtimestamp(assurance.verified_at, tz=timezone.get_default_timezone())
 
 

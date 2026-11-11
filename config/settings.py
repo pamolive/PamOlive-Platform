@@ -5,12 +5,65 @@ import socket
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 
 from platform_core.extensions.releases import load_catalog, load_trust_keys
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _positive_env_limit(name, default):
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    if not re.fullmatch(r"[1-9][0-9]{0,7}", raw):
+        raise ImproperlyConfigured(f"{name} doit être un entier positif inférieur à 100000000.")
+    return int(raw)
+
+
 SECRET_KEY = os.environ.get("SECRET_KEY", "insecure-development-key-change-me")
-PAMOLIVE_ENCRYPTION_KEY = os.environ.get("PAMOLIVE_ENCRYPTION_KEY", SECRET_KEY)
+if not SECRET_KEY.strip() or not SECRET_KEY.isprintable():
+    raise ImproperlyConfigured("SECRET_KEY doit être une valeur non vide et imprimable.")
+
+
+def _evidence_verification_keys():
+    name = "PAMOLIVE_EVIDENCE_VERIFICATION_KEYS"
+    raw = os.environ.get(name)
+    if raw is None:
+        return ()
+    try:
+        keys = json.loads(raw)
+    except (TypeError, ValueError) as error:
+        raise ImproperlyConfigured(
+            f"{name} doit être un tableau JSON de clés historiques."
+        ) from error
+    if not isinstance(keys, list) or any(
+        not isinstance(key, str)
+        or not key.strip()
+        or not key.isprintable()
+        or key == SECRET_KEY
+        for key in keys
+    ) or len(set(keys)) != len(keys):
+        raise ImproperlyConfigured(
+            f"{name} doit contenir uniquement des clés historiques distinctes et valides."
+        )
+    return tuple(keys)
+
+
+PAMOLIVE_EVIDENCE_VERIFICATION_KEYS = _evidence_verification_keys()
+
+PAMOLIVE_ENCRYPTION_KEY = os.environ.get("PAMOLIVE_ENCRYPTION_KEY")
+if PAMOLIVE_ENCRYPTION_KEY is None:
+    PAMOLIVE_ENCRYPTION_KEY = SECRET_KEY
+elif (
+    len(PAMOLIVE_ENCRYPTION_KEY) < 40
+    or not PAMOLIVE_ENCRYPTION_KEY.strip()
+    or not PAMOLIVE_ENCRYPTION_KEY.isprintable()
+):
+    raise ImproperlyConfigured(
+        "PAMOLIVE_ENCRYPTION_KEY doit contenir au moins 40 caractères imprimables "
+        "et ne peut pas être composée uniquement d’espaces."
+    )
 CONNECTOR_ALLOWED_HOSTS = frozenset(
     filter(
         None,
@@ -71,6 +124,17 @@ PAM_MAX_RECORDING_BYTES = 64 * 1024 * 1024
 PAM_MAX_RECORDING_ORG_BYTES = 1024 * 1024 * 1024
 PAM_GUACD_PORT = 4822
 PAM_INSTANCE_ID = os.environ.get("PAMOLIVE_INSTANCE_ID", socket.gethostname())
+# Independent deployment anchors; no private signing material belongs on the portal.
+PAM_TRUST_INSTALLATION_ID = os.environ.get("PAM_TRUST_INSTALLATION_ID", "")
+PAM_TRUST_COMMISSIONING_KEYS = json.loads(os.environ.get("PAM_TRUST_COMMISSIONING_KEYS", "{}"))
+PAM_TRUST_CHECKPOINT_KEYS = json.loads(os.environ.get("PAM_TRUST_CHECKPOINT_KEYS", "{}"))
+PAM_TRUST_CHECKPOINT_DIRECTORY = os.environ.get("PAM_TRUST_CHECKPOINT_DIRECTORY", "")
+PAM_TRUST_RP_ID = os.environ.get("PAM_TRUST_RP_ID", "")
+PAM_TRUST_ORIGIN = os.environ.get("PAM_TRUST_ORIGIN", "")
+PAM_TRUST_RP_NAME = "PamOlive"
+PAM_TRUST_CHALLENGE_SECONDS = 120
+PAM_TRUST_REGISTRY_MAX_SECONDS = 86400
+PAM_TRUST_CHECKPOINT_MAX_SECONDS = 60
 DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 ALLOWED_HOSTS = [
     host.strip()
@@ -176,6 +240,30 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 65536
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
 RECERTIFICATION_MAX_GRANTS = int(os.environ.get("PAMOLIVE_RECERTIFICATION_MAX_GRANTS", "10000"))
 RECERTIFICATION_MAX_BYTES = int(os.environ.get("PAMOLIVE_RECERTIFICATION_MAX_BYTES", "16777216"))
+PAMOLIVE_EVENT_MANUAL_DAILY_LIMIT = _positive_env_limit(
+    "PAMOLIVE_EVENT_MANUAL_DAILY_LIMIT", 5000
+)
+PAMOLIVE_EVENT_COLLECTOR_DAILY_LIMIT = _positive_env_limit(
+    "PAMOLIVE_EVENT_COLLECTOR_DAILY_LIMIT", 50000
+)
+PAMOLIVE_EVENT_INTERNAL_DAILY_LIMIT = _positive_env_limit(
+    "PAMOLIVE_EVENT_INTERNAL_DAILY_LIMIT", 50000
+)
+PAMOLIVE_EVENT_ORG_DAILY_LIMIT = _positive_env_limit(
+    "PAMOLIVE_EVENT_ORG_DAILY_LIMIT", 250000
+)
+PAMOLIVE_EVENT_MANUAL_DAILY_ATTEMPT_LIMIT = _positive_env_limit(
+    "PAMOLIVE_EVENT_MANUAL_DAILY_ATTEMPT_LIMIT", 20000
+)
+PAMOLIVE_EVENT_COLLECTOR_DAILY_ATTEMPT_LIMIT = _positive_env_limit(
+    "PAMOLIVE_EVENT_COLLECTOR_DAILY_ATTEMPT_LIMIT", 200000
+)
+PAMOLIVE_EVENT_INTERNAL_DAILY_ATTEMPT_LIMIT = _positive_env_limit(
+    "PAMOLIVE_EVENT_INTERNAL_DAILY_ATTEMPT_LIMIT", 200000
+)
+PAMOLIVE_EVENT_ORG_DAILY_ATTEMPT_LIMIT = _positive_env_limit(
+    "PAMOLIVE_EVENT_ORG_DAILY_ATTEMPT_LIMIT", 1000000
+)
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard"
 LOGOUT_REDIRECT_URL = "login"

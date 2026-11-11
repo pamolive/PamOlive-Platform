@@ -14,7 +14,7 @@ from django.views.decorators.http import require_POST
 from platform_core.attestations import canonical
 from platform_core.models import OrganizationMembership
 from platform_core.security import ensure_recent
-from platform_modules.access.ui import scoped
+from platform_core.view_access import scoped
 from platform_modules.identity.models import ExternalAccount, Identity, Resource
 
 from .evidence import (

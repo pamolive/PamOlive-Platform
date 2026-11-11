@@ -1,5 +1,5 @@
 import json
-from functools import wraps
+import math
 from uuid import UUID
 
 from django import forms
@@ -15,7 +15,6 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_safe
 
 from platform_core.audit import verify_chain
-from platform_core.authorization import recent_authentication
 from platform_core.memberships import set_membership
 from platform_core.models import AuditEvent, ModuleActivation, Organization, OrganizationMembership
 from platform_core.security import ensure_recent
@@ -23,10 +22,12 @@ from platform_core.services import (
     authorize,
     disable_module,
     install_module,
+    module_available,
     module_catalog,
     require_module,
 )
 from platform_core.tenancy import current_organization, organization_context
+from platform_core.view_access import scoped
 from platform_modules.approvals.services import decide
 from platform_modules.connectors.models import EventSource
 from platform_modules.connectors.services import create_source, source_from_token
@@ -38,7 +39,34 @@ from . import certificate_possession, mobility_context
 from .evidence import verify_evaluation
 from .models import AccessEvent, AccessIntent
 from .observations import is_managed_source, observation_context
-from .services import create_record, ingest_event, revoke_identity
+from .services import (
+    EventConflictResult,
+    EventIntegrityResult,
+    EventRateLimitResult,
+    create_record,
+    ingest_event,
+    revoke_identity,
+)
+
+
+def _unique_json_pairs(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("Clé JSON dupliquée.")
+        value[key] = item
+    return value
+
+
+def _finite_json_float(value):
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("Nombre JSON non fini.")
+    return number
+
+
+def _reject_json_constant(_value):
+    raise ValueError("Nombre JSON non fini.")
 
 CATALOG = {
     "identity": ("Identités", Identity, ("name", "kind", "email", "owner", "department")),
@@ -127,30 +155,6 @@ CATALOG = {
 }
 
 
-def scoped(module=None, roles=("admin", "operator", "reviewer", "auditor")):
-    def decorator(view):
-        @login_required
-        @wraps(view)
-        def wrapped(request, *args, **kwargs):
-            organization = current_organization()
-            authorize(request.user, organization, roles=roles)
-            if module:
-                require_module(organization, module)
-            if request.method == "POST":
-                challenge = ensure_recent(request)
-                if challenge is not None:
-                    return challenge
-                with recent_authentication(
-                    request.user, organization, request.session.get("mfa_verified_at", 0)
-                ):
-                    return view(request, *args, **kwargs)
-            return view(request, *args, **kwargs)
-
-        return wrapped
-
-    return decorator
-
-
 def model_form(model, fields, data=None):
     cls = forms.modelform_factory(model, fields=fields)
     form = cls(data)
@@ -202,9 +206,7 @@ def _event_business_export(request, event, evaluation):
         origins, mobility_limited = mobility_context.candidates(
             event, evaluation, request.organization
         )
-        active = ModuleActivation.objects.filter(
-            organization=request.organization, module_key="connectors", enabled=True
-        ).exists()
+        active = module_available(request.organization, "connectors")
         if origins or (active and BusinessAssociation.objects.filter(intent__in=intents).exists()):
             challenge = ensure_recent(request)
             if challenge is not None:
@@ -231,12 +233,16 @@ def dashboard(request):
     authorize(
         request.user, request.organization, roles=("admin", "operator", "reviewer", "auditor")
     )
-    active = {d.key for d, state in module_catalog() if state and state.enabled}
+    catalog = module_catalog()
+    active = {
+        d.key for d, state in catalog
+        if state and state.enabled and module_available(request.organization, d.key)
+    }
     return render(
         request,
         "governance/dashboard.html",
         {
-            "modules": [d for d, state in module_catalog() if state and state.enabled],
+            "modules": [d for d, _ in catalog if d.key in active],
             "identity_count": Identity.objects.count() if "identity" in active else None,
             "resource_count": Resource.objects.count() if "identity" in active else None,
             "event_count": AccessEvent.objects.count() if "access" in active else None,
@@ -305,12 +311,41 @@ def record_create(request, kind):
     form = model_form(model, fields, request.POST or None)
     # Service supplies internal fields only after validation; they are never editable from HTTP.
     form._validate_unique = False
+    if kind == "event":
+        # ModelForm validates the model before the ingestion service can assign its
+        # final canonical digest. These provisional values are never persisted.
+        form.instance.provenance_channel = "manual"
+        form.instance.manual_actor = request.user
+        form.instance.facts_schema = "event-facts/8"
+        form.instance.facts_digest = "0" * 64
     if request.method == "POST" and form.is_valid():
         try:
             if kind == "event":
-                obj, _ = ingest_event(
+                outcome = ingest_event(
                     form.cleaned_data, actor=request.user, organization=request.organization
                 )
+                if isinstance(outcome, EventConflictResult):
+                    form.add_error(None, "Cet identifiant existe déjà avec des faits différents.")
+                    return render(
+                        request, "platform_core/form.html",
+                        {"form": form, "title": f"Nouveau · {title}", "section": title},
+                        status=409,
+                    )
+                if isinstance(outcome, EventIntegrityResult):
+                    form.add_error(None, "L'intégrité de l'événement existant est invalide.")
+                    return render(
+                        request, "platform_core/form.html",
+                        {"form": form, "title": f"Nouveau · {title}", "section": title},
+                        status=409,
+                    )
+                if isinstance(outcome, EventRateLimitResult):
+                    form.add_error(None, "Limite quotidienne d'ingestion atteinte.")
+                    return render(
+                        request, "platform_core/form.html",
+                        {"form": form, "title": f"Nouveau · {title}", "section": title},
+                        status=429,
+                    )
+                obj, _ = outcome
             else:
                 obj = create_record(
                     kind, form.cleaned_data, actor=request.user, organization=request.organization
@@ -336,18 +371,22 @@ def record_detail(request, kind, object_id):
     from platform_modules.connectors.models import ExternalChange
 
     changes = ExternalChange.objects.none()
-    if kind == "identity":
+    connectors_available = module_available(request.organization, "connectors")
+    if connectors_available and kind == "identity":
         from django.db.models import Q
 
         changes = ExternalChange.objects.filter(Q(account__identity=obj) | Q(grant__identity=obj))
-    elif kind == "grant":
+    elif connectors_available and kind == "grant":
         changes = ExternalChange.objects.filter(grant=obj)
-    elif kind == "account":
+    elif connectors_available and kind == "account":
         changes = ExternalChange.objects.filter(account=obj)
-    elif kind == "intent" and obj.provisioned_grant_id:
+    elif connectors_available and kind == "intent" and obj.provisioned_grant_id:
         changes = ExternalChange.objects.filter(grant_id=obj.provisioned_grant_id)
     details = [(model._meta.get_field(f).verbose_name, getattr(obj, f)) for f in fields]
-    if kind == "intent" and obj.fulfillment == "pam":
+    if (
+        kind == "intent" and obj.fulfillment == "pam"
+        and module_available(request.organization, "pam")
+    ):
         details.extend(
             [
                 ("Compte demandeur PAM-olive", obj.requested_by),
@@ -356,6 +395,7 @@ def record_detail(request, kind, object_id):
                     obj.requester_binding or "Absente — demande non exécutable",
                 ),
                 ("Compte figé à la demande", obj.account_snapshot),
+                ("Cible figée à la demande", obj.pam_destination or "Bail sans relais"),
                 (
                     "Accès natif",
                     "Tous les droits natifs du compte ; aucun filtrage fin de commandes",
@@ -387,11 +427,7 @@ def record_detail(request, kind, object_id):
     mover_business = None
     if (
         kind == "intent"
-        and ModuleActivation.objects.filter(
-            organization=request.organization,
-            module_key="connectors",
-            enabled=True,
-        ).exists()
+        and connectors_available
     ):
         from platform_modules.identity.mover import business_origin
 
@@ -401,9 +437,7 @@ def record_detail(request, kind, object_id):
         "governance/detail.html",
         {
             "title": title,
-            "intelligence_enabled": ModuleActivation.objects.filter(
-                organization=request.organization, module_key="intelligence", enabled=True
-            ).exists(),
+            "intelligence_enabled": module_available(request.organization, "intelligence"),
             "evaluation_history": obj.evaluations.order_by("-evaluated_at")[:20]
             if kind == "event"
             else [],
@@ -703,12 +737,26 @@ def export_event(request, object_id):
         .first()
     )
     valid = evaluation is not None and verify_evaluation(evaluation)
+    from .provenance_status import verified_origin
+
+    receipt = getattr(event, "provenance_receipt", None)
+    origin_status = verified_origin(event)
+    receipt_valid = origin_status in {"manual", "collector", "internal"}
+    principal_id = (
+        str(event.collector_source_id)
+        if event.provenance_channel == "collector"
+        else str(event.manual_actor_id)
+        if event.provenance_channel == "manual"
+        else event.internal_principal if event.provenance_channel == "internal" else None
+    )
     managed = is_managed_source(event.source)
     business, challenge = _event_business_export(
         request,
         event,
         evaluation
-        if valid and (not managed or evaluation.context_hash == context.fingerprint)
+        if valid
+        and (origin_status == "legacy_unknown" or receipt_valid)
+        and (not managed or evaluation.context_hash == context.fingerprint)
         else None,
     )
     if challenge is not None:
@@ -730,13 +778,37 @@ def export_event(request, object_id):
             "how": event.method,
             "source": event.source,
             "external_id": event.external_id,
+            "provenance": {
+                "channel": event.provenance_channel,
+                "principal_id": principal_id,
+                "receipt_version": receipt.version if receipt is not None else None,
+                "receipt_id": str(receipt.pk) if receipt is not None else None,
+                "facts_schema": event.facts_schema or None,
+                "facts_digest": event.facts_digest or None,
+                "receipt_verified": receipt_valid,
+                "origin_claim": "accepted_by_pamolive"
+                if receipt_valid else origin_status,
+                "remote_telemetry_verified": False,
+            },
             "evidence": event.evidence,
             "facts": {
                 "identity_id": str(event.identity_id) if event.identity_id else None,
                 "identity_attribution": "unverified_managed_declaration"
                 if managed and event.identity_id
-                else "source_reported"
-                if event.identity_id
+                else "collector_reported"
+                if event.identity_id and origin_status == "collector"
+                else "unverified_collector_claim"
+                if event.identity_id and event.provenance_channel == "collector"
+                else "manual_declaration"
+                if event.identity_id and origin_status == "manual"
+                else "unverified_manual_claim"
+                if event.identity_id and event.provenance_channel == "manual"
+                else "legacy_unknown"
+                if event.identity_id and origin_status == "legacy_unknown"
+                else "internal_reported"
+                if event.identity_id and origin_status == "internal"
+                else "unverified_internal_claim"
+                if event.identity_id and event.provenance_channel == "internal"
                 else "unresolved",
                 "account_id": str(event.account_id) if event.account_id else None,
                 "resource_id": str(event.resource_id) if event.resource_id else None,
@@ -771,6 +843,7 @@ def export_event(request, object_id):
                 "audit_id": str(evaluation.audit_id),
                 "signature": evaluation.signature,
                 "proof_verified": valid and bool(evaluation.signature),
+                "provenance_verified": receipt_valid,
                 "integrity_status": "signed" if evaluation.signature else "legacy_unsealed",
                 "current_interpretation_differs": managed
                 and evaluation.context_hash != context.fingerprint,
@@ -839,11 +912,17 @@ def api_events(request):
     if len(request.body) > 65536:
         return JsonResponse({"error": "payload_too_large"}, status=413)
     header = request.headers.get("Authorization", "")
-    source = source_from_token(header[7:]) if header.startswith("Bearer ") else None
+    source_token = header[7:] if header.startswith("Bearer ") else None
+    source = source_from_token(source_token) if source_token is not None else None
     if not source:
         return JsonResponse({"error": "unauthorized"}, status=401)
     try:
-        data = json.loads(request.body)
+        data = json.loads(
+            request.body,
+            object_pairs_hook=_unique_json_pairs,
+            parse_float=_finite_json_float,
+            parse_constant=_reject_json_constant,
+        )
         allowed = set(CATALOG["event"][2]) - {"source"}
         if not isinstance(data, dict) or set(data) - allowed:
             raise ValueError
@@ -864,13 +943,34 @@ def api_events(request):
                 CATALOG["event"][2],
                 {"credential_observation": "identifier_only", **data, "source": str(source.pk)},
             )
+            form.instance.provenance_channel = "collector"
+            form.instance.collector_source = source
+            form.instance.facts_schema = "event-facts/8"
+            form.instance.facts_digest = "0" * 64
             if not form.is_valid():
                 return JsonResponse(
                     {"error": "invalid_event", "fields": form.errors.get_json_data()}, status=400
                 )
-            event, created = ingest_event(
-                form.cleaned_data, source=source, organization=source.organization
+            outcome = ingest_event(
+                form.cleaned_data,
+                source=source,
+                source_token=source_token,
+                organization=source.organization,
             )
+            if isinstance(outcome, EventConflictResult):
+                return JsonResponse(
+                    {"error": "event_conflict", "event_id": str(outcome.event_id),
+                     "conflict_id": str(outcome.conflict_id)},
+                    status=409,
+                )
+            if isinstance(outcome, EventIntegrityResult):
+                return JsonResponse(
+                    {"error": "event_integrity_failed", "event_id": str(outcome.event_id)},
+                    status=409,
+                )
+            if isinstance(outcome, EventRateLimitResult):
+                return JsonResponse({"error": "rate_limited"}, status=429)
+            event, created = outcome
             return JsonResponse(
                 {"event_id": str(event.pk), "created": created}, status=201 if created else 200
             )

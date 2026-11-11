@@ -17,6 +17,17 @@ import subprocess
 import time
 from pathlib import Path
 
+if __package__:
+    from deploy.restore_application_check import normalize_failure_code, public_failure_code
+else:  # Preserve direct-script invocation as well as the documented -m entry point.
+    from restore_application_check import normalize_failure_code, public_failure_code
+
+
+class RestoreVerificationFailure(RuntimeError):
+    def __init__(self, code):
+        self.code = normalize_failure_code(code)
+        super().__init__("Offline restore verification failed: " + self.code)
+
 
 def identifier(value):
     if not re.fullmatch(r"[a-z][a-z0-9_]{0,62}", value):
@@ -164,6 +175,13 @@ class RestoreQualification:
                 command, content=json.dumps(bundle or {}).encode(), environment=environment
             )
         )
+
+    def verify_copy(self, bundle):
+        try:
+            return self.application("verify", bundle=bundle)
+        except subprocess.CalledProcessError as error:
+            code = public_failure_code(error.stdout)
+            raise RestoreVerificationFailure(code) from None
 
     def create_consistent_backup(self):
         identifier(self.args.source_database)
@@ -381,7 +399,7 @@ class RestoreQualification:
         self.restore_archive()
         self.phase = "offline application verification"
         bundle = {"manifest": manifest, "key_probe": probe}
-        result = self.application("verify", bundle=bundle)
+        result = self.verify_copy(bundle)
         self.phase = "wrong-key rejection"
         try:
             self.application("verify", bundle=bundle, wrong_key=True)
@@ -438,6 +456,8 @@ def main():
         result = check.execute()
     except Exception as error:
         failure = {"result": "failed", "phase": check.phase, "error": type(error).__name__}
+        if isinstance(error, RestoreVerificationFailure):
+            failure["code"] = normalize_failure_code(error.code)
         if check.directory_created and isinstance(error, subprocess.CalledProcessError):
             check.json_file(
                 "private-error.json",
@@ -449,12 +469,16 @@ def main():
     finally:
         try:
             check.cleanup()
-        except Exception as error:
-            failure = {
-                "result": "failed",
-                "phase": "isolated copy cleanup",
-                "error": type(error).__name__,
-            }
+        except Exception:
+            # Cleanup must remain fatal without replacing the primary failure
+            # or exposing subprocess output and exception messages.
+            if failure is None:
+                failure = {
+                    "result": "failed",
+                    "phase": "isolated copy cleanup",
+                    "error": "RestoreCleanupFailure",
+                }
+            failure["cleanup_code"] = "isolated_copy_cleanup_failed"
     report = failure or result
     report.update(
         seconds=round(time.monotonic() - started, 3),

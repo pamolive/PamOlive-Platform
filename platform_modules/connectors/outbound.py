@@ -25,6 +25,7 @@ from .models import (
     ProvisioningConnector,
 )
 from .scim import IntegrationFailure, ScimAdapter, destination, remote_id
+from .scim_credentials import connector_token, destination_seal, destination_verified
 
 
 def _operator(actor, organization):
@@ -36,7 +37,7 @@ def _operator(actor, organization):
 @transaction.atomic
 def configure_connector(*, actor, organization, name, base_url, token="", connector_id=None):
     _operator(actor, organization)
-    destination(base_url)
+    requested_destination = destination(base_url)
     if token and (len(token) > 2048 or any(ord(c) < 33 or ord(c) > 126 for c in token)):
         raise ValidationError("Jeton invalide.")
     Organization.objects.select_for_update().get(pk=organization.pk)
@@ -48,9 +49,31 @@ def configure_connector(*, actor, organization, name, base_url, token="", connec
         )
         if not connector_id and not token:
             raise ValidationError("Un jeton initial est requis.")
-        connector.name, connector.base_url = name, base_url
+        if connector_id:
+            if not destination_verified(connector):
+                raise ValidationError(
+                    "Destination historique non vérifiable. Configurez un nouveau connecteur."
+                )
+            if requested_destination != destination(connector.base_url):
+                raise ValidationError("Destination immuable. Configurez un nouveau connecteur.")
+            if token:
+                from .creation_models import ScimCreationRequest
+
+                if (
+                    AccountBinding.objects.filter(connector=connector).exists()
+                    or GroupBinding.objects.filter(connector=connector).exists()
+                    or ScimCreationRequest.objects.filter(connector=connector).exists()
+                ):
+                    raise ValidationError(
+                        "Ce jeton porte un historique de destination. "
+                        "Configurez un nouveau connecteur et de nouvelles correspondances."
+                    )
+        else:
+            connector.base_url = base_url
+        connector.name = name
         if token:
             connector.encrypted_token = cipher().encrypt(token.encode()).decode()
+            connector.destination_seal = destination_seal(connector)
         if connector_id:
             connector.revision += 1
         connector.enabled, connector.verified_revision = False, None
@@ -74,9 +97,7 @@ def test_connector(connector_id, *, actor, organization):
         connector = ProvisioningConnector.objects.get(pk=connector_id)
         revision = connector.revision
         try:
-            ScimAdapter(
-                connector.base_url, cipher().decrypt(connector.encrypted_token.encode()).decode()
-            ).test()
+            ScimAdapter(connector.base_url, connector_token(connector)).test()
             code, verified = "scim_read_and_patch_capability_confirmed", True
         except IntegrationFailure as error:
             code, verified = error.code, False
@@ -113,6 +134,8 @@ def set_connector_enabled(connector_id, *, actor, organization, enabled):
             raise ValidationError("Testez cette configuration avant de l’activer.")
         if enabled:
             destination(connector.base_url)
+            if not destination_verified(connector):
+                raise ValidationError("Destination du connecteur SCIM non vérifiée.")
         connector.enabled = enabled
         connector.save(update_fields=["enabled"])
         record(
@@ -128,6 +151,7 @@ def set_connector_enabled(connector_id, *, actor, organization, enabled):
 @transaction.atomic
 def bind_account(*, actor, organization, connector, account, remote_identifier):
     _operator(actor, organization)
+    Organization.objects.select_for_update().get(pk=organization.pk)
     remote_id(remote_identifier)
     binding = AccountBinding(
         organization=organization, connector=connector, account=account, remote_id=remote_identifier
@@ -148,6 +172,7 @@ def bind_account(*, actor, organization, connector, account, remote_identifier):
 @transaction.atomic
 def bind_group(*, actor, organization, connector, resource, entitlement, remote_identifier):
     _operator(actor, organization)
+    Organization.objects.select_for_update().get(pk=organization.pk)
     remote_id(remote_identifier)
     binding = GroupBinding(
         organization=organization,
@@ -173,14 +198,18 @@ def _route(change, *, actor, organization):
     if change.grant_id:
         change.account = change.grant.account
     binding = (
-        AccountBinding.objects.filter(account_id=change.account_id)
-        .select_related("connector")
-        .first()
-        if change.account_id
-        else None
+        change.binding
+        if change.binding_id
+        else (
+            AccountBinding.objects.filter(account_id=change.account_id)
+            .select_related("connector")
+            .first()
+            if change.account_id
+            else None
+        )
     )
-    group = None
-    if binding and change.grant_id:
+    group = change.group if change.group_id else None
+    if not group and binding and change.grant_id:
         group = GroupBinding.objects.filter(
             connector=binding.connector,
             resource_id=change.grant.resource_id,
@@ -190,6 +219,10 @@ def _route(change, *, actor, organization):
     if not binding or (change.grant_id and not group):
         change.status, change.result_code = "unmapped", "mapping_required"
         return
+    if binding.account_id != change.account_id or (
+        group and group.connector_id != binding.connector_id
+    ):
+        raise ValidationError("Les correspondances SCIM ne désignent pas la même destination.")
     if actor:
         assurance = require_recent_authentication(actor, organization)
         change.authorized_by = actor
@@ -201,6 +234,9 @@ def _route(change, *, actor, organization):
         change.authorization_at = timezone.now()
     connector = binding.connector
     change.connector_revision = connector.revision
+    if not destination_verified(connector):
+        change.status, change.result_code = "blocked", "connector_destination_unverified"
+        return
     ready = connector.enabled and connector.verified_revision == connector.revision
     change.status, change.result_code = (
         ("queued", "") if ready else ("blocked", "connector_inactive")
@@ -316,6 +352,8 @@ def retry_change(change_id, *, actor, organization):
                 organization=organization,
                 account=change.account,
                 grant=change.grant,
+                binding=change.binding,
+                group=change.group,
                 kind=change.kind,
                 authorized_by=actor,
                 idempotency_key=f"mover-reconcile:{change.grant_id}:{uuid.uuid4()}",
@@ -424,6 +462,9 @@ def _check_dispatch(claim, organization):
         if (
             not connector.enabled
             or connector.revision != change.connector_revision
+            or not destination_verified(connector)
+            or claim.binding_id != change.binding_id
+            or claim.group_id != change.group_id
             or not module_available(organization, "connectors")
             or _obsolete(change)
             or (change.kind == "activate_account" and not _activation_ready(change))
@@ -465,10 +506,18 @@ def _claim(organization):
         available = module_available(organization, "connectors")
         for change in candidates:
             binding = change.binding
-            if not binding or not change.authorization_at:
+            if (
+                not binding
+                or binding.account_id != change.account_id
+                or (change.grant_id and not change.group_id)
+                or (change.group_id and change.group.connector_id != binding.connector_id)
+                or not change.authorization_at
+            ):
                 change.status, change.result_code = "blocked", "authorization_or_mapping_required"
             elif binding.claim_expires_at and binding.claim_expires_at > now:
                 continue
+            elif not destination_verified(binding.connector):
+                change.status, change.result_code = "blocked", "connector_destination_unverified"
             elif (
                 not binding.connector.enabled
                 or binding.connector.verified_revision != change.connector_revision
@@ -651,7 +700,7 @@ def process_changes(organization, *, limit=10):
             connector = claim.binding.connector
             adapter = ScimAdapter(
                 connector.base_url,
-                cipher().decrypt(connector.encrypted_token.encode()).decode(),
+                connector_token(connector),
                 before_write=lambda: _check_dispatch(claim, organization),
             )
             if claim.kind == "disable_account":

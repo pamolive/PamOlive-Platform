@@ -4,10 +4,11 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from unittest import skipUnless
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import asyncssh
 import pyotp
+from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -49,7 +50,9 @@ from platform_modules.pam.sessions import (
     set_endpoint_enabled,
     stop_session,
 )
+from platform_modules.pam.target_binding import target_scope
 
+from .pam_trust_fixtures import TrustFixture
 from .person_fixtures import bind_person
 
 
@@ -95,9 +98,21 @@ class PamSessionFixtureMixin:
         bind_person(
             self.operator, organization=self.org, administrator=self.admin, identity=self.identity
         )
-        bind_person(self.admin, organization=self.org, administrator=self.admin, role="admin")
+        reviewer = bind_person(
+            self.admin, organization=self.org, administrator=self.admin, role="admin"
+        )
+        self.configured_endpoint = self.configure()
+        self.trust = TrustFixture(self, self.org, [self.configured_endpoint], [
+            (self.operator, self.identity, ["requester"]),
+            (self.admin, reviewer.identity, ["reviewer", "sponsor"]),
+        ])
+        self.intent = self.approved_intent()
+        self.client.force_login(self.operator)
+        self.session_key = self.client.session.session_key
+
+    def approved_intent(self, **changes):
         with self.assurance(self.operator):
-            self.intent = create_record(
+            intent = create_record(
                 "intent",
                 {
                     "identity": self.identity,
@@ -109,24 +124,31 @@ class PamSessionFixtureMixin:
                     "fulfillment": "pam",
                     "starts_at": timezone.now() - timedelta(minutes=1),
                     "ends_at": timezone.now() + timedelta(hours=1),
+                    **changes,
                 },
                 actor=self.operator,
                 organization=self.org,
             )
         with self.assurance():
             decide(
-                self.intent.pk,
+                intent.pk,
                 actor=self.admin,
                 organization=self.org,
                 approved=True,
                 comment="Independent fixture approval",
             )
-        self.intent.refresh_from_db()
-        self.client.force_login(self.operator)
-        self.session_key = self.client.session.session_key
+        intent.refresh_from_db()
+        return intent
 
     def assurance(self, actor=None):
-        return recent_authentication(actor or self.admin, self.org, time.time())
+        from contextlib import ExitStack
+
+        actor = actor or self.admin
+        context = ExitStack()
+        context.enter_context(recent_authentication(actor, self.org, time.time()))
+        if hasattr(self, "trust") and actor.pk in self.trust.authenticators:
+            context.enter_context(self.trust.personal_action(actor))
+        return context
 
     def configure(self):
         with self.assurance():
@@ -146,7 +168,7 @@ class PamSessionFixtureMixin:
         return endpoint
 
     def enabled(self):
-        endpoint = self.configure()
+        endpoint = self.configured_endpoint
         result = ProbeResult(
             "ssh", endpoint.hostname, 22, "10.0.0.1", "SHA256:test", timezone.now()
         )
@@ -186,6 +208,331 @@ class PamSessionFixtureMixin:
 
 @override_settings(PAM_ALLOWED_HOSTS={"ssh.example.test:22"})
 class PamSessionTests(PamSessionFixtureMixin, TestCase):
+    def attest_target(self, endpoint):
+        def attest(body):
+            target = body["targets"].get(
+                str(endpoint.pk), body["targets"][str(self.configured_endpoint.pk)]
+            )
+            body["targets"][str(endpoint.pk)] = {**target, "scope": target_scope(endpoint)}
+            for actor in (self.operator, self.admin):
+                person = body["persons"][self.trust.people[actor.pk]]
+                if str(endpoint.pk) not in person["endpoint_ids"]:
+                    person["endpoint_ids"].append(str(endpoint.pk))
+
+        self.trust.update(attest)
+
+    def reconfigure_target(self, endpoint, **changes):
+        values = dict(
+            actor=self.admin,
+            organization=self.org,
+            endpoint_id=endpoint.pk,
+            name=endpoint.name,
+            resource=endpoint.resource,
+            account=endpoint.account,
+            protocol=endpoint.protocol,
+            hostname=endpoint.hostname,
+            port=endpoint.port,
+            domain=endpoint.domain,
+            auth_method=endpoint.auth_method,
+            host_key=endpoint.ssh_host_key,
+            rdp_pin=endpoint.certificate_pin,
+        )
+        values.update(changes)
+        with self.assurance():
+            return configure_endpoint(**values)
+
+    def activate_target(self, endpoint):
+        result = ProbeResult(
+            endpoint.protocol,
+            endpoint.hostname,
+            endpoint.port,
+            "10.0.0.1",
+            "SHA256:test",
+            timezone.now(),
+        )
+        probe = "probe_ssh" if endpoint.protocol == "ssh" else "probe_rdp"
+        with (
+            self.assurance(),
+            patch(f"platform_modules.pam.sessions.{probe}", AsyncMock(return_value=result)),
+        ):
+            self.assertTrue(probe_endpoint(endpoint.pk, actor=self.admin, organization=self.org)[0])
+            set_endpoint_enabled(endpoint.pk, actor=self.admin, organization=self.org, enabled=True)
+        endpoint.refresh_from_db()
+        return endpoint
+
+    def launch_intent(self, intent):
+        with self.assurance(self.operator):
+            return launch_session(
+                intent.pk,
+                actor=self.operator,
+                organization=self.org,
+                session_key=self.session_key,
+                client_ip="127.0.0.1",
+            )
+
+    def test_target_round_trip_does_not_revive_an_old_vote_and_new_vote_can_open(self):
+        endpoint = self.configured_endpoint
+        old_pin = endpoint.ssh_host_key
+        new_pin = asyncssh.generate_private_key("ssh-ed25519").export_public_key().decode()
+        endpoint = self.reconfigure_target(endpoint, host_key=new_pin, password="new-peer-secret")
+        endpoint = self.reconfigure_target(
+            endpoint, host_key=old_pin, password="fresh-secret-for-return-to-original-peer"
+        )
+        self.activate_target(endpoint)
+        self.assertEqual(endpoint.destination_epoch, 3)
+        with self.assertRaises((PermissionDenied, ValidationError)):
+            self.launch_intent(self.intent)
+        with self.assertRaises((PermissionDenied, ValidationError)):
+            self.approved_intent()
+        self.attest_target(endpoint)
+        replacement = self.approved_intent()
+        item, _ = self.launch_intent(replacement)
+        self.assertEqual(item.endpoint_id, endpoint.pk)
+
+    def test_same_destination_secret_rotation_preserves_the_mandate(self):
+        endpoint = self.reconfigure_target(
+            self.configured_endpoint, password="rotated-secret-for-the-same-peer"
+        )
+        self.activate_target(endpoint)
+        self.assertEqual(endpoint.destination_epoch, 1)
+        item, ticket = self.launch_intent(self.intent)
+        _, _, owner = claim_session(
+            item.pk,
+            actor=self.operator,
+            session_key=self.session_key,
+            client_ip="127.0.0.1",
+            ticket=ticket,
+            instance_id="test-node",
+        )
+        loaded = check_startup_session(
+            item.pk, self.org, owner, session_key=self.session_key, client_ip="127.0.0.1"
+        )
+        self.assertEqual(
+            endpoint_credentials(loaded)["password"], "rotated-secret-for-the-same-peer"
+        )
+
+    def test_changed_pin_requires_explicit_credentials(self):
+        pin = asyncssh.generate_private_key("ssh-ed25519").export_public_key().decode()
+        with self.assertRaises(ValidationError):
+            self.reconfigure_target(self.configured_endpoint, host_key=pin)
+
+    def test_unclaimed_ticket_does_not_release_credentials(self):
+        item, _ = self.launched()
+        with (
+            patch("platform_modules.pam.sessions.cipher") as encryption,
+            self.assertRaises(TransportFailure),
+        ):
+            endpoint_credentials(item)
+        encryption.assert_not_called()
+
+    def test_retargeting_with_explicit_credentials_does_not_compare_the_old_secret(self):
+        pin = asyncssh.generate_private_key("ssh-ed25519").export_public_key().decode()
+        encryption = Mock(wraps=cipher())
+        encryption.decrypt.side_effect = AssertionError("Old credentials must not be compared")
+        with patch("platform_modules.pam.sessions.cipher", return_value=encryption):
+            self.reconfigure_target(
+                self.configured_endpoint, host_key=pin, password="new-target-credential"
+            )
+        encryption.decrypt.assert_not_called()
+
+    @override_settings(PAM_ALLOWED_HOSTS={"ssh.example.test:22", "rdp.example.test:3389"})
+    def test_changed_rdp_certificate_requires_a_new_mandate(self):
+        with self.assurance():
+            endpoint = configure_endpoint(
+                actor=self.admin,
+                organization=self.org,
+                resource=self.resource,
+                account=self.account,
+                name="RDP fixture",
+                protocol="rdp",
+                hostname="rdp.example.test",
+                port=3389,
+                domain="FIXTURE",
+                auth_method="password",
+                password="synthetic-rdp-credential",
+                rdp_pin="a" * 64,
+            )
+        self.activate_target(endpoint)
+        self.attest_target(endpoint)
+        intent = self.approved_intent(method="RDP")
+        with self.assertRaises(ValidationError):
+            self.reconfigure_target(endpoint, rdp_pin="b" * 64)
+        endpoint = self.reconfigure_target(
+            endpoint, rdp_pin="b" * 64, password="synthetic-new-rdp-credential"
+        )
+        self.activate_target(endpoint)
+        with self.assertRaises((PermissionDenied, ValidationError)):
+            self.launch_intent(intent)
+        with self.assertRaises((PermissionDenied, ValidationError)):
+            self.approved_intent(method="RDP")
+        self.attest_target(endpoint)
+        replacement = self.approved_intent(method="RDP")
+        item, _ = self.launch_intent(replacement)
+        self.assertEqual(item.endpoint_id, endpoint.pk)
+
+    def test_legacy_mandate_and_unbound_credential_cannot_open_a_relay(self):
+        endpoint = self.enabled()
+        from platform_modules.pam.services import open_lease
+
+        with (
+            patch("platform_modules.pam.mandates.mandate_endpoint", return_value=None),
+            self.assertRaises((PermissionDenied, ValidationError)),
+        ):
+            self.approved_intent()
+        legacy = AccessIntent.objects.create(
+            organization=self.org,
+            identity=self.identity,
+            account=self.account,
+            resource=self.resource,
+            requested_by=self.operator,
+            requester_binding=self.intent.requester_binding,
+            account_snapshot=self.intent.account_snapshot,
+            method="SSH",
+            fulfillment="pam",
+            privilege="native_full_account",
+            reason="Historical mandate without target attestation",
+            status="approved",
+            approved_at=self.intent.approved_at,
+            starts_at=self.intent.starts_at,
+            ends_at=self.intent.ends_at,
+        )
+        self.assertEqual(legacy.pam_destination, {})
+        with self.assertRaises((PermissionDenied, ValidationError)):
+            open_lease(legacy.pk, actor=self.operator, organization=self.org)
+        with self.assertRaises((PermissionDenied, ValidationError)):
+            self.launch_intent(legacy)
+        SessionEndpoint.objects.filter(pk=endpoint.pk).update(credential_seal="")
+        with self.assurance(), self.assertRaises(ValidationError):
+            set_endpoint_enabled(endpoint.pk, actor=self.admin, organization=self.org, enabled=True)
+
+    def test_capture_remains_verifiable_after_target_identity_changes(self):
+        item, owner = self.claimed()
+        append_recording(item.pk, self.org, owner, b"3.nop;", 0)
+        finish_session(item.pk, self.org, owner, reason="client_closed", complete=True)
+        item.refresh_from_db()
+        pin = asyncssh.generate_private_key("ssh-ed25519").export_public_key().decode()
+        self.reconfigure_target(self.endpoint, host_key=pin, password="new-target-secret")
+        with self.assurance(self.operator):
+            grant = issue_recording_grant(item, self.operator, self.session_key)
+        data, _, _ = recording_page(item.pk, self.org, self.session_key, grant, 0, "")
+        self.assertEqual(data, [b"3.nop;"])
+
+    async def test_approved_ssh_target_cannot_be_replaced_and_receive_its_old_password(self):
+        stolen = []
+
+        class Attacker(asyncssh.SSHServer):
+            def password_auth_supported(self):
+                return True
+
+            def validate_password(self, username, password):
+                stolen.append(password)
+                return True
+
+        old_key = asyncssh.generate_private_key("ssh-ed25519")
+        new_key = asyncssh.generate_private_key("ssh-ed25519")
+        async with (
+            await asyncssh.create_server(
+                asyncssh.SSHServer, "127.0.0.1", 0, server_host_keys=[old_key]
+            ) as old_peer,
+            await asyncssh.create_server(
+                Attacker, "127.0.0.1", 0, server_host_keys=[new_key]
+            ) as new_peer,
+        ):
+            old_port, new_port = old_peer.get_port(), new_peer.get_port()
+
+            def attempt_retarget():
+                def configure(key, port, **changes):
+                    with self.assurance():
+                        endpoint = configure_endpoint(
+                            actor=self.admin,
+                            organization=self.org,
+                            name="Synthetic SSH target",
+                            resource=self.resource,
+                            account=self.account,
+                            protocol="ssh",
+                            hostname="127.0.0.1",
+                            port=port,
+                            auth_method="password",
+                            host_key=key.export_public_key().decode(),
+                            **changes,
+                        )
+                        self.assertTrue(
+                            probe_endpoint(endpoint.pk, actor=self.admin, organization=self.org)[0]
+                        )
+                        return set_endpoint_enabled(
+                            endpoint.pk, actor=self.admin, organization=self.org, enabled=True
+                        )
+
+                with override_settings(
+                    PAM_ALLOWED_HOSTS={f"127.0.0.1:{port}" for port in (old_port, new_port)},
+                    PAM_ALLOWED_NETWORKS=("127.0.0.1/32",),
+                ):
+                    endpoint = configure(
+                        old_key,
+                        old_port,
+                        endpoint_id=self.configured_endpoint.pk,
+                        password="old-synthetic-credential",
+                    )
+                    self.attest_target(endpoint)
+                    intent = self.approved_intent()
+                    try:
+                        configure(new_key, new_port, endpoint_id=endpoint.pk)
+                    except ValidationError:
+                        # Even a legitimate replacement with fresh credentials
+                        # cannot inherit the old approval.
+                        configure(
+                            new_key,
+                            new_port,
+                            endpoint_id=endpoint.pk,
+                            password="new-synthetic-credential",
+                        )
+                    with self.assurance(self.operator):
+                        try:
+                            item, ticket = launch_session(
+                                intent.pk,
+                                actor=self.operator,
+                                organization=self.org,
+                                session_key=self.session_key,
+                                client_ip="127.0.0.1",
+                            )
+                        except (ValidationError, PermissionDenied):
+                            return None
+                    _, _, owner = claim_session(
+                        item.pk,
+                        actor=self.operator,
+                        session_key=self.session_key,
+                        client_ip="127.0.0.1",
+                        ticket=ticket,
+                        instance_id="synthetic-ssh-peer",
+                    )
+                    loaded = check_startup_session(
+                        item.pk,
+                        self.org,
+                        owner,
+                        session_key=self.session_key,
+                        client_ip="127.0.0.1",
+                    )
+                    return endpoint_credentials(
+                        loaded, session_key=self.session_key, client_ip="127.0.0.1"
+                    )["password"]
+
+            password = await sync_to_async(attempt_retarget)()
+            if password is not None:
+                # Synthetic client consumes the credential returned by the broker's
+                # credential loader; the Windows suite does not start guacd.
+                async with asyncssh.connect(
+                    "127.0.0.1",
+                    new_port,
+                    config=None,
+                    agent_path=None,
+                    known_hosts=([new_key.convert_to_public()], [], []),
+                    username="root",
+                    password=password,
+                ):
+                    pass
+            self.assertEqual(stolen, [], "The replacement SSH server received an old credential")
+            self.assertIsNone(password, "The old mandate issued a relay for a replacement target")
+
     @patch("platform_modules.pam.sessions._startup_read_only_supported", return_value=True)
     def test_startup_recheck_is_read_only_but_rechecks_endpoint_authority(self, _supported):
         item, owner = self.claimed()
@@ -334,7 +681,7 @@ class PamSessionTests(PamSessionFixtureMixin, TestCase):
     def test_configuration_is_encrypted_and_requires_service_level_mfa(self):
         with self.assertRaises(PermissionDenied):
             self.configure_without_assurance()
-        endpoint = self.configure()
+        endpoint = self.configured_endpoint
         self.assertNotIn("secret-fixture", endpoint.encrypted_secret)
         self.assertEqual(
             json.loads(cipher().decrypt(endpoint.encrypted_secret.encode())),
@@ -376,6 +723,7 @@ class PamSessionTests(PamSessionFixtureMixin, TestCase):
                 private_key=protected.decode(),
                 passphrase="fixture-import-passphrase",
                 host_key=self.host_key,
+                endpoint_id=self.configured_endpoint.pk,
             )
         material = json.loads(cipher().decrypt(endpoint.encrypted_secret.encode()))
         self.assertEqual(set(material), {"private_key"})
@@ -437,6 +785,7 @@ class PamSessionTests(PamSessionFixtureMixin, TestCase):
         item, owner = self.claimed()
         later = timezone.now() + timedelta(minutes=20)
         with patch("platform_modules.pam.sessions.timezone.now", return_value=later):
+            self.trust.checkpoint()
             check_session(
                 item.pk, self.org, owner, session_key=self.session_key, client_ip="127.0.0.1"
             )

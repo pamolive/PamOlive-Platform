@@ -7,14 +7,13 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import F, Window
 from django.db.models.functions import RowNumber
-from django.utils.crypto import constant_time_compare
 
 from platform_core.audit import digest, record
 from platform_core.models import Organization
 from platform_core.services import require_module
 from platform_core.tenancy import current_organization, organization_context
 
-from .teamviewer_collection import tag
+from .teamviewer_collection import tag, verify_signature, verify_tag
 from .teamviewer_ingestion import verify_run
 from .teamviewer_mapping import KINDS, MappingResolution, _resolve
 from .teamviewer_mapping_models import TeamViewerSighting
@@ -48,8 +47,10 @@ def evidence_body(evidence):
     )
 
 
-def _proof(item, body, domain):
-    return tag(dict(body=body, audit_id=item.audit_id, audit_hash=item.audit.event_hash), domain)
+def _proof(item, body, domain, *, key=None):
+    return tag(
+        dict(body=body, audit_id=item.audit_id, audit_hash=item.audit.event_hash), domain, key=key
+    )
 
 
 def _anchored(item, body, domain, action):
@@ -60,8 +61,8 @@ def _anchored(item, body, domain, action):
         and item.audit.object_type == item._meta.label_lower
         and item.audit.object_id == str(item.pk)
         and item.audit.event_hash == digest(item.audit)
-        and item.audit.metadata.get("body_hash") == tag(body, domain + "-body")
-        and constant_time_compare(item.signature, _proof(item, body, domain))
+        and verify_tag(body, domain + "-body", item.audit.metadata.get("body_hash"))
+        and verify_signature(item.signature, _proof, item, body, domain)
     )
 
 

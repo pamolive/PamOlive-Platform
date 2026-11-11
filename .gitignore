@@ -3,6 +3,8 @@
 *.backup
 *.pgdump
 .env.*
+*.env
+*.secret
 !.env.example
 .bootstrap-admin
 deploy/bootstrap-nas.sh

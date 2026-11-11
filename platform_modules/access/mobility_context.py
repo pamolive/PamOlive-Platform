@@ -6,8 +6,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from platform_core.services import module_available
-from platform_modules.connectors.business_references import reference_context
+from platform_modules.identity import business_port
 from platform_modules.identity.mobility_contract import (
     MAX_ORIGINS,
     MobilityOriginKey,
@@ -18,7 +17,7 @@ from platform_modules.identity.mobility_contract import (
 
 def candidates(event, evaluation, organization):
     """Caller verifies the evaluation and its interpretation under the organization lock."""
-    if evaluation is None or not module_available(organization, "connectors"):
+    if evaluation is None or not business_port.available(organization):
         return [], False
 
     matches = {}
@@ -78,6 +77,7 @@ def project(matches, *, organization, limited=False):
     )
     if not matches:
         return result
+    provider = business_port.active_provider(organization)
     origins = read_origins((key for key, _ in matches), organization=organization)
     contexts = {}
     for key, periods in matches:
@@ -88,7 +88,7 @@ def project(matches, *, organization, limited=False):
             continue
         try:
             if origin.decision_id not in contexts:
-                contexts[origin.decision_id] = reference_context(
+                contexts[origin.decision_id] = provider.reference_context(
                     origin.submitted_references,
                     origin.reviewed_references,
                     organization=organization,
