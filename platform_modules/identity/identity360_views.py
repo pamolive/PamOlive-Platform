@@ -4,6 +4,7 @@ from django.http import Http404, JsonResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_GET
 
+from platform_core.services import module_available
 from platform_core.view_access import scoped
 
 from .identity360 import build_identity360, identity_inventory
@@ -39,6 +40,7 @@ def detail(request, identity_id):
             "identity/identity360.html",
             {
                 "profile": _read(request, identity_id),
+                "directory_reviews_available": module_available(request.organization, "connectors"),
             },
         )
     )
