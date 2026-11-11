@@ -82,6 +82,7 @@ jobs:
       DATABASE_URL: postgresql://pamolive:ci-only-database-password@127.0.0.1:5432/pamolive
       SECRET_KEY: ci-only-secret-not-used-outside-isolated-ci-jobs
       PAMOLIVE_ENCRYPTION_KEY: ci-only-encryption-key-not-used-outside-isolated-ci-jobs
+      PAMOLIVE_TEST_DATABASE_NAME: test_pamolive_ci
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
