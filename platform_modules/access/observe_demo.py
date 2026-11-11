@@ -83,7 +83,9 @@ def create_observe_demo():
                                               name=f"Observe synthétique {tenant.upper()}")
             for user, role in ((operator, "operator"), (reviewer, "reviewer")):
                 OrganizationMembership.objects.create(organization=org, account=user, role=role)
-            for key in ("identity", "access", "approvals", "connectors", "intelligence"):
+            for key in (
+                "identity", "access", "approvals", "connectors", "intelligence", "governance"
+            ):
                 install_module(key, actor=admin, organization=org)
             if tenant == "a":
                 install_module("recertification", actor=admin, organization=org)

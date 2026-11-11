@@ -147,6 +147,24 @@ class ObserveStoryTests(TestCase):
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
 class ObserveDemoTests(TestCase):
+    def test_demo_operator_can_read_governance_workspace_in_both_organizations(self):
+        manifest = create_observe_demo()
+        operator = get_user_model().objects.get(username="observe-demo-operator")
+        self.client.force_login(operator)
+        for item in manifest["organizations"]:
+            session = self.client.session
+            session["organization_id"] = item["id"]
+            session.save()
+            with self.subTest(organization=item["key"]):
+                self.assertEqual(
+                    self.client.get(reverse("governance-workspace")).status_code, 200
+                )
+                for name in ("api-governance-workspace", "governance-workspace-export"):
+                    response = self.client.get(reverse(name))
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.json()["organization_id"], item["id"])
+                    self.assertEqual(response.json()["schema"], "pamolive.governance-workspace/1")
+
     def test_demo_refuses_nonempty_database_without_deleting_anything(self):
         org = Organization.objects.create(key="existing", name="Preserve existing")
         with self.assertRaises(ValidationError):
