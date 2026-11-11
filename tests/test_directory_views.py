@@ -3,6 +3,7 @@
 import json
 import secrets
 import time
+from html.parser import HTMLParser
 
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
@@ -71,6 +72,32 @@ class DirectoryViewTests(DirectoryInventoryFixture, TestCase):
         self.assertEqual(len(response.json()["items"]), 1)
         self.assertNotIn(self.credential["password"], response.content.decode())
         self.assertFalse(response.json()["can_apply"])
+
+    def test_export_link_keeps_the_reviewed_page_size(self):
+        class Links(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.links = []
+
+            def handle_starttag(self, tag, attrs):
+                if tag == "a":
+                    self.links.append(dict(attrs).get("href", ""))
+
+        self.accept(
+            key="bounded-export", records=[self.fact(username=f"user-{i}") for i in range(3)]
+        )
+        response = self.client.get(self.url("directory-detail"), {"limit": 1})
+        self.assertEqual(response.status_code, 200)
+        parser = Links()
+        parser.feed(response.content.decode())
+        target = next(
+            link for link in parser.links if link.startswith(self.url("directory-export"))
+        )
+        exported = self.client.get(target)
+        self.assertEqual(exported.status_code, 200)
+        self.assertEqual(len(exported.json()["items"]), 1)
+        self.assertContains(response, "Exporter l’état actualisé")
+        self.assertContains(response, "Les données sont relues au moment de l’export")
 
     def test_ordinary_input_cannot_supply_authority_or_weak_boolean(self):
         for extra in ({"provenance": "collector"}, {"complete": "false"}):

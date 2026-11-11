@@ -2,7 +2,7 @@
 {% block title %}{{ inventory.source.name }} · Annuaires{% endblock %}
 {% block content %}
 <h1>{{ inventory.source.name }}</h1><p>{{ inventory.source.provider }} · {{ inventory.source.destination.endpoint }} · {{ inventory.source.enabled|yesno:'Active,Inactive' }}</p>
-<nav class="domain-tabs"><a href="{% url 'directory-index' %}">Sources</a><a href="{% url 'directory-export' inventory.source.id %}{% if request.GET.cursor %}?cursor={{ request.GET.cursor|urlencode }}{% endif %}">Exporter cette page</a><a href="{% url 'api-directory-inventory' inventory.source.id %}">API</a></nav>
+<nav class="domain-tabs"><a href="{% url 'directory-index' %}">Sources</a><a href="{% url 'directory-export' inventory.source.id %}?limit={{ request.GET.limit|default:'100'|urlencode }}{% if request.GET.cursor %}&amp;cursor={{ request.GET.cursor|urlencode }}{% endif %}">Exporter l’état actualisé</a><a href="{% url 'api-directory-inventory' inventory.source.id %}?limit={{ request.GET.limit|default:'100'|urlencode }}{% if request.GET.cursor %}&amp;cursor={{ request.GET.cursor|urlencode }}{% endif %}">API</a></nav><p>Les données sont relues au moment de l’export ; les dates et les références du fichier décrivent cet état.</p>
 <p>Provenance : {{ inventory.provenance|default:'Aucune observation' }} · run {{ inventory.run_id|default:'—' }} · complet : {{ inventory.complete|yesno:'Oui,Non' }}.</p>
 <p>Ces observations ne constituent ni une attestation de personne PAM, ni une confirmation de provisioning. « Inconnu » ou « non observé » ne signifie pas « désactivé » ou « supprimé ».</p>
 {% for limitation in inventory.limitations %}<p role="status">{{ limitation }}</p>{% endfor %}
@@ -11,7 +11,7 @@
 </tbody></table></div>
 {% for item in inventory.not_observed %}<p>{{ item.remote_id }} → {{ item.account_id }} : non observé, revue nécessaire, aucun retrait.</p>{% endfor %}
 {% if inventory.not_observed_truncated %}<p role="status">Les absences nécessitent une autre page ; aucune complétude n’est inférée.</p>{% endif %}
-{% if inventory.next_cursor %}<p><a href="?cursor={{ inventory.next_cursor|urlencode }}">Page suivante</a></p>{% endif %}
+{% if inventory.next_cursor %}<p><a href="?cursor={{ inventory.next_cursor|urlencode }}&amp;limit={{ request.GET.limit|default:'100'|urlencode }}">Page suivante</a></p>{% endif %}
 {% if can_collect %}<h2>Collecter des faits</h2><form method="post" action="{% url 'directory-import' inventory.source.id %}">{% csrf_token %}{{ fixture_form.as_p }}<button class="button">Accepter cette fixture avec provenance déclarée</button></form>
 <form method="post" action="{% url 'directory-collect' inventory.source.id %}">{% csrf_token %}<label>Clé de collecte unique <input name="idempotency_key" maxlength="180" required></label><button class="button">Lire le pair de laboratoire autorisé</button></form>
 {% endif %}{% if can_admin %}<h2>Correspondance explicite</h2><p>Administration avec MFA récente. Aucun droit ou mandat n’est créé.</p><form method="post" action="{% url 'directory-map' inventory.source.id %}">{% csrf_token %}{{ mapping_form.as_p }}<button class="button">Enregistrer la correspondance</button></form>
