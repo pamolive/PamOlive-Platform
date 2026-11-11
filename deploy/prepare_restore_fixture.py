@@ -101,6 +101,125 @@ def teamviewer_corpus(actor, organization):
         set_enabled(collector.pk, False, actor=actor, organization=organization)
 
 
+def directory_corpus(actor, organization):
+    """Two offline synthetic destinations sharing UUIDs, with revoked mapping history."""
+    import secrets
+    import time
+
+    from platform_core.authorization import recent_authentication
+    from platform_core.services import install_module
+    from platform_modules.connectors.directory_inventory import (
+        configure_directory_source,
+        import_directory_fixture,
+        map_directory_account,
+        revoke_directory_mapping,
+        rotate_directory_credential,
+        set_directory_source_enabled,
+    )
+    from platform_modules.identity.models import ExternalAccount, Identity
+
+    remote = "00000000-0000-4000-8000-000000000483"
+    other_remote = "00000000-0000-4000-8000-000000000991"
+    identity = Identity.objects.create(
+        organization=organization, name="Synthetic directory owner", kind="human"
+    )
+    accounts = [
+        ExternalAccount.objects.create(
+            organization=organization,
+            identity=identity,
+            username="synthetic-directory-" + str(index),
+            system="Synthetic offline directory",
+        )
+        for index in range(2)
+    ]
+    scope = {"base_dn": "dc=example,dc=invalid", "bind_dn": "cn=reader,dc=example,dc=invalid"}
+    credential = {"bind_dn": scope["bind_dn"], "password": secrets.token_urlsafe(32)}
+    with recent_authentication(actor, organization, time.time()):
+        for module in ("identity", "access", "connectors"):
+            install_module(module, actor=actor, organization=organization)
+        sources = [
+            configure_directory_source(
+                actor=actor,
+                organization=organization,
+                name="Offline synthetic directory " + str(index),
+                provider="ldap",
+                endpoint=f"ldap://directory-{index}.invalid:389",
+                certificate_sha256=secrets.token_hex(32),
+                scope=scope,
+                credential=credential,
+                synthetic=True,
+            )
+            for index in range(2)
+        ]
+        for source in sources:
+            set_directory_source_enabled(
+                source.pk, enabled=True, actor=actor, organization=organization
+            )
+        rows = [
+            dict(entryUUID=remote, uid="synthetic-reader", enabled=None, memberOf=[]),
+            dict(
+                entryUUID=other_remote,
+                uid="synthetic-other",
+                enabled=True,
+                memberOf=["declared-group-not-a-provisioned-right"],
+            ),
+        ]
+        import_directory_fixture(
+            sources[0].pk,
+            records=rows,
+            idempotency_key="offline-inventory-1",
+            actor=actor,
+            organization=organization,
+        )
+        first = map_directory_account(
+            sources[0].pk,
+            remote_id=remote,
+            account_id=accounts[0].pk,
+            actor=actor,
+            organization=organization,
+        )
+        revoke_directory_mapping(first.pk, actor=actor, organization=organization)
+        map_directory_account(
+            sources[0].pk,
+            remote_id=remote,
+            account_id=accounts[1].pk,
+            actor=actor,
+            organization=organization,
+        )
+        import_directory_fixture(
+            sources[0].pk,
+            records=[],
+            idempotency_key="offline-inventory-2",
+            complete=True,
+            actor=actor,
+            organization=organization,
+        )
+        import_directory_fixture(
+            sources[1].pk,
+            records=rows[:1],
+            idempotency_key="offline-inventory-1",
+            actor=actor,
+            organization=organization,
+        )
+        map_directory_account(
+            sources[1].pk,
+            remote_id=remote,
+            account_id=accounts[0].pk,
+            actor=actor,
+            organization=organization,
+        )
+        rotate_directory_credential(
+            sources[0].pk,
+            credential=dict(credential, password=secrets.token_urlsafe(32)),
+            actor=actor,
+            organization=organization,
+        )
+        for source in sources:
+            set_directory_source_enabled(
+                source.pk, enabled=False, actor=actor, organization=organization
+            )
+
+
 def business_corpus(actor, organization, intent_id):
     """Synthetic publisher assertions, not a real GLPI/Jira integration."""
     import time
@@ -854,6 +973,7 @@ def main():
         profile.save()
         oidc_corpus(fixture.operator, fixture.org)
         teamviewer_corpus(fixture.admin, fixture.org)
+        directory_corpus(fixture.admin, fixture.org)
         certificate_possession_corpus(fixture.admin, fixture.org)
         business_corpus(fixture.admin, fixture.org, fixture.intent.pk)
         scim_creation_corpus(fixture.admin, fixture.operator, fixture.org)
@@ -869,7 +989,7 @@ def main():
         "Synthetic restore corpus prepared: MFA, counter, recovery hash, M2M, "
         "SCIM token, target secret, OIDC secret/link/draft/flow, signed mandate, "
         "signed notification, TeamViewer token/report/run/sighting/mappings/session "
-        "certificate key possession and sealed capture."
+        "certificate key possession, directory snapshots/mapping history and sealed capture."
     )
 
 

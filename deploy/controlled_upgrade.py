@@ -33,6 +33,7 @@ REVIEWED = {
     ("connectors", "0009_business_intent_associations"),
     ("connectors", "0010_scim_initial_accounts"),
     ("connectors", "0011_scim_destination_binding"),
+    ("connectors", "0012_directory_inventory"),
     ("recertification", "0002_periodic_campaigns_and_review_evidence"),
     ("identity", "0008_business_roles_and_mobility"),
     ("governance", "0003_exception_register"),

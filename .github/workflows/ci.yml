@@ -90,11 +90,19 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
+      - name: Install native directory build and isolated wire-test prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential libldap2-dev libsasl2-dev slapd ldap-utils
       - run: python -m pip install -r requirements-dev.lock
       - run: python -m pip check
       - run: ruff check .
       - run: python manage.py check
       - run: python manage.py makemigrations --check --dry-run
+      - name: Verify directory protocols and persistent tenant-scoped inventory
+        env:
+          PAMOLIVE_TEST_DATABASE_NAME: test_pamolive_directory
+        run: |
+          python -c "from tests.fixtures.ldap_directory import available; assert available(), 'Native LDAP gate must run, not skip'"
+          python manage.py test tests.test_directory_adapters tests.test_directory_ldap_wire tests.test_directory_inventory tests.test_directory_inventory_concurrency tests.test_directory_redteam tests.test_directory_views tests.test_directory_views_redteam tests.test_directory_restore --noinput
       - name: Verify P1 contracts, Identity, Governance, Observe and module isolation
         run: >-
           python manage.py test tests.test_access_contract tests.test_p1_module_isolation

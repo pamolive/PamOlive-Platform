@@ -2,6 +2,24 @@
 
 Le document de vision décrit la cible complète. Cette branche construit progressivement cette cible ; elle ne constitue pas encore une version de production.
 
+## Programme autonome : référence et travail courant
+
+La [roadmap réconciliée](implementation-roadmap.md) distingue désormais les lots P1-F/G, P2 et P3 du premier ordre historique. Référence publiée : main `dcaa116be6f026f67ad3825feb38d90ac632ce80`, PR1 fusionnée, [CI complète réussie](https://github.com/pamolive/PamOlive-Platform/actions/runs/43074618211) et [image GHCR publiée/attestée](https://github.com/pamolive/PamOlive-Platform/actions/runs/43078536377). Les résultats détaillés P0/P1 demeurent dans leurs rapports ; leur portée historique est conservée.
+
+| Périmètre | État réel au démarrage du programme |
+| --- | --- |
+| P0, P1-A/B1/C/D/E | Intégrés/publiés, tests PostgreSQL et transports synthétiques qualifiés en CI |
+| Packaging TLS Synology | Trois services réellement démarrés sur Docker Linux/Compose2.20.1, HTTPS/MFA/isolation/restauration validés ; nouvelle image non installée sur NAS |
+| P1-F Connect/Audit | Développement en cours : inventaire persistant d’annuaire et lecteurs LDAP/AD/Graph de laboratoire ; SCIM/TeamViewer existants réutilisés |
+| P1-G portail complet | Planifié après F ; parcours transverses présents mais scénarios interactifs et accessibilité à compléter |
+| P2 hybride/Vault/broker/clé/témoin | À implémenter et qualifier ; les UID actuels ne protègent pas les secrets contre une compromission complète du portail |
+| P3 enterprise | Capacités partielles dans le noyau actuel ; extensions et qualification dédiées à construire |
+| Production/multi-hôte réel | Non qualifiée ; les limites d’infrastructure sont documentées sans être comptées comme succès |
+
+La première tranche F1/F2 est maintenant implémentée et qualifiée par campagnes locales ciblées :102tests PostgreSQL sous rôle restreint,42tests adverses indépendants,39tests de protocole Linux, véritable démarrage TLS et restauration Docker enrichie de preuves Directory. La première suite globale locale garde une erreur de fixture corrigée et48exclusions ; la CI exacte et le scan OS sont encore des portes de livraison. Voir le [rapport courant](p1-f-inventory-validation.md). Le rapprochement F3 est un développement distinct ; les revues P2 sont des travaux de conception, sans implémentation ni qualification revendiquée.
+
+Les anciennes portes NAS cochées plus bas concernent les anciennes versions et ne prouvent ni installation de cette image ni autorisation de toucher les services existants. Le programme actuel autorise les laboratoires isolés si leurs conditions sont vérifiées ; sinon le développement et les publications continuent sur Docker Desktop.
+
 ## Lecture du checkout P1
 
 Les capacités ci-dessous décrivent des livraisons de périmètres différents. Pour le checkout local après remédiation, consulter [P0-3](p0-3-validation.md) et [P0-4](p0-4-validation.md). Les anciennes qualifications NAS, image et transport ne qualifient pas automatiquement les modifications locales non publiées. Le témoin indépendant, le commissionnement réel et la qualification native Linux du contrôle P0-3 restent des portes explicites. Les onze noms produit de la roadmap correspondent aux applications techniques existantes ; ils ne désignent pas onze modules déjà achevés.

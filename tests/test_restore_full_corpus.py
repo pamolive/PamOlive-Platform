@@ -10,8 +10,8 @@ from django.contrib.auth import get_user_model
 from django.db import connection
 from django.test import TransactionTestCase, override_settings
 
+from deploy.prepare_restore_fixture import directory_corpus, teamviewer_corpus
 from deploy.prepare_restore_fixture import main as prepare_corpus
-from deploy.prepare_restore_fixture import teamviewer_corpus
 from deploy.restore_application_check import FORMAT, model_fingerprints, verify_application
 from platform_core.models import Organization
 from platform_core.services import install_module
@@ -25,8 +25,10 @@ class CompleteRestoreCorpusTests(TransactionTestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        if (connection.vendor != "postgresql"
-                or connection.settings_dict["NAME"] != "test_pamolive_restore_source"):
+        if (
+            connection.vendor != "postgresql"
+            or connection.settings_dict["NAME"] != "test_pamolive_restore_source"
+        ):
             raise SkipTest("Dedicated PostgreSQL test_pamolive_restore_source corpus gate")
 
     def test_complete_ci_fixture_preserves_all_evidence_and_fingerprints(self):
@@ -44,6 +46,7 @@ class CompleteRestoreCorpusTests(TransactionTestCase):
                 install_module(module, actor=actor, organization=other)
             with organization_context(other):
                 teamviewer_corpus(actor, other)
+                directory_corpus(actor, other)
         before = model_fingerprints()
         with patch("deploy.restore_application_check.database_guard"):
             report = verify_application(
@@ -53,14 +56,20 @@ class CompleteRestoreCorpusTests(TransactionTestCase):
         self.assertGreater(report["provenance_receipts_checked"], 0)
         self.assertGreater(report["sealed_captures_verified"], 0)
         self.assertTrue(report["postgresql_audit_guard"])
+        self.assertEqual(
+            report["directory_evidence_checked"],
+            dict(sources=4, runs=6, facts=6, mappings=8, encrypted_values=4),
+        )
         self.assertEqual(model_fingerprints(), before)
         with organization_context(other):
             self.assertGreater(verify_teamviewer()[1], 0)
             self.assertEqual(current_organization().pk, other.pk)
         self.assertEqual(TeamViewerAccessObservation.unscoped.count(), 2)
-        original = TeamViewerAccessObservation.unscoped.exclude(
-            organization=other
-        ).select_related("organization", "session", "event").get()
+        original = (
+            TeamViewerAccessObservation.unscoped.exclude(organization=other)
+            .select_related("organization", "session", "event")
+            .get()
+        )
         damaged = copy(original)
         damaged.organization = other
         rows = Mock()

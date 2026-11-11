@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}Annuaires · PamOlive{% endblock %}
+{% block content %}
+<h1>Inventaire des annuaires</h1>
+<p>Lectures de laboratoire et observations synthétiques. Une correspondance ne crée aucun droit ; une absence n’autorise jamais un retrait.</p>
+<nav class="domain-tabs">{% if can_admin %}<a href="{% url 'directory-configure' %}">Nouvelle source</a>{% endif %}<a href="{% url 'identity-directory-simulation' %}">Prévisualisation éphémère</a><a href="{% url 'api-directory-index' %}">API</a></nav>
+{% for source in inventory.sources %}<article class="workflow-card"><h2><a href="{% url 'directory-detail' source.id %}">{{ source.name }}</a></h2><p>{{ source.provider }} · {{ source.destination.endpoint }} · {{ source.enabled|yesno:'Active,Inactive' }} · révision {{ source.credential_revision }}</p><p>Identité de source vérifiable : {{ source.identity_verified|yesno:'Oui,Non' }}. Données synthétiques : {{ source.synthetic|yesno:'Oui,Non' }}.</p></article>{% empty %}<p>Aucune source configurée. Les connecteurs de provisioning existants restent séparés de cet inventaire.</p>{% endfor %}
+{% if inventory.truncated %}<p role="status">Liste de sources tronquée : limite atteinte.</p>{% endif %}
+{% endblock %}
