@@ -28,12 +28,34 @@ def available():
     return bool(shutil.which("slapd") and shutil.which("slapadd") and ldap.INIT_FD_AVAIL)
 
 
+def fixture_directory_parent(platform):
+    # Ubuntu's packaged slapd AppArmor profile permits private test files in
+    # /var/tmp but can refuse inherited logs/config/keys under /tmp. Use the
+    # existing permitted directory; never disable or rewrite that profile.
+    return "/var/tmp" if platform == "posix" else None
+
+
+def startup_failure_code(diagnostic):
+    text = diagnostic.lower()
+    if "permission denied" in text or "operation not permitted" in text:
+        return "fixture_permission_refused"
+    if "tls init def ctx failed" in text:
+        return "fixture_tls_context_failed"
+    if "lt_dlopenext failed" in text or "moduleload failed" in text:
+        return "fixture_module_unavailable"
+    if "address already in use" in text:
+        return "fixture_port_in_use"
+    return "fixture_startup_failed"
+
+
 class LdapDirectoryPeer:
     base_dn = "ou=people,dc=lab"
     bind_dn = "cn=reader,dc=lab"
 
     def __init__(self):
-        self.directory = tempfile.TemporaryDirectory(prefix="pamolive-openldap-")
+        self.directory = tempfile.TemporaryDirectory(
+            prefix="pamolive-openldap-", dir=fixture_directory_parent(os.name)
+        )
         self.folder = Path(self.directory.name)
         os.chmod(self.folder, 0o700)
         self.process = None
@@ -134,7 +156,14 @@ class LdapDirectoryPeer:
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
             if self.process.poll() is not None:
-                raise RuntimeError("Synthetic OpenLDAP fixture did not start.")
+                self.log.flush()
+                diagnostic = (self.folder / "server.private.log").read_text(errors="replace")
+                code = startup_failure_code(diagnostic)
+                # No raw log text, DN, key, password or filesystem path in CI.
+                raise RuntimeError(
+                    "Synthetic OpenLDAP fixture did not start: "
+                    f"{code}, exit={self.process.returncode}."
+                )
             try:
                 with socket.create_connection(("127.0.0.1", self.port), timeout=0.2):
                     return

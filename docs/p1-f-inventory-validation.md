@@ -30,7 +30,7 @@ Le rôle de migration testé est propriétaire de sa base sans privilège d’ad
 | Rôle restreint, campagne finale | 102/102 PostgreSQL, 266,403s, zéro exclusion | Base précréée ; NOSUPERUSER/NOCREATEDB/NOCREATEROLE/NOINHERIT/NOREPLICATION/NOBYPASSRLS ; base et rôle temporaires supprimés |
 | Interfaces natives | 12/12 PostgreSQL, 5,209s | Rôles, modules, HTML/API/export, CSRF/MFA, replay/conflit et rotation sans secret |
 | Revue indépendante finale | 42/42 PostgreSQL, 11,495s, zéro exclusion | Suites Red Team de services et d’interfaces, fixtures StartTLS ; [reproductions et corrections](p1-f-redteam.md) |
-| Protocoles Linux réels | 39/39, 11,206s, zéro exclusion | 33adaptateurs et6essais OpenLDAP ; réseau du conteneur désactivé, pairs loopback synthétiques ; LDAPS testé comme refus |
+| Protocoles Linux réels, après correction de portabilité | 41/41,10,176s, zéro exclusion ;6/6wire UID1000 en5,307s | 35adaptateurs et6essais OpenLDAP ; réseau none, pairs loopback synthétiques ; LDAPS testé comme refus |
 | Migration/restauration/diagnostics | 23/23 PostgreSQL, 214,069s | Migration0012, upgrade contrôlé, rollback et preuves corrompues refusées |
 | Archive PostgreSQL réelle | Réussite | pg_dump/pg_restore sur copie :106modèles,87preuves signées,17valeurs chiffrées,1capture scellée ;4sources/6runs/6faits/8mappings, reçus V7/V8 conservés |
 | Ruff, Django check et migration dry-run | Réussite | Aucun changement de modèle non migré détecté |
@@ -42,6 +42,8 @@ Le rôle de migration testé est propriétaire de sa base sans privilège d’ad
 | Pile TLS locale | Réussite | Application/worker/PostgreSQL/gateway sains, migrations vierges, PC-483 attendu/PC-991 écart, arrêt/redémarrage sans perte et proxy limité au pair exact |
 | Restauration Docker avec preuves Directory | Réussite | Même image locale :106modèles,4sources/6runs/6faits/8mappings,8chiffrements et reçus V7/V8 conservés ; copie/rôle temporaires supprimés, volumes préservés |
 | Scan OS/native | En cours | Archive exacte du snapshot, scanner local hors ligne et limites mémoire explicites |
+
+La première CI du commit3ae2968 a refusé le candidat : trois positions de ligne de fingerprints existants étaient obsolètes, sans nouveau signal de secret, et les six fixtures OpenLDAP ne démarraient pas sous Ubuntu. La baseline conserve exactement ses88empreintes et décisions de revue ; seuls trois numéros de ligne sont actualisés. La fixture utilise maintenant le répertoire privé `/var/tmp` permis par le profil Ubuntu, avec diagnostics statiques, sans désactiver AppArmor ni exclure les tests. Le rejeu CI doit confirmer cette correction de portabilité.
 
 Les nombres sont des campagnes distinctes, parfois répétées : ils ne doivent pas être additionnés comme une couverture de tests uniques. Les essais Windows sans bibliothèque native excluent explicitement les six essais OpenLDAP ; seuls les résultats Linux correspondants valident ce transport.
 

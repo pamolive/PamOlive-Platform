@@ -424,6 +424,26 @@ class LdapProtocolTests(SimpleTestCase):
 
 
 class NullableDirectoryTests(SimpleTestCase):
+    def test_fixture_uses_existing_apparmor_permitted_temporary_parent(self):
+        from tests.fixtures.ldap_directory import fixture_directory_parent
+
+        self.assertEqual(fixture_directory_parent("posix"), "/var/tmp")
+        self.assertIsNone(fixture_directory_parent("nt"))
+
+    def test_fixture_startup_codes_never_echo_private_diagnostic_text(self):
+        from tests.fixtures.ldap_directory import startup_failure_code
+
+        marker = secrets.token_urlsafe(32)
+        for text, expected in (
+            ("Permission denied " + marker, "fixture_permission_refused"),
+            ("TLS init def ctx failed " + marker, "fixture_tls_context_failed"),
+            ("moduleload failed " + marker, "fixture_module_unavailable"),
+            ("Address already in use " + marker, "fixture_port_in_use"),
+            ("unclassified " + marker, "fixture_startup_failed"),
+        ):
+            self.assertEqual(startup_failure_code(text), expected)
+            self.assertNotIn(marker, startup_failure_code(text))
+
     def test_v2_unknown_does_not_change_p1_strict_preview_contract(self):
         from django.core.exceptions import ValidationError
 
