@@ -104,11 +104,16 @@ jobs:
           tests.test_governance_exception_restore tests.test_module_activation_authority
           tests.test_observe_story tests.test_observe_concurrency tests.test_synology_preparation
           tests.test_jobs_database_recovery tests.test_jobs_security_recovery
+          tests.test_restore_diagnostics
           --noinput
       - name: Verify real P0 trust ceremonies in the synthetic HA fixture
         env:
           PAMOLIVE_TEST_DATABASE_NAME: test_pamolive_ha_trust
         run: python manage.py test tests.test_active_active tests.test_active_active_trust --noinput
+      - name: Verify the complete offline restore corpus with tenant-scoped provenance
+        env:
+          PAMOLIVE_TEST_DATABASE_NAME: test_pamolive_restore_source
+        run: python manage.py test tests.test_restore_full_corpus --noinput
       - name: Run all local contracts, isolation and P0 regressions on PostgreSQL
         shell: bash
         run: |
