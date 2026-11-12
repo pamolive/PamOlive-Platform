@@ -7,7 +7,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, connection, transaction
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -302,6 +302,42 @@ def record_list(request, kind):
     )
 
 
+def _intent_prefill(request):
+    """GET hints are selections only, never persisted or merged into POST."""
+    selected = {}
+    for field in ("identity", "account"):
+        values = request.GET.getlist(field)
+        if not values:
+            continue
+        if len(values) != 1:
+            raise Http404
+        try:
+            value = UUID(values[0])
+        except (ValueError, AttributeError):
+            raise Http404 from None
+        if str(value) != values[0]:
+            raise Http404
+        selected[field] = value
+    if "account" in selected and "identity" not in selected:
+        raise Http404
+    if "identity" in selected:
+        get_object_or_404(
+            Identity.objects,
+            pk=selected["identity"],
+            organization_id=request.organization.pk,
+            status="active",
+        )
+    if "account" in selected:
+        get_object_or_404(
+            ExternalAccount.objects,
+            pk=selected["account"],
+            organization_id=request.organization.pk,
+            identity_id=selected["identity"],
+            active=True,
+        )
+    return selected
+
+
 @scoped(roles=("admin", "operator"))
 def record_create(request, kind):
     if kind not in CATALOG:
@@ -309,6 +345,8 @@ def record_create(request, kind):
     title, model, fields = CATALOG[kind]
     require_module(request.organization, "access" if kind in ("intent", "event") else "identity")
     form = model_form(model, fields, request.POST or None)
+    if kind == "intent" and request.method == "GET":
+        form.initial.update(_intent_prefill(request))
     # Service supplies internal fields only after validation; they are never editable from HTTP.
     form._validate_unique = False
     if kind == "event":
@@ -354,11 +392,14 @@ def record_create(request, kind):
             return redirect("record-detail", kind=kind, object_id=obj.pk)
         except ValidationError as error:
             form.add_error(None, error)
-    return render(
+    response = render(
         request,
         "platform_core/form.html",
         {"form": form, "title": f"Nouveau · {title}", "section": title},
     )
+    if kind == "intent":
+        response["Cache-Control"] = "no-store"
+    return response
 
 
 @scoped()

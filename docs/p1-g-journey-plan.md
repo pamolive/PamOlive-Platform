@@ -1,6 +1,6 @@
 # P1-G — Qualification préparatoire du parcours Identity Security
 
-Statut : tests locaux des services existants, sans nouveau code produit. Cette préparation ne publie pas P1-G, ne remplace pas les validations F1/F3 et ne redéveloppe pas le démonstrateur PC-483 / PC-991.
+Statut : tests locaux des services existants, puis premier incrément local d'orientation depuis Identity 360. Aucune publication P1-G ; ce lot ne remplace pas les validations F1/F3 et ne redéveloppe pas le démonstrateur PC-483 / PC-991.
 
 Complément du12novembre2026 : ces tests sont conservés dans le worktree F3 séparé, basé sur95fe14f, et exercent `config.urls` réel. Le portail F3 y ajoute les liens Identity360→index des sources→fiche F1→revue des comptes, avec dépendances de module appliquées. Cela ne crée pas une association de personnes historiques. La base native95fe14f n’est pas une image promue ; aucun résultat de ce lot ne qualifie son packaging pour la production.
 
@@ -43,7 +43,7 @@ La politique de référence IAM est `baseline/1` en l'absence de politique organ
 
 Analyse des templates actuels `identity/identity360.html` et `governance/access_contract.html`, complétée par le rendu HTTP Django :
 
-- Identity 360 expose déjà les liens vers les demandes existantes, le parcours, la gestion de l'identité et Mover. Le template n'offre pas une entrée « demander un accès » préremplie avec identité/compte/ressource ; l'utilisateur doit passer par le workflow de création existant.
+- À l'inventaire initial, Identity 360 exposait les demandes existantes, le parcours, la gestion de l'identité et Mover, mais aucune entrée de création préremplie. L'incrément local du 12 novembre ajoute l'entrée décrite ci-dessous, limitée à l'identité et au compte optionnel ; la ressource et la suite attendue restent à choisir dans le formulaire existant.
 - Le parcours dispose de liens vers la demande et son export, ainsi que vers les observations. Les références de décision, de preuve SCIM, de binding et de reçu sont principalement affichées en texte. Avant d'ajouter des liens, chaque cible doit être tenant-scopée et protégée par son module ; ne jamais transformer un UUID en autorité.
 - Le parcours de lecture n'est pas un assistant de publication de politique, d'approbation, de reprise SCIM ou de retrait. Les actions doivent rester dans leurs services d'autorisation ; une future expérience unifiée peut les orienter sans transférer leur autorité au lecteur.
 - Les listes sont bornées et exposent la troncature ; une page et son export ne constituent pas une preuve hors ligne exhaustive. Il faut conserver les liens vers les vérificateurs d'origine et expliciter les preuves indisponibles.
@@ -65,7 +65,7 @@ Les fixtures `TrustFixture` / `VirtualAuthenticator` peuvent construire des test
 4. Étendre aux politiques versionnées, substitutions d'acteurs, révocations concurrentes et pagination/troncature. Exécuter les régressions P0, les gates de migration/restauration et la revue contradictoire avant publication.
 5. Qualifier séparément le chemin PAM par cérémonies synthétiques réelles et transport SSH/RDP local, puis les frontières P2 ; ne pas revendiquer l'isolation Web/Worker→Broker→Vault sur la seule base d'un parcours d'interface.
 
-Aucune migration, route, modification produit, publication ou connexion NAS n'appartient à cette préparation.
+Aucune migration, nouvelle route, publication ou connexion NAS n'appartient à cette préparation. La première préparation ne changeait aucun code produit ; l'incrément d'interface suivant est identifié séparément.
 
 ## Résultats locaux du 11 novembre 2026
 
@@ -76,3 +76,34 @@ Résultat : **8 tests PostgreSQL réussis en 3,856 s**, aucune erreur et aucun t
 Une dernière correction de fixture a aussi conservé une protection existante : `retry_change` est réservé à l'administrateur avec MFA récente. Le test affirme maintenant le refus de l'opérateur, puis la reprise explicite par l'administrateur. Les premiers journaux d'essai sont conservés hors dépôt ; ils ne constituent pas des vulnérabilités reproduites.
 
 Non exécutés dans ce sous-lot : suite P0 complète, nouveaux tests de concurrence P1-G, nouvelles migrations/restaurations (aucune modification de schéma), navigateur headless, politique organisationnelle publiée personnalisée et parcours PAM/SSH/RDP. Les preuves antérieures de ces composants ne sont pas comptabilisées comme nouveaux résultats P1-G. Une revue indépendante de ces nouveaux tests reste à organiser avant leur livraison.
+
+## Premier incrément d'interface — 12 novembre 2026
+
+Branche locale `agent/p1-g-portal`, depuis le commit F3 `ece41d6b31e0b41667cb50f3270c5af5a3f1c38c`, dans le worktree séparé. Ces résultats précèdent l'intégration locale du coordinateur ; aucun push de cet incrément. Le socle F3 et le packaging natif en cours de qualification restent deux périmètres distincts.
+
+Identity 360 présente « Demander un accès » aux opérateurs et administrateurs autorisés par le mécanisme actuel lorsque Access et ses dépendances sont disponibles et l'identité est active. La politique existante concernant le superutilisateur est conservée ; aucun rôle nouveau n'est introduit. Chaque compte actif de la fiche propose aussi « Demander avec ce compte ». Reviewer/auditor conservent la lecture sans cette action. Les changements d'habilitation sont pris en compte aux requêtes suivantes.
+
+Les liens ciblent la route canonique existante `record-create`, kind `intent`. Ils ne sélectionnent ni approbateur, politique, mandat, destination PAM, privilège ni fulfillment. Ils créent seulement une sélection de formulaire ; aucun droit, vote, opération SCIM, événement ou session n'est créé par GET. Le formulaire demeure non lié et sa réponse est marquée `Cache-Control: no-store`.
+
+| Paramètre GET | Contrat de préremplissage |
+| --- | --- |
+| `identity` | UUID canonique minuscule avec tirets, une seule valeur ; identité active de l'organisation courante. Aucun nom/login/email n'est résolu implicitement. |
+| `account` | Optionnel, même syntaxe/unicité ; exige identity, compte actif de la même organisation et rattaché à cette identité. Les comptes partagés d'une autre personne ne sont pas sélectionnés par ce raccourci ; les workflows PAM existants restent distincts. |
+| Valeur invalide, dupliquée, étrangère, absente en base ou inactive | Réponse 404 générique, sans nom ni détail d'existence de l'objet. Le contrôle du module/rôle intervient avant la résolution des sélections. |
+| POST | Les paramètres GET sont entièrement ignorés. Seul le corps validé du formulaire et le service `create_record` existant déterminent la demande. Une valeur absente du POST n'est jamais récupérée dans l'URL. |
+
+Le contrôle CSRF et l'exigence MFA récente de `scoped` restent inchangés. Un GET ne crée pas d'assurance MFA ; le POST non authentifié récemment reprend le parcours de sécurité existant. La vérification des paramètres n'accorde aucune autorisation de mutation. Le service relit l'activité de l'identité/du compte et applique les protections existantes : un compte désactivé après affichage ne permet pas de créer une demande valide. Une soumission autorisée produit seulement une intention `pending`, jamais une décision ou un effet fournisseur.
+
+Fichiers de cet incrément : `platform_modules/access/ui.py`, `platform_modules/identity/identity360_views.py`, `templates/identity/identity360.html`, `tests/test_identity_journey_portal.py` et le présent document. Aucun modèle, migration, URL, service d'approbation/provisioning, cérémonie PAM ou preuve cryptographique n'est changé.
+
+### Validation locale de l'incrément
+
+`tests.test_identity_journey_portal` apporte 17 scénarios sur les vraies routes de `config.urls` : liens et préremplissage sans SQL d'écriture/audit, UUID non canoniques et dupliqués, isolation tenant/personne, activité, choix de formulaire, modules/dépendances distincts entre organisations, permissions et changement de rôle, indépendance GET/POST, activité revalidée, MFA et POST CSRF valide/invalide. Les tests positifs d'assurance utilisent un TOTP synthétique réellement vérifié par `verify_mfa` ; son audit est distingué des lectures sans écriture.
+
+Exécution PostgreSQL locale isolée via `run_p1f3_worktree_tests.py --label f3_g_portal2` : **46/46 tests réussis en 12,795s**, sans erreur ni test ignoré, comprenant les 17 nouveaux tests, les 8 tests de parcours HTTPS SCIM et les 21 tests Identity 360 existants. La base de test dédiée est créée puis détruite par Django. Les avertissements concernent uniquement le répertoire staticfiles non collecté dans ce worktree ; aucun navigateur ou rendu visuel n'est revendiqué.
+
+Non-régression F3, exécution PostgreSQL distincte `--label f3_g_f3reg` : **63/63 tests réussis en 32,204s**, aucun ignoré, couvrant projection, concurrence, vraies vues et assertions Red Team préexistantes. Ces 63 tests sont une exécution complémentaire, pas 63 nouveaux tests P1-G. Ruff et le contrôle de diff passent ; le format des deux nouveaux/petits fichiers Python concernés est vérifié sans reformater le grand fichier UI préexistant.
+
+Les trois écarts de la première passe étaient des attentes de tests : encodage HTML `&amp;` d'un lien, CSRF stocké en session plutôt qu'en cookie et audit légitime de vérification TOTP. Les protections applicatives correspondantes ont été conservées. Le coordinateur, distinct du développeur, a relu le diff et rejoué17/17tests PostgreSQL en4,266s sans exclusion ; le scan de secrets des cinq fichiers passe sans vérification réseau. La suite P0 complète, une cérémonie PAM et une qualification d'image native ne sont pas revendiquées par ces46tests.
+
+La Red Team confirme la séparation GET/POST et les contrôles des nouveaux liens. Elle a aussi reproduit une course **préexistante** dans `create_record` : ses contrôles d'acteur/module précèdent l'attente du verrou d'organisation. Six expériences PostgreSQL déterministes montrent des créations locales après révocation ; aucun provisioning distant, secret transmis ou contournement de quorum PAM n'est démontré. Cette correction de service est traitée séparément avant livraison ; les nouveaux liens ne constituent pas sa remédiation.
