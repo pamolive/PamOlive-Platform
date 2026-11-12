@@ -12,7 +12,7 @@ from django.utils.dateparse import parse_datetime
 
 from platform_core.audit import record
 from platform_core.models import AuditEvent, Organization
-from platform_core.services import authorize, require_module
+from platform_core.services import authorize, lock_authorized_actor, require_module
 from platform_core.tenancy import organization_context
 from platform_modules.identity.models import Credential, ExternalAccount, Grant, Identity, Resource
 
@@ -38,8 +38,9 @@ RECORD_TYPES = {
 def create_record(kind, data, *, actor, organization):
     authorize(actor, organization)
     require_module(organization, "access" if kind == "intent" else "identity")
-    Organization.objects.select_for_update().get(pk=organization.pk)
     with organization_context(organization):
+        actor, organization = lock_authorized_actor(actor, organization)
+        require_module(organization, "access" if kind == "intent" else "identity")
         model = RECORD_TYPES[kind]
         if kind == "intent":
             data = {**data, "requested_by": actor, "status": "pending"}
