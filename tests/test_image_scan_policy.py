@@ -2,6 +2,7 @@
 
 import base64
 import copy
+import gzip
 import hashlib
 import io
 import json
@@ -13,6 +14,7 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from deploy import qualify_image_scan as gate
+from tests import test_krb5_inventory as krbtest
 
 
 class ImageScanPolicyTests(TestCase):
@@ -274,6 +276,111 @@ class ImageScanPolicyTests(TestCase):
         self.assertFalse(gate.conditions_hold([
             {"kind": "absent_path_suffix", "suffix": "/lib/synthetic.so"}], facts))
 
+    def test_archive_layer_manifest_duplicates_paths_and_layer_links_are_refused(self):
+        archive = self.repo / "unsafe-outer.tar"
+        layer = io.BytesIO()
+        with tarfile.open(fileobj=layer, mode="w"):
+            pass
+        cases = [
+            (b'[{"Layers":["layer.tar"],"Layers":["layer.tar"]}]', "regular"),
+            (b'[{"Layers":["layer.tar","layer.tar"]}]', "regular"),
+            (b'[{"Layers":["../layer.tar"]}]', "regular"),
+            (b'[{"Layers":["layer.tar"]}]', "duplicate"),
+            (b'[{"Layers":["layer.tar"]}]', "hardlink"),
+            (b'[{"Layers":["layer.tar"]}]', "symlink"),
+        ]
+        for raw, kind in cases:
+            with self.subTest(kind=kind, manifest=raw):
+                with tarfile.open(archive, mode="w") as outer:
+                    item = tarfile.TarInfo("manifest.json")
+                    item.size = len(raw)
+                    outer.addfile(item, io.BytesIO(raw))
+                    for _ in range(2 if kind == "duplicate" else 1):
+                        item = tarfile.TarInfo("layer.tar")
+                        if kind in ("hardlink", "symlink"):
+                            item.type = tarfile.LNKTYPE if kind == "hardlink" else tarfile.SYMTYPE
+                            item.linkname = "manifest.json"
+                            outer.addfile(item)
+                        else:
+                            item.size = len(layer.getvalue())
+                            outer.addfile(item, io.BytesIO(layer.getvalue()))
+                with self.assertRaises(gate.ScanPolicyError):
+                    gate.archive_facts(archive, [])
+
+    def test_outer_member_count_and_extended_headers_are_bounded_before_payload_read(self):
+        archive = self.repo / "metadata-budget.tar"
+        with tarfile.open(archive, mode="w") as outer:
+            for number in range(2049):
+                outer.addfile(tarfile.TarInfo(f"empty-{number}"))
+        with self.assertRaisesRegex(gate.ScanPolicyError, "archive_metadata_budget"):
+            gate.archive_facts(archive, [])
+        for kind in (tarfile.XHDTYPE, tarfile.GNUTYPE_LONGNAME):
+            header = tarfile.TarInfo("extended-metadata")
+            header.type, header.size = kind, 65537
+            # No payload exists: rejection must precede any attempted payload read.
+            archive.write_bytes(header.tobuf(format=tarfile.USTAR_FORMAT))
+            with self.subTest(kind=kind), self.assertRaisesRegex(
+                    gate.ScanPolicyError, "archive_extended_metadata_budget"):
+                gate.archive_facts(archive, [])
+        with tarfile.open(archive, mode="w", format=tarfile.PAX_FORMAT) as outer:
+            item = tarfile.TarInfo("sparse-file")
+            raw = b"1000000000\n"
+            item.size = len(raw)
+            item.pax_headers = {"GNU.sparse.major": "1", "GNU.sparse.minor": "0",
+                                "GNU.sparse.name": "sparse-file", "GNU.sparse.realsize": "1"}
+            outer.addfile(item, io.BytesIO(raw))
+        with self.assertRaisesRegex(gate.ScanPolicyError, "archive_sparse_unsupported"):
+            gate.archive_facts(archive, [])
+
+    def test_configuration_diff_ids_bind_every_raw_or_gzip_layer_in_order(self):
+        archive = self.repo / "layer-binding.tar"
+        raw_layers = []
+        for number in range(2):
+            buffer = io.BytesIO()
+            with tarfile.open(fileobj=buffer, mode="w") as inner:
+                item = tarfile.TarInfo(f"tmp/synthetic-{number}.txt")
+                raw = f"synthetic layer {number}".encode()
+                item.size = len(raw)
+                inner.addfile(item, io.BytesIO(raw))
+            raw_layers.append(buffer.getvalue())
+        diff_ids = ["sha256:" + hashlib.sha256(raw).hexdigest() for raw in raw_layers]
+
+        def write(*, declared=None, layers=None, rootfs_type="layers", omit_rootfs=False):
+            config = {"architecture": "amd64", "os": "linux"}
+            if not omit_rootfs:
+                config["rootfs"] = {"type": rootfs_type,
+                                    "diff_ids": diff_ids if declared is None else declared}
+            files = [("manifest.json", b'[{"Config":"config.json",'
+                      b'"Layers":["layer0.tar","layer1.tar"]}]'),
+                     ("config.json", gate.canonical(config).encode()),
+                     *[(f"layer{n}.tar", raw) for n, raw in enumerate(
+                         raw_layers if layers is None else layers)]]
+            with tarfile.open(archive, mode="w") as outer:
+                for name, raw in files:
+                    item = tarfile.TarInfo(name)
+                    item.size = len(raw)
+                    outer.addfile(item, io.BytesIO(raw))
+
+        for layers in (raw_layers, [gzip.compress(raw, mtime=0) for raw in raw_layers]):
+            write(layers=layers)
+            facts = gate.archive_facts(archive, [])
+            self.assertEqual(facts.layer_digests, diff_ids)
+        cases = [{"declared": list(reversed(diff_ids))}, {"declared": diff_ids[:1]},
+                 {"declared": [diff_ids[0], diff_ids[0]]},
+                 {"declared": [diff_ids[0], "sha256:" + "0" * 64]},
+                 {"rootfs_type": "unknown"}, {"omit_rootfs": True},
+                 {"layers": list(reversed(raw_layers))},
+                 {"layers": [raw_layers[0], raw_layers[1] + b"changed trailing padding"]},
+                 {"layers": [raw_layers[0], gzip.compress(raw_layers[1])[:-8]]}]
+        for changes in cases:
+            write(**changes)
+            with self.subTest(changes=list(changes)), self.assertRaises(
+                    (gate.ScanPolicyError, EOFError, tarfile.TarError, OSError)):
+                gate.archive_facts(archive, [])
+        budget = [4 * 1024**3 - 1]
+        with self.assertRaisesRegex(gate.ScanPolicyError, "layer_stream_budget"):
+            gate.LayerReader(io.BytesIO(b"synthetic"), budget).read(8)
+
     def test_complete_cli_binds_synthetic_bundle_reports_fixture_and_tool_hash(self):
         revision = "a" * 40
         folder = self.repo / ".github/qualification"
@@ -284,6 +391,11 @@ class ImageScanPolicyTests(TestCase):
             "org.opencontainers.image.source": gate.qualified_image.SOURCE,
             "org.opencontainers.image.revision": revision,
             "io.pamolive.source.license": "AGPL-3.0-or-later"}}}
+        layer = io.BytesIO()
+        with tarfile.open(fileobj=layer, mode="w"):
+            pass
+        config["rootfs"] = {"type": "layers", "diff_ids": [
+            "sha256:" + hashlib.sha256(layer.getvalue()).hexdigest()]}
         self.config = gate.canonical(config).encode()
         self.config_id = "sha256:" + hashlib.sha256(self.config).hexdigest()
         self.os["source"]["target"].update(imageID=self.config_id,
@@ -291,10 +403,11 @@ class ImageScanPolicyTests(TestCase):
         self.sbom["metadata"]["properties"][1]["value"] = self.config_id
         archive = bundle / gate.qualified_image.ARCHIVE
         config_name = self.config_id[7:] + ".json"
-        manifest = [{"Config": config_name, "RepoTags": [gate.qualified_image.TAG], "Layers": []}]
+        manifest = [{"Config": config_name, "RepoTags": [gate.qualified_image.TAG],
+                     "Layers": ["layer.tar"]}]
         with tarfile.open(archive, "w") as output:
             for name, data in (("manifest.json", json.dumps(manifest).encode()),
-                               (config_name, self.config)):
+                               (config_name, self.config), ("layer.tar", layer.getvalue())):
                 member = tarfile.TarInfo(name)
                 member.size = len(data)
                 output.addfile(member, io.BytesIO(data))
@@ -343,27 +456,36 @@ class ImageScanPolicyTests(TestCase):
         self.assertEqual(gate.read_json(self.repo / "rejected.json")["error"],
                          "scanner_archive_hash")
 
-    def layered_facts(self, changes):
+    def layered_facts(self, changes, capture_set=False):
         binary = b"\x7fELF\x02\x01" + b"synthetic compiled bytes"
         target = "/usr/lib/private/probe.so"
         condition = {"kind": "elf", "path": target, "class": 64,
                      "sha256": hashlib.sha256(binary).hexdigest()}
         layers = []
         initial = [("usr/lib/private/", "directory"), (target.lstrip("/"), "elf")]
+        if capture_set:
+            initial.append(("usr/lib/anchor.so", "elf"))
         for entries in [initial, *changes]:
             buffer = io.BytesIO()
             with tarfile.open(fileobj=buffer, mode="w") as inner:
                 for name, kind in entries:
                     item = tarfile.TarInfo(name)
-                    data = binary if kind == "elf" else b""
+                    data = binary if kind in ("elf", "elf_changed") else b""
+                    if kind == "elf_changed":
+                        data += b"changed code"
                     if kind == "directory":
                         item.type = tarfile.DIRTYPE
-                    elif kind == "symlink":
+                    elif kind in ("symlink", "symlink_changed"):
                         item.type = tarfile.SYMTYPE
-                        item.linkname = "/synthetic-elsewhere"
+                        item.linkname = ("/synthetic-elsewhere" if kind == "symlink"
+                                         else "/new-target")
                     elif kind == "hardlink":
                         item.type = tarfile.LNKTYPE
-                        item.linkname = "synthetic-elsewhere"
+                        item.linkname = ("usr/lib/anchor.so" if capture_set
+                                         else "synthetic-elsewhere")
+                    elif kind == "hardlink_probe":
+                        item.type = tarfile.LNKTYPE
+                        item.linkname = "usr/lib/private/probe.so"
                     item.size = len(data)
                     inner.addfile(item, io.BytesIO(data) if data else None)
             layers.append(buffer.getvalue())
@@ -375,7 +497,8 @@ class ImageScanPolicyTests(TestCase):
                 item = tarfile.TarInfo(name)
                 item.size = len(data)
                 outer.addfile(item, io.BytesIO(data))
-        return gate.archive_facts(archive, [condition]), condition
+        conditions = [condition, {"kind": "elf_set"}] if capture_set else [condition]
+        return gate.archive_facts(archive, conditions), condition
 
     def test_directory_whiteout_and_opaque_layer_invalidate_all_selected_elf_descendants(self):
         for deletion in ("usr/lib/.wh.private", "usr/lib/private/.wh..wh..opq"):
@@ -398,3 +521,257 @@ class ImageScanPolicyTests(TestCase):
             [("usr/lib/private", "symlink")],
             [("usr/lib/private/", "directory"), ("usr/lib/private/probe.so", "elf")]])
         self.assertTrue(gate.conditions_hold([condition], facts))
+
+    def add_backport(self):
+        fixture = krbtest.Krb5InventoryTests()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        manifest = fixture.manifest()
+        entry = self.add_exception()
+        self.os["matches"] = [self.match("CVE-2026-119079", name="libkrb5-3",
+            version=gate.krb5_inventory.VERSION, source="krb5")]
+        key, finding = next(iter(gate.high_groups(self.os, "os").items()))
+        entry.update(fingerprint=key, finding=finding, disposition="fixed_by_backport")
+        path = self.repo / "docs/backport.json"
+        path.write_bytes((gate.krb5_inventory.canonical(manifest) + "\n").encode())
+        proof = {"path": "docs/backport.json", "sha256": gate.hash_file(path)}
+        entry["local_evidence"].append(proof)
+        entry["backport_inventory"] = proof
+        entry["conditions"] = gate.krb5_inventory.archive_conditions(manifest)
+        facts = (set(), {item["path"]: {"sha256": item["sha256"],
+                         "class": item.get("class")} for item in entry["conditions"]})
+        return entry, facts
+
+    def test_backport_has_distinct_disposition_and_exact_archive_proofs(self):
+        entry, facts = self.add_backport()
+        result = self.evaluate(facts)
+        self.assertTrue(result["passed"])
+        self.assertFalse(result["all_findings_clear"])
+        self.assertEqual(result["decisions"][0]["disposition"], "fixed_by_backport")
+        entry["conditions"].pop()
+        with self.assertRaisesRegex(gate.ScanPolicyError, "backport_archive_binding"):
+            self.evaluate(facts)
+
+    def test_backport_changed_elf_or_provenance_in_archive_cannot_pass(self):
+        entry, facts = self.add_backport()
+        for condition in entry["conditions"]:
+            changed = copy.deepcopy(facts)
+            changed[1][condition["path"]]["sha256"] = "0" * 64
+            with self.subTest(path=condition["path"]):
+                self.assertFalse(self.evaluate(changed)["passed"])
+
+    def test_backport_cannot_cover_different_cve_source_or_package_version(self):
+        entry, facts = self.add_backport()
+        original = copy.deepcopy(entry["finding"])
+        for key, value in (("vulnerability_id", "CVE-2026-107778"),
+                           ("source_package", "gcc-14"), ("scope", "compiled")):
+            finding = {**original, key: value}
+            changed = {**entry, "finding": finding, "fingerprint": gate.fingerprint(finding)}
+            with self.subTest(key=key), self.assertRaisesRegex(
+                    gate.ScanPolicyError, "backport_finding_scope"):
+                gate.reviewed_exception(changed, finding, facts=facts, repo=self.repo, now=self.now)
+
+    def test_file_sha256_conditions_do_not_follow_overlay_symlinks(self):
+        facts, elf = self.layered_facts([[("usr/lib/private", "symlink")]])
+        condition = {"kind": "file_sha256", "path": elf["path"], "sha256": elf["sha256"]}
+        self.assertFalse(gate.conditions_hold([condition], facts))
+
+    def test_elf_set_changes_on_addition_removal_modification_whiteout_or_opaque(self):
+        original, _ = self.layered_facts([], capture_set=True)
+        condition = {"kind": "elf_set", **original.elf_set}
+        self.assertTrue(gate.conditions_hold([condition], original))
+        mutations = [[("usr/lib/new.so", "elf")], [("usr/lib/private/probe.so", "elf_changed")],
+                     [("usr/lib/private/.wh.probe.so", "file")],
+                     [("usr/lib/private/.wh..wh..opq", "file")]]
+        for change in mutations:
+            with self.subTest(change=change):
+                facts, _ = self.layered_facts([change], capture_set=True)
+                self.assertFalse(gate.conditions_hold([condition], facts))
+
+    def test_elf_set_counts_all_symlink_hardlink_aliases_and_refuses_ancestor_writes(self):
+        summaries = []
+        for kind in ("symlink", "symlink_changed", "hardlink"):
+            facts, _ = self.layered_facts([[("usr/lib/alias.so", kind)]], capture_set=True)
+            self.assertEqual(facts.elf_set["alias_count"], 1)
+            summaries.append(facts.elf_set["sha256"])
+        self.assertEqual(len(set(summaries)), 3)
+        for ancestor in ("symlink", "hardlink", "file"):
+            with self.subTest(ancestor=ancestor), self.assertRaisesRegex(
+                    gate.ScanPolicyError, "elf_set_ambiguous_ancestor"):
+                self.layered_facts([[("usr/lib/private", ancestor)],
+                                   [("usr/lib/private/hidden.so", "elf")]], capture_set=True)
+        restored, _ = self.layered_facts([[("usr/lib/private", "symlink")],
+            [("usr/lib/private", "directory"), ("usr/lib/private/probe.so", "elf")]],
+            capture_set=True)
+        initial, _ = self.layered_facts([], capture_set=True)
+        self.assertEqual(restored.elf_set, initial.elf_set)
+
+    def test_opaque_and_whiteout_hide_lower_layers_not_new_files_from_same_layer(self):
+        for whiteout in ("usr/lib/private/.wh..wh..opq", "usr/lib/private/.wh.probe.so"):
+            with self.subTest(whiteout=whiteout):
+                before, _ = self.layered_facts([[(whiteout, "file"),
+                    ("usr/lib/private/probe.so", "elf_changed")]], capture_set=True)
+                after, _ = self.layered_facts([[('usr/lib/private/probe.so', "elf_changed"),
+                                              (whiteout, "file")]], capture_set=True)
+                self.assertEqual(before.elf_set, after.elf_set)
+                self.assertEqual(before[1], after[1])
+
+    def test_hardlink_content_remains_bound_after_original_path_is_whiteouted(self):
+        # Both final names/alias targets are the same, but the surviving inode
+        # contains different bytes. A target-string-only sentinel would miss it.
+        baseline, _ = self.layered_facts([
+            [("usr/lib/survivor.so", "hardlink_probe")],
+            [("usr/lib/private/.wh.probe.so", "file")]], capture_set=True)
+        changed, _ = self.layered_facts([
+            [("usr/lib/private/probe.so", "elf_changed"),
+             ("usr/lib/survivor.so", "hardlink_probe")],
+            [("usr/lib/private/.wh.probe.so", "file")]], capture_set=True)
+        self.assertEqual(baseline.elf_set["count"], changed.elf_set["count"])
+        self.assertEqual(baseline.elf_set["alias_count"], changed.elf_set["alias_count"])
+        self.assertNotEqual(baseline.elf_set["sha256"], changed.elf_set["sha256"])
+
+    def test_overwriting_a_live_hardlink_group_is_refused_not_guessed(self):
+        with self.assertRaisesRegex(gate.ScanPolicyError, "elf_set_hardlink_replacement"):
+            self.layered_facts([[("usr/lib/survivor.so", "hardlink_probe")],
+                [("usr/lib/private/probe.so", "elf_changed")]], capture_set=True)
+
+    def test_new_hardlink_cannot_read_lower_target_masked_in_same_layer_in_either_order(self):
+        for whiteout in ("usr/lib/private/.wh..wh..opq", "usr/lib/private/.wh.probe.so"):
+            link = ("usr/lib/survivor.so", "hardlink_probe")
+            for changes in ([link, (whiteout, "file")], [(whiteout, "file"), link]):
+                with self.subTest(whiteout=whiteout, order=changes), self.assertRaisesRegex(
+                        gate.ScanPolicyError, "elf_set_hardlink_(whiteout|target)"):
+                    self.layered_facts([changes], capture_set=True)
+
+    def test_new_hardlink_lower_dependency_cannot_be_hidden_by_ancestor_replacement(self):
+        for path, kind in (("usr/lib/private", "file"), ("usr/lib/private", "symlink"),
+                           ("usr/lib/private/probe.so", "directory")):
+            with self.subTest(path=path, kind=kind), self.assertRaisesRegex(
+                    gate.ScanPolicyError, "elf_set_hardlink_replacement"):
+                self.layered_facts([[('usr/lib/survivor.so', "hardlink_probe"),
+                                     (path, kind)]], capture_set=True)
+
+    def test_new_hardlink_to_new_same_layer_file_survives_lower_whiteout_order(self):
+        for whiteout in ("usr/lib/private/.wh..wh..opq", "usr/lib/private/.wh.probe.so"):
+            creation = [("usr/lib/private/probe.so", "elf_changed"),
+                        ("usr/lib/survivor.so", "hardlink_probe")]
+            before, _ = self.layered_facts([[(whiteout, "file"), *creation]], capture_set=True)
+            after, _ = self.layered_facts([[*creation, (whiteout, "file")]], capture_set=True)
+            self.assertEqual(before.elf_set, after.elf_set)
+
+    def test_elf_set_conditions_are_typed_without_wildcards_or_missing_capture(self):
+        facts, _ = self.layered_facts([], capture_set=True)
+        original = {"kind": "elf_set", **facts.elf_set}
+        for change in ({"count": 5001}, {"alias_count": -1}, {"sha256": "*"},
+                       {"schema": "unknown"}, {"roots": ["/opt/*"]}, {"count": True}):
+            with self.subTest(change=change), self.assertRaises(gate.ScanPolicyError):
+                gate.conditions_hold([{**original, **change}], facts)
+        self.assertFalse(gate.conditions_hold([original], (set(), {})))
+        with self.assertRaisesRegex(gate.ScanPolicyError, "elf_set_count"):
+            gate.elf_set_summary({str(i): {} for i in range(5001)})
+
+    def add_gcc(self, disposition):
+        entry = self.add_exception()
+        cve = "CVE-2026-95619" if disposition == "not_affected_build" else "CVE-2026-102010"
+        self.os["matches"] = [self.match(cve, name=name, version=gate.GCC_VERSION,
+                                          source="gcc-14") for name in sorted(gate.GCC_PACKAGES)]
+        key, finding = next(iter(gate.high_groups(self.os, "os").items()))
+        entry.update(fingerprint=key, finding=finding, disposition=disposition)
+        primary = "https://github.com/gcc-mirror/gcc/commit/" + gate.GCC_COMMITS[disposition]
+        entry["vendor_evidence"].append(primary)
+        evidence = {"schema": "pamolive.gcc-finding-evidence.v1",
+                    "source_version": gate.GCC_VERSION,
+                    "vulnerability_id": cve, "upstream_commit": gate.GCC_COMMITS[disposition]}
+        sentinel = None
+        if disposition == "not_affected_build":
+            evidence.update(justification="posix_memalign_implementation", platform="linux/amd64",
+                function={"name": "_ZnwmSt11align_val_t", "size": 125,
+                          "allocation_backend": "posix_memalign"},
+                library={"path": gate.GCC_LIBRARY, "class": 64, "sha256": gate.GCC_LIBRARY_SHA})
+        else:
+            sentinel = {"schema": gate.ELF_SET_SCHEMA, "count": 27, "elf_count": 27,
+                        "alias_count": 0, "sha256": "1" * 64}
+            evidence.update(justification="gnu_pbds_binary_heap_erase_if_not_instantiated",
+                template="__gnu_pbds::priority_queue<binary_heap_tag>::erase_if",
+                sources=copy.deepcopy(gate.GCC_SOURCES), reviewed_files=7112, affected_type_uses=0,
+                consumers=[{"path": f"/usr/lib/{name}-{i}.so", "class": 64,
+                            "sha256": "2" * 64, "source_package": name}
+                           for name, count in (("icu", 6), ("apt", 20), ("harfbuzz", 1))
+                           for i in range(count)], elf_set=sentinel)
+        path = self.repo / "docs/gcc-evidence.json"
+        path.write_bytes((gate.canonical(evidence) + "\n").encode())
+        proof = {"path": "docs/gcc-evidence.json", "sha256": gate.hash_file(path)}
+        entry["local_evidence"].append(proof)
+        entry["gcc_evidence"] = proof
+        entry["conditions"] = gate.gcc_conditions(entry, finding,
+                                                  proofs=entry["local_evidence"], repo=self.repo)
+        files = {item["path"]: {"sha256": item["sha256"], "class": item["class"]}
+                 for item in entry["conditions"] if item["kind"] == "elf"}
+        return entry, gate.ArchiveFacts(set(), files, sentinel)
+
+    def test_two_gcc_dispositions_preserve_visible_high_findings_and_distinct_justification(self):
+        for disposition in ("not_affected_build", "code_not_present"):
+            with self.subTest(disposition=disposition):
+                entry, facts = self.add_gcc(disposition)
+                result = self.evaluate(facts)
+                self.assertTrue(result["passed"])
+                self.assertFalse(result["all_findings_clear"])
+                self.assertEqual(result["decisions"][0]["disposition"], disposition)
+                entry["conditions"].pop()
+                with self.assertRaisesRegex(gate.ScanPolicyError, "gcc_archive_binding"):
+                    self.evaluate(facts)
+
+    def test_gcc_dispositions_cannot_spread_to_another_cve_source_scope_or_version(self):
+        for disposition in ("not_affected_build", "code_not_present"):
+            entry, facts = self.add_gcc(disposition)
+            for key, value in (("source_package", "krb5"), ("scope", "compiled"),
+                               ("vulnerability_id", "CVE-2026-123456")):
+                finding = {**entry["finding"], key: value}
+                changed = {**entry, "finding": finding, "fingerprint": gate.fingerprint(finding)}
+                with self.subTest(disposition=disposition, key=key), self.assertRaisesRegex(
+                        gate.ScanPolicyError, "gcc_finding_scope"):
+                    gate.reviewed_exception(changed, finding, facts=facts,
+                                            repo=self.repo, now=self.now)
+            finding = copy.deepcopy(entry["finding"])
+            finding["packages"][0]["version"] = "14.2.0-20"
+            changed = {**entry, "finding": finding, "fingerprint": gate.fingerprint(finding)}
+            with self.assertRaisesRegex(gate.ScanPolicyError, "gcc_finding_scope"):
+                gate.reviewed_exception(changed, finding, facts=facts, repo=self.repo, now=self.now)
+            finding = copy.deepcopy(entry["finding"])
+            finding["packages"][0]["name"] = "unexpected-gcc-package"
+            changed = {**entry, "finding": finding, "fingerprint": gate.fingerprint(finding)}
+            with self.assertRaisesRegex(gate.ScanPolicyError, "gcc_finding_scope"):
+                gate.reviewed_exception(changed, finding, facts=facts, repo=self.repo, now=self.now)
+
+    def test_gcc_expired_or_future_review_wrong_bytes_or_new_elf_set_blocks(self):
+        for disposition in ("not_affected_build", "code_not_present"):
+            entry, facts = self.add_gcc(disposition)
+            original = copy.deepcopy(entry)
+            for field, value in (("reviewed_at", (self.now + timedelta(days=1)).isoformat()),
+                                  ("expires", (self.now - timedelta(seconds=1)).isoformat())):
+                self.policy["findings"] = [{**original, field: value}]
+                with self.assertRaisesRegex(gate.ScanPolicyError, "review_expired"):
+                    self.evaluate(facts)
+            self.policy["findings"] = [original]
+            changed = copy.deepcopy(facts)
+            changed[1][next(iter(changed[1]))]["sha256"] = "0" * 64
+            self.assertFalse(self.evaluate(changed)["passed"])
+            if disposition == "code_not_present":
+                changed = gate.ArchiveFacts(facts[0], facts[1],
+                                            {**facts.elf_set, "sha256": "3" * 64})
+                self.assertFalse(self.evaluate(changed)["passed"])
+
+    def test_gcc_typed_source_and_build_evidence_cannot_be_replaced_by_generic_claims(self):
+        for disposition in ("not_affected_build", "code_not_present"):
+            entry, facts = self.add_gcc(disposition)
+            path = self.repo / entry["gcc_evidence"]["path"]
+            value = json.loads(path.read_text())
+            if disposition == "not_affected_build":
+                value["function"]["allocation_backend"] = "aligned_alloc"
+            else:
+                # A malicious kind key must not override the mandatory sentinel.
+                value["elf_set"]["kind"] = "file_sha256"
+            path.write_text(gate.canonical(value))
+            entry["gcc_evidence"]["sha256"] = gate.hash_file(path)
+            with self.assertRaisesRegex(gate.ScanPolicyError, "gcc_(build_proof|elf_set_missing)"):
+                self.evaluate(facts)

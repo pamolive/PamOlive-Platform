@@ -7,6 +7,8 @@ proof="$RUNNER_TEMP/pamolive-image-security"
 bundle="$RUNNER_TEMP/pamolive-qualified-image"
 tools_dir="$RUNNER_TEMP/pamolive-scan-tools"
 test -d "$proof" && test ! -e "$tools_dir"
+python -m deploy.check_scan_scratch --archive "$bundle/pamolive-linux-amd64.tar" \
+  --output "$proof/scanner-scratch.json"
 mkdir -m 700 "$tools_dir"
 mkdir -m 700 "$proof/reports"
 scanner_archive="$tools_dir/grype-linux-amd64.tar.gz"
@@ -52,9 +54,9 @@ scan() {
   local label="$1" kind="$2" target="$3" status=0
   timeout --signal=TERM --kill-after=15s 240s docker run --rm \
     --user "$(id -u):$(id -g)" --pull never --network none \
-    --cpus 1 --memory 256m --memory-swap 256m --pids-limit 128 \
+    --cpus 1 --memory 1536m --memory-swap 1536m --pids-limit 128 \
     --cap-drop ALL --security-opt no-new-privileges --read-only --no-healthcheck \
-    --tmpfs /tmp:size=64m,mode=1777 --entrypoint /scanner/grype \
+    --tmpfs /tmp:size=1g,mode=1777,nosuid,nodev,noexec --entrypoint /scanner/grype \
     --env LD_LIBRARY_PATH= --env LD_PRELOAD= --env GOMAXPROCS=1 --env GOMEMLIMIT=192MiB \
     --env TMPDIR=/tmp \
     --mount "type=bind,src=$tools_dir,dst=/scanner,readonly" \
@@ -67,8 +69,8 @@ scan() {
     > "$proof/$label.stdout.log" 2> "$proof/$label.stderr.log" || status=$?
   # 2 means that the documented scanner threshold is exceeded, not success.
   # Preserve the complete JSON and let the stricter reviewed policy decide.
-  case "$status" in 0|2) ;; *) return "$status" ;; esac
   printf '%s\n' "$status" > "$proof/$label.exit-code.txt"
+  case "$status" in 0|2) ;; *) return "$status" ;; esac
 }
 scan os docker-archive /image.tar
 scan compiled sbom /combined.cdx.json
