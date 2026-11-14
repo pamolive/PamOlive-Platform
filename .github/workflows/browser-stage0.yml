@@ -1,0 +1,81 @@
+# Outside repository. Root alone integrates/pushes after independent review.
+name: B0 dedicated stage0 only
+on:
+  push:
+    branches: [agent/p1g-browser-stage0]
+permissions:
+  contents: read
+concurrency:
+  group: b0-stage0-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  stage0:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      B0_WORK: ${{ runner.temp }}/pamolive-b0-pre-${{ github.run_id }}-${{ github.run_attempt }}
+      B0_SOURCES_SHA: ee1c0ffd8907da498b5e7c43ebd860dce20f7dd5fce15dc499751c6bff6bd99c
+      B0_MANIFEST_SHA: 43dca7509b334e474a353aecf3bc3293ba97f7c4b91d0a2411d072fcce944e1e
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Verify concrete reviewed source checksums before tool/controller execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' "$B0_SOURCES_SHA" qualification/b0_pre/review-sources.sha256 | sha256sum --check --strict
+          (cd qualification/b0_pre && sha256sum --check --strict review-sources.sha256)
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: 3.12.16
+      - name: Explicit project security tools and Ruff version, no app dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --only-binary=:all: --no-deps --require-hashes -r requirements-bootstrap.lock
+          python -m pip install -r requirements-security.lock
+          python -m pip install --only-binary=:all: --no-deps ruff==0.14.3
+          python -m pip check
+      - name: Pure mocked regressions and unchanged project static thresholds before pull
+        run: |
+          python -I -B -m unittest discover -s qualification/b0_pre -p test_pure.py -v
+          python -m ruff check qualification/b0_pre
+          python -m ruff format --check qualification/b0_pre
+          python -m bandit -r qualification/b0_pre -lll
+      - name: Observe actual storage and memory, create closed synthetic spool
+        run: >-
+          python -I -B qualification/b0_pre/controller.py prepare
+          --work-dir "$B0_WORK" --manifest-sha256 "$B0_MANIFEST_SHA"
+      - name: Explicit one-use bounded public image pull, no raw log, no retry
+        run: >-
+          python -I -B qualification/b0_pre/controller.py pull
+          --work-dir "$B0_WORK" --manifest-sha256 "$B0_MANIFEST_SHA"
+      - name: Stage0 versions NSS empty profile only, pull never, network none
+        run: >-
+          python -I -B qualification/b0_pre/controller.py stage0
+          --work-dir "$B0_WORK" --manifest-sha256 "$B0_MANIFEST_SHA"
+      - name: Reconcile only reserved ownership, preserving original failure
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$B0_WORK/state.json" ]; then
+            python -I -B qualification/b0_pre/controller.py cleanup --work-dir "$B0_WORK" --manifest-sha256 "$B0_MANIFEST_SHA"
+          fi
+      - name: Preserve failure before measurement without inventing release
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$B0_WORK"
+          if [ ! -f "$B0_WORK/public-report.json" ]; then
+            printf '%s\n' '{"code":"B0_PRE_NOT_STARTED","ok":false,"resources_released":null,"stage0":null,"TLS_observed":false,"sandbox_observed":false,"CDP_observed":false,"authority":false,"release_qualified":false}' >"$B0_WORK/public-report.json"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: b0-stage0-typed-public-evidence
+          path: ${{ env.B0_WORK }}/public-report.json
+          if-no-files-found: error
+          retention-days: 7

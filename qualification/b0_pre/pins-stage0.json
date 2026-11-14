@@ -1,0 +1,18 @@
+{
+  "schema": "pamolive.b0-stage0-pins/2",
+  "image": "mcr.microsoft.com/playwright@sha256:ee15712262f017b8157421b212b12099146645f44b1bc5c0514cbbe6a229b1d0",
+  "image_config": "sha256:a0d7b2b49ffa0e99787a00b7ec2af46eca58020082713f002ca9f0f1cfd1a017",
+  "index_information_only": "sha256:2f05f8a734509a7b3f26a912639488ee08f58a7b292d14d62271bcff9038768f",
+  "chromium_revision": "1248",
+  "chromium_version": "156.0.8078.4",
+  "node_min_major": 20,
+  "memory_MiB": 256,
+  "cpus": "0.5",
+  "tmp_MiB": 64,
+  "shm_MiB": 16,
+  "pids": 256,
+  "min_memory_MiB": 3072,
+  "min_store_free_MiB": 8192,
+  "pull_timeout_seconds": 480,
+  "authority": false
+}
