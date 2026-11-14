@@ -62,6 +62,10 @@ _FAILURE_MESSAGES.update({
     "Restored TeamViewer scan proof is missing.": "teamviewer_evidence_invalid",
     "Restored TeamViewer session origin link is missing.": "teamviewer_evidence_invalid",
 })
+for _kind in ("source", "credential", "run", "mapping", "history"):
+    _FAILURE_MESSAGES[f"Restored directory {_kind} evidence is invalid."] = (
+        "directory_evidence_invalid"
+    )
 for _message in (
     "Restored governance exception request is invalid.",
     "Restored governance exception history is inconsistent.",
@@ -278,6 +282,114 @@ def snapshot_session():
         print(json.dumps(key_probe(archive_hash), sort_keys=True), flush=True)
 
 
+def verify_directory_evidence():
+    """Verify every tenant's historical directory evidence without granting live authority."""
+    from django.core.exceptions import ValidationError
+    from django.utils.crypto import constant_time_compare
+
+    from platform_core.models import AuditEvent
+    from platform_core.security import cipher
+    from platform_core.tenancy import organization_context
+    from platform_modules.connectors.directory_adapters import (
+        normalize_destination,
+        normalize_directory_records,
+    )
+    from platform_modules.connectors.directory_inventory import (
+        _credential,
+        _mappings,
+        credential_seal,
+        verify_directory_run,
+        verify_directory_source,
+    )
+    from platform_modules.connectors.directory_models import (
+        DirectoryFact,
+        DirectoryMapping,
+        DirectoryRun,
+        DirectorySource,
+    )
+    from platform_modules.identity.directory_simulation import ADAPTERS
+
+    result = dict(sources=0, runs=0, facts=0, mappings=0, encrypted_values=0)
+    for source in DirectorySource.unscoped.select_related("organization", "audit").iterator(
+        chunk_size=100
+    ):
+        with organization_context(source.organization):
+            if not verify_directory_source(source):
+                raise RuntimeError("Restored directory source evidence is invalid.")
+            try:
+                destination = normalize_destination(
+                    source.provider,
+                    source.destination.get("endpoint"),
+                    source.destination.get("certificate_sha256"),
+                    source.destination.get("scope"),
+                )
+            except Exception:
+                raise RuntimeError("Restored directory source evidence is invalid.") from None
+            if destination != source.destination:
+                raise RuntimeError("Restored directory source evidence is invalid.")
+            if not constant_time_compare(source.credential_seal, credential_seal(source)):
+                raise RuntimeError("Restored directory credential evidence is invalid.")
+            # Historical source disablement never prevents recovery of its proofs.
+            secret = json.loads(cipher().decrypt(source.encrypted_credential.encode()).decode())
+            try:
+                _credential(source.provider, source.destination, secret)
+            except ValidationError:
+                raise RuntimeError("Restored directory credential evidence is invalid.") from None
+            result["sources"] += 1
+            result["encrypted_values"] += 1
+            for run in (
+                DirectoryRun.objects.filter(source=source)
+                .select_related("source__audit", "audit")
+                .iterator(chunk_size=100)
+            ):
+                if (
+                    run.organization_id != source.organization_id
+                    or not 1 <= run.source_revision <= source.credential_revision
+                    or not verify_directory_run(run)
+                ):
+                    raise RuntimeError("Restored directory run evidence is invalid.")
+                fields = ADAPTERS[source.provider]
+                bodies = [dict(remote_id=str(fact.remote_id), username=fact.username,
+                               enabled=fact.enabled, groups=fact.groups)
+                          for fact in run.facts.order_by("remote_id")]
+                raw = [dict(zip(fields, (body["remote_id"], body["username"],
+                                         body["enabled"], body["groups"]))) for body in bodies]
+                try:
+                    normalized = normalize_directory_records(source.provider, raw)
+                except Exception:
+                    raise RuntimeError("Restored directory run evidence is invalid.") from None
+                if normalized != bodies:
+                    raise RuntimeError("Restored directory run evidence is invalid.")
+                result["runs"] += 1
+                result["facts"] += run.record_count
+            try:
+                _mappings(source)
+            except ValidationError:
+                raise RuntimeError("Restored directory mapping evidence is invalid.") from None
+            mappings = DirectoryMapping.objects.filter(source=source)
+            if mappings.exclude(
+                source_revision__gte=1, source_revision__lte=source.credential_revision
+            ).exists():
+                raise RuntimeError("Restored directory mapping evidence is invalid.")
+            result["mappings"] += mappings.count()
+    # A disappeared row must not silently turn a restored history into an empty
+    # inventory. Its independent audit anchor and model totals must still agree.
+    for model, key, action in (
+        (DirectorySource, "sources", "directory.source_created"),
+        (DirectoryRun, "runs", "directory.inventory_accepted"),
+        (DirectoryMapping, "mappings", "directory.mapping_decided"),
+    ):
+        if (
+            result[key] != model.unscoped.count()
+            or result[key]
+            != AuditEvent.objects.filter(action=action, object_type=model._meta.label_lower).count()
+        ):
+            raise RuntimeError("Restored directory history evidence is invalid.")
+    if result["facts"] != DirectoryFact.unscoped.count():
+        raise RuntimeError("Restored directory history evidence is invalid.")
+    return result
+
+
 def verify_application(*, expected_manifest=None, probe=None, archive_sha256=""):
     from django.db import DatabaseError, connection, transaction
     from django.db.migrations.executor import MigrationExecutor
@@ -368,6 +480,12 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
 
     result["governance_exception_proofs_checked"] = verify_exceptions()
     result["signed_proofs_checked"] += result["governance_exception_proofs_checked"]
+    directory = verify_directory_evidence()
+    result["directory_evidence_checked"] = directory
+    result["encrypted_values_checked"] += directory["encrypted_values"]
+    result["signed_proofs_checked"] += sum(directory[key] for key in (
+        "sources", "runs", "facts", "mappings"
+    ))
     for evaluation in AccessEvaluation.unscoped.select_related("audit", "event", "intent").iterator(
         chunk_size=100
     ):

@@ -1,0 +1,292 @@
+{
+  "absence_selectors": {
+    "acl_recursive_tools": [],
+    "archive_tar_module": [],
+    "gssrpc_components": [],
+    "pod_text_module": [],
+    "sasl_digestmd5_plugin": []
+  },
+  "architecture": "amd64",
+  "archive_sha256": "bf5d0075a25d2fc834aa5b21690fac709c62244a5f3330eee8296e1f58512cca",
+  "cjson_utils_imported_by": [],
+  "cjson_utils_needed_by": [],
+  "dynamic_importers": {
+    "XML_ExternalEntityParserCreate": [],
+    "XML_ParserReset": [],
+    "XML_SetExternalEntityRefHandler": [],
+    "XML_SetParamEntityParsing": [],
+    "cJSON_Compare": []
+  },
+  "elf_count": 844,
+  "entry_count": 17340,
+  "exported_vulnerable_apis": {
+    "XML_ExternalEntityParserCreate": [
+      "usr/lib/x86_64-linux-gnu/libexpat.so.1.13.0",
+      "usr/lib/x86_64-linux-gnu/libexpatw.so.1.13.0"
+    ],
+    "XML_ParserReset": [
+      "usr/lib/x86_64-linux-gnu/libexpat.so.1.13.0",
+      "usr/lib/x86_64-linux-gnu/libexpatw.so.1.13.0"
+    ],
+    "cJSONUtils_ApplyPatches": [
+      "usr/lib/x86_64-linux-gnu/libcjson_utils.so.1.7.18"
+    ],
+    "cJSON_Compare": [
+      "usr/lib/x86_64-linux-gnu/libcjson.so.1.7.18"
+    ]
+  },
+  "image_config_sha256": "cd487974f48fd1ed1c2bbb2f79b1fedc6bbcf5aa790329ff2118155502b80e77",
+  "limitations": [
+    "No binary execution or deployment attestation",
+    "Dynamic imports do not prove absence of inlined/static code or dlsym calls",
+    "Source hashes absent from archive cannot be inferred from package versions",
+    "Historical image only; all checks must be rebound to candidate digest"
+  ],
+  "os": "linux",
+  "packages": [
+    {
+      "Architecture": "amd64",
+      "Package": "apt",
+      "Source": null,
+      "Status": "install ok installed",
+      "Version": "3.0.4"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "fontconfig",
+      "Source": null,
+      "Status": "install ok installed",
+      "Version": "2.15.0-2.3"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "fontconfig-config",
+      "Source": "fontconfig",
+      "Status": "install ok installed",
+      "Version": "2.15.0-2.3"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "gcc-14-base",
+      "Source": "gcc-14",
+      "Status": "install ok installed",
+      "Version": "14.2.0-19"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "libacl1",
+      "Source": "acl (2.3.2-2)",
+      "Status": "install ok installed",
+      "Version": "2.3.2-2+b1"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "libapt-pkg7.0",
+      "Source": "apt",
+      "Status": "install ok installed",
+      "Version": "3.0.4"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "libatomic1",
+      "Source": "gcc-14",
+      "Status": "install ok installed",
+      "Version": "14.2.0-19"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "libcjson1",
+      "Source": "cjson",
+      "Status": "install ok installed",
+      "Version": "1.7.18-3.1+deb13u1"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "libexpat1",
+      "Source": "expat",
+      "Status": "install ok installed",
+      "Version": "2.9.0-1~deb13u1"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "libfontconfig1",
+      "Source": "fontconfig",
+      "Status": "install ok installed",
+      "Version": "2.15.0-2.3"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "libgcc-s1",
+      "Source": "gcc-14",
+      "Status": "install ok installed",
+      "Version": "14.2.0-19"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "libgssapi-krb5-2",
+      "Source": "krb5",
+      "Status": "install ok installed",
+      "Version": "1.21.3-5+deb13u1"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "libharfbuzz0b",
+      "Source": "harfbuzz",
+      "Status": "install ok installed",
+      "Version": "10.2.0-1+deb13u1"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "libicu76",
+      "Source": "icu",
+      "Status": "install ok installed",
+      "Version": "76.1-4"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "libk5crypto3",
+      "Source": "krb5",
+      "Status": "install ok installed",
+      "Version": "1.21.3-5+deb13u1"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "libkrb5-3",
+      "Source": "krb5",
+      "Status": "install ok installed",
+      "Version": "1.21.3-5+deb13u1"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "libkrb5support0",
+      "Source": "krb5",
+      "Status": "install ok installed",
+      "Version": "1.21.3-5+deb13u1"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "libsasl2-2",
+      "Source": "cyrus-sasl2",
+      "Status": "install ok installed",
+      "Version": "2.1.28+dfsg1-9"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "libsasl2-modules-db",
+      "Source": "cyrus-sasl2",
+      "Status": "install ok installed",
+      "Version": "2.1.28+dfsg1-9"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "libstdc++6",
+      "Source": "gcc-14",
+      "Status": "install ok installed",
+      "Version": "14.2.0-19"
+    },
+    {
+      "Architecture": "amd64",
+      "Package": "perl-base",
+      "Source": "perl",
+      "Status": "install ok installed",
+      "Version": "5.40.1-6+deb13u1"
+    }
+  ],
+  "path_inventory_digest_note": "All final paths, types and link targets; not public complete file contents",
+  "path_type_inventory_sha256": "4cd6a3fa33d8f3a3e2d25a1f989c9ec28b4f262bb7b2376872ac46dc1a62280d",
+  "private_input_hash_references": [
+    {
+      "name": "p1-f-os-elf-graph.json",
+      "sha256": "8b8e676a5bd0bf854d37c7797227f9b3b22ef219af14ee522cf1e8b07a381f3c"
+    },
+    {
+      "name": "p1-f-os-source-call-review.json",
+      "sha256": "76e4fe52c217ab09e0dc4b7a3b0d8bff88684f776b7ba837e06bfab610b4a3f5"
+    },
+    {
+      "name": "p1-f-gcc-aligned-new-disassembly.json",
+      "sha256": "ea4cca500e602da0922d82dcb24303a2daf438d6e3b87b495f806f7f5703b5bd"
+    },
+    {
+      "name": "p1-f-pbds-source-review.json",
+      "sha256": "961c3d9b63ce78afcb29e0fa1e24199654cc54b0b04ee6bafb960c386d2c739e"
+    },
+    {
+      "name": "p1-f-cxx-buildinfo-package-binding.json",
+      "sha256": "c3793fb2f137e5011ea2c95a07d0e0d612fa8e90e00f65fbce3ee6f1a28729c8"
+    },
+    {
+      "name": "gcc-95619.upstream-review.patch",
+      "sha256": "73676696abae0eb9b7383e6e40d4f628b822b8f4ef826bd97775d942925dc5d2"
+    },
+    {
+      "name": "gcc-102010.upstream-review.patch",
+      "sha256": "6bd11207cafce8e595a83726936f5ecc29906fa2e8426076b91a46813997327c"
+    }
+  ],
+  "proof_kind": "offline_archive_read_only",
+  "qualification": false,
+  "schema": "pamolive.reviewed-os-build-facts.v1",
+  "selected_files": {
+    "usr/bin/perl": {
+      "elf_class": 2,
+      "elf_endianness": 1,
+      "elf_machine": 62,
+      "sha256": "b85210f03baeb859ee20b1324e59497f27f319eda9e2d3d1ecd163a79d884a7d",
+      "size": 3935376
+    },
+    "usr/lib/x86_64-linux-gnu/libacl.so.1.1.2302": {
+      "elf_class": 2,
+      "elf_endianness": 1,
+      "elf_machine": 62,
+      "sha256": "3c03774961231d8485a4dba36ec359a95939a84719799c58cd26173e44bbde90",
+      "size": 38832
+    },
+    "usr/lib/x86_64-linux-gnu/libcjson.so.1.7.18": {
+      "elf_class": 2,
+      "elf_endianness": 1,
+      "elf_machine": 62,
+      "sha256": "9bb1c2cfb9a48b062008eb2bf2a73b7e2283574ce17f1ba21ba7ff2422c38028",
+      "size": 34688
+    },
+    "usr/lib/x86_64-linux-gnu/libcjson_utils.so.1.7.18": {
+      "elf_class": 2,
+      "elf_endianness": 1,
+      "elf_machine": 62,
+      "sha256": "33bafc885efb8de411c2e011a02cc23d936b9e9c67104c5ffc60068ac9aa05c9",
+      "size": 22520
+    },
+    "usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2": {
+      "elf_class": 2,
+      "elf_endianness": 1,
+      "elf_machine": 62,
+      "sha256": "c290f761873ebeac539911010526e1c5db86218bfcb29672760da46841741de0",
+      "size": 346904
+    },
+    "usr/lib/x86_64-linux-gnu/libkrb5.so.3.3": {
+      "elf_class": 2,
+      "elf_endianness": 1,
+      "elf_machine": 62,
+      "sha256": "c4ab64e6bc2874a83e649e4439be752465da027a0041e2bb5343f81c80f0882d",
+      "size": 883984
+    },
+    "usr/lib/x86_64-linux-gnu/libsasl2.so.2.0.25": {
+      "elf_class": 2,
+      "elf_endianness": 1,
+      "elf_machine": 62,
+      "sha256": "3f93968591811eb3972c3467c69c2968dd9cb2b51f7b7bb48de22ba8e17d13fd",
+      "size": 109232
+    },
+    "usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.33": {
+      "elf_class": 2,
+      "elf_endianness": 1,
+      "elf_machine": 62,
+      "sha256": "972bb2a18b71140dab0240f8a1f68ab3fb1d56bcd4c4f824a91b70888faf5a00",
+      "size": 2497768
+    },
+    "var/lib/dpkg/status": {
+      "sha256": "47d60aed637e0da779d0c786ed4c3da5f3e0b2b724542c64029f36c3fe0074dc",
+      "size": 119369
+    }
+  }
+}

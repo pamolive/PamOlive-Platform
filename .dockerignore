@@ -6,7 +6,16 @@
 !manage.py
 !pyproject.toml
 !requirements.lock
+!requirements-bootstrap.lock
+!requirements-native-build.lock
+!requirements-database-build.lock
+!requirements-dev.lock
+!requirements-directory.lock
 !requirements-native-test.lock
+!requirements-python-runtime-linux.lock
+!requirements-python-build-tools-linux.lock
+!requirements-python-native-sources-linux.lock
+!requirements-python-native-test-linux.lock
 !config/
 !config/**
 !deploy/
@@ -63,4 +72,6 @@
 **/build
 **/dist
 deploy/bootstrap-nas.sh
+deploy/Dockerfile.partition-probe
+deploy/check_image_scan_ci.sh
 !.env.example

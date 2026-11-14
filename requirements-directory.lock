@@ -1,0 +1,4 @@
+# Linux native reader wheel-build inputs, also pinned in the application lock.
+python-ldap==3.4.8; platform_system == "Linux"
+pyasn1==0.6.5
+pyasn1-modules==0.4.2

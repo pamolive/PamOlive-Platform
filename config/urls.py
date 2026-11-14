@@ -6,7 +6,12 @@ from platform_core.extensions.urls import extension_patterns
 from platform_core.oidc import views as oidc_views
 from platform_core.security import security_settings
 from platform_modules.access import certificate_views, observe_views, ui
-from platform_modules.connectors import business_views, creation_views, teamviewer_views
+from platform_modules.connectors import (
+    business_views,
+    creation_views,
+    directory_views,
+    teamviewer_views,
+)
 from platform_modules.connectors import views as connector_views
 from platform_modules.governance import views as governance_views
 from platform_modules.governance import workspace_views
@@ -18,6 +23,54 @@ from platform_modules.pam import views as pam_views
 from platform_modules.recertification import views as recertification_views
 
 urlpatterns = [
+    path("connectors/directories/", directory_views.index, name="directory-index"),
+    path("api/v1/directories/", directory_views.index, {"api": True}, name="api-directory-index"),
+    path("connectors/directories/new/", directory_views.configure, name="directory-configure"),
+    path(
+        "connectors/directories/<uuid:source_id>/", directory_views.detail, name="directory-detail"
+    ),
+    path(
+        "api/v1/directories/<uuid:source_id>/",
+        directory_views.detail,
+        {"api": True},
+        name="api-directory-inventory",
+    ),
+    path(
+        "connectors/directories/<uuid:source_id>/export/",
+        directory_views.detail,
+        {"export": True},
+        name="directory-export",
+    ),
+    path(
+        "connectors/directories/<uuid:source_id>/fixtures/",
+        directory_views.import_fixture,
+        name="directory-import",
+    ),
+    path(
+        "connectors/directories/<uuid:source_id>/collect/",
+        directory_views.collect,
+        name="directory-collect",
+    ),
+    path(
+        "connectors/directories/<uuid:source_id>/enabled/",
+        directory_views.enabled,
+        name="directory-enabled",
+    ),
+    path(
+        "connectors/directories/<uuid:source_id>/mappings/",
+        directory_views.mapping,
+        name="directory-map",
+    ),
+    path(
+        "connectors/directories/mappings/<uuid:mapping_id>/revoke/",
+        directory_views.revoke,
+        name="directory-unmap",
+    ),
+    path(
+        "connectors/directories/<uuid:source_id>/credential/",
+        directory_views.rotate,
+        name="directory-rotate",
+    ),
     path("identities/360/", identity360_views.inventory, name="identity360-inventory"),
     path("identities/360/<uuid:identity_id>/", identity360_views.detail, name="identity360-detail"),
     path("identities/360/<uuid:identity_id>/export/", identity360_views.export,

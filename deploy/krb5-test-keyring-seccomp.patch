@@ -1,0 +1,23 @@
+From: PamOlive maintainers
+Subject: [TEST ONLY] Handle blocked keyctl without weakening the sandbox
+
+Extend Debian0012 exact capability detection to observed EPERM.
+Unexpected errors still fail; the Kerberos runtime is unchanged.
+
+--- a/src/util/k5test.py
++++ b/src/util/k5test.py
+@@ -1191,9 +1191,11 @@
+         try: subprocess.check_output(['keyctl', 'add', 'user', 'some_key', 'data', '@p'], stderr=subprocess.STDOUT)
+         except subprocess.CalledProcessError as e:
+             out = str(e.output, 'utf-8')
+-            if 'Function not implemented' in out and e.returncode == 1:
+-                return False # masked by seccomp
+-            fail('Unexpected output from keyctl: '+e.output)
++            if e.returncode == 1 and out.strip() in (
++                'add_key: Function not implemented',
++                'add_key: Operation not permitted'):
++                return False # capability unavailable under container seccomp
++            fail('Unexpected output from keyctl: '+out)
+             raise
+         return True
+     

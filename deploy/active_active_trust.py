@@ -23,7 +23,8 @@ from types import SimpleNamespace
 INSTALLATION = "synthetic-ha-qualification"
 RP = "ha.pamolive.test"
 ORIGIN = "https://" + RP
-CHECKPOINT_TARGET = "/tmp/pamolive-ha-public-checkpoints"
+# Public read-only fixture input stays outside the bounded private /tmp scratch.
+CHECKPOINT_TARGET = "/run/pamolive-ha-public-checkpoints"
 
 
 def encoded(value):

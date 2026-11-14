@@ -1,7 +1,10 @@
 Django==5.2.19
 dj-database-url==3.1.2
 gunicorn==23.0.0
-psycopg[binary]==3.2.10
+psycopg==3.2.10
+psycopg-c==3.2.10; platform_system == "Linux"
+# Bundled client libraries are retained only for non-Linux development.
+psycopg-binary==3.2.10; platform_system != "Linux"
 whitenoise==6.11.0
 asgiref==3.13.0
 packaging==26.3
@@ -24,3 +27,5 @@ pyasn1==0.6.5
 pyasn1-modules==0.4.2
 cbor2==6.2.1
 pyOpenSSL==26.4.0
+# Native OpenLDAP reader; Windows development uses the qualified Linux image.
+python-ldap==3.4.8; platform_system == "Linux"

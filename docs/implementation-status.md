@@ -2,6 +2,47 @@
 
 Le document de vision décrit la cible complète. Cette branche construit progressivement cette cible ; elle ne constitue pas encore une version de production.
 
+## Programme autonome : référence et travail courant
+
+La [roadmap réconciliée](implementation-roadmap.md) distingue désormais les lots P1-F/G, P2 et P3 du premier ordre historique. Référence publiée : main `dcaa116be6f026f67ad3825feb38d90ac632ce80`, PR1 fusionnée, [CI complète réussie](https://github.com/pamolive/PamOlive-Platform/actions/runs/43074618211) et [image GHCR publiée/attestée](https://github.com/pamolive/PamOlive-Platform/actions/runs/43078536377). Les résultats détaillés P0/P1 demeurent dans leurs rapports ; leur portée historique est conservée.
+
+Point courant du14novembre : voir la [qualification N0 datée](p1-f-qualification-20261114.md).
+B3r6, construit depuis le commit `8ca92bf`, passe la sonde embarquée avec init,
+les transports, TLS/SCRAM, les régressions P0 et la restauration synthétique.
+Son scan frais conserve35groupes High non arbitrés et aucun Critical. Les deux
+CI `7bfbe18` passent la sécurité mais échouent à la bascule entre deux nœuds ;
+le correctif de fixture est testé localement dans `8013c9f`, poussé sur PR2.
+Ce nouveau sujet construit les entrées Python hashées hors réseau et passe
+P0 dans l'image ainsi que HA local HTTP/SSH/RDP. Le scan local conserve35groupes
+High non arbitrés. La CI push passe migrations,1325tests comptés/42exclusions
+et HA avec partition sur son propre build, puis échoue au seul gate de scan35High.
+Une wheel pip ancienne dans ensurepip, absente du lock
+applicatif, impose encore la correction ciblée [ADR019](adr-019-native-runtime-dependencies.md)
+et sa propre qualification. Les matériaux APT/compilateur et attestations ADR021
+restent incomplets : livraison bloquée.
+P1-G dispose d'une première entrée de demande d'accès et d'un correctif de
+revalidation d'autorité sous verrou dans ses branches locales ; le parcours
+complet reste à qualifier. P2 possède une primitive d'enveloppe technique revue,
+commit local séparé `177df2b`,25tests et huit sondes adverses indépendantes ;
+le service Vault, son registre et l'isolation opérationnelle restent à construire.
+Les paragraphes B2/B3r2 ci-dessous décrivent les campagnes historiques.
+
+| Périmètre | État réel au démarrage du programme |
+| --- | --- |
+| P0, P1-A/B1/C/D/E | Intégrés/publiés, tests PostgreSQL et transports synthétiques qualifiés en CI |
+| Packaging TLS Synology | Trois services réellement démarrés sur Docker Linux/Compose2.20.1, HTTPS/MFA/isolation/restauration validés ; nouvelle image non installée sur NAS |
+| P1-F Connect/Audit | Développement en cours : inventaire persistant d’annuaire et lecteurs LDAP/AD/Graph de laboratoire ; SCIM/TeamViewer existants réutilisés |
+| P1-G portail complet | Planifié après F ; parcours transverses présents mais scénarios interactifs et accessibilité à compléter |
+| P2 hybride/Vault/broker/clé/témoin | À implémenter et qualifier ; les UID actuels ne protègent pas les secrets contre une compromission complète du portail |
+| P3 enterprise | Capacités partielles dans le noyau actuel ; extensions et qualification dédiées à construire |
+| Production/multi-hôte réel | Non qualifiée ; les limites d’infrastructure sont documentées sans être comptées comme succès |
+
+La première tranche F1/F2 est implémentée et testée par campagnes locales ciblées :102tests PostgreSQL sous rôle restreint,42tests adverses indépendants, puis43tests de protocole Linux, véritable démarrage TLS et restauration Docker enrichie de preuves Directory. La première suite globale garde son échec de fixture ; un nouveau rejeu complet du checkout de travail avec préparations F3/P1-G passe1226cas en1236,669s,49exclusions. Les deux CI95fe14f passent chacune130tests Directory et1166cas globaux avec42exclusions, ainsi que leurs portes natives/HA/restauration. Elles restent en échec sur l'espace temporaire du scanner et le nettoyage LDAP ; les corrections sont en qualification. Aucun de ces résultats ne remplace la CI du candidat final.
+
+Le scan OS/native a refusé le runtime initial. ADR-019 actualise Python, FreeRDP et pip, ajoute le backport GDI compatible avec les gardes P0, puis remplace le pilote PostgreSQL Linux binaire par psycopg-c lié aux bibliothèques système. Le témoin B2 passe les vérifications natives et10/10SSH,9/9RDP sur PostgreSQL synthétique, ainsi que TLS1.3/SCRAM/CA/nom/concurrence sous rôle non-superuser. Le rescan conserve102matches High et aucun Critical ; les six findings pip sont corrigés. Le gate conserve les findings non triés et bloque la promotion ; les clôtures individuelles et la remédiation Kerberos restent en revue. Le retry B3r2 passe le makecheck Debian témoin puis échoue au harnais ASN.1 : aucune image B3 n'est qualifiée. Le rapprochement F3 est conservé dans une branche locale distincte, commit `ece41d6`,105tests PostgreSQL et contre-revue indépendante45/45 sans exclusion ; aucune publication de ce lot ne découle de ces tests. Les revues P2 restent des travaux de conception. Voir le [rapport courant](p1-f-inventory-validation.md), le [triage](p1-f-os-high-triage.md) et la [politique de scan](image-scan-policy.md).
+
+Les anciennes portes NAS cochées plus bas concernent les anciennes versions et ne prouvent ni installation de cette image ni autorisation de toucher les services existants. Le programme actuel autorise les laboratoires isolés si leurs conditions sont vérifiées ; sinon le développement et les publications continuent sur Docker Desktop.
+
 ## Lecture du checkout P1
 
 Les capacités ci-dessous décrivent des livraisons de périmètres différents. Pour le checkout local après remédiation, consulter [P0-3](p0-3-validation.md) et [P0-4](p0-4-validation.md). Les anciennes qualifications NAS, image et transport ne qualifient pas automatiquement les modifications locales non publiées. Le témoin indépendant, le commissionnement réel et la qualification native Linux du contrôle P0-3 restent des portes explicites. Les onze noms produit de la roadmap correspondent aux applications techniques existantes ; ils ne désignent pas onze modules déjà achevés.

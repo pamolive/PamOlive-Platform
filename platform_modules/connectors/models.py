@@ -168,6 +168,12 @@ from .creation_models import (  # noqa: E402,F401
     ScimCreationProof,
     ScimCreationRequest,
 )
+from .directory_models import (  # noqa: E402,F401
+    DirectoryFact,
+    DirectoryMapping,
+    DirectoryRun,
+    DirectorySource,
+)
 from .teamviewer_access_models import (  # noqa: E402,F401
     TeamViewerAccessCursor,
     TeamViewerAccessObservation,

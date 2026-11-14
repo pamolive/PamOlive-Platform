@@ -1,0 +1,12 @@
+{
+  "archive_sha256": "e9da18cc1429e786722e32161288103600efffd8e483c90761f90485bd1bec85",
+  "archive_url": "https://github.com/anchore/grype/releases/download/v0.121.3/grype_0.121.3_linux_amd64.tar.gz",
+  "checksums_sha256": "1f8cea030e00f362d6b0bb0d1843b123af1d6baad70975dff1cf6fe14096866f",
+  "checksums_url": "https://github.com/anchore/grype/releases/download/v0.121.3/grype_0.121.3_checksums.txt",
+  "platform": "linux/amd64",
+  "release_url": "https://github.com/anchore/grype/releases/tag/v0.121.3",
+  "schema": "pamolive.grype-release-pin.v1",
+  "signature_bundle_sha256": "c45178e6831b38291cd48f51d49dfa5ef2251afdbed7c3812d6b33bf9049fe74",
+  "signature_verification": "not_performed; official HTTPS checksums and release metadata verified",
+  "version": "0.121.3"
+}

@@ -8,7 +8,15 @@
     "sha256": "8bc45675da96d7b6f39728160181e3d4ff3c08f460f6d26de5805b642bf13f2b",
     "signature_verified_at_build": true,
     "local_patch": "deploy/guacd-deny-rdp-redirection.patch",
-    "patch_purpose": "Reject FreeRDP server-directed reconnects before a redirected TCP connection and explicitly abort the private Guacamole relay."
+    "patch_purpose": "Reject FreeRDP server-directed reconnects before a redirected TCP connection and explicitly abort the private Guacamole relay.",
+    "compatibility_patches": [
+      {
+        "path": "deploy/guacd-freerdp3-gdi-lifecycle.patch",
+        "sha256": "22abebc3df34da38a96bd476b7387754c97eefc51477112a7ad812dd08a3cb05",
+        "upstream_commit": "https://github.com/apache/guacamole-server/commit/ab36756b596520ae2a94cd4d25e406e0b5aa820b",
+        "purpose": "Initialize GDI after FreeRDP creates its cache. Preserve authentication, certificate and redirection controls."
+      }
+    ]
   },
   "javascript": {
     "distribution": "https://dlcdn.apache.org/guacamole/1.6.0/binary/guacamole-1.6.0.war",

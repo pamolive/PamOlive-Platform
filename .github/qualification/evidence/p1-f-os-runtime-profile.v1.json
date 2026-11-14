@@ -1,0 +1,644 @@
+{
+  "schema": "pamolive.os-runtime-profile-review.v1",
+  "reviewed_on": "2026-11-12",
+  "qualification": false,
+  "production_authorization": false,
+  "policy_entries_created": 0,
+  "scope": "Independent finite review of 17 profile-dependent and 5 code-present cases; N0 synthetic development only.",
+  "source_checkout_head_at_capture": "42fdcb09fa3e4580d0e46dfa844ca87adaa16001",
+  "source_checkout_may_be_dirty": true,
+  "source_files_sha256": {
+    "deploy/runtime.py": "e83228617975fe8e3f58cf0f7cfcb9808eb5c65457a09067d68d6083b0602d30",
+    "deploy/native_runtime.py": "ee1e61aa93f779d45aea11cecf6877ef715352e64ecc02c6ac394fd360d6a1ae",
+    "deploy/check_runtime.py": "af3d27caa3bcc309a4882fbd0d63110f27c1d07211fa04e1d7741e5d4a035344",
+    "deploy/synology_preflight.py": "eccdbdc30fa28980bc576440eb28dca6621977ca62b241851ca1bee7219876a7",
+    "deploy/synology-test/compose.yml": "2e1134e150260fbd9e81248b7e5b44b523e1ac596a32ed571283722342d2865c",
+    "platform_modules/pam/native.py": "633d691164d10d88443ade59973bf6ecc61788d2148bd13f555625f197f044c0",
+    "platform_core/extensions/releases.py": "a1cd699f3852ea4252ff0707a73251e36a238967a407df04f2beadfc77c1846e",
+    "config/settings.py": "cba5115737d0698eff26eaa0244ba8ce54c3c825d34f657843dd6f950d386b1b",
+    "deploy/build-freerdp.sh": "fbc1e68c125e650943746626c1c9c743fe98b10b5b0b508fb3083cee407fa48f",
+    "deploy/build-guacd.sh": "6ff4ff5535b58832aea9f7dba0bb5333b416a22ada230a1f0cc103a39f6f595b",
+    "deploy/check_active_active.py": "13725b59fb41353171ced860f793c1cb3383afe79bd8e370bd9d40f495f0c358"
+  },
+  "b2_witness": {
+    "archive_sha256": "91f42cac5b0700f61129b9b136a4626efb1c95c13ee5df95e74c2d9c4c756091",
+    "oci_manifest_digest": "sha256:d0f194f8a34c33ae659c76acad6879414f83a9a7d86f93db672bac7522dbb3a8",
+    "image_config_digest": "sha256:bb310bd26a512a93a5cecf7b9e55109a5551878969a1e6baf939080a325f008b",
+    "architecture": "linux/amd64",
+    "selected_files": {
+      "/etc/fstab": {
+        "sha256": "a6b093c9916c6c54e5d634d3689f1a0132e14cce0b8e50ff445da8e85acfbd17",
+        "mode": "0o644",
+        "uid": 0,
+        "gid": 0,
+        "size": 37,
+        "noncomment_entries": 0
+      },
+      "/usr/bin/cp": {
+        "sha256": "5a3a8808bab81a67c6ac578670f5608595f1569948d4dc7d7d604c1d08d596d9",
+        "mode": "0o755",
+        "uid": 0,
+        "gid": 0,
+        "size": 149960,
+        "soname": null,
+        "needed": [
+          "libacl.so.1",
+          "libattr.so.1",
+          "libc.so.6",
+          "libselinux.so.1"
+        ],
+        "targeted_imports": [
+          "acl_delete_def_file",
+          "acl_set_file"
+        ]
+      },
+      "/usr/bin/infocmp": {
+        "sha256": "934ce418360bd162a188f22310509640f3b0c14a858ec4ec04c25df64f97feb0",
+        "mode": "0o755",
+        "uid": 0,
+        "gid": 0,
+        "size": 67904,
+        "soname": null,
+        "needed": [
+          "libc.so.6",
+          "libtic.so.6",
+          "libtinfo.so.6"
+        ],
+        "targeted_imports": []
+      },
+      "/usr/bin/install": {
+        "sha256": "daa4c9bda9ae0ebc3c778b7778c2634d85674690673facea20f6984b976f4e91",
+        "mode": "0o755",
+        "uid": 0,
+        "gid": 0,
+        "size": 154096,
+        "soname": null,
+        "needed": [
+          "libacl.so.1",
+          "libattr.so.1",
+          "libc.so.6",
+          "libselinux.so.1"
+        ],
+        "targeted_imports": [
+          "acl_delete_def_file",
+          "acl_set_file"
+        ]
+      },
+      "/usr/bin/mount": {
+        "sha256": "2f36342bd2fef42343c4fa4a2a396a7f56c7c8f4ddcbd31c43205c62e152e6d4",
+        "mode": "0o4755",
+        "uid": 0,
+        "gid": 0,
+        "size": 72072,
+        "soname": null,
+        "needed": [
+          "libc.so.6",
+          "libmount.so.1",
+          "libselinux.so.1"
+        ],
+        "targeted_imports": []
+      },
+      "/usr/bin/mv": {
+        "sha256": "7db4661c6397fe5fd5ba6837692aa5adb7dce1efc656369d7b08dfd6ece525a0",
+        "mode": "0o755",
+        "uid": 0,
+        "gid": 0,
+        "size": 149960,
+        "soname": null,
+        "needed": [
+          "libacl.so.1",
+          "libattr.so.1",
+          "libc.so.6",
+          "libselinux.so.1"
+        ],
+        "targeted_imports": [
+          "acl_delete_def_file",
+          "acl_set_file"
+        ]
+      },
+      "/usr/bin/nsenter": {
+        "sha256": "09ea3a612a16b59c04aa55d894a1e868deaddb8a6a9927c4f1993827a3554de1",
+        "mode": "0o755",
+        "uid": 0,
+        "gid": 0,
+        "size": 88728,
+        "soname": null,
+        "needed": [
+          "libc.so.6",
+          "libselinux.so.1"
+        ],
+        "targeted_imports": []
+      },
+      "/usr/bin/sed": {
+        "sha256": "69ff7292c0d081bdf5866bc84dde96d5a14f4a7deafeb9483739be68c48ac2b3",
+        "mode": "0o755",
+        "uid": 0,
+        "gid": 0,
+        "size": 130520,
+        "soname": null,
+        "needed": [
+          "libacl.so.1",
+          "libc.so.6",
+          "libselinux.so.1"
+        ],
+        "targeted_imports": [
+          "acl_delete_def_file",
+          "acl_get_file",
+          "acl_set_file"
+        ]
+      },
+      "/usr/bin/tar": {
+        "sha256": "38adf50825f773d353d6bda1a7cd70c22f8877823e44821c1d2bd0a52ddc3871",
+        "mode": "0o755",
+        "uid": 0,
+        "gid": 0,
+        "size": 458280,
+        "soname": null,
+        "needed": [
+          "libacl.so.1",
+          "libc.so.6",
+          "libselinux.so.1"
+        ],
+        "targeted_imports": [
+          "acl_delete_def_file",
+          "acl_get_file",
+          "acl_set_file"
+        ]
+      },
+      "/usr/lib/x86_64-linux-gnu/libacl.so.1.1.2302": {
+        "sha256": "3c03774961231d8485a4dba36ec359a95939a84719799c58cd26173e44bbde90",
+        "mode": "0o644",
+        "uid": 0,
+        "gid": 0,
+        "size": 38832,
+        "soname": "libacl.so.1",
+        "needed": [
+          "libc.so.6"
+        ],
+        "targeted_imports": []
+      },
+      "/usr/lib/x86_64-linux-gnu/liblastlog2.so.2.0.0": {
+        "sha256": "fe1fcd313c8a8366b16bb22f4c15980b604c465bae8957c26ae2cb2b0dd9a960",
+        "mode": "0o644",
+        "uid": 0,
+        "gid": 0,
+        "size": 18424,
+        "soname": "liblastlog2.so.2",
+        "needed": [
+          "libc.so.6",
+          "libsqlite3.so.0"
+        ],
+        "targeted_imports": [
+          "sqlite3_open",
+          "sqlite3_open_v2"
+        ]
+      },
+      "/usr/lib/x86_64-linux-gnu/libsqlite3.so.0.8.6": {
+        "sha256": "317d80bf5d592f98a71e14d2330591d6a339f631f37c5977835af748a1f26715",
+        "mode": "0o644",
+        "uid": 0,
+        "gid": 0,
+        "size": 1571096,
+        "soname": "libsqlite3.so.0",
+        "needed": [
+          "libc.so.6",
+          "libm.so.6"
+        ],
+        "targeted_imports": [],
+        "compile_option_strings": {
+          "ENABLE_FTS5": true,
+          "ENABLE_SESSION": true
+        }
+      },
+      "/usr/local/lib/python3.12/lib-dynload/_sqlite3.cpython-312-x86_64-linux-gnu.so": {
+        "sha256": "91b141970b89aabda66c1518c86deb0d71bd332f32bedd01067bb4e757ce95d0",
+        "mode": "0o755",
+        "uid": 0,
+        "gid": 0,
+        "size": 132336,
+        "soname": null,
+        "needed": [
+          "libc.so.6",
+          "libsqlite3.so.0"
+        ],
+        "targeted_imports": [
+          "sqlite3_open_v2"
+        ]
+      },
+      "/etc/fonts/fonts.conf": {
+        "sha256": "93a23ba073996edb8b42d6c89ebc2ec5fd2101ce82cb65ba0db358dabf55ca22",
+        "mode": "0o644",
+        "uid": 0,
+        "gid": 0,
+        "size": 2940
+      },
+      "/usr/lib/x86_64-linux-gnu/libcjson.so.1.7.18": {
+        "sha256": "9bb1c2cfb9a48b062008eb2bf2a73b7e2283574ce17f1ba21ba7ff2422c38028",
+        "mode": "0o644",
+        "uid": 0,
+        "gid": 0,
+        "size": 34688,
+        "soname": "libcjson.so.1",
+        "needed": [
+          "libc.so.6"
+        ],
+        "targeted_imports": []
+      },
+      "/usr/lib/x86_64-linux-gnu/libcjson_utils.so.1.7.18": {
+        "sha256": "33bafc885efb8de411c2e011a02cc23d936b9e9c67104c5ffc60068ac9aa05c9",
+        "mode": "0o644",
+        "uid": 0,
+        "gid": 0,
+        "size": 22520,
+        "soname": "libcjson_utils.so.1",
+        "needed": [
+          "libc.so.6",
+          "libcjson.so.1"
+        ],
+        "targeted_imports": []
+      },
+      "/usr/lib/x86_64-linux-gnu/libexpat.so.1.13.0": {
+        "sha256": "36e7e50d21edcabed383bfddc594bb261c1c7cce456afdf23c5f53e849cda67c",
+        "mode": "0o644",
+        "uid": 0,
+        "gid": 0,
+        "size": 186528,
+        "soname": "libexpat.so.1",
+        "needed": [
+          "libc.so.6"
+        ],
+        "targeted_imports": []
+      },
+      "/usr/lib/x86_64-linux-gnu/libfontconfig.so.1.12.1": {
+        "sha256": "d6344f71a0cfd5fcb154278f0be706021f75f79d1fcc973fc4ddb1dff40ab0ee",
+        "mode": "0o644",
+        "uid": 0,
+        "gid": 0,
+        "size": 317360,
+        "soname": "libfontconfig.so.1",
+        "needed": [
+          "libc.so.6",
+          "libexpat.so.1",
+          "libfreetype.so.6"
+        ],
+        "targeted_imports": [
+          "XML_ErrorString",
+          "XML_GetBuffer",
+          "XML_GetCurrentLineNumber",
+          "XML_GetErrorCode",
+          "XML_ParseBuffer",
+          "XML_ParserCreate",
+          "XML_ParserFree",
+          "XML_SetCharacterDataHandler",
+          "XML_SetDoctypeDeclHandler",
+          "XML_SetElementHandler",
+          "XML_SetUserData"
+        ]
+      },
+      "/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2": {
+        "sha256": "c290f761873ebeac539911010526e1c5db86218bfcb29672760da46841741de0",
+        "mode": "0o644",
+        "uid": 0,
+        "gid": 0,
+        "size": 346904,
+        "soname": "libgssapi_krb5.so.2",
+        "needed": [
+          "libc.so.6",
+          "libcom_err.so.2",
+          "libk5crypto.so.3",
+          "libkrb5.so.3",
+          "libkrb5support.so.0"
+        ],
+        "targeted_imports": [
+          "krb5_rd_cred"
+        ]
+      }
+    },
+    "allowlisted_image_env": [
+      "LANG=C.UTF-8"
+    ],
+    "final_b3_image": false
+  },
+  "historical_gdi_graph": {
+    "archive_sha256": "bf5d0075a25d2fc834aa5b21690fac709c62244a5f3330eee8296e1f58512cca",
+    "graph_sha256": "8b8e676a5bd0bf854d37c7797227f9b3b22ef219af14ee522cf1e8b07a381f3c",
+    "elf_count": 844,
+    "scope": "Historical graph only; not final B3 consumer proof."
+  },
+  "pinned_upstream_sources": {
+    "freerdp_3_33_1_archive_sha256": "4431bbf04d370545cfe2924b9d9f116b95c90c64ff156b2550bbaf82d34e7124",
+    "guacamole_1_6_0_archive_sha256": "8bc45675da96d7b6f39728160181e3d4ff3c08f460f6d26de5805b642bf13f2b",
+    "guacamole_terminal_display_c_sha256": "9de616e2fa04ab5692dfa4cab90ff72deadf88e4580043f9c0410a91245419b1",
+    "freerdp_kerberos_c_sha256": "85549527e1be6275b02130fb25d7856abb8677e8975cd2a163f82ed8e8c35788"
+  },
+  "pure_preflight_probe": {
+    "docker_called": false,
+    "files_created": false,
+    "baseline_plan_accepted": true,
+    "unexpected_mutations_accepted": [
+      "web.command alternate manage.py server",
+      "web.user=1001:1001",
+      "web.tmpfs shadows /etc/fonts writable",
+      "web.environment LANGUAGE traversal plus non-C LC_ALL",
+      "web.environment DISPLAY"
+    ],
+    "meaning": "Validator accepts these mutations; shipped Compose does not contain them. Not a tenant exploit demonstration."
+  },
+  "cases": [
+    {
+      "cve": "CVE-2025-69720",
+      "source": "ncurses",
+      "historical_group": "profile_dependent",
+      "code_present": true,
+      "attacker_prerequisites": "Run infocmp analyze_string on attacker-controlled terminfo.",
+      "existing_controls": "No infocmp subprocess in inspected application/native sources; terminal type fixed server-side.",
+      "remaining_condition": "CLI exists; no exec allowlist prevents future trusted extension/tool use.",
+      "recommendation": "Keep tool invocation outside tenant data paths; removing this optional CLI with truthful inventory is a separate possible change.",
+      "status": "open_conditional_lab_candidate",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2025-69720"
+    },
+    {
+      "cve": "CVE-2026-84243",
+      "source": "glibc",
+      "historical_group": "profile_dependent",
+      "code_present": true,
+      "attacker_prerequisites": "Control LANGUAGE and a non-C LC_MESSAGES locale plus a readable malicious .mo file across a trust boundary.",
+      "existing_controls": "Engine has fresh C.UTF-8 environment; B2 image default LANG=C.UTF-8. No tenant-to-environment writer found.",
+      "remaining_condition": "Web/jobs inherit deployment environment. Preflight accepts LANGUAGE/LC_ALL overrides.",
+      "recommendation": "Fix/validate locale variables for every role; test crafted environment rejection and no tenant-controlled catalog path.",
+      "status": "open_profile_enforcement_and_input_closure",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-84243"
+    },
+    {
+      "cve": "CVE-2026-119379",
+      "source": "sqlite3",
+      "historical_group": "profile_dependent",
+      "code_present": true,
+      "attacker_prerequisites": "Native changeset_apply on crafted SQLite session changeset.",
+      "existing_controls": "Default supervisor requires PostgreSQL; no uploaded SQLite/SQL/changeset route found.",
+      "remaining_condition": "System SQLite exposes FTS5 and SESSION; Python SQLite and liblastlog2 are consumers. Developer settings fallback and alternate command are outside supervisor guarantee.",
+      "recommendation": "Require exact supervised command/PostgreSQL profile; forbid tenant SQLite files/SQL/changesets; test alternate-command refusal and preserve separate developer SQLite testing.",
+      "status": "open_conditional_lab_candidate",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-119379"
+    },
+    {
+      "cve": "CVE-2026-119374",
+      "source": "sqlite3",
+      "historical_group": "profile_dependent",
+      "code_present": true,
+      "attacker_prerequisites": "Open attacker-controlled corrupted FTS5 database and perform secure-delete.",
+      "existing_controls": "Default supervisor requires PostgreSQL; no uploaded SQLite/SQL/changeset route found.",
+      "remaining_condition": "System SQLite exposes FTS5 and SESSION; Python SQLite and liblastlog2 are consumers. Developer settings fallback and alternate command are outside supervisor guarantee.",
+      "recommendation": "Require exact supervised command/PostgreSQL profile; forbid tenant SQLite files/SQL/changesets; test alternate-command refusal and preserve separate developer SQLite testing.",
+      "status": "open_conditional_lab_candidate",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-119374"
+    },
+    {
+      "cve": "CVE-2026-119373",
+      "source": "sqlite3",
+      "historical_group": "profile_dependent",
+      "code_present": true,
+      "attacker_prerequisites": "Attacker-controlled FTS5 detail=none/prefix query and negative rowids.",
+      "existing_controls": "Default supervisor requires PostgreSQL; no uploaded SQLite/SQL/changeset route found.",
+      "remaining_condition": "System SQLite exposes FTS5 and SESSION; Python SQLite and liblastlog2 are consumers. Developer settings fallback and alternate command are outside supervisor guarantee.",
+      "recommendation": "Require exact supervised command/PostgreSQL profile; forbid tenant SQLite files/SQL/changesets; test alternate-command refusal and preserve separate developer SQLite testing.",
+      "status": "open_conditional_lab_candidate",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-119373"
+    },
+    {
+      "cve": "CVE-2026-88807",
+      "source": "libxrender",
+      "historical_group": "profile_dependent",
+      "code_present": true,
+      "attacker_prerequisites": "Attach a client querying pict formats to a malicious X server.",
+      "existing_controls": "FreeRDP X11/Wayland/SDL off; engine environment has no DISPLAY; shipped profile mounts no X socket.",
+      "remaining_condition": "X libraries remain transitively present; preflight accepts DISPLAY in web environment.",
+      "recommendation": "Enforce no X display/auth variables or X/socket mounts and retain exact build/consumer evidence.",
+      "status": "open_conditional_lab_candidate",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-88807"
+    },
+    {
+      "cve": "CVE-2026-78408",
+      "source": "util-linux",
+      "historical_group": "profile_dependent",
+      "code_present": true,
+      "attacker_prerequisites": "Privileged nsenter --join-cgroup on attacker-controlled target.",
+      "existing_controls": "No SYS_ADMIN/host namespaces/cgroup/device mount in shipped N0 Compose; no-new-privileges; children CapEff=0 checked separately; B2 fstab has no entries.",
+      "remaining_condition": "mount SUID 04755 and nsenter remain present. No runtime invocation found. Qualification tooling uses nsenter --net only; that is a different host-side boundary.",
+      "recommendation": "Require verified caps, no-new-privileges, namespace/mount isolation and exact default command. Never run these tools on tenant-controlled paths; do not infer safe kernel version.",
+      "status": "open_conditional_lab_candidate",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-78408"
+    },
+    {
+      "cve": "CVE-2026-76642",
+      "source": "util-linux",
+      "historical_group": "profile_dependent",
+      "code_present": true,
+      "attacker_prerequisites": "Privileged mount helper failure followed by X-mount owner/idmap hooks.",
+      "existing_controls": "No SYS_ADMIN/host namespaces/cgroup/device mount in shipped N0 Compose; no-new-privileges; children CapEff=0 checked separately; B2 fstab has no entries.",
+      "remaining_condition": "mount SUID 04755 and nsenter remain present. No runtime invocation found. Qualification tooling uses nsenter --net only; that is a different host-side boundary.",
+      "recommendation": "Require verified caps, no-new-privileges, namespace/mount isolation and exact default command. Never run these tools on tenant-controlled paths; do not infer safe kernel version.",
+      "status": "open_conditional_lab_candidate",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-76642"
+    },
+    {
+      "cve": "CVE-2026-78410",
+      "source": "util-linux",
+      "historical_group": "profile_dependent",
+      "code_present": true,
+      "attacker_prerequisites": "fstab-authorized SUID bind mount with attacker-controlled source path and ownership/mode options.",
+      "existing_controls": "No SYS_ADMIN/host namespaces/cgroup/device mount in shipped N0 Compose; no-new-privileges; children CapEff=0 checked separately; B2 fstab has no entries.",
+      "remaining_condition": "mount SUID 04755 and nsenter remain present. No runtime invocation found. Qualification tooling uses nsenter --net only; that is a different host-side boundary.",
+      "recommendation": "Require verified caps, no-new-privileges, namespace/mount isolation and exact default command. Never run these tools on tenant-controlled paths; do not infer safe kernel version.",
+      "status": "open_conditional_lab_candidate",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-78410"
+    },
+    {
+      "cve": "CVE-2026-78409",
+      "source": "util-linux",
+      "historical_group": "profile_dependent",
+      "code_present": true,
+      "attacker_prerequisites": "fstab-authorized X-mount.subdir and crafted intermediate symlink on affected kernel.",
+      "existing_controls": "No SYS_ADMIN/host namespaces/cgroup/device mount in shipped N0 Compose; no-new-privileges; children CapEff=0 checked separately; B2 fstab has no entries.",
+      "remaining_condition": "mount SUID 04755 and nsenter remain present. No runtime invocation found. Qualification tooling uses nsenter --net only; that is a different host-side boundary.",
+      "recommendation": "Require verified caps, no-new-privileges, namespace/mount isolation and exact default command. Never run these tools on tenant-controlled paths; do not infer safe kernel version.",
+      "status": "open_conditional_lab_candidate",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-78409"
+    },
+    {
+      "cve": "CVE-2026-88806",
+      "source": "libx11",
+      "historical_group": "profile_dependent",
+      "code_present": true,
+      "attacker_prerequisites": "Attach an XkbGetMap caller to a malicious X server.",
+      "existing_controls": "Same headless engine/build/no X mount controls as Xrender.",
+      "remaining_condition": "libX11 remains present; other roles inherit deployment environment.",
+      "recommendation": "Same explicit no-display/no-X-socket profile, final image consumer check.",
+      "status": "open_conditional_lab_candidate",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-88806"
+    },
+    {
+      "cve": "CVE-2026-115506",
+      "source": "expat",
+      "historical_group": "profile_dependent",
+      "code_present": true,
+      "attacker_prerequisites": "Parse an attacker-supplied XML document containing nested entity expansion/DTD.",
+      "existing_controls": "Identified Debian consumer is Fontconfig; engine has fresh private HOME, no FONTCONFIG override, fixed font, and disabled file transfer. Rootfs/font configs are read-only in shipped profile.",
+      "remaining_condition": "Fontconfig parses XML; writable engine HOME exists by design. Exact Debian Fontconfig source closure and all-role configuration controls are not complete. Resource limits are not a repair.",
+      "recommendation": "Pin approved font configuration paths; reject configuration-shadowing mounts/env; verify actual font file consumers. Prefer reviewed ABI-compatible Expat backport for this reachable XML parser.",
+      "status": "open_profile_enforcement_and_input_closure",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-115506"
+    },
+    {
+      "cve": "CVE-2026-118370",
+      "source": "expat",
+      "historical_group": "profile_dependent",
+      "code_present": true,
+      "attacker_prerequisites": "Parse XML with more than 2^30 attributes into affected Expat storeAtts.",
+      "existing_controls": "Identified Debian consumer is Fontconfig; engine has fresh private HOME, no FONTCONFIG override, fixed font, and disabled file transfer. Rootfs/font configs are read-only in shipped profile.",
+      "remaining_condition": "Fontconfig parses XML; writable engine HOME exists by design. Exact Debian Fontconfig source closure and all-role configuration controls are not complete. Resource limits are not a repair.",
+      "recommendation": "Pin approved font configuration paths; reject configuration-shadowing mounts/env; verify actual font file consumers. Prefer reviewed ABI-compatible Expat backport for this reachable XML parser.",
+      "status": "open_profile_enforcement_and_input_closure",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-118370"
+    },
+    {
+      "cve": "CVE-2026-19499",
+      "source": "glibc",
+      "historical_group": "profile_dependent",
+      "code_present": true,
+      "attacker_prerequisites": "Call strfmon(_l) with width and insufficient output buffer; format may be fixed.",
+      "existing_controls": "No strfmon import in historical ELF graph or call in reviewed FreeRDP/Guac/application source.",
+      "remaining_condition": "Absence of a public symbol import is not a complete indirect-call proof; deployment extensions are trusted code.",
+      "recommendation": "Revalidate targeted consumer closure on final image; keep user-controlled monetary formats out of native calls; do not call it patched.",
+      "status": "open_conditional_lab_candidate",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-19499"
+    },
+    {
+      "cve": "CVE-2026-5435",
+      "source": "glibc",
+      "historical_group": "profile_dependent",
+      "code_present": true,
+      "attacker_prerequisites": "Pass crafted TSIG data into deprecated DNS record printing APIs.",
+      "existing_controls": "No ns_printrr/fp_nquery import in historical graph or product source. Ordinary DNS resolution is a distinct operation.",
+      "remaining_condition": "Deprecated functions remain in libc; future diagnostics or trusted code could call them.",
+      "recommendation": "Forbid tenant-directed DNS pretty-printer tooling; revalidate final consumer set. DNS timeout test does not cover these APIs.",
+      "status": "open_conditional_lab_candidate",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-5435"
+    },
+    {
+      "cve": "CVE-2026-54369",
+      "source": "acl",
+      "historical_group": "profile_dependent",
+      "code_present": true,
+      "attacker_prerequisites": "Privileged pathname ACL API follows attacker-controlled intermediate symlink.",
+      "existing_controls": "No identified product handler invokes pathname ACL API on tenant paths; native/application children unprivileged; rootfs read-only.",
+      "remaining_condition": "cp/install/mv/sed/tar in B2 really import affected APIs. Tool execution/backup traversal must remain outside tenant-controlled paths.",
+      "recommendation": "Verify backup/restore use exact owned synthetic paths; no privileged recursive copy/ACL operation over tenant filesystem input. Do not equate absent ACL CLI with absent library APIs.",
+      "status": "open_conditional_lab_candidate",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-54369"
+    },
+    {
+      "cve": "CVE-2026-107778",
+      "source": "krb5",
+      "historical_group": "profile_dependent",
+      "code_present": true,
+      "attacker_prerequisites": "Authenticated Kerberos client sends mismatched delegated KRB-CRED arrays to a GSS acceptor.",
+      "existing_controls": "Default product paths are outbound RDP/LDAP/libpq clients; LDAP uses simple bind after StartTLS; no GSS acceptor listener found.",
+      "remaining_condition": "libgssapi imports krb5_rd_cred; WinPR contains an acceptor routine despite server=OFF. B3 ASN.1 patch is not this CVE fix; real Kerberos acceptor/delegation is unqualified.",
+      "recommendation": "Keep acceptor/delegation endpoints absent and verify final listener/source profile. If server-side GSS is introduced, backport vendor fix and test malformed KRB-CRED before use.",
+      "status": "open_conditional_lab_candidate",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-107778"
+    },
+    {
+      "cve": "CVE-2026-67215",
+      "source": "cjson",
+      "historical_group": "code_present_candidate",
+      "code_present": true,
+      "attacker_prerequisites": "Call cJSONUtils ApplyPatches on attacker RFC6902 patch, amplifying nesting.",
+      "existing_controls": "Historical graph has no Utils DT_NEEDED or Compare/Utils import; pinned FreeRDP/Guac source search has no relevant call. SCIM PATCH uses Python objects.",
+      "remaining_condition": "Vulnerable functions/libraries remain present. Exact Debian cJSON internal-call/consumer closure and final-image comparison are still required. Trusted Python extensions are executable code, not a sandbox.",
+      "recommendation": "Candidate only after targeted exact-source/internal-call and final-consumer review; invalidate on plugin/ctypes/native comparison/patch feature. Never classify code absent.",
+      "status": "open_exact_source_consumer_closure",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-67215"
+    },
+    {
+      "cve": "CVE-2026-29036",
+      "source": "cjson",
+      "historical_group": "code_present_candidate",
+      "code_present": true,
+      "attacker_prerequisites": "Resolve attacker-controlled JSON Pointer using cJSON Utils.",
+      "existing_controls": "Historical graph has no Utils DT_NEEDED or Compare/Utils import; pinned FreeRDP/Guac source search has no relevant call. SCIM PATCH uses Python objects.",
+      "remaining_condition": "Vulnerable functions/libraries remain present. Exact Debian cJSON internal-call/consumer closure and final-image comparison are still required. Trusted Python extensions are executable code, not a sandbox.",
+      "recommendation": "Candidate only after targeted exact-source/internal-call and final-consumer review; invalidate on plugin/ctypes/native comparison/patch feature. Never classify code absent.",
+      "status": "open_exact_source_consumer_closure",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-29036"
+    },
+    {
+      "cve": "CVE-2026-67216",
+      "source": "cjson",
+      "historical_group": "code_present_candidate",
+      "code_present": true,
+      "attacker_prerequisites": "Call recursive cJSON_Compare on attacker-controlled trees.",
+      "existing_controls": "Historical graph has no Utils DT_NEEDED or Compare/Utils import; pinned FreeRDP/Guac source search has no relevant call. SCIM PATCH uses Python objects.",
+      "remaining_condition": "Vulnerable functions/libraries remain present. Exact Debian cJSON internal-call/consumer closure and final-image comparison are still required. Trusted Python extensions are executable code, not a sandbox.",
+      "recommendation": "Candidate only after targeted exact-source/internal-call and final-consumer review; invalidate on plugin/ctypes/native comparison/patch feature. Never classify code absent.",
+      "status": "open_exact_source_consumer_closure",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-67216"
+    },
+    {
+      "cve": "CVE-2026-113351",
+      "source": "expat",
+      "historical_group": "code_present_candidate",
+      "code_present": true,
+      "attacker_prerequisites": "Reuse Expat parser with XML_ParserReset, then parse subsequent input.",
+      "existing_controls": "Historical Debian consumer Fontconfig imports Create/ParseBuffer/Free, not Reset/external-entity APIs. Reviewed upstream Fontconfig creates/frees parsers.",
+      "remaining_condition": "Functions are exported and present. Exact Debian Fontconfig sources/options and final consumer closure remain incomplete. Python bundled Expat is a separate component.",
+      "recommendation": "Close those specific call paths against exact Debian source and final consumer set or apply reviewed fixes; invalidate on new XML handler/plugin. Never classify code absent.",
+      "status": "open_exact_source_consumer_closure",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-113351"
+    },
+    {
+      "cve": "CVE-2026-117610",
+      "source": "expat",
+      "historical_group": "code_present_candidate",
+      "code_present": true,
+      "attacker_prerequisites": "Create external-entity subparser and first feed an empty nonfinal chunk.",
+      "existing_controls": "Historical Debian consumer Fontconfig imports Create/ParseBuffer/Free, not Reset/external-entity APIs. Reviewed upstream Fontconfig creates/frees parsers.",
+      "remaining_condition": "Functions are exported and present. Exact Debian Fontconfig sources/options and final consumer closure remain incomplete. Python bundled Expat is a separate component.",
+      "recommendation": "Close those specific call paths against exact Debian source and final consumer set or apply reviewed fixes; invalidate on new XML handler/plugin. Never classify code absent.",
+      "status": "open_exact_source_consumer_closure",
+      "policy_exception_installed": false,
+      "primary_reference": "https://security-tracker.debian.org/tracker/CVE-2026-117610"
+    }
+  ],
+  "limits": [
+    "No new runtime exploit or Docker/PG/NAS test was executed.",
+    "Selected regular paths were read from archive layers without filesystem extraction, following links or executing ELF. This selected-file reader is not a whole-filesystem sentinel.",
+    "ELF import searches and source searches are not full control-flow proofs.",
+    "Historical image and source hashes cannot replace final B3 image rescan/profile verification.",
+    "Metadata/public JSON is unsigned analysis evidence, not independent build or human identity attestation.",
+    "No memory/CPU cap, no-dsa, unfixed status or passing transport test is treated as a vulnerability fix.",
+    "B3 makecheck KEYRING/KDB/DNS omissions are separate unqualified capabilities, not assurance for these 22 cases."
+  ]
+}

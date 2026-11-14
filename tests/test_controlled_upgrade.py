@@ -112,8 +112,8 @@ class ControlledUpgradeTests(TransactionTestCase):
         self.assertEqual(upgrade.snapshot(self.old_specs), self.before)
         report = upgrade.upgrade(self.database, self.approved, offline=True)
         self.assertTrue(report["committed"])
-        self.assertEqual(report["migrations"], 22)
-        self.assertEqual(report["new_models"], 37)
+        self.assertEqual(report["migrations"], 23)
+        self.assertEqual(report["new_models"], 41)
         upgrade.assert_preserved(self.before, upgrade.snapshot(self.old_specs, after=True))
         from platform_modules.access.models import AccessEvaluation, AccessEvent
 
