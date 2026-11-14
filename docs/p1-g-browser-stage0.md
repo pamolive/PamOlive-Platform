@@ -64,13 +64,22 @@ marge disque est mesurée ; aucun quota disque dur n'est revendiqué.
 
 ## Validation préparatoire et limites
 
-Les sources intégrées sont byte-identiques au gel r2 revu indépendamment.
+Les six fichiers de qualification sont byte-identiques au gel r2 revu indépendamment.
 18 régressions pures mockées et 24 contrôles adverses indépendants passent,
 sans Docker/PG/réseau ou exécution du JS. Ruff/format passent avec la
 configuration du projet ; Bandit ne signale aucune erreur ou finding au seuil
 high du déploiement. `node --check` passe sur le JS gelé : syntaxe seulement.
 La première version, dont cinq défauts ont été identifiés en contre-revue,
 reste conservée hors dépôt avec son verdict bloquant.
+
+Le premier déclenchement du commit `423adc49` a ensuite été refusé par GitHub
+avant tout job : `runner.temp` n'est pas disponible dans `jobs.<job_id>.env`.
+La syntaxe YAML locale avait passé sans détecter cette contrainte de contexte.
+Le dossier est maintenant initialisé par une étape sur le runner via ses
+variables d'environnement, puis transmis aux étapes suivantes par `GITHUB_ENV`.
+Les deux assets, leur contrôleur, les pins et les contrôles restent inchangés.
+La reprise CI du correctif demeure une mesure distincte ; le refus initial
+ne constitue pas un lancement Docker ou un succès des prérequis.
 
 Le workflow vérifie les régressions et les mêmes seuils statiques avant toute
 acquisition. Ses outils hôte reprennent les versions de sécurité du projet
