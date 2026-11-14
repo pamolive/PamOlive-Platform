@@ -111,6 +111,23 @@ class RecipeFixture(TestCase):
         return self.archive
 
 
+class PythonLockCoverageTests(TestCase):
+    def test_runtime_lock_is_required_and_builder_locks_are_not_copied(self):
+        runtime = "requirements-python-runtime-linux.lock"
+        builder = "requirements-python-build-tools-linux.lock"
+        declared = {"files": {runtime: recipe.sha(b"runtime"),
+                              builder: recipe.sha(b"builder")}, "generated_assets": {}}
+        contents = {"/app/" + runtime: {"sha256": declared["files"][runtime]}}
+        facts = gate.ArchiveFacts(set(), {}, entries={}, contents=contents)
+        self.assertEqual(gate.source_coverage(declared, facts)["source_files"], 1)
+        for changed in ({}, {"/app/" + runtime: {"sha256": recipe.sha(b"changed")}},
+                        {**contents, "/app/" + builder: {"sha256": declared["files"][builder]}}):
+            with self.subTest(contents=changed), self.assertRaisesRegex(
+                    gate.ScanPolicyError, "source_archive_changed"):
+                gate.source_coverage(declared, gate.ArchiveFacts(
+                    set(), {}, entries={}, contents=changed))
+
+
 class BuildRecipeTests(RecipeFixture):
     def test_tracked_sources_and_per_artifact_proofs_verify_without_crypto_claim(self):
         checked = recipe.verify(self.recipe, self.repo)

@@ -4,7 +4,36 @@ Statut : qualification N0 en cours, **aucune autorisation de production ni de
 publication d'image**. PR2 reste une revue en brouillon. Les résultats de cette
 page ne rendent pas vertes les anciennes CI refusées.
 
-## Sujet testé et limites
+## Complément B3r6 et candidat Python
+
+B3r6 est construit depuis les seuls octets Git du commit `8ca92bf` ; son archive
+de production a pour SHA256
+`73fa1d8f8d5f00a4149b380e521f89376f4f51c655acf8e021816b46e380e9c0`.
+La sonde embarquée avec Docker init passe, ainsi que8smokes,10tests SSH,9RDP,
+TLS1.3/SCRAM sous rôle non administrateur, les extensions et30tests de restauration.
+La campagne P0 exécute227tests en140,632s :226réussissent et un cas SQLite est
+ignoré sur PostgreSQL ; son homologue PostgreSQL passe. Le complément PAM passe
+28tests. La restauration réelle contient106modèles,17objets chiffrés,87preuves
+signées et3reçus ; elle ne contient pas de registre PAM commissionné non vide
+ni de preuves d'exception Governance non vides. `safe_to_serve` reste faux.
+
+Le scan OS avec la base du14novembre conserve348matches,102High dans35groupes,
+aucun Critical et aucune High avec correctif disponible. Les34groupes PostgreSQL
+apparus sur B3r4 disparaissent avec libpq17.12. Le SBOM compilé déclaré contient
+41composants sans match et son contrôle positif passe ; cette couverture n'est
+pas exhaustive. Aucune exception ni promotion ne découle de ces résultats.
+
+Les deux CI suivantes du commit `7bfbe18` passent le job de sécurité puis échouent
+au test de bascule entre deux nœuds. Leur diagnostic est ouvert ; les autres
+résultats locaux ne permettent pas de déclarer ces CI réussies.
+
+Le nouveau profil [Python](python-materials.md) conserve les versions, fige32
+fichiers publics et sépare acquisition et compilation/installation hors réseau.
+Ses18tests et97sondes indépendantes passent ; son build exact reste à exécuter.
+Il ne remplace pas les matériaux APT/SDK/compilateur, une attestation de build,
+ni les arbitrages High. Les résultats B3r6 ne sont pas reportés sur ce candidat.
+
+## Sujet B3r4 historique testé et limites
 
 Le build local B3r4, terminé le 12 novembre, a été identifié par les empreintes
 de ses archives, configurations et manifestes avant les essais. Le plan contient

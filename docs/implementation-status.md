@@ -7,9 +7,13 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 La [roadmap réconciliée](implementation-roadmap.md) distingue désormais les lots P1-F/G, P2 et P3 du premier ordre historique. Référence publiée : main `dcaa116be6f026f67ad3825feb38d90ac632ce80`, PR1 fusionnée, [CI complète réussie](https://github.com/pamolive/PamOlive-Platform/actions/runs/43074618211) et [image GHCR publiée/attestée](https://github.com/pamolive/PamOlive-Platform/actions/runs/43078536377). Les résultats détaillés P0/P1 demeurent dans leurs rapports ; leur portée historique est conservée.
 
 Point courant du14novembre : voir la [qualification N0 datée](p1-f-qualification-20261114.md).
-B3r4 passe transports, TLS/SCRAM, extensions et restauration synthétiques ; ce
-snapshot précède les derniers correctifs du profil. Les matériaux builder et
-attestations ADR021 ainsi que le scan final bloquent encore la livraison.
+B3r6, construit depuis le commit `8ca92bf`, passe la sonde embarquée avec init,
+les transports, TLS/SCRAM, les régressions P0 et la restauration synthétique.
+Son scan frais conserve35groupes High non arbitrés et aucun Critical. Les deux
+CI `7bfbe18` passent la sécurité mais échouent à la bascule entre deux nœuds ;
+le diagnostic reste ouvert. L'intégration des entrées Python hashées et des
+installations hors réseau exige encore son propre build exact. Les matériaux
+APT/compilateur et attestations ADR021 restent incomplets : livraison bloquée.
 P1-G dispose d'une première entrée de demande d'accès et d'un correctif de
 revalidation d'autorité sous verrou dans ses branches locales ; le parcours
 complet reste à qualifier. P2 possède une primitive d'enveloppe technique revue,

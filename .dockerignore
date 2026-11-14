@@ -12,6 +12,10 @@
 !requirements-dev.lock
 !requirements-directory.lock
 !requirements-native-test.lock
+!requirements-python-runtime-linux.lock
+!requirements-python-build-tools-linux.lock
+!requirements-python-native-sources-linux.lock
+!requirements-python-native-test-linux.lock
 !config/
 !config/**
 !deploy/

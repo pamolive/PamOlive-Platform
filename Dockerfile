@@ -32,8 +32,10 @@ RUN sh /build-guacd.sh
 FROM krb5-runtime AS directory-builder
 ARG LIBPQ_DEBIAN_VERSION
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends build-essential libldap2-dev libsasl2-dev libpq-dev=${LIBPQ_DEBIAN_VERSION} libpq5=${LIBPQ_DEBIAN_VERSION} && rm -rf /var/lib/apt/lists/*
-COPY requirements-directory.lock requirements-bootstrap.lock requirements-native-build.lock requirements-database-build.lock /tmp/
-RUN python -m pip install --no-cache-dir --only-binary=:all: --no-deps --require-hashes -r /tmp/requirements-bootstrap.lock && python -m pip install --no-cache-dir --only-binary=:all: --no-deps --require-hashes -r /tmp/requirements-native-build.lock && python -m pip wheel --no-cache-dir --no-build-isolation --no-deps --require-hashes --wheel-dir /opt/directory-wheels -r /tmp/requirements-database-build.lock && python -m pip wheel --no-cache-dir --no-build-isolation --no-deps --wheel-dir /opt/directory-wheels -r /tmp/requirements-directory.lock
+COPY requirements-bootstrap.lock requirements-python-runtime-linux.lock requirements-python-build-tools-linux.lock requirements-python-native-sources-linux.lock requirements-python-native-test-linux.lock /tmp/
+COPY deploy/python_materials.py deploy/python-materials.linux-amd64.json /tmp/
+RUN python /tmp/python_materials.py acquire --manifest /tmp/python-materials.linux-amd64.json --locks /tmp --output /opt/python-inputs
+RUN --network=none export PIP_CONFIG_FILE=/dev/null PIP_DISABLE_PIP_VERSION_CHECK=1 && python -m pip install --no-compile --no-cache-dir --no-index --find-links=/opt/python-inputs/bootstrap --only-binary=:all: --no-deps --require-hashes -r /tmp/requirements-bootstrap.lock && python -m pip install --no-compile --no-cache-dir --no-index --find-links=/opt/python-inputs/build-tools --only-binary=:all: --no-deps --require-hashes -r /tmp/requirements-python-build-tools-linux.lock && python -m pip wheel --no-cache-dir --no-index --find-links=/opt/python-inputs/sources --no-binary=:all: --no-build-isolation --check-build-dependencies --no-deps --require-hashes --wheel-dir /opt/directory-wheels -r /tmp/requirements-python-native-sources-linux.lock && python /tmp/python_materials.py capture-derived --manifest /tmp/python-materials.linux-amd64.json --locks /tmp --inputs /opt/python-inputs --wheels /opt/directory-wheels --output /opt/python-evidence && cp /tmp/python-materials.linux-amd64.json /tmp/requirements-bootstrap.lock /tmp/requirements-python-*.lock /opt/python-evidence/
 
 FROM krb5-runtime AS runtime
 ARG LIBPQ_DEBIAN_VERSION
@@ -46,9 +48,11 @@ ENV LD_LIBRARY_PATH=/opt/pamolive-freerdp/lib:/opt/pamolive-guac/lib
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PSYCOPG_IMPL=c
 WORKDIR /app
 RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin pamolive && useradd --uid 1001 --no-create-home --shell /usr/sbin/nologin pamolive-guacd
-COPY requirements.lock requirements-bootstrap.lock ./
+COPY requirements.lock requirements-bootstrap.lock requirements-python-runtime-linux.lock ./
+COPY --from=directory-builder /opt/python-inputs/runtime-inputs /opt/python-wheels
 COPY --from=directory-builder /opt/directory-wheels /opt/directory-wheels
-RUN python -m pip install --no-cache-dir --only-binary=:all: --no-deps --require-hashes -r requirements-bootstrap.lock && python -m pip install --no-cache-dir --no-index --no-deps /opt/directory-wheels/psycopg_c-3.2.10-*.whl && python -m pip install --no-cache-dir --find-links=/opt/directory-wheels -r requirements.lock && python -m pip check && rm -r /opt/directory-wheels
+COPY --from=directory-builder /opt/python-evidence /usr/share/pamolive/python-materials
+RUN --network=none export PIP_CONFIG_FILE=/dev/null PIP_DISABLE_PIP_VERSION_CHECK=1 && python -m pip install --no-compile --no-cache-dir --no-index --find-links=/opt/python-wheels --only-binary=:all: --no-deps --require-hashes -r requirements-bootstrap.lock && python -m pip install --no-compile --no-cache-dir --no-index --find-links=/opt/python-wheels --only-binary=:all: --no-deps --require-hashes -r requirements-python-runtime-linux.lock && python -m pip install --no-compile --no-cache-dir --no-index --find-links=/opt/directory-wheels --only-binary=:all: --no-deps --require-hashes -r /usr/share/pamolive/python-materials/requirements-python-derived-linux.lock && python -m pip check && rm -r /opt/python-wheels /opt/directory-wheels
 COPY manage.py pyproject.toml README.md LICENSE .env.example ./
 COPY config/ ./config/
 COPY deploy/ ./deploy/
@@ -74,7 +78,8 @@ RUN mkdir -p /opt/pamolive-test && cc -O2 -Wall -Wextra -Werror -Wno-error=depre
 
 FROM runtime AS native-test
 COPY --from=native-test-builder /opt/pamolive-test /opt/pamolive-test
-COPY requirements-native-test.lock /tmp/requirements-native-test.lock
-RUN pip install --no-cache-dir -r /tmp/requirements-native-test.lock
+COPY requirements-python-native-test-linux.lock /tmp/requirements-python-native-test-linux.lock
+COPY --from=directory-builder /opt/python-inputs/native-test /opt/python-native-test-wheels
+RUN --network=none python -m pip --isolated --disable-pip-version-check install --no-compile --no-cache-dir --no-index --find-links=/opt/python-native-test-wheels --only-binary=:all: --no-deps --require-hashes -r /tmp/requirements-python-native-test-linux.lock && python -m pip check && rm -r /opt/python-native-test-wheels
 
 FROM runtime AS production

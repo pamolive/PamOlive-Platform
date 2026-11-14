@@ -576,7 +576,8 @@ def source_coverage(recipe, facts):
     """Exact COPY source bytes and a closed map of generated client assets."""
     roots = {"config", "deploy", "docs", "examples", "integrations", "platform_core",
              "platform_modules", "templates", "tests", "third_party"}
-    root_files = {"requirements.lock", "requirements-bootstrap.lock", "manage.py",
+    root_files = {"requirements.lock", "requirements-bootstrap.lock",
+                  "requirements-python-runtime-linux.lock", "manage.py",
                   "pyproject.toml", "README.md", "LICENSE", ".env.example"}
     not_copied = {"deploy/check_image_scan_ci.sh"}
     expected = {"/app/" + name: value for name, value in recipe["files"].items()

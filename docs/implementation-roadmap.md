@@ -30,10 +30,12 @@ Le [candidat PR2](https://github.com/pamolive/PamOlive-Platform/pull/2) reste en
 Mise à jour du12novembre : les deux CI95fe14f passent leurs portes fonctionnelles/PG/natives/HA/restauration mais échouent avant verdict complet du scanner, puis au nettoyage LDAP. Les corrections locales sont testées ; le scanner B2 termine sous son nouveau quota et conserve ses High. B3r3 reconstruit le backport Kerberos après les diagnostics ASN.1 avant/après12cas réussis ; aucun paquet ou runtime B3 n'est encore qualifié. Les35groupes High restent non arbitrés, malgré des propositions individuelles documentées. Les nouveaux formats de décision de build ne constituent aucune exception activée.
 
 Au14novembre, B3r4 est construit et passe les essais N0 de transport, TLS/SCRAM,
-extensions et restauration réelle. Le [rapport daté](p1-f-qualification-20261114.md)
-distingue ce snapshot des correctifs ultérieurs du profil et du vérificateur.
-La qualification finale, le scan frais et la chaîne des matériaux/attestations
-ADR021 restent requis. Aucune High n'est neutralisée et aucun nouveau digest
+extensions et restauration réelle. B3r6 passe ensuite les régressions P0,
+la sonde embarquée avec init et le scan frais :35groupes High restent non arbitrés.
+Les deux CI `7bfbe18` échouent à la bascule entre deux nœuds malgré une sécurité
+réussie. Le [rapport daté](p1-f-qualification-20261114.md) sépare ces sujets.
+L'intégration des entrées Python hashées et hors réseau attend son build exact ;
+la chaîne des matériaux/attestations ADR021 reste requise. Aucune High n'est neutralisée et aucun nouveau digest
 n'est promu par ces seuls essais. La primitive d'enveloppe P2 est conservée dans
 la branche locale distincte `agent/p2-vault-envelope`, commit `177df2b` :25tests,
 huit sondes cryptographiques indépendantes et wheel installée testée ; aucun
