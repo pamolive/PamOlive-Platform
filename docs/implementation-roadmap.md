@@ -1,6 +1,6 @@
 # Roadmap d’implémentation et qualification
 
-Réconciliation du 11 novembre 2026 avec *Architecture & Roadmap 2026–2029* (pages24–28) et la mission de développement autonome continu. Le programme avance par livraisons qualifiées sans confirmation humaine pour les opérations ordinaires autorisées. Cette autonomie ne permet ni contournement des protections GitHub ni utilisation de comptes ou de systèmes de production.
+Réconciliation mise à jour le 14 novembre 2026 avec *Architecture & Roadmap 2026–2029* (pages24–28) et la mission de développement autonome continu. Le programme avance par livraisons qualifiées sans confirmation humaine pour les opérations ordinaires autorisées. Cette autonomie ne permet ni contournement des protections GitHub ni utilisation de comptes ou de systèmes de production.
 
 ## Référence réellement publiée
 
@@ -21,11 +21,23 @@ Réutiliser SCIM, TeamViewer, outbox, correspondances, reprises et reçus exista
 | Livraison | Travail | Réception exigée | Statut |
 | --- | --- | --- | --- |
 | F1 inventaire | Sources immuables liées à destination/identité TLS, observations persistantes, runs signés et mappings explicites ; vues/API/exports paginés | Deux sources/deux tenants avec mêmes UUID, historique et absence incertaine conservés, aucun droit créé | Implémenté, tests ciblés locaux réussis ; promotion bloquée par le runtime |
-| F2 lecteurs | LDAP/AD read-only, pagination et identifiants stables ; préparation Graph tenant-scoped ; serveurs factices TLS | Mauvais pin refusé avant secret, referrals/downgrade refusés, pagination bornée, erreurs partielles sans suppression | StartTLS qualifié localement ; LDAPS refusé et Graph partiel ; CI finale requise |
-| F3 rapprochement | Rapprocher inventaire, comptes IAM et confirmations SCIM/TeamViewer sans confondre autorités | Collisions visibles, reprises idempotentes,200identique/409divergent, contexte source historique des retraits conservé | Implémentation locale séparée, revue adverse29/29 ; routes non activées dans main |
+| F2 lecteurs | LDAP/AD read-only, pagination et identifiants stables ; préparation Graph tenant-scoped ; serveurs factices TLS | Mauvais pin refusé avant secret, referrals/downgrade refusés, pagination bornée, erreurs partielles sans suppression | StartTLS synthétique local et130tests Directory dans deux CI95fe14f réussis ; LDAPS refusé et Graph partiel ; runtime final non promu |
+| F3 rapprochement | Rapprocher inventaire, comptes IAM et confirmations SCIM/TeamViewer sans confondre autorités | Collisions visibles, reprises idempotentes,200identique/409divergent, contexte source historique des retraits conservé | Branche locale séparée `ece41d6`, routes intégrées,105tests PG et contre-revue45/45 ; aucun push ni activation dans main |
 | F4 livraison | Migrations/restauration, export auditable, quotas, supervision et revues adverses | PostgreSQL réel, concurrence, rôles restreints, régressions P0, CI et promotion qualifiée | Campagnes locales partielles réalisées ; gate de scan strict ajouté, promotion bloquée |
 
 Le [candidat PR2](https://github.com/pamolive/PamOlive-Platform/pull/2) reste en brouillon. La première analyse exhaustive de son image a détecté des dépendances Python/FreeRDP vulnérables : aucune fusion ou publication de ce runtime n’est autorisée par ses seuls tests applicatifs. [ADR-019](adr-019-native-runtime-dependencies.md) retient une base corrigée et FreeRDP maintenu compilé depuis une source signée, puis une nouvelle qualification complète et un inventaire des bibliothèques réellement chargées. Le [rapport de scan initial](p1-f-image-security.md) conserve tous les findings ; les travaux de remédiation ne constituent pas encore un résultat vert. Les répertoires F3 et revues P2 du checkout restent distincts du candidat F1/F2.
+
+Mise à jour du12novembre : les deux CI95fe14f passent leurs portes fonctionnelles/PG/natives/HA/restauration mais échouent avant verdict complet du scanner, puis au nettoyage LDAP. Les corrections locales sont testées ; le scanner B2 termine sous son nouveau quota et conserve ses High. B3r3 reconstruit le backport Kerberos après les diagnostics ASN.1 avant/après12cas réussis ; aucun paquet ou runtime B3 n'est encore qualifié. Les35groupes High restent non arbitrés, malgré des propositions individuelles documentées. Les nouveaux formats de décision de build ne constituent aucune exception activée.
+
+Au14novembre, B3r4 est construit et passe les essais N0 de transport, TLS/SCRAM,
+extensions et restauration réelle. Le [rapport daté](p1-f-qualification-20261114.md)
+distingue ce snapshot des correctifs ultérieurs du profil et du vérificateur.
+La qualification finale, le scan frais et la chaîne des matériaux/attestations
+ADR021 restent requis. Aucune High n'est neutralisée et aucun nouveau digest
+n'est promu par ces seuls essais. La primitive d'enveloppe P2 est conservée dans
+la branche locale distincte `agent/p2-vault-envelope`, commit `177df2b` :25tests,
+huit sondes cryptographiques indépendantes et wheel installée testée ; aucun
+service Vault, registre ou chemin PAM P2 n'est encore livré.
 
 ADR de travail : [ADR-018](adr-018-directory-inventory.md). Les écrivains/provisioning réels restent désactivés tant que leur destination, leurs permissions et leur périmètre ne sont pas qualifiés. Les faits d’annuaire ne deviennent jamais une attestation indépendante PAM.
 
@@ -34,6 +46,8 @@ ADR de travail : [ADR-018](adr-018-directory-inventory.md). Les écrivains/provi
 Parcours Identity360 → intention/ticket → politique → approbation indépendante → exécution ou session → observation → évaluation/preuve → audit → retrait confirmé. Conserver le portail serveur natif olive/noir, sans Django admin comme interface métier.
 
 Scénarios : arrivée/mobilité/départ, fournisseur, privilège temporaire, expiration, tentative hors périmètre et provenance insuffisante. Réception : deux tenants aux modules différents, UI/API/MFA/sessions/exports/erreurs, accès clavier/accessibilité, captures de démonstration, cibles et données synthétiques. Les personnes et autorités simulées ne prouvent pas l’indépendance d’humains réels.
+
+Premier incrément local séparé : Identity360 propose le formulaire de demande existant prérempli avec identité/compte, sous rôle et module autorisés. GET ne crée aucune autorité et n'alimente jamais un POST incomplet.17tests de routes réelles, les8parcours HTTPS et21tests Identity360 passent en12,795s ; la non-régression F3 passe63/63. Le coordinateur rejoue indépendamment les17nouveaux cas en4,266s. La revue contradictoire finale, la CI/image, le navigateur headless et le parcours PAM complet restent à effectuer ; P1-G n'est pas déclaré terminé.
 
 ## P2 — architecture hybride et domaines sensibles
 
