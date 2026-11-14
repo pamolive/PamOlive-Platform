@@ -20,6 +20,8 @@ except ModuleNotFoundError:
     from native_inventory import InventoryError as InventoryError
 
 VERSION = "3.2.10"
+LIBPQ_MAJOR = 17
+MIN_LIBPQ_VERSION = 170012
 SCHEMA = "pamolive.database-driver-runtime/1"
 SYSTEM = Path("/usr/lib/x86_64-linux-gnu")
 MAX_FILE = 64 * 1024 * 1024
@@ -55,10 +57,15 @@ def validate_versions(core, extension, impl, runtime, build):
     require(core == extension == VERSION, "driver_version_mismatch")
     require(impl == "c", "driver_fallback")
     require(
-        type(runtime) is int and type(build) is int and runtime >= 170000 and build >= 170000,
+        type(runtime) is int and type(build) is int,
         "libpq_version",
     )
-    require(runtime // 10000 == build // 10000, "libpq_build_runtime_major_mismatch")
+    require(
+        runtime // 10000 == build // 10000 == LIBPQ_MAJOR,
+        "libpq_major_unqualified",
+    )
+    require(runtime >= MIN_LIBPQ_VERSION and build >= MIN_LIBPQ_VERSION, "libpq_version")
+    require(runtime == build, "libpq_build_runtime_mismatch")
 
 
 def reject_binary_packages(folders):

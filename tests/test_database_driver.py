@@ -22,12 +22,15 @@ class DatabaseDriverTests(TestCase):
         self.root = Path(self.temp.name)
 
     def test_exact_core_c_versions_and_public_libpq_versions(self):
-        gate.validate_versions("3.2.10", "3.2.10", "c", 170006, 170004)
+        gate.validate_versions("3.2.10", "3.2.10", "c", 170012, 170012)
+
+    def test_same_later_patch_within_qualified_major_is_accepted(self):
+        gate.validate_versions("3.2.10", "3.2.10", "c", 170013, 170013)
 
     def test_old_or_mismatched_distribution_versions_refused(self):
         for core, extension in (("3.2.9", "3.2.9"), ("3.2.10", "3.2.9"), ("3.3.0", "3.3.0")):
             with self.subTest(core=core, extension=extension), self.assertRaises(gate.DriverError):
-                gate.validate_versions(core, extension, "c", 170006, 170006)
+                gate.validate_versions(core, extension, "c", 170012, 170012)
 
     def test_binary_python_or_missing_implementation_refused(self):
         for impl in ("binary", "python", None):
@@ -35,16 +38,51 @@ class DatabaseDriverTests(TestCase):
                 self.subTest(impl=impl),
                 self.assertRaisesRegex(gate.DriverError, "driver_fallback"),
             ):
-                gate.validate_versions("3.2.10", "3.2.10", impl, 170006, 170006)
+                gate.validate_versions("3.2.10", "3.2.10", impl, 170012, 170012)
 
-    def test_libpq_wrong_types_old_and_major_mismatch_refused(self):
+    def test_libpq_wrong_types_in_either_public_version_refused(self):
+        for invalid in (True, False, None, "170012", 170012.0):
+            for runtime, build in ((invalid, 170012), (170012, invalid)):
+                with (
+                    self.subTest(runtime=runtime, build=build),
+                    self.assertRaisesRegex(gate.DriverError, "libpq_version"),
+                ):
+                    gate.validate_versions("3.2.10", "3.2.10", "c", runtime, build)
+
+    def test_libpq_1711_or_older_runtime_or_sdk_refused(self):
         for runtime, build in (
-            (True, 170006),
-            ("170006", 170006),
-            (160011, 160011),
-            (180000, 170006),
+            (170011, 170011),
+            (170011, 170012),
+            (170012, 170011),
+            (170000, 170000),
         ):
-            with self.subTest(runtime=runtime, build=build), self.assertRaises(gate.DriverError):
+            with (
+                self.subTest(runtime=runtime, build=build),
+                self.assertRaisesRegex(gate.DriverError, "libpq_version"),
+            ):
+                gate.validate_versions("3.2.10", "3.2.10", "c", runtime, build)
+
+    def test_libpq_sdk_runtime_patch_mismatch_refused(self):
+        for runtime, build in ((170013, 170012), (170012, 170013)):
+            with (
+                self.subTest(runtime=runtime, build=build),
+                self.assertRaisesRegex(gate.DriverError, "libpq_build_runtime_mismatch"),
+            ):
+                gate.validate_versions("3.2.10", "3.2.10", "c", runtime, build)
+
+    def test_libpq_other_or_mixed_majors_need_separate_qualification(self):
+        for runtime, build in (
+            (160016, 160016),
+            (180000, 180000),
+            (180007, 180007),
+            (190000, 190000),
+            (180007, 170012),
+            (170012, 180007),
+        ):
+            with (
+                self.subTest(runtime=runtime, build=build),
+                self.assertRaisesRegex(gate.DriverError, "libpq_major_unqualified"),
+            ):
                 gate.validate_versions("3.2.10", "3.2.10", "c", runtime, build)
 
     def test_clean_physical_package_directory(self):

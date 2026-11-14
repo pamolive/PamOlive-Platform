@@ -1,3 +1,4 @@
+ARG LIBPQ_DEBIAN_VERSION=17.12-0+deb13u1
 FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS krb5-builder
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends build-essential curl ca-certificates gpgv debian-archive-keyring dpkg-dev devscripts quilt && rm -rf /var/lib/apt/lists/*
 COPY deploy/build-krb5.sh deploy/krb5-asn1-sequence.patch deploy/krb5-test-keyring-seccomp.patch deploy/check_krb5_asn1.sh deploy/krb5_inventory.py tests/fixtures/krb5_asn1_regression.c /build-fixtures/
@@ -29,12 +30,14 @@ COPY deploy/guacd-freerdp3-gdi-lifecycle.patch /guacd-freerdp3-gdi-lifecycle.pat
 RUN sh /build-guacd.sh
 
 FROM krb5-runtime AS directory-builder
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends build-essential libldap2-dev libsasl2-dev libpq-dev && rm -rf /var/lib/apt/lists/*
+ARG LIBPQ_DEBIAN_VERSION
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends build-essential libldap2-dev libsasl2-dev libpq-dev=${LIBPQ_DEBIAN_VERSION} libpq5=${LIBPQ_DEBIAN_VERSION} && rm -rf /var/lib/apt/lists/*
 COPY requirements-directory.lock requirements-bootstrap.lock requirements-native-build.lock requirements-database-build.lock /tmp/
 RUN python -m pip install --no-cache-dir --only-binary=:all: --no-deps --require-hashes -r /tmp/requirements-bootstrap.lock && python -m pip install --no-cache-dir --only-binary=:all: --no-deps --require-hashes -r /tmp/requirements-native-build.lock && python -m pip wheel --no-cache-dir --no-build-isolation --no-deps --require-hashes --wheel-dir /opt/directory-wheels -r /tmp/requirements-database-build.lock && python -m pip wheel --no-cache-dir --no-build-isolation --no-deps --wheel-dir /opt/directory-wheels -r /tmp/requirements-directory.lock
 
 FROM krb5-runtime AS runtime
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends libcairo2 libpng16-16t64 libjpeg62-turbo libpango-1.0-0 libpangocairo-1.0-0 libssh2-1t64 libssl3t64 libcjson1 libkrb5-3 libgssapi-krb5-2 libicu76 liburiparser1 zlib1g fonts-dejavu-core libldap2 libsasl2-2 libpq5 && rm -rf /var/lib/apt/lists/*
+ARG LIBPQ_DEBIAN_VERSION
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends libcairo2 libpng16-16t64 libjpeg62-turbo libpango-1.0-0 libpangocairo-1.0-0 libssh2-1t64 libssl3t64 libcjson1 libkrb5-3 libgssapi-krb5-2 libicu76 liburiparser1 zlib1g fonts-dejavu-core libldap2 libsasl2-2 libpq5=${LIBPQ_DEBIAN_VERSION} && rm -rf /var/lib/apt/lists/*
 COPY --from=freerdp-builder /opt/pamolive-freerdp/lib /opt/pamolive-freerdp/lib
 COPY --from=freerdp-builder /opt/pamolive-freerdp/share/pamolive-freerdp /opt/pamolive-freerdp/share/pamolive-freerdp
 COPY --from=guacd-builder /opt/pamolive-guac /opt/pamolive-guac
