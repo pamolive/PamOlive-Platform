@@ -6,26 +6,23 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 
 La [roadmap réconciliée](implementation-roadmap.md) distingue désormais les lots P1-F/G, P2 et P3 du premier ordre historique. Référence publiée : main `dcaa116be6f026f67ad3825feb38d90ac632ce80`, PR1 fusionnée, [CI complète réussie](https://github.com/pamolive/PamOlive-Platform/actions/runs/43074618211) et [image GHCR publiée/attestée](https://github.com/pamolive/PamOlive-Platform/actions/runs/43078536377). Les résultats détaillés P0/P1 demeurent dans leurs rapports ; leur portée historique est conservée.
 
-Point courant du14novembre : voir la [qualification N0 datée](p1-f-qualification-20261114.md).
-B3r6, construit depuis le commit `8ca92bf`, passe la sonde embarquée avec init,
-les transports, TLS/SCRAM, les régressions P0 et la restauration synthétique.
-Son scan frais conserve35groupes High non arbitrés et aucun Critical. Les deux
-CI `7bfbe18` passent la sécurité mais échouent à la bascule entre deux nœuds ;
-le correctif de fixture est testé localement dans `8013c9f`, poussé sur PR2.
-Ce nouveau sujet construit les entrées Python hashées hors réseau et passe
-P0 dans l'image ainsi que HA local HTTP/SSH/RDP. Le scan local conserve35groupes
-High non arbitrés. La CI push passe migrations,1325tests comptés/42exclusions
-et HA avec partition sur son propre build, puis échoue au seul gate de scan35High.
-Une wheel pip ancienne dans ensurepip, absente du lock
-applicatif, impose encore la correction ciblée [ADR019](adr-019-native-runtime-dependencies.md)
-et sa propre qualification. Les matériaux APT/compilateur et attestations ADR021
-restent incomplets : livraison bloquée.
-P1-G dispose d'une première entrée de demande d'accès et d'un correctif de
-revalidation d'autorité sous verrou dans ses branches locales ; le parcours
-complet reste à qualifier. P2 possède une primitive d'enveloppe technique revue,
-commit local séparé `177df2b`,25tests et huit sondes adverses indépendantes ;
-le service Vault, son registre et l'isolation opérationnelle restent à construire.
-Les paragraphes B2/B3r2 ci-dessous décrivent les campagnes historiques.
+Point courant du 14 novembre : le socle PR2 est `2f28224`. Ses deux CI terminent
+migrations, 1345 tests généraux comptés / 42 exclusions, portes dédiées,
+transports SSH/RDP, deux nœuds avec partition de route PostgreSQL sur un même
+hôte et restauration/retour arrière. Elles échouent uniquement au scan final :
+35 groupes High non arbitrés, zéro Critical. Les jobs de sécurité du code passent.
+Le sujet local R8-r2 corrige ensurepip et valide deux vrais venvs hors réseau
+avec pip 26.3 ; les couches historiques restent conservées. Les matériaux
+APT/SDK/compilateur et attestations ADR-021 demeurent incomplets : livraison bloquée.
+
+Le [candidat intégré local F3/G/P2](p1-fg-p2-integration-20261114.md), fusion
+`4c9cd2b`, conserve les protections du socle et réunit les routes F3, l'entrée
+de demande Identity 360 et les deux bibliothèques P2. Ses tests propres passent :
+134/134 PostgreSQL sans exclusion, 25 + 17 tests purs, Ruff et vrai scan de secrets
+sur 698 fichiers. Il n'est ni publié ni qualifié par les images ou CI du socle.
+Le parcours G complet et les portes globales de ce candidat restent à vérifier.
+P2 ne livre encore ni service Vault, ni vérificateur d'autorité, ni ledger,
+ni isolation opérationnelle. Les paragraphes B2/B3r2 ci-dessous sont historiques.
 
 | Périmètre | État réel au démarrage du programme |
 | --- | --- |
