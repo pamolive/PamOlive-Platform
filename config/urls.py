@@ -1,5 +1,5 @@
 from django.contrib.auth import views as auth_views
-from django.urls import path
+from django.urls import include, path
 
 from platform_core import access_contract_views, event_backfill_views
 from platform_core.extensions.urls import extension_patterns
@@ -23,6 +23,7 @@ from platform_modules.pam import views as pam_views
 from platform_modules.recertification import views as recertification_views
 
 urlpatterns = [
+    path("", include("platform_modules.connectors.directory_reconciliation_urls")),
     path("connectors/directories/", directory_views.index, name="directory-index"),
     path("api/v1/directories/", directory_views.index, {"api": True}, name="api-directory-index"),
     path("connectors/directories/new/", directory_views.configure, name="directory-configure"),

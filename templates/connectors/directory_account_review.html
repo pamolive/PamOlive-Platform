@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}Revue des comptes · {{ review.source.name }}{% endblock %}
+{% block content %}
+<h1>Revue des comptes de {{ review.source.name }}</h1>
+<nav class="domain-tabs"><a href="{% url 'directory-detail' review.source.id %}">Inventaire source</a><a href="{% url 'directory-account-review-export' review.source.id %}?limit={{ request.GET.limit|default:'100'|urlencode }}&amp;history_limit={{ request.GET.history_limit|default:'20'|urlencode }}{% if request.GET.cursor %}&amp;cursor={{ request.GET.cursor|urlencode }}{% endif %}">Exporter l’état actualisé</a><a href="{% url 'api-directory-account-review' review.source.id %}?limit={{ request.GET.limit|default:'100'|urlencode }}&amp;history_limit={{ request.GET.history_limit|default:'20'|urlencode }}{% if request.GET.cursor %}&amp;cursor={{ request.GET.cursor|urlencode }}{% endif %}">API</a></nav><p>Les données sont relues au moment de l’export ; les dates et les références du fichier décrivent cet état.</p>
+<p>Lecture uniquement. Cette revue ne crée, ne confirme et ne retire aucun droit.</p>
+<p>Limite par phase : jusqu’à {{ review.page_limits.facts }} faits et {{ review.page_limits.not_observed }} absences ; au plus {{ review.page_limits.total_items_max }} lignes de revue sur une page. Les absences ne prouvent aucune suppression.</p>
+<p>Les destinations de l’annuaire, de SCIM et de TeamViewer ne sont pas réputées équivalentes. Un résultat historique ne prouve pas l’état actuel d’un système distant.</p>
+{% if review.run %}<p>Observation acceptée le {{ review.run.accepted_at }} · provenance {{ review.run.provenance }} · référence {{ review.run.id }}.</p>{% else %}<p>Aucune observation acceptée. Une absence ne prouve pas une suppression.</p>{% endif %}
+{% for row in review.items %}
+<article class="workflow-card"><h2>{{ row.observation.username|default:row.observation.remote_id }}</h2>
+<p>Objet distant : {{ row.observation.remote_id }}.</p>
+{% if row.local_account %}<p>Compte local {{ row.local_account.username }} · {{ row.local_account.system }} · {{ row.local_account.active|yesno:'Actif,Inactif' }}.</p><p><a href="{% url 'identity360-detail' row.local_account.current_identity_id %}">Propriétaire IAM actuel</a> : ce rattachement n’authentifie aucune personne dans les observations historiques.</p>{% else %}<p>Aucune correspondance de compte active.</p>{% endif %}
+{% if row.mapping %}<p>Correspondance enregistrée le {{ row.mapping.recorded_at }} · référence {{ row.mapping.id }}.</p>{% endif %}
+<ul>{% for message in row.review_messages %}<li>{{ message }}</li>{% empty %}<li>Aucun autre motif signalé sur cette page ; aucune conformité globale n’en est déduite.</li>{% endfor %}</ul>
+</article>{% empty %}<p>Aucun objet sur cette page.</p>{% endfor %}
+{% if review.not_observed_truncated %}<p role="status">Les objets non observés nécessitent une autre page ; leur absence n’est pas une confirmation de retrait.</p>{% endif %}
+{% if review.next_cursor %}<p><a href="?cursor={{ review.next_cursor|urlencode }}&amp;limit={{ request.GET.limit|default:'100'|urlencode }}&amp;history_limit={{ request.GET.history_limit|default:'20'|urlencode }}">Page suivante</a></p>{% endif %}
+<h2>Opérations SCIM enregistrées</h2>
+{% for entry in review.scim_history.operations.items %}<article><p>{{ entry.kind }} · {{ entry.status }} · {{ entry.created_at }} · référence {{ entry.id }}.</p><p>Contexte de destination : {{ entry.origin.state }}. {{ entry.origin.base_url|default:'Origine non établie' }}</p></article>{% empty %}<p>Aucune opération dans la section disponible de cette page.</p>{% endfor %}
+{% if review.scim_history.operations.truncated %}<p role="status">L’histoire des opérations est tronquée.</p>{% endif %}
+<h2>Résultats SCIM historiques</h2>
+{% for entry in review.scim_history.results.items %}<p>{{ entry.kind }} · {{ entry.outcome }} · {{ entry.recorded_at }} · référence {{ entry.id }}. L’état distant actuel reste non établi.</p>{% empty %}<p>Aucun résultat dans la section disponible de cette page.</p>{% endfor %}
+{% if review.scim_history.results.truncated %}<p role="status">L’histoire des résultats est tronquée.</p>{% endif %}
+<h2>Preuves de création SCIM</h2>
+{% for entry in review.scim_history.creations.items %}<p>{{ entry.state }} · {{ entry.confirmed_at }} · référence {{ entry.id }}. Aucun droit actif n’est déduit de la création initiale.</p>{% empty %}<p>Aucune preuve de création sur cette page.</p>{% endfor %}
+{% if review.scim_history.creations.truncated %}<p role="status">L’histoire des créations est tronquée.</p>{% endif %}
+<h2>Références opérateur TeamViewer</h2>
+<p>Une référence d’opérateur TeamViewer ne prouve ni le compte Windows utilisé, ni l’identité authentifiée d’une personne.</p>
+{% for entry in review.teamviewer_history.items %}<p>Session {{ entry.session_id }} · {{ entry.state|default:'Résolution à examiner' }}. La résolution du compte et la provenance de l’événement sont distinctes.</p><p>Intégrité du lien de normalisation : {{ entry.provenance_link|default:'Non établie' }}. Canal de l’événement : {{ entry.event_provenance|default:'Non établi' }}. Reçu de provenance : {{ entry.provenance_receipt_verified|yesno:'Vérifié,Non établi' }}. Ce reçu atteste l’acceptation par PamOlive, pas la vérité de l’événement.</p>{% empty %}<p>Aucune référence qualifiée dans la section disponible.</p>{% endfor %}
+{% if review.teamviewer_history.truncated %}<p role="status">Les références TeamViewer sont tronquées.</p>{% endif %}
+{% endblock %}

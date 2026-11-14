@@ -1,0 +1,14 @@
+{
+  "organization": "00000000-0000-0000-0000-000000000002",
+  "endpoint": "00000000-0000-0000-0000-00000000000f",
+  "epoch": 3,
+  "resource": "00000000-0000-0000-0000-000000000011",
+  "account": "00000000-0000-0000-0000-000000000012",
+  "username": "opérateur",
+  "protocol": "rdp",
+  "hostname": "fixture.invalid",
+  "port": 3389,
+  "domain": "LAB",
+  "auth_method": "password",
+  "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}

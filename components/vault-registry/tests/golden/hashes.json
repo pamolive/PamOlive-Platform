@@ -1,0 +1,8 @@
+{
+  "draft_hash": "bc13e21f1942a5330c7618e1edfb278dbf9402be430704c6f964c6ca704168fb",
+  "body_hash": "e22fa566f2833a851b654d6cfbf4529c9149d302d96f8b5247dc767fc9136897",
+  "requester_challenge_hex": "6a0aafc871afe4a1e312c4a8c92cb9f46d59bd62ac8e561b042ef16c434a2e00",
+  "p0_registry_message_sha256": "d1221ca2cd039bc9a5730c16a3715045129645eab51f39a9c4372806656c2d49",
+  "p0_checkpoint_message_sha256": "431bff4bb2ebdea2108f94f0f55fd40d9124572f569c109b2e1f5854614aa011",
+  "final_assertions_digest": "ef401f29c094b924941b0e22b5c3deba4ed2e6aa33f7eb5d77dc32f9de840c20"
+}

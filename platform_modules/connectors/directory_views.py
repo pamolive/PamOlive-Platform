@@ -265,9 +265,10 @@ def configure(request):
 @scoped("connectors")
 def detail(request, source_id, *, api=False, export=False):
     try:
+        page_limit = int(request.GET.get("limit", "100"))
         data = directory_inventory(
             source_id=source_id,
-            limit=int(request.GET.get("limit", "100")),
+            limit=page_limit,
             cursor=request.GET.get("cursor") or None,
             **_context(request),
         )
@@ -282,6 +283,9 @@ def detail(request, source_id, *, api=False, export=False):
                 "connectors/directory_detail.html",
                 {
                     "inventory": data,
+                    "page_limits": dict(
+                        facts=page_limit, not_observed=page_limit, total_items_max=2 * page_limit
+                    ),
                     "fixture_form": FixtureForm(),
                     "mapping_form": MappingForm(),
                     **_permissions(request),
