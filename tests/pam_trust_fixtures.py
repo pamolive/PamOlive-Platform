@@ -81,7 +81,7 @@ def public(key):
 
 
 class TrustFixture:
-    def __init__(self, case, organization, endpoints, people):
+    def __init__(self, case, organization, endpoints, people, *, auto_enroll=True):
         self.case, self.org = case, organization
         self.directory = tempfile.TemporaryDirectory(prefix="pamolive-trust-synthetic-")
         case.addCleanup(self.directory.cleanup)
@@ -158,8 +158,9 @@ class TrustFixture:
             }
         self.row = self.publish(self.body, bootstrap=True)
         self.checkpoint()
-        for actor, _, _ in people:
-            self.enroll(actor)
+        if auto_enroll:
+            for actor, _, _ in people:
+                self.enroll(actor)
 
     def envelope(self, body, *, signers=None, commissioning=False):
         signers = signers or list(self.custodians)[:2]

@@ -128,7 +128,17 @@ A separate local check audits all seven explicit material versions with strict
 no-deps/disable-pip: seven packages, zero reported advisories. Bandit on the two
 source directories returns zero findings and zero errors at the existing
 medium/high threshold. These are bounded checks, not exhaustive dependency or
-service qualification. The full updated workflow and candidate still require CI.
+service qualification.
+
+The subsequent push CI43638204344 and PR CI43638209584 for `09b6fa43` both
+pass the installed-library and security jobs. Their retained artifact digests
+are checked; all27 declared source-file hashes match that Git revision, the
+inline controller is byte-identical and the seven public wheel hashes match
+the reviewed manifest. Both runs execute25+17 installed tests without skips
+and audit seven material versions without advisories. The PR job identifies
+its distinct merge revision `817e2ee806a7cde6fce0ea8f5d038414886425d5`.
+Their whole-image jobs still fail at the35 untriaged High groups; successful
+library jobs do not override that gate or qualify a later source change.
 
 References: [GitHub job permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions),
 [job/container execution](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/run-jobs-in-a-container),

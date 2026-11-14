@@ -7,6 +7,11 @@ réunit le socle `2f282246f70d33a4f94254d4e54190fff5d20609` et la branche
 `cc764c0d6496f741859b3b17bc8dbd3853f5dfe2`. Les branches historiques restent
 conservées. Ce sujet n'est ni main, ni le contenu publié de PR2, ni une image qualifiée.
 
+La branche intégrée est depuis publiée pour revue dans la
+[PR3 en brouillon](https://github.com/pamolive/PamOlive-Platform/pull/3),
+empilée sur PR2, au commit `09b6fa43`. Il s'agit de publication de code de
+développement, sans fusion dans main ni publication d'image.
+
 Les 698 fichiers de la fusion ont été comparés à l'arbre attendu : modes,
 objets Git, absence de conflit et conservation des 86 fichiers protégés du
 socle (déploiement, dépendances et CI). Les trois fichiers du correctif
@@ -53,9 +58,10 @@ sont conservés ; aucun volume supprimé. Une première invocation des tests pur
 avait échoué sur le chemin d'import du lanceur. Elle reste dans les preuves ;
 l'invocation documentée a ensuite réussi sans modifier les packages ou le venv Core.
 
-Ces résultats ne remplacent pas les régressions P0 complètes, les portes
-image/native/HA/restauration ni les tests des wheels installées du **nouveau
-candidat intégré**. Aucun résultat R8-r2 ou CI du socle n'est transféré à ce sujet.
+Ces premiers résultats de fusion ne remplaçaient pas les portes suivantes.
+Les tests de wheels et les portes fonctionnelles propres à `09b6fa43` sont
+depuis exécutés comme décrit plus bas ; le contrôle final d'image reste refusé.
+Aucun résultat R8-r2 ou CI du socle n'est transféré à ce sujet.
 
 ## Référence du socle, distincte de l'intégration
 
@@ -78,16 +84,46 @@ historiques de la base. Son inspection, ses tests P0 sélectionnés, ses transpo
 et sa restauration sont des preuves propres à ce sujet ; les 35 groupes High
 continuent à bloquer sa promotion.
 
-## Suites nécessaires
+## Portes de la fusion et suites nécessaires
 
-1. Exécuter la nouvelle porte CI sur le candidat exact. Son contrôleur a passé
-   localement 25 + 17 tests sur les packages installés, avec matériaux hashés,
-   réseau absent et aucun fallback global ; le workflow complet reste à vérifier.
-2. Rejouer les régressions et portes de packaging sur le candidat intégré exact,
+1. La porte des packages installés est désormais réussie localement et dans
+   les deux CI `09b6fa43`, sur ses matériaux exacts, sans fallback global.
+   Tout changement ultérieur demande ses contrôles propres.
+2. Les portes fonctionnelles/packaging de ce commit passent dans les deux CI,
    avec migrations/restauration, tenants, concurrence et preuves historiques.
+   Le refus des 35 groupes High empêche toujours sa promotion.
 3. Compléter le parcours G headless et PAM par cérémonies synthétiques réelles,
    puis transports ; les fixtures ne prouvent pas l'indépendance d'humains réels.
 4. Construire les autorités, le registre et le stockage P2 après décision et
    contre-revue distinctes, sans faire d'un DTO une autorisation.
 5. Refuser fusion/promotion tant que les contrôles requis échouent. Aucun NAS
    ou système réel n'a été contacté pour cette intégration.
+
+## Résultats CI de `09b6fa43`, distincts des correctifs suivants
+
+Les CI [push 43638204344](https://github.com/pamolive/PamOlive-Platform/actions/runs/43638204344)
+et [PR 43638209584](https://github.com/pamolive/PamOlive-Platform/actions/runs/43638209584)
+sont terminées. Les jobs `security` et `p2-installed-libraries` réussissent
+dans les deux : 42 tests installés sans exclusion, trois venvs, audit des
+sept versions sans avis et contrôles statiques/secrets. Leurs 27 empreintes
+de fichiers déclarés correspondent au Git `09b6fa43` ; le build PR utilise le
+merge de test `817e2ee806a7cde6fce0ea8f5d038414886425d5`.
+
+Les portes fonctionnelles des deux CI passent : 1433 tests généraux comptés
+avec 42 exclusions, suites dédiées, SSH 10/10, RDP 9/9, deux nœuds avec
+partition de route PostgreSQL sur un même hôte, restauration et retour arrière.
+Elles échouent uniquement au contrôle final d'image : 348 correspondances OS,
+102 High / 35 groupes non arbitrés, zéro Critical et zéro correspondance
+ignorée. Les quatre ZIP de preuves de chaque CI ont leur digest recroisé.
+La couverture n'est pas exhaustive et aucune attestation de compilation
+indépendante n'est acquise.
+
+Deux images locales distinctes de `09b6fa43` sont construites et vérifiées
+offline : identités/couches, 650 sources applicatives, 32 matériaux Python,
+ensurepip et absence des bibliothèques P2 dans Web ; zéro delta ELF avec R8-r2.
+Aucune exécution runtime locale de ces images n'est déduite de cette inspection.
+
+Un [complément HTTP PAM](p1-g-pam-http-validation.md), postérieur à ce sujet,
+a ensuite révélé un défaut de rendu des dates bail/relais non couvert par
+les anciennes suites. Sa correction et ses 325 régressions locales ne sont
+pas attribuées à `09b6fa43` ; leur futur commit doit avoir ses propres portes.

@@ -4,6 +4,48 @@ Statut : qualification N0 en cours, **aucune autorisation de production ni de
 publication d'image**. PR2 reste une revue en brouillon. Les résultats de cette
 page ne rendent pas vertes les anciennes CI refusées.
 
+## Point courant : R8-r2, intégration et correctif de parcours
+
+Les sections R6/R7/B3r4 ci-dessous sont historiques : elles conservent les
+résultats et les attentes de leurs sujets à cette date. Les étapes accomplies
+depuis ne rendent pas rétroactivement réussies les premières tentatives.
+
+Le premier essai R8 de `9e5afd2` est refusé avant export : l'inventaire omettait
+un répertoire `__pycache__` vide hérité de la base. Il n'a produit aucune image.
+Le sujet R8-r2 de `2f28224` conserve ce répertoire précisément et corrige le
+bootstrap dormant ensurepip avec pip 26.3. Deux vrais venvs vierges hors réseau
+et sans fallback global réussissent. L'ancienne wheel reste dans les couches
+historiques de la base ; aucune disparition historique n'est prétendue.
+
+R8-r2 passe la sonde embarquée avec init, huit smokes, SSH 10/10, RDP 9/9,
+TLS/SCRAM, les extensions, 227 tests P0 sélectionnés (226 réussites et un cas
+SQLite exclu avec contrepartie PostgreSQL réussie), 28 extras PAM et 30 tests
+de restauration. Le dump/restore synthétique couvre 106 modèles, 17 valeurs
+chiffrées, 87 preuves signées et 3 reçus ; aucun registre PAM ou preuve
+d'exception Governance non vide n'est présent dans ce dump. Leurs tests dédiés
+restent distincts et `safe_to_serve` demeure faux. HA/partition locale n'est
+pas rejouée sur cette archive ; les CI du socle ont leurs propres images.
+
+La [PR3 intégrée](p1-fg-p2-integration-20261114.md), `09b6fa43`, réunit ensuite
+F3/G et les bibliothèques P2. Ses deux CI passent les jobs sécurité et packages
+installés, les portes fonctionnelles (1433 tests généraux comptés / 42 exclusions),
+SSH/RDP, deux nœuds avec partition même hôte, migrations/restauration/retour
+arrière. Elles échouent au seul contrôle final d'image : 348 matches OS,
+102 High / 35 groupes non arbitrés, zéro Critical et zéro match ignoré.
+Les huit ZIP de preuves sont recroisés avec leurs digests. Les deux images
+locales de ce commit ont seulement leur build et inspection offline propres ;
+les exécutions de CI ne leur sont pas transférées.
+
+Le [correctif HTTP PAM suivant](p1-g-pam-http-validation.md) n'appartient pas
+à ces images/CI : cinq parcours HTTP passent jusqu'au pending/arrêt/audit,
+avec correction de rendu des dates ; sa sélection combinée compte 324 réussites
+et une exclusion attendue sur 325 tests. Sa future CI reste une porte distincte.
+
+Les matériaux APT/SDK/compilateur et attestations ADR-021 demeurent incomplets.
+Les prototypes de capture ne créent aucune autorité ou exception :
+`recipe_build_authority_unavailable` reste fermé et les 35 risques bloquent la
+promotion. Aucun main, NAS ou nouvelle image publiée par ces qualifications.
+
 ## Complément B3r6 et candidat Python
 
 B3r6 est construit depuis les seuls octets Git du commit `8ca92bf` ; son archive

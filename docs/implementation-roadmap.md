@@ -27,7 +27,7 @@ Réutiliser SCIM, TeamViewer, outbox, correspondances, reprises et reçus exista
 | --- | --- | --- | --- |
 | F1 inventaire | Sources immuables liées à destination/identité TLS, observations persistantes, runs signés et mappings explicites ; vues/API/exports paginés | Deux sources/deux tenants avec mêmes UUID, historique et absence incertaine conservés, aucun droit créé | Implémenté, tests ciblés locaux réussis ; promotion bloquée par le runtime |
 | F2 lecteurs | LDAP/AD read-only, pagination et identifiants stables ; préparation Graph tenant-scoped ; serveurs factices TLS | Mauvais pin refusé avant secret, referrals/downgrade refusés, pagination bornée, erreurs partielles sans suppression | StartTLS synthétique local et130tests Directory dans deux CI95fe14f réussis ; LDAPS refusé et Graph partiel ; runtime final non promu |
-| F3 rapprochement | Rapprocher inventaire, comptes IAM et confirmations SCIM/TeamViewer sans confondre autorités | Collisions visibles, reprises idempotentes,200identique/409divergent, contexte source historique des retraits conservé | Réuni avec G et les bibliothèques P2 dans la fusion locale `4c9cd2b` ; campagne intégrée 134/134 PG et revue indépendante ; portes globales encore requises |
+| F3 rapprochement | Rapprocher inventaire, comptes IAM et confirmations SCIM/TeamViewer sans confondre autorités | Collisions visibles, reprises idempotentes,200identique/409divergent, contexte source historique des retraits conservé | Réuni avec G/P2 dans PR3 `09b6fa43` ; 134/134 PG locaux et portes fonctionnelles CI réussies ; promotion bloquée par les 35 groupes High |
 | F4 livraison | Migrations/restauration, export auditable, quotas, supervision et revues adverses | PostgreSQL réel, concurrence, rôles restreints, régressions P0, CI et promotion qualifiée | Campagnes locales partielles réalisées ; gate de scan strict ajouté, promotion bloquée |
 
 Le [candidat PR2](https://github.com/pamolive/PamOlive-Platform/pull/2) reste en brouillon. La première analyse exhaustive de son image a détecté des dépendances Python/FreeRDP vulnérables : aucune fusion ou publication de ce runtime n’est autorisée par ses seuls tests applicatifs. [ADR-019](adr-019-native-runtime-dependencies.md) retient une base corrigée et FreeRDP maintenu compilé depuis une source signée, puis une nouvelle qualification complète et un inventaire des bibliothèques réellement chargées. Le [rapport de scan initial](p1-f-image-security.md) conserve tous les findings ; les travaux de remédiation ne constituent pas encore un résultat vert. Les répertoires F3 et revues P2 du checkout restent distincts du candidat F1/F2.
@@ -49,8 +49,11 @@ incomplète ; aucune exception ni promotion ne découle de ces résultats.
 La [fusion locale F3/G/P2](p1-fg-p2-integration-20261114.md) `4c9cd2b` réunit
 les fonctionnalités des branches préservées : 134/134 tests PostgreSQL sans
 exclusion, 25 tests enveloppe et 17 tests contrats, revue indépendante et scan
-de secrets sur 698 fichiers réussis. Elle est distincte de PR2 et des images
-du socle ; les portes globales du candidat intégré restent requises. Aucun
+de secrets sur 698 fichiers réussis. La branche PR3 `09b6fa43` ajoute la CI
+des bibliothèques installées, réussie dans ses deux runs, avec les contrôles
+de sécurité du code. Les 1433 tests généraux comptés / 42 exclusions, transports,
+HA même hôte avec partition et restauration passent ; seul le scan final
+refuse les 35 groupes High. Aucun
 service Vault, registre, ledger ou nouveau chemin PAM P2 n'est livré.
 
 ADR de travail : [ADR-018](adr-018-directory-inventory.md). Les écrivains/provisioning réels restent désactivés tant que leur destination, leurs permissions et leur périmètre ne sont pas qualifiés. Les faits d’annuaire ne deviennent jamais une attestation indépendante PAM.
@@ -61,7 +64,13 @@ Parcours Identity360 → intention/ticket → politique → approbation indépen
 
 Scénarios : arrivée/mobilité/départ, fournisseur, privilège temporaire, expiration, tentative hors périmètre et provenance insuffisante. Réception : deux tenants aux modules différents, UI/API/MFA/sessions/exports/erreurs, accès clavier/accessibilité, captures de démonstration, cibles et données synthétiques. Les personnes et autorités simulées ne prouvent pas l’indépendance d’humains réels.
 
-Premier incrément désormais réuni au candidat local : Identity360 propose le formulaire existant prérempli avec identité/compte, sous rôle et module autorisés. GET ne crée aucune autorité et n'alimente jamais un POST incomplet. Les tests des routes et du parcours HTTPS participent aux 134 cas PostgreSQL intégrés ; le service conserve la revalidation de l'autorité sous verrou corrigée dans le socle. La CI/image de l'intégration, le navigateur headless et le parcours PAM complet restent à effectuer ; P1-G n'est pas déclaré terminé.
+Premier incrément réuni dans PR3 : Identity360 propose le formulaire existant prérempli avec identité/compte, sous rôle et module autorisés. GET ne crée aucune autorité et n'alimente jamais un POST incomplet. Les tests des routes et du parcours HTTPS participent aux 134 cas PostgreSQL intégrés ; le service conserve la revalidation de l'autorité sous verrou corrigée dans le socle. Les CI de `09b6fa43` sont terminées avec les limites ci-dessus ; la CI du correctif suivant, la promotion qualifiée et le navigateur headless restent requis. P1-G n'est pas déclaré terminé.
+
+Le [complément HTTP PAM](p1-g-pam-http-validation.md) passe ensuite 5/5 cas
+jusqu'au ticket pending, à l'arrêt et à l'audit, avec correction de rendu
+et conservation des autorités existantes. La régression de 29 modules compte
+324 réussites et une exclusion SQLite attendue sur 325, contrepartie PG
+réussie. La qualification navigateur/JavaScript reste distincte et non exécutée.
 
 ## P2 — architecture hybride et domaines sensibles
 

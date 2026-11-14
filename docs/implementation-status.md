@@ -19,10 +19,20 @@ Le [candidat intégré local F3/G/P2](p1-fg-p2-integration-20261114.md), fusion
 `4c9cd2b`, conserve les protections du socle et réunit les routes F3, l'entrée
 de demande Identity 360 et les deux bibliothèques P2. Ses tests propres passent :
 134/134 PostgreSQL sans exclusion, 25 + 17 tests purs, Ruff et vrai scan de secrets
-sur 698 fichiers. Il n'est ni publié ni qualifié par les images ou CI du socle.
-Le parcours G complet et les portes globales de ce candidat restent à vérifier.
+sur 698 fichiers. Sa branche de développement est depuis publiée dans PR3
+au commit `09b6fa43`. Ses deux CI passent les jobs code/bibliothèques P2,
+1433 tests généraux comptés / 42 exclusions et les portes natives/HA même hôte/
+restauration, puis échouent au seul scan final des 35 groupes High.
+Aucun main ou image promue ; le parcours G complet reste à qualifier.
 P2 ne livre encore ni service Vault, ni vérificateur d'autorité, ni ledger,
 ni isolation opérationnelle. Les paragraphes B2/B3r2 ci-dessous sont historiques.
+
+Un complément [HTTP PAM local](p1-g-pam-http-validation.md) prolonge `09b6fa43` :
+5/5 scénarios avec véritables cérémonies synthétiques, deux votes, ticket
+pending, arrêt et audit ; correction ciblée du rendu des dates bail/relais.
+La régression combinée compte 324 réussites et une exclusion SQLite attendue
+sur 325 tests, avec contrepartie PostgreSQL réussie. Ce complément attend
+encore son scan final et sa CI ; il n'exécute pas le JavaScript ni SSH/RDP.
 
 | Périmètre | État réel au démarrage du programme |
 | --- | --- |

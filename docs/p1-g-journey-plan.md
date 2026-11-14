@@ -2,6 +2,15 @@
 
 Statut : premier incrément local réuni au socle dans la fusion `4c9cd2b`, sans publication P1-G. Le [rapport d'intégration du 14 novembre](p1-fg-p2-integration-20261114.md) décrit les 134 tests PostgreSQL du candidat commun. Les sections datées ci-dessous conservent les campagnes antérieures ; elles ne qualifient pas l'image intégrée ni un parcours PAM complet. Ce lot ne redéveloppe pas le démonstrateur PC-483 / PC-991.
 
+Complément local : le [parcours HTTP PAM](p1-g-pam-http-validation.md) passe
+désormais cinq scénarios avec CSRF, véritables cérémonies synthétiques et
+deux votes commissionnés, jusqu'au ticket pending, à l'arrêt et à l'audit.
+Il a révélé puis corrigé le rendu des dates bail/relais. La régression
+combinée passe 324 cas avec une exclusion SQLite attendue sur 325 tests,
+dont la contrepartie PostgreSQL réussit. Le scan final et la CI du nouveau
+correctif restent requis ; aucun navigateur ou transport natif n'est qualifié
+par ce complément.
+
 Complément du12novembre2026 : ces tests sont conservés dans le worktree F3 séparé, basé sur95fe14f, et exercent `config.urls` réel. Le portail F3 y ajoute les liens Identity360→index des sources→fiche F1→revue des comptes, avec dépendances de module appliquées. Cela ne crée pas une association de personnes historiques. La base native95fe14f n’est pas une image promue ; aucun résultat de ce lot ne qualifie son packaging pour la production.
 
 ## Contrat vérifié
