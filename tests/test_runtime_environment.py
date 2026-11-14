@@ -4,6 +4,7 @@ import os
 import runpy
 import stat
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import TestCase
@@ -21,6 +22,147 @@ from deploy.runtime import (
 
 
 class RuntimeEnvironmentTests(TestCase):
+    def init_processes(self):
+        root = {"Uid": "0 0 0 0", "Gid": "0 0 0 0", "NoNewPrivs": "1"}
+        command = ["python", "deploy/runtime.py"]
+        return {
+            "1": ({**root, "PPid": "0"}, ["/sbin/docker-init", "--", *command]),
+            "2": ({**root, "PPid": "1"}, command),
+        }
+
+    @contextmanager
+    def init_files(self, *, target=None, executable=None, resolved=None):
+        target = target or SimpleNamespace(
+            st_mode=stat.S_IFREG | 0o755, st_uid=0, st_gid=0, st_dev=7, st_ino=19
+        )
+        with (
+            patch.object(Path, "lstat", return_value=target),
+            patch.object(Path, "stat", return_value=executable or target),
+            patch.object(Path, "resolve", return_value=resolved or Path(probe.DOCKER_INIT_PATH)),
+        ):
+            yield
+
+    def init_mounts(self):
+        return self.mounts() + (
+            "3 1 0:3 / /usr/sbin/docker-init ro,relatime - overlay overlay rw\n"
+        )
+
+    def test_init_mount_requires_actual_pid1_executable_and_readonly_unique_mount(self):
+        with self.init_files():
+            probe.check_mounts(self.init_mounts(), processes=self.init_processes(), supervisor="2")
+            for command in ("/sbin/docker-init", "/usr/sbin/docker-init"):
+                processes = self.init_processes()
+                processes["1"][1][0] = command
+                probe.check_mounts(self.init_mounts(), processes=processes, supervisor="2")
+            for text in (
+                self.init_mounts().replace("ro,relatime - overlay", "rw,relatime - overlay"),
+                self.init_mounts().replace("ro,relatime - overlay", "ro,rw - overlay"),
+                self.init_mounts() + self.init_mounts().splitlines(keepends=True)[-1],
+                self.mounts(),
+            ):
+                with self.subTest(mounts=text), self.assertRaises(RuntimeError):
+                    probe.check_mounts(text, processes=self.init_processes(), supervisor="2")
+
+    def test_init_path_or_missing_and_wrong_process_arguments_do_not_authorize_mount(self):
+        with self.init_files():
+            with self.assertRaises(RuntimeError):
+                probe.check_mounts(self.init_mounts())
+            for pid, field, value in (
+                ("1", "Uid", "1000 1000 1000 1000"),
+                ("1", "Gid", "0 1000 0 0"),
+                ("1", "NoNewPrivs", "0"),
+                ("1", "PPid", "3"),
+                ("2", "Uid", "0 1000 0 0"),
+                ("2", "Gid", "1000 1000 1000 1000"),
+                ("2", "NoNewPrivs", "0"),
+                ("2", "PPid", "9"),
+            ):
+                processes = self.init_processes()
+                processes[pid][0][field] = value
+                with self.subTest(pid=pid, field=field), self.assertRaises(RuntimeError):
+                    probe.check_mounts(self.init_mounts(), processes=processes, supervisor="2")
+            for command in (
+                ["docker-init", "--", "python", "deploy/runtime.py"],
+                ["/usr/bin/tini", "--", "python", "deploy/runtime.py"],
+                ["/tmp/docker-init", "--", "python", "deploy/runtime.py"],
+                ["/sbin/docker-init", "-g", "--", "python", "deploy/runtime.py"],
+                ["/sbin/docker-init", "--", "python", "deploy/runtime.py", "extra"],
+                ["/sbin/docker-init", "--", "python", "manage.py"],
+            ):
+                processes = self.init_processes()
+                processes["1"] = (processes["1"][0], command)
+                with self.subTest(command=command), self.assertRaises(RuntimeError):
+                    probe.check_mounts(self.init_mounts(), processes=processes, supervisor="2")
+            for processes, supervisor in ((None, "2"), ({}, "2"), (self.init_processes(), "9")):
+                with self.subTest(supervisor=supervisor), self.assertRaises(RuntimeError):
+                    probe.check_mounts(
+                        self.init_mounts(), processes=processes, supervisor=supervisor
+                    )
+            direct = {"1": self.init_processes()["2"]}
+            with self.assertRaises(RuntimeError):
+                probe.check_mounts(self.init_mounts(), processes=direct, supervisor="1")
+
+    def test_init_real_file_root_owner_modes_and_kernel_executable_identity_are_required(self):
+        good = dict(st_mode=stat.S_IFREG | 0o755, st_uid=0, st_gid=0, st_dev=7, st_ino=19)
+        for field, value in (
+            ("st_mode", stat.S_IFDIR | 0o755),
+            ("st_mode", stat.S_IFLNK | 0o755),
+            ("st_mode", stat.S_IFIFO | 0o755),
+            ("st_mode", stat.S_IFREG | 0o775),
+            ("st_mode", stat.S_IFREG | 0o757),
+            ("st_mode", stat.S_IFREG | 0o4755),
+            ("st_mode", stat.S_IFREG | 0o2755),
+            ("st_mode", stat.S_IFREG | 0o1755),
+            ("st_mode", stat.S_IFREG | 0o644),
+            ("st_uid", 1000),
+            ("st_gid", 1000),
+        ):
+            target = SimpleNamespace(**{**good, field: value})
+            with self.subTest(target_field=field, value=value), self.init_files(target=target):
+                with self.assertRaises(RuntimeError):
+                    probe.check_mounts(
+                        self.init_mounts(), processes=self.init_processes(), supervisor="2"
+                    )
+        for field, value in (
+            ("st_dev", 8),
+            ("st_ino", 20),
+            ("st_uid", 1000),
+            ("st_gid", 1000),
+            ("st_mode", stat.S_IFREG | 0o777),
+        ):
+            actual = SimpleNamespace(**{**good, field: value})
+            with self.subTest(executable_field=field), self.init_files(executable=actual):
+                with self.assertRaises(RuntimeError):
+                    probe.check_mounts(
+                        self.init_mounts(), processes=self.init_processes(), supervisor="2"
+                    )
+        with (
+            self.init_files(resolved=Path("/usr/sbin/other-init")),
+            self.assertRaises(RuntimeError),
+        ):
+            probe.check_mounts(self.init_mounts(), processes=self.init_processes(), supervisor="2")
+        with self.init_files(), patch.object(Path, "resolve", side_effect=FileNotFoundError):
+            with self.assertRaises(FileNotFoundError):
+                probe.check_mounts(
+                    self.init_mounts(), processes=self.init_processes(), supervisor="2"
+                )
+
+    def test_verified_init_does_not_allow_any_other_code_or_ancestor_shadow(self):
+        with self.init_files():
+            for path in (
+                "/usr",
+                "/usr/sbin",
+                "/sbin",
+                "/usr/sbin/docker-init.evil",
+                "/usr/sbin/docker-init/child",
+                "/usr/lib",
+                "/app",
+                "/etc/fonts",
+            ):
+                text = self.init_mounts() + f"4 1 0:4 / {path} ro - tmpfs tmpfs rw\n"
+                with self.subTest(path=path), self.assertRaises(RuntimeError):
+                    probe.check_mounts(text, processes=self.init_processes(), supervisor="2")
+
     def application(self):
         return application_environment(
             {

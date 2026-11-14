@@ -9,6 +9,8 @@ import sys
 import urllib.request
 from pathlib import Path, PurePosixPath
 
+DOCKER_INIT_PATH = "/usr/sbin/docker-init"
+
 try:
     from deploy.runtime import (
         APP_HOME,
@@ -153,8 +155,69 @@ def mount_fields(text):
     return result
 
 
-def check_mounts(text):
+def check_init_mount(processes, supervisor):
+    """Bind Docker's host-provided init file to the actual PID1 executable."""
+    if processes is None and supervisor is None:
+        return False
+    require(isinstance(processes, dict) and supervisor in processes, "runtime_init_processes")
+    fields, command = processes[supervisor]
+    require(
+        tuple(map(int, fields.get("Uid", "").split())) == (0,) * 4
+        and tuple(map(int, fields.get("Gid", "").split())) == (0,) * 4
+        and fields.get("NoNewPrivs", "").strip() == "1",
+        "runtime_supervisor_privileges",
+    )
+    if supervisor == "1":
+        return False
+    require("1" in processes, "runtime_init_missing")
+    init_fields, init_command = processes["1"]
+    require(
+        fields.get("PPid", "").strip() == "1"
+        and init_fields.get("PPid", "").strip() == "0"
+        and tuple(map(int, init_fields.get("Uid", "").split())) == (0,) * 4
+        and tuple(map(int, init_fields.get("Gid", "").split())) == (0,) * 4
+        and init_fields.get("NoNewPrivs", "").strip() == "1",
+        "runtime_init_privileges_parent",
+    )
+    require(
+        len(init_command) == len(command) + 2
+        and init_command[0] in ("/sbin/docker-init", DOCKER_INIT_PATH)
+        and init_command[1:] == ["--", *command],
+        "runtime_init_command",
+    )
+    target = Path(DOCKER_INIT_PATH)
+    executable = Path("/proc/1/exe")
+    info = target.lstat()
+    require(
+        stat.S_ISREG(info.st_mode)
+        and info.st_uid == info.st_gid == 0
+        and not info.st_mode & 0o7022,
+        "runtime_init_file_permissions",
+    )
+    # The command name or a supplied pathname alone cannot authorize a mount.
+    # /proc/1/exe follows the kernel's actual executable, then both identity
+    # fields must match the approved real file (not a copied substitute).
+    actual = executable.stat()
+    require(
+        executable.resolve(strict=True) == target
+        and stat.S_ISREG(actual.st_mode)
+        and info.st_mode & stat.S_IXUSR
+        and (actual.st_dev, actual.st_ino, actual.st_mode, actual.st_uid, actual.st_gid)
+        == (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid),
+        "runtime_init_executable_identity",
+    )
+    return True
+
+
+def check_mounts(text, *, processes=None, supervisor=None):
     mounts = mount_fields(text)
+    init_verified = check_init_mount(processes, supervisor)
+    init_mounts = [item for item in mounts if item[0] == DOCKER_INIT_PATH]
+    if init_verified:
+        require(
+            len(init_mounts) == 1 and "ro" in init_mounts[0][2] and "rw" not in init_mounts[0][2],
+            "runtime_init_readonly_mount",
+        )
     roots = [item for item in mounts if item[0] == "/"]
     require(
         len(roots) == 1 and "ro" in roots[0][2] and "rw" not in roots[0][2], "runtime_readonly_root"
@@ -176,6 +239,7 @@ def check_mounts(text):
     require(
         not any(
             target != "/"
+            and not (init_verified and target == DOCKER_INIT_PATH)
             and (
                 target == prefix
                 or target.startswith(prefix + "/")
@@ -312,18 +376,13 @@ def main():
             require(uid == 0 and fields.get("NoNewPrivs", "").strip() == "1", "runtime_supervisor")
             supervisors.append((directory.name, fields["PPid"].strip()))
     require(len(supervisors) == 1 and roles[1000] and roles[1001], "runtime_roles_missing")
-    pid, parent = supervisors[0]
+    pid, _ = supervisors[0]
     check_service_commands(processes, pid)
-    if pid != "1":
-        init = commands.get("1", [])
-        require(
-            parent == "1"
-            and len(init) >= 2
-            and PurePosixPath(init[0]).name in ("docker-init", "tini")
-            and init[-2:] == commands[pid],
-            "runtime_supervisor_parent",
-        )
-    check_mounts(read_bounded(Path("/proc/self/mountinfo"), 1024 * 1024).decode())
+    check_mounts(
+        read_bounded(Path("/proc/self/mountinfo"), 1024 * 1024).decode(),
+        processes=processes,
+        supervisor=pid,
+    )
     require(stat.S_IMODE(Path("/tmp").stat().st_mode) == 0o1777, "runtime_tmpfs_permissions")
     for path, uid in (
         (Path("/etc/fonts"), 0),

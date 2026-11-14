@@ -108,6 +108,37 @@ un montage racine `ro`, et un superbloc `ro` ne masque pas un montage racine
 `rw`. Les lectures `/proc`, environnements et montages sont bornées.
 La sonde termine par le contrôle HTTP de santé existant.
 
+### Init Docker et frontière de confiance hôte
+
+L’essai effectif B3r5-r2 du14novembre a révélé un refus de la sonde sur le
+montage légitime de Docker Desktop29.6.1 : `--init` ajoute un fichier externe
+en lecture seule à `/usr/sbin/docker-init` sur cette base usrmerge. Le sujet
+B3r5, commit `df8acff`, conserve ce refus `runtime_shadow_mount` dans sa preuve ;
+ses tests fonctionnels ne constituent pas un succès de cette sonde.
+
+Le correctif maintient `--init` et les protections générales de `/usr`. Sa seule
+exception est ce chemin de fichier exact, avec un unique montage VFS `ro`
+sans `rw`, après vérification du vrai PID1. Les UID/GID complets de PID1 et du
+superviseur doivent être root, NoNewPrivs doit être1, les parentés doivent être
+0 puis1, et l’argv de PID1 doit correspondre à l’init Docker attendu suivi du
+vecteur exact du superviseur déjà reconnu. Aucun simple basename, chemin ou
+booléen fourni à la sonde ne vaut preuve d’approbation.
+
+La cible doit être un fichier régulier root:root, exécutable par son
+propriétaire, sans écriture groupe/autres ni bit spécial. La résolution du
+lien noyau `/proc/1/exe` doit aboutir au même chemin canonique et son device,
+inode, mode, UID et GID doivent correspondre à ceux de la cible. Copie d’un
+autre fichier, lien symbolique cible, autre PID, mauvais argv/propriétaire/mode,
+montage inscriptible/dupliqué, ancêtre ou autre sous-chemin restent refusés.
+Sans init réel vérifié, aucune exception n’est accordée.
+
+Ce binaire appartient au Docker/host de confiance et constitue donc une
+partie explicite du TCB local ; il ne fait pas partie des layers attestés de
+l’image. L’identité fichier/exécutable établit qu’il s’agit du même objet,
+pas sa provenance constructeur face à un hôte root compromis. Les capacités
+nulles sont exigées pour web/jobs et le moteur ; aucune affirmation de
+CapEff=0 n’est ajoutée pour l’init ou le superviseur root.
+
 ## Vérifications et limites de qualification
 
 Contrôles locaux exécutés avec Python3.12.10 sous Windows :
@@ -118,11 +149,15 @@ Contrôles locaux exécutés avec Python3.12.10 sous Windows :
 .venv/Scripts/ruff.exe format --check deploy/runtime.py deploy/check_runtime.py deploy/synology_preflight.py tests/test_runtime_environment.py tests/test_synology_preparation.py
 ```
 
-Résultat : **48 tests réussis, aucun ignoré** ; Ruff et format ciblés réussis.
+Résultat : **52 tests réussis, aucun ignoré** ; Ruff et format ciblés réussis.
 Les tests incluent les cinq mutations initiales (commande, utilisateur, tmpfs
 fonts, locale non-C, DISPLAY), les montages ancêtres, options inconnues,
 variables de chargement inconnues, Config d’image invalide, compatibilité du
 Compose versionné, rôles effectifs simulés et régressions des clés P0.
+Les adverses init couvrent également permissions, UID/GID/parentés/argv,
+résolution du vrai exécutable, inode/device, montage RO unique et maintien du
+refus de tous les autres ombrages. Le correctif init nécessite un nouveau
+commit et une nouvelle image avant un verdict effectif de sonde depuis celle-ci.
 Le parsing Compose est local et daemonless. Les lancements Python des tests
 d’import ne lancent aucun service applicatif. Les invocations script et module
 de la sonde atteignent le refus plateforme générique sur Windows, sans erreur
