@@ -29,13 +29,26 @@ Its METADATA bytes are separately pinned to
 `ad63a8564cd158c8de9e6a912e92776b4abc56cfa2d8286ef4c35bfb9cb9e439`.
 
 `deploy/ensurepip_bundle.py` is stdlib only. It never imports or executes the
-wheel or ensurepip source while patching. It requires the original three source
-files and `_bundled`, the exact old-wheel singleton, no bytecode or unknown file,
+wheel or ensurepip source while patching. It requires exactly five children:
+the original three source files, `_bundled`, and the inherited empty
+`__pycache__` directory. It requires the exact old-wheel singleton, no bytecode or unknown file,
 regular non-hardlinked files and nonaliased parent directories. The unchanged
 entry points are also pinned before writing: `__main__.py` SHA256
 `ee735f518d0fc4dfec81f7aa3da1e052372ed4202c0da4eddd2587840beaecd7`,
 `_uninstall.py` SHA256
 `3a6e95d01c45e2e47c05df3c81073b895c97c1eb0e5b90ab175d6d9263fc81f2`.
+
+The first R8 attempt at9e5afd2 stopped at `ensurepip_file_set`: the earlier
+file-only offline inventory had omitted the base's **empty directory**.
+Complete TAR-member inspection of the exact R7 archive established that it is
+a real `__pycache__` directory with mode0755. The corrected guard retains this
+directory and checks its nonaliased directory type, exact mode0755 and emptiness
+both before any write and after replacement. A missing directory, file, symlink,
+different mode, any child (including a zero-byte file or nested directory), or
+another extra directory is refused. No cache directory or bytecode is deleted.
+All source/API/sysconfig/wheel hashes and the deterministic patched bytes remain
+unchanged. The failed first build remains diagnostic history; it produced no R8
+image and is not retroactively called successful.
 
 The actual target interpreter's `sysconfig` value `WHEEL_PKG_DIR` must be exactly
 an empty string (`type(value) is str and value == ""`). Offline reading of R7's

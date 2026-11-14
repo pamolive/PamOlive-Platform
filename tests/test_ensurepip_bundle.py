@@ -24,6 +24,25 @@ class EnsurepipBundleTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.directory = self.root / overlay.MODULE
         (self.directory / "_bundled").mkdir(parents=True)
+        self.cache = self.directory / "__pycache__"
+        self.cache.mkdir(mode=0o755)
+        if os.name != "nt":
+            self.cache.chmod(0o755)
+        self.cache_mode = 0o755
+        if os.name == "nt":
+            # Windows cannot represent Unix directory permission bits. Model
+            # only those bits; all real no_alias type/link checks still run.
+            original_no_alias = overlay.no_alias
+
+            def windows_cache_mode(path, *, directory=False):
+                info = original_no_alias(path, directory=directory)
+                if Path(path).absolute() == self.cache:
+                    return SimpleNamespace(st_mode=stat.S_IFDIR | self.cache_mode)
+                return info
+
+            mode_patch = mock.patch.object(overlay, "no_alias", side_effect=windows_cache_mode)
+            mode_patch.start()
+            self.addCleanup(mode_patch.stop)
         self.sysconfig_path = self.root / overlay.SYSCONFIG_PATH
         self.sysconfig_path.write_bytes(b"build_time_vars = {'WHEEL_PKG_DIR': ''}\n")
         self.source = (
@@ -85,6 +104,7 @@ class EnsurepipBundleTests(unittest.TestCase):
         self.assertFalse((self.old.parent / overlay.NEW_NAME).exists())
 
     def test_exact_overlay_preserves_api_files_and_only_removes_verified_old_wheel(self):
+        cache_inode = self.cache.stat().st_ino
         siblings = {
             name: (self.directory / name).read_bytes() for name in ("__main__.py", "_uninstall.py")
         }
@@ -95,6 +115,10 @@ class EnsurepipBundleTests(unittest.TestCase):
         for name, data in siblings.items():
             self.assertEqual((self.directory / name).read_bytes(), data)
         self.assertFalse(list(self.directory.rglob("*.pyc")))
+        self.assertEqual(self.cache.stat().st_ino, cache_inode)
+        self.assertFalse(any(self.cache.iterdir()))
+        self.assertEqual(report["retained_cache_directory"]["mode"], "0755")
+        self.assertIs(report["retained_cache_directory"]["empty"], True)
         self.assertIs(report["build_verified"], False)
         self.assertIs(report["attestation_verified"], False)
         self.assertEqual(report["wheel_pkg_dir"], "")
@@ -123,7 +147,7 @@ class EnsurepipBundleTests(unittest.TestCase):
 
     def test_unknown_or_bytecode_files_refused_before_writes(self):
         for directory, name in (
-            (self.directory, "__pycache__"),
+            (self.directory, "unknown-cache"),
             (self.old.parent, "__pycache__"),
             (self.old.parent, "extra.whl"),
             (self.directory, "extra.py"),
@@ -134,6 +158,73 @@ class EnsurepipBundleTests(unittest.TestCase):
                 self.apply()
             self.assert_unchanged()
             path.unlink()
+
+    def test_exact_cache_refuses_every_file_or_nested_directory_before_writes(self):
+        for name, is_directory in (("ensurepip.pyc", False), ("unknown", False), ("nested", True)):
+            path = self.cache / name
+            path.mkdir() if is_directory else path.write_bytes(b"")
+            with (
+                self.subTest(name=name),
+                self.assertRaisesRegex(overlay.BundleError, "ensurepip_cache_not_empty"),
+            ):
+                self.apply()
+            self.assert_unchanged()
+            path.rmdir() if is_directory else path.unlink()
+
+    def test_cache_missing_wrong_type_or_extra_empty_directory_refused(self):
+        self.cache.rmdir()
+        with self.assertRaisesRegex(overlay.BundleError, "ensurepip_file_set"):
+            self.apply()
+        self.assert_unchanged()
+        self.cache.write_bytes(b"wrong type")
+        with self.assertRaisesRegex(overlay.BundleError, "directory_alias_or_type"):
+            self.apply()
+        self.assert_unchanged()
+        self.cache.unlink()
+        self.cache.mkdir(mode=0o755)
+        extra = self.directory / "other-directory"
+        extra.mkdir()
+        with self.assertRaisesRegex(overlay.BundleError, "ensurepip_file_set"):
+            self.apply()
+        self.assert_unchanged()
+
+    def test_cache_permission_modes_are_exact(self):
+        for mode in (0o700, 0o777, 0o1755, 0o2755):
+            self.cache_mode = mode
+            if os.name != "nt":
+                self.cache.chmod(mode)
+            with (
+                self.subTest(mode=oct(mode)),
+                self.assertRaisesRegex(overlay.BundleError, "ensurepip_cache_mode"),
+            ):
+                self.apply()
+            self.assert_unchanged()
+
+    def test_cache_symlink_mode_is_refused(self):
+        original = Path.lstat
+
+        def substituted(path):
+            return SimpleNamespace(st_mode=stat.S_IFLNK) if path == self.cache else original(path)
+
+        with (
+            mock.patch.object(Path, "lstat", substituted),
+            self.assertRaisesRegex(overlay.BundleError, "directory_alias_or_type"),
+        ):
+            self.apply()
+        self.assert_unchanged()
+
+    def test_cache_is_checked_again_after_mutation(self):
+        original = overlay.write_new
+
+        def fill_cache(path, data):
+            original(path, data)
+            (self.cache / "late.pyc").write_bytes(b"late")
+
+        with (
+            mock.patch.object(overlay, "write_new", side_effect=fill_cache),
+            self.assertRaisesRegex(overlay.BundleError, "ensurepip_cache_not_empty"),
+        ):
+            self.apply()
 
     def test_source_old_new_and_post_hashes_are_strict(self):
         for constant in (

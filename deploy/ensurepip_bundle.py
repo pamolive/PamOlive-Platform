@@ -18,6 +18,7 @@ BASE_REFERENCE = (
     "5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b"
 )
 MODULE = "usr/local/lib/python3.12/ensurepip"
+ROOT_NAMES = frozenset({"__init__.py", "__main__.py", "_uninstall.py", "_bundled", "__pycache__"})
 SYSCONFIG_PATH = "usr/local/lib/python3.12/_sysconfigdata__linux_x86_64-linux-gnu.py"
 SYSCONFIG_SHA256 = "ff048f75a99504e073c8a9b7e9da146763fcde6960d2291c19ca2b72cde9eb69"
 API_SHA256 = {
@@ -145,6 +146,13 @@ def write_new(path, data):
     os.chmod(path, 0o644)
 
 
+def empty_cache(directory):
+    cache = directory / "__pycache__"
+    info = no_alias(cache, directory=True)
+    require(stat.S_IMODE(info.st_mode) == 0o755, "ensurepip_cache_mode")
+    require(not any(cache.iterdir()), "ensurepip_cache_not_empty")
+
+
 def replace_bundle(root, wheel, *, wheel_pkg_dir):
     require(type(wheel_pkg_dir) is str and wheel_pkg_dir == "", "external_wheel_directory")
     root = Path(root).absolute()
@@ -155,10 +163,10 @@ def replace_bundle(root, wheel, *, wheel_pkg_dir):
     directory = root / MODULE
     no_alias(directory, directory=True)
     require(
-        {p.name for p in directory.iterdir()}
-        == {"__init__.py", "__main__.py", "_uninstall.py", "_bundled"},
+        {p.name for p in directory.iterdir()} == ROOT_NAMES,
         "ensurepip_file_set",
     )
+    empty_cache(directory)
     unchanged = {name: sha(regular(directory / name, 16384)) for name in API_SHA256}
     require(unchanged == API_SHA256, "api_source_pin")
     bundled = directory / "_bundled"
@@ -204,10 +212,10 @@ def replace_bundle(root, wheel, *, wheel_pkg_dir):
         "unchanged_api_files",
     )
     require(
-        {p.name for p in directory.iterdir()}
-        == {"__init__.py", "__main__.py", "_uninstall.py", "_bundled"},
+        {p.name for p in directory.iterdir()} == ROOT_NAMES,
         "final_ensurepip_file_set",
     )
+    empty_cache(directory)
     return {
         "schema": "pamolive.ensurepip-bundle-overlay.v1",
         "recipe_base_reference": BASE_REFERENCE,
@@ -224,6 +232,11 @@ def replace_bundle(root, wheel, *, wheel_pkg_dir):
         "unchanged_api_files": unchanged,
         "wheel_pkg_dir": wheel_pkg_dir,
         "sysconfigdata_sha256": SYSCONFIG_SHA256,
+        "retained_cache_directory": {
+            "path": "/" + MODULE + "/__pycache__",
+            "mode": "0755",
+            "empty": True,
+        },
         "build_verified": False,
         "attestation_verified": False,
     }
