@@ -44,6 +44,29 @@ Cette variante est confirmée par la [documentation officielle Psycopg](https://
 
 Les versions OpenSSL de Python et de cryptography sont inventoriées séparément. Ce changement ne prétend pas résoudre automatiquement l’inventaire de tous les autres wheels natifs ou bibliothèques statiquement incorporées. Une lacune de couverture reste explicite et interdit une déclaration de couverture native exhaustive.
 
+## Itération B3 — backport Kerberos ciblé
+
+Le [suivi Debian de CVE-2026-119079](https://security-tracker.debian.org/tracker/CVE-2026-119079) conserve trixie1.21.3-5+deb13u1 vulnérable. La croissance répétée d’un tableau ASN.1 peut provoquer un coût quadratique avant authentification. Le décodeur est partagé : l’absence de KDC dans le runtime ne suffit pas à démontrer l’absence de chemin client. Le [correctif MIT2058326](https://github.com/krb5/krb5/commit/205832663330da308d9d031a17326b68a16715fd) compte et valide les tags avant une allocation unique, puis décode les éléments. Il modifie une seule fonction statique, sans modifier de déclaration d’API exportée. La compatibilité ABI reste à mesurer, pas à déduire de cette seule observation.
+
+| Variante | Risque ou dépendance | Décision |
+| --- | --- | --- |
+| Accepter `wont-fix` ou l’absence de serveur KDC comme exemption | N’écarte pas le code partagé réellement présent et ne corrige pas la fonction | Refusé |
+| Désactiver Kerberos pour réduire le nombre de findings | Retire une capacité existante et ne constitue pas la correction demandée | Refusé |
+| Importer sid ou superposer des SO amont sans cohérence dpkg/SDK | Risque ABI, dépendances et provenance contradictoires | Refusé |
+| Backporter le correctif MIT minimal sur les sources Debian exactes, reconstruire paquets runtime et SDK | Maintient le packaging et réduit le delta ; exige tests, preuve ABI et chaîne de provenance | Retenu pour implémentation locale B3 |
+
+Les spécialistes infrastructure, analyse des sources et Red Team ont confronté ce choix. Le hunk ancien correspond exactement une fois à la source1.21.3 et les patches Debian ne touchent pas ce fichier. `k5calloc` existe déjà et gère les tailles nulles et l’échec de calloc. Ces vérifications justifient une tentative de backport ; elles ne valent pas réussite de compilation ni qualification fonctionnelle.
+
+Conditions de construction : sources APT trixie validées par InRelease/Sources, SHA256 exacts des archives et du correctif MIT, série Debian conservée, application sans fuzz, révision locale explicite `+pamolive1`, compilation séquentielle et tests activés. Les tests KDC/clients restent exclusivement synthétiques et loopback, dans un stage sans réseau externe. Ne copier ni KDC, outils de développement, keytabs ou fixtures privées dans le runtime. Les bibliothèques et paquets SDK employés par FreeRDP doivent partager la même révision locale, afin qu’une dépendance exacte du SDK ne réintroduise pas le paquet stock.
+
+Portes avant réception : comparaison SONAME/symboles/versionnements avec les paquets Debian d’origine, tests ASN.1 vide/long/malformé/mauvais tag/échec d’allocation et nettoyage partiel sous limites, suites MIT/KDC locales, NLA et PostgreSQL TLS/SCRAM/concurrence/restauration, non-régressions P0, inventaire système et nouveau scan de l’archive exacte. Les essais B1/B2 demeurent historiques ; ils ne valident pas B3.
+
+Le scanner peut conserver une CVE sur un paquet dont la version amont reste1.21.3 : conserver ce résultat brut. Une décision future `fixed_by_backport` doit être distincte de `not_reachable` et exiger sources, patch, paquets, ELF, preuve ABI et résultats réellement vérifiés. Aucun résultat de compilation, numéro de version artificiellement avancé ou fichier texte de provenance isolé ne suffit. Les autres findings du même paquet conservent leur analyse propre.
+
+Le bac à sable refuse KEYRING via seccomp : le patch de compatibilité affecte uniquement le test Debian, aux deux arbres, sans autoriser le syscall. La réception distingue `passed_with_capability_skips`, avec probe EPERM, source et patch hashés, occurrences réelles et journaux des deux phases. Les autres exclusions amont sont inventoriées séparément ; ni LDAP KDB serveur absent ni DNS externe interdit ne sont déclarés qualifiés. Les tests ASN.1 avant/après demeurent obligatoires. Les diagnostics de préparation12cas démontrent le harnais et les compteurs ; ils ne remplacent pas le rebuild et les tests Debian des paquets finaux.
+
+Les classifications individuelles doivent décrire leur garantie exacte. Pour les deux avis GCC étudiés, un build POSIX non affecté (`not_affected_build`) diffère du template GNU PBDS non employé par les consommateurs examinés (`code_not_present`). Le gate borne ces deux dispositions aux CVE/versions/preuves concernées, conserve les mêmes exigences de revue et d'expiration, et impose une sentinelle de l'ensemble ELF et de ses alias pour détecter les changements de périmètre. Une sentinelle détecte un changement ; elle ne prouve pas l'absence de tout chemin vulnérable. Les anciens constats de source et les signatures non vérifiées restent déclarés comme tels. Aucun de ces ajouts ne classe automatiquement l'un des35groupes High ni n'abaisse Critical, High corrigible, finding nouveau ou preuve invalide.
+
 ## Inventaire et scanner
 
 Retirer un paquet Debian vulnérable peut supprimer un match du scanner tout en le rendant aveugle à son remplacement compilé. Produire donc un inventaire explicite de version, archive/signature/hash, options et fichiers compilés. Vérifier les dépendances réellement chargées par guacd, son plugin RDP et le pair de test ; un fichier de version isolé ne suffit pas. Le SBOM et le rapport de livraison doivent distinguer composants PyPI, Debian et compilés.
