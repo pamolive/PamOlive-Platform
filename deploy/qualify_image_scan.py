@@ -696,7 +696,10 @@ def recipe_artifact(entry, *, proofs, repo, archive, cache):
         require(hash_file(repo / proof["path"], 2 * 1024**2) == key, "build_recipe_changed")
         facts, report = verify_archive_backport(archive, recipe, repo)
         cache[key] = (recipe, facts, report)
-    return cache[key]
+    # Offline consistency is deliberately not a build authority. No trusted
+    # materials/attestation verifier exists yet; even supplied True flags or a
+    # populated cache cannot authorize this experimental policy path.
+    raise ScanPolicyError("recipe_build_authority_unavailable")
 
 
 def elf_delta(recipe, facts):

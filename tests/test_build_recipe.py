@@ -297,7 +297,7 @@ class BuildRecipeTests(RecipeFixture):
             self.assertTrue(report["verified"])
             self.assertFalse(report["build_verified"])
 
-    def test_recipe_policy_result_binds_archive_and_rejects_other_image_config(self):
+    def test_recipe_policy_cannot_approve_a_consistent_or_other_subject_without_authority(self):
         fixture = policytest.ImageScanPolicyTests()
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
@@ -329,14 +329,17 @@ class BuildRecipeTests(RecipeFixture):
         fixture.os["source"]["target"].update(imageID=fixture.config_id,
             config=base64.b64encode(fixture.config).decode())
         fixture.sbom["metadata"]["properties"][1]["value"] = fixture.config_id
-        report = evaluate()
-        self.assertTrue(report["passed"])
-        self.assertFalse(report["all_findings_clear"])
-        self.assertFalse(report["build_verified"])
-        self.assertEqual(report["artifact_qualifications"][0]["archive_sha256"],
-                         gate.hash_file(self.archive))
+        with self.assertRaisesRegex(gate.ScanPolicyError, "recipe_build_authority_unavailable"):
+            evaluate()
+        # A cache is an optimization, never a supplied authority assertion.
+        facts, report = gate.verify_archive_backport(self.archive, self.recipe, self.repo)
+        forged = {proof["sha256"]: (self.recipe, facts, {**report, "build_verified": True,
+                    "cryptographic_build_attestation_verified": True})}
+        with self.assertRaisesRegex(gate.ScanPolicyError, "recipe_build_authority_unavailable"):
+            gate.recipe_artifact(entry, proofs=entry["local_evidence"], repo=self.repo,
+                                 archive=self.archive, cache=forged)
         self.write_archive(config=b'{"synthetic":"other image"}')
-        with self.assertRaisesRegex(gate.ScanPolicyError, "recipe_image_config_changed"):
+        with self.assertRaisesRegex(gate.ScanPolicyError, "recipe_build_authority_unavailable"):
             evaluate()
 
     def test_gcc_recipe_keeps_27_real_current_consumer_hashes_and_only_four_c_deltas(self):
@@ -370,22 +373,28 @@ class BuildRecipeTests(RecipeFixture):
         entry["conditions"] = gate.gcc_conditions(entry, entry["finding"],
             proofs=entry["local_evidence"], repo=self.repo)
 
-        def evaluate():
-            return gate.reviewed_exception(entry, entry["finding"], facts=(set(), {}),
-                repo=self.repo, now=fixture.now, archive=self.archive)
+        def evaluate_delta():
+            facts, report = gate.verify_archive_backport(self.archive, self.recipe, self.repo)
+            self.assertFalse(report["build_verified"])
+            gate.elf_delta(self.recipe, facts)
+            return gate.conditions_hold([item for item in entry["conditions"]
+                                         if item["kind"] != "elf_recipe_delta"], facts)
 
         self.write_archive(extra=extra)
-        self.assertTrue(evaluate())
+        self.assertTrue(evaluate_delta())
+        with self.assertRaisesRegex(gate.ScanPolicyError, "recipe_build_authority_unavailable"):
+            gate.reviewed_exception(entry, entry["finding"], facts=(set(), {}),
+                repo=self.repo, now=fixture.now, archive=self.archive)
         self.fixture.install(gate.krb5_inventory.VERSION, tail=b"another honest C build")
         self.write_archive(extra=extra)
-        self.assertTrue(evaluate())
+        self.assertTrue(evaluate_delta())
         first = next(iter(extra))
         self.write_archive(extra={**extra, first: extra[first] + b"changed C++ consumer"})
         with self.assertRaisesRegex(gate.ScanPolicyError, "gcc_delta_unreviewed_change"):
-            evaluate()
+            evaluate_delta()
         self.write_archive(extra={**extra, "usr/lib/unknown-extension.so": extra[first]})
         with self.assertRaisesRegex(gate.ScanPolicyError, "gcc_delta_paths"):
-            evaluate()
+            evaluate_delta()
 
     def test_duplicate_recipe_json_and_existing_output_refuse(self):
         path = self.repo / "duplicate.json"

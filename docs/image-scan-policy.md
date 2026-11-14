@@ -136,6 +136,17 @@ La fermeture de `/app` et la sentinelle ELF globale ne constituent pas un invent
 
 ## Résultat, limites et conservation des preuves
 
+Le chemin de décision utilisant `build_recipe` est **désactivé par refus
+inconditionnel** `recipe_build_authority_unavailable` dans `recipe_artifact`.
+La contre-revue a montré qu'une cohérence offline pouvait auparavant rendre
+une exception vraie tout en conservant `build_verified=false`. Une recette
+candidate, un cache ou des champs JSON mis à `true` n'ont donc aucune autorité
+pour lever ce refus. Les CLI de cohérence et tests internes du delta ELF restent
+disponibles, sans pouvoir autoriser une publication. Le mode historique de
+preuve sur sujet exact et les35entrées `untriaged` ne changent pas. Remplacer ce
+verrou exigera l'implémentation et les essais de la chaîne authentifiée complète
+ADR021, pas un commutateur ou un nom de reviewer.
+
 La sortie est créée exclusivement en mode 0600 avant lecture des entrées ; un fichier existant n’est pas écrasé. Les clés JSON dupliquées, dépassements de budgets et chemins de preuve non autorisés échouent. Les inputs sont conservés par leurs hashes, sans publier la configuration brute ou des secrets. Codes : `0` politique satisfaite, `2` résultats complets mais promotion bloquée, `1` preuve ou format invalide. Le wrapper conserve séparément les codes scanner : un `2` Grype peut être un seuil dépassé, mais un crash produisant un JSON vide ne passe jamais le gate.
 
 `passed=true` n’est pas synonyme d’absence de vulnérabilités. `all_findings_clear` reste faux si des findings ou suppressions subsistent, même après une décision individuelle conforme. Les rapports complets et les risques résiduels restent disponibles ; aucune règle globale ne les masque.

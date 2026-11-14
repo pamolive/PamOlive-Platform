@@ -102,6 +102,12 @@ La confiance dans les mainteneurs autorisés, le workflow et le runner demeure u
 
 ## Chaîne de confiance et protections GitHub
 
+Contre-revue du14novembre : le vérificateur offline de cohérence n'est pas
+l'autorité décrite par cet ADR. Le chemin de politique `build_recipe` refuse
+inconditionnellement toute activation tant que cette autorité et ses matériaux
+ne sont pas implémentés. Ni un cache ni des booléens fournis ne lèvent le refus.
+La comparaison des preuves/couches et les CLI restent testables séparément.
+
 La [documentation GitHub sur les attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations) permet d’attester un fichier, une image ou un SBOM et de vérifier son origine. Une signature doit être vérifiée avec une identité de dépôt/workflow attendue et son sujet ; sa simple présence ne prouve ni la correction ni la réussite des tests. Le workflow de qualification doit être revu/épinglé ; GitHub documente aussi [l’épinglage des workflows réutilisables par SHA](https://docs.github.com/en/actions/concepts/workflows-and-actions/reusing-workflow-configurations).
 
 La conception future doit vérifier : dépôt, source complète, workflow/version fiable, événement/ref, run/attempt producteur, ID/digest de l’artefact, verdict et toutes ses pièces. Refuser signature d’un autre dépôt/workflow, simple nom de reviewer, rapport de réussite isolé, réutilisation d’un ancien dossier ou modification post-qualification. Les permissions d’attestation/publication ne doivent pas être confiées à un job PR exécutant du code non approuvé. Un workflow déclenché par la fin d’un autre ne doit pas exécuter ses scripts téléchargés avec des secrets : les artefacts restent des données non fiables jusqu’à validation.
