@@ -42,6 +42,46 @@ Ses18tests et97sondes indépendantes passent ; son build exact reste à exécute
 Il ne remplace pas les matériaux APT/SDK/compilateur, une attestation de build,
 ni les arbitrages High. Les résultats B3r6 ne sont pas reportés sur ce candidat.
 
+## Complément R7 : entrées Python et nouvelle lacune de couverture
+
+Le candidat `8013c9f` est poussé sur PR2 en brouillon, sans modification de main.
+Ses builds production/native-test réussissent depuis655fichiers Git commis.
+L'inspection indépendante vérifie32entrées, les27wheels amont copiées et tous
+les74membres installables des deux wheels C, sans écart de RECORD. Seuls les
+trois ELF des extensions C Python diffèrent de R6 ; aucun ELF n'est ajouté ou
+retiré. Cette observation n'élargit pas la politique du delta Kerberos.
+
+La sonde embarquée et les huit smokes passent. Le test HA local passe HTTP,
+SSH et RDP sur deux nœuds bornés, avec checkpoints publics RO sous `/run`.
+La partition réseau reste non exécutée sur Windows. La [CI Linux du push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43622211072)
+la réussit sur son propre build de `8013c9f`, avec refus des écritures isolées,
+commit du survivant et retour du nœud sans redémarrage. Ce résultat ne remplace
+pas un test de partition de l'archive locale R7.
+P0 dans l'image :227tests en145,109s,226réussites et une exclusion SQLite attendue,
+avec contrepartie PostgreSQL réussie. TLS/SCRAM, SSH10/RDP9, extensions et
+restauration réelle passent aussi. La CI push passe1325tests comptés en491,552s,
+avec42exclusions, puis échoue au seul gate de scan35High ; elle reste en échec.
+Son corpus Directory passe130tests en17,997s. Les artefacts téléchargés sont
+recroisés avec les digests GitHub ; leur conservation ne crée pas d'attestation.
+
+Le scan local exact R7 conserve348matches OS dont102High dans35groupes, aucun
+Critical et aucun finding ignoré. Le SBOM compilé déclaré41composants n'a pas de
+match et le contrôle positif retrouve222matches attendus. Le diagnostic de
+politique refuse les35groupes non arbitrés. La lacune ensurepip ci-dessous est
+conservée séparément ; aucun verdict de couverture exhaustive n'est émis.
+
+La première tentative HA locale avait échoué à la publication des ports d'un
+réseau interne ajouté par l'adaptateur ; ce diagnostic reste conservé. Le second
+adaptateur reprend le réseau frontal Compose original et garde le réseau DB
+interne, sans modification des contrôles du produit.
+
+Le pip actif26.3 ne couvre pas une wheel ensurepip25.0.1 héritée de la base.
+Un venv synthétique créé hors réseau réinstalle cette ancienne version. Son
+audit séparé retourne12occurrences correspondant à six avis uniques ; ce n'est
+pas une démonstration d'exploitation de PamOlive. Le [complément ADR019](adr-019-native-runtime-dependencies.md)
+retient une correction ciblée préservant ensurepip/venv. Elle exige son propre
+build et ses tests ; les résultats R7 ne sont pas reportés sur le futur sujet.
+
 ## Sujet B3r4 historique testé et limites
 
 Le build local B3r4, terminé le 12 novembre, a été identifié par les empreintes

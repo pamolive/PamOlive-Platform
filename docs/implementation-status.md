@@ -11,9 +11,15 @@ B3r6, construit depuis le commit `8ca92bf`, passe la sonde embarquée avec init,
 les transports, TLS/SCRAM, les régressions P0 et la restauration synthétique.
 Son scan frais conserve35groupes High non arbitrés et aucun Critical. Les deux
 CI `7bfbe18` passent la sécurité mais échouent à la bascule entre deux nœuds ;
-le diagnostic reste ouvert. L'intégration des entrées Python hashées et des
-installations hors réseau exige encore son propre build exact. Les matériaux
-APT/compilateur et attestations ADR021 restent incomplets : livraison bloquée.
+le correctif de fixture est testé localement dans `8013c9f`, poussé sur PR2.
+Ce nouveau sujet construit les entrées Python hashées hors réseau et passe
+P0 dans l'image ainsi que HA local HTTP/SSH/RDP. Le scan local conserve35groupes
+High non arbitrés. La CI push passe migrations,1325tests comptés/42exclusions
+et HA avec partition sur son propre build, puis échoue au seul gate de scan35High.
+Une wheel pip ancienne dans ensurepip, absente du lock
+applicatif, impose encore la correction ciblée [ADR019](adr-019-native-runtime-dependencies.md)
+et sa propre qualification. Les matériaux APT/compilateur et attestations ADR021
+restent incomplets : livraison bloquée.
 P1-G dispose d'une première entrée de demande d'accès et d'un correctif de
 revalidation d'autorité sous verrou dans ses branches locales ; le parcours
 complet reste à qualifier. P2 possède une primitive d'enveloppe technique revue,

@@ -30,6 +30,10 @@ image layer. The runtime receives exactly 27 upstream wheel files (26 plus pip)
 and two locally produced C wheels. Proof JSON and lock declarations can name
 builder inputs without containing or installing their artifacts.
 
+These counts describe unique input files. The later [ensurepip overlay](ensurepip-bundle.md)
+also copies the same approved pip wheel to the runtime bootstrap bundle; it
+adds no new unique input and preserves the base's historical layers.
+
 Input locks contain only named version pins and SHA256 hashes, with no direct
 URLs or environment-dependent resolution. The manifest closes names, versions,
 roles, file kinds, target and source inventory paths. Official public wheel tags

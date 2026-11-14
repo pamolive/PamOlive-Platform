@@ -34,8 +34,12 @@ extensions et restauration réelle. B3r6 passe ensuite les régressions P0,
 la sonde embarquée avec init et le scan frais :35groupes High restent non arbitrés.
 Les deux CI `7bfbe18` échouent à la bascule entre deux nœuds malgré une sécurité
 réussie. Le [rapport daté](p1-f-qualification-20261114.md) sépare ces sujets.
-L'intégration des entrées Python hashées et hors réseau attend son build exact ;
-la chaîne des matériaux/attestations ADR021 reste requise. Aucune High n'est neutralisée et aucun nouveau digest
+Le sujet `8013c9f` construit ensuite les entrées Python hashées hors réseau,
+passe P0 dans l'image et HA local HTTP/SSH/RDP. Son scan local conserve35groupes
+High ; la CI push valide aussi la partition sur son propre build puis échoue
+au seul gate de scan. Le bootstrap ensurepip conserve une ancienne wheel pip,
+ce qui exige la correction ciblée ADR019 et un nouveau sujet testé. La chaîne
+des matériaux/attestations ADR021 reste requise. Aucune High n'est neutralisée et aucun nouveau digest
 n'est promu par ces seuls essais. La primitive d'enveloppe P2 est conservée dans
 la branche locale distincte `agent/p2-vault-envelope`, commit `177df2b` :25tests,
 huit sondes cryptographiques indépendantes et wheel installée testée ; aucun

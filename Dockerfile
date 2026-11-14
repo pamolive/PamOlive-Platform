@@ -52,6 +52,8 @@ COPY requirements.lock requirements-bootstrap.lock requirements-python-runtime-l
 COPY --from=directory-builder /opt/python-inputs/runtime-inputs /opt/python-wheels
 COPY --from=directory-builder /opt/directory-wheels /opt/directory-wheels
 COPY --from=directory-builder /opt/python-evidence /usr/share/pamolive/python-materials
+COPY deploy/ensurepip_bundle.py /tmp/ensurepip_bundle.py
+RUN --network=none python -B /tmp/ensurepip_bundle.py --wheel /opt/python-wheels/pip-26.3-py3-none-any.whl && rm /tmp/ensurepip_bundle.py
 RUN --network=none export PIP_CONFIG_FILE=/dev/null PIP_DISABLE_PIP_VERSION_CHECK=1 && python -m pip install --no-compile --no-cache-dir --no-index --find-links=/opt/python-wheels --only-binary=:all: --no-deps --require-hashes -r requirements-bootstrap.lock && python -m pip install --no-compile --no-cache-dir --no-index --find-links=/opt/python-wheels --only-binary=:all: --no-deps --require-hashes -r requirements-python-runtime-linux.lock && python -m pip install --no-compile --no-cache-dir --no-index --find-links=/opt/directory-wheels --only-binary=:all: --no-deps --require-hashes -r /usr/share/pamolive/python-materials/requirements-python-derived-linux.lock && python -m pip check && rm -r /opt/python-wheels /opt/directory-wheels
 COPY manage.py pyproject.toml README.md LICENSE .env.example ./
 COPY config/ ./config/

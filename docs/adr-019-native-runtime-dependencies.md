@@ -44,6 +44,32 @@ Cette variante est confirmée par la [documentation officielle Psycopg](https://
 
 Les versions OpenSSL de Python et de cryptography sont inventoriées séparément. Ce changement ne prétend pas résoudre automatiquement l’inventaire de tous les autres wheels natifs ou bibliothèques statiquement incorporées. Une lacune de couverture reste explicite et interdit une déclaration de couverture native exhaustive.
 
+## Bootstrap Python embarqué : complément du 14 novembre
+
+L'inspection indépendante de R7 trouve le pip actif26.3 et une autre copie25.0.1
+dans `ensurepip._bundled`, héritée de la base Python. Une création réelle de venv
+hors réseau réinstalle25.0.1. L'audit séparé remonte12occurrences pour six avis
+uniques ; il ne démontre pas six exploitations de PamOlive. Le cas de fallback
+tar dépend notamment de la version Python. Le lock applicatif ne décrit pas
+cette copie et le scan OS précédent ne la détecte pas.
+
+Conserver cette copie laisse un chemin de réintroduction ancien. Supprimer
+ensurepip casserait son API et la création normale de venv. La correction
+retenue synchronise sa seule constante de version et sa wheel avec le même
+pip26.3 déjà épinglé, sans modifier sysconfig ni déguiser la version du fichier.
+Elle exige les bytes exacts du module de la base et de l'ancienne wheel avant
+modification, refuse une configuration alternative et conserve les autres bytes.
+Les couches historiques de base restent conservées ; leur effacement n'est pas
+revendiqué. Voir le [contrat de remplacement](ensurepip-bundle.md).
+
+La qualification exige deux nouveaux venvs hors réseau : bootstrap normal et
+venv sans pip suivi d'ensurepip, avec26.3 et `pip check`, puis inspection du sujet
+exact et régressions. Elle reste à effectuer sur le nouveau candidat. Aucune
+exception High ou autorité de build ne découle de ce choix. Le comportement
+de bootstrap est décrit par [Python](https://docs.python.org/3.12/library/ensurepip.html) ;
+le [module CPython3.12.16](https://github.com/python/cpython/blob/v3.12.16/Lib/ensurepip/__init__.py)
+correspond byte pour byte à celui de la base inspectée.
+
 ## Itération B3 — backport Kerberos ciblé
 
 Le [suivi Debian de CVE-2026-119079](https://security-tracker.debian.org/tracker/CVE-2026-119079) conserve trixie1.21.3-5+deb13u1 vulnérable. La croissance répétée d’un tableau ASN.1 peut provoquer un coût quadratique avant authentification. Le décodeur est partagé : l’absence de KDC dans le runtime ne suffit pas à démontrer l’absence de chemin client. Le [correctif MIT2058326](https://github.com/krb5/krb5/commit/205832663330da308d9d031a17326b68a16715fd) compte et valide les tags avant une allocation unique, puis décode les éléments. Il modifie une seule fonction statique, sans modifier de déclaration d’API exportée. La compatibilité ABI reste à mesurer, pas à déduire de cette seule observation.
