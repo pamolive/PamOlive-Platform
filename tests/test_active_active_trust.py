@@ -10,6 +10,7 @@ from unittest import SkipTest, skipUnless
 from unittest.mock import AsyncMock, patch
 
 import asyncssh
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from django.contrib.auth import get_user_model
 from django.db import connection
@@ -24,6 +25,7 @@ from deploy.active_active_trust import (
     snapshots,
 )
 from deploy.check_active_active import validate_configuration
+from deploy.check_runtime import check_mounts
 from platform_core.tenancy import organization_context
 from platform_modules.access.models import AccessIntent
 from platform_modules.pam.probe import ProbeResult
@@ -58,6 +60,12 @@ class HostAuthorityTests(SimpleTestCase):
             decoded(document["signature"]),
             b"pamolive.pam.trust-checkpoint.v1\0" + canonical(document["body"]),
         )
+        changed_body = {**document["body"], "revision": document["body"]["revision"] + 1}
+        with self.assertRaises(InvalidSignature):
+            self.authority.keys[self.org]["witness"].public_key().verify(
+                decoded(document["signature"]),
+                b"pamolive.pam.trust-checkpoint.v1\0" + canonical(changed_body),
+            )
         for changes in ({"revision": 1}, {"registry_hash": "b" * 64},
                         {"generation": "unexpected"}, {"organization": "unexpected"}):
             with self.subTest(changes=changes), self.assertRaises(RuntimeError):
@@ -71,13 +79,35 @@ class HostAuthorityTests(SimpleTestCase):
                                    "target": CHECKPOINT_TARGET, "read_only": True}]
         validate_configuration(config, checkpoint_directory=self.authority.directory)
         for changes in ({"source": "/existing"}, {"read_only": False},
-                        {"target": "/app"}, {"type": "volume"}):
+                        {"target": "/app"}, {"type": "volume"},
+                        {"target": "/tmp/pamolive-ha-public-checkpoints"},
+                        {"target": CHECKPOINT_TARGET + "/nested"}):
             changed = deepcopy(config)
             changed["services"]["node-a"]["volumes"][0].update(changes)
             with self.subTest(changes=changes), self.assertRaises(RuntimeError):
                 validate_configuration(changed, checkpoint_directory=self.authority.directory)
         with self.assertRaises(RuntimeError):
             validate_configuration(config)
+
+    def test_public_checkpoint_fixture_mount_preserves_private_tmpfs_guard(self):
+        self.assertEqual(CHECKPOINT_TARGET, "/run/pamolive-ha-public-checkpoints")
+        self.assertEqual(
+            self.authority.settings()["PAM_TRUST_CHECKPOINT_DIRECTORY"], CHECKPOINT_TARGET
+        )
+        baseline = (
+            "1 0 0:1 / / ro,relatime - overlay overlay ro\n"
+            "2 1 0:2 / /tmp rw,nosuid,nodev - tmpfs tmpfs rw,size=65536k\n"
+        )
+        # The original probe is unchanged: no /tmp submount is exempted.
+        check_mounts(baseline)
+        check_mounts(
+            baseline + f"3 1 0:3 /checkpoints {CHECKPOINT_TARGET} ro - ext4 /dev/synthetic ro\n"
+        )
+        with self.assertRaisesRegex(RuntimeError, "^runtime_tmpfs_shadow$"):
+            check_mounts(
+                baseline + "3 2 0:3 /checkpoints /tmp/pamolive-ha-public-checkpoints "
+                "ro - ext4 /dev/synthetic ro\n"
+            )
 
 
 class HostPipe:

@@ -27,6 +27,15 @@ Les deux CI suivantes du commit `7bfbe18` passent le job de sécurité puis éch
 au test de bascule entre deux nœuds. Leur diagnostic est ouvert ; les autres
 résultats locaux ne permettent pas de déclarer ces CI réussies.
 
+Reproduction locale : le montage RO des checkpoints publics de la fixture HA
+sous `/tmp` déclenche `runtime_tmpfs_shadow`. Les journaux internes du helper
+ne sont pas présents dans les artefacts CI : cette incompatibilité est prouvée,
+mais ne permet pas d'exclure un second défaut au même stade. La fixture utilise
+désormais `/run/pamolive-ha-public-checkpoints`, avec la même source publique RO,
+les mêmes signatures et les mêmes validateurs. La sonde stricte est inchangée.
+Les22tests HA PostgreSQL passent en3,692s sans exclusion, et25tests purs passent.
+Le démarrage de deux nœuds et la CI du nouveau sujet restent à rejouer.
+
 Le nouveau profil [Python](python-materials.md) conserve les versions, fige32
 fichiers publics et sépare acquisition et compilation/installation hors réseau.
 Ses18tests et97sondes indépendantes passent ; son build exact reste à exécuter.
