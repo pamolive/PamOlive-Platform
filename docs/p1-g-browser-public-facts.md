@@ -7,6 +7,32 @@ résultat NSS ou Chromium n'a été mesuré. Cette nouvelle phase ne transforme
 pas ce refus en réussite : elle prépare les faits nécessaires au choix explicite
 d'outils NSS compatibles. Aucun navigateur ou contrôle graphique du PC ou du NAS.
 
+## Mesure du 15 novembre et diagnostic ciblé
+
+Le candidat `7237070` a réellement lancé cet inventaire en
+[CI 43668586740](https://github.com/pamolive/PamOlive-Platform/actions/runs/43668586740).
+Il refuse `B0_FACTS_DIRECTORY_ENTRY_REFUSED`, exit42, OOMfalse ; le nettoyage
+des objets possédés est confirmé. Le rapport ne révèle ni le répertoire ni le
+nom rejeté. Aucune entrée particulière n'est donc réputée observée ou admise,
+et aucun inventaire complet OS/NSS n'en est déduit.
+
+Le correctif courant ajoute seulement à ce refus un diagnostic borné : espace
+fermé `sources_list_d` ou `trusted_gpg_d`, taille UTF-8 et SHA-256 du basename
+refusé, ou valeurs inconnues si sa forme ne permet pas ce calcul. Le nom brut,
+le chemin, le contenu de fichier, l'URI et le texte d'exception ne sont jamais
+exportés. Après le refus, aucun fichier rejeté n'est ouvert, lu ou staté. Les
+prédicats d'admission, le code de refus, les bornes et le lifecycle restent
+identiques ; le diagnostic ne crée aucune autorité de dépôt.
+
+L'adaptateur accepte ce champ optionnel exclusivement pour ce code de refus,
+avec types et forme fermés. Les anciens rapports sans diagnostic restent
+acceptés comme échecs. Le runner charge explicitement les cinq nouveaux tests
+Python et les neuf nouveaux tests Node ; les tests antérieurs restent intacts.
+Les 36 tests Python et 37 Node du nouvel ensemble passent sans exclusion,
+avec contre-revue indépendante des bornes, de la confidentialité, des 15
+empreintes de sources et des seuls changements de commandes CI. Aucun succès
+réel de cet inventaire corrigé n'est revendiqué avant sa propre mesure CI.
+
 ## Contrat et réutilisation
 
 `qualification/b0_facts/adapter.py` réutilise une copie figée du lifecycle

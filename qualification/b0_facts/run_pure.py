@@ -30,6 +30,7 @@ def main():
     ):
         for name, path in (
             ("d0_adapter_tests", ROOT / "test_adapter.py"),
+            ("d0_diagnostic_tests", ROOT / "test_diagnostic_adapter.py"),
             ("d0_unchanged_stage0_tests", ROOT / "legacy/test_pure.py"),
         ):
             spec = importlib.util.spec_from_file_location(name, path)

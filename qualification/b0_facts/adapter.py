@@ -177,6 +177,7 @@ def validate_evidence(module, value):
             "subkey_fingerprints",
             "authority",
             "release_qualified",
+            "directory_entry_diagnostic",
         }
         module.need(
             set(value) <= allowed
@@ -185,6 +186,34 @@ def validate_evidence(module, value):
             and ("release_qualified" not in value or value["release_qualified"] is False),
             "B0_FACTS_FAILURE_VALUES",
         )
+        if "directory_entry_diagnostic" in value:
+            diagnostic = value["directory_entry_diagnostic"]
+            module.need(type(diagnostic) is dict, "B0_FACTS_DIRECTORY_DIAGNOSTIC")
+            module.closed(
+                diagnostic,
+                (
+                    "code",
+                    "directory_context",
+                    "basename_status",
+                    "basename_utf8_bytes",
+                    "basename_sha256",
+                ),
+            )
+            module.need(
+                value["code"] == diagnostic["code"] == "B0_FACTS_DIRECTORY_ENTRY_REFUSED"
+                and diagnostic["directory_context"] in ("sources_list_d", "trusted_gpg_d")
+                and (
+                    diagnostic["basename_status"] == "hashed"
+                    and type(diagnostic["basename_utf8_bytes"]) is int
+                    and 0 < diagnostic["basename_utf8_bytes"] <= 512
+                    and type(diagnostic["basename_sha256"]) is str
+                    and re.fullmatch(r"[a-f0-9]{64}", diagnostic["basename_sha256"])
+                    or diagnostic["basename_status"] == "unavailable_or_refused"
+                    and diagnostic["basename_utf8_bytes"] is None
+                    and diagnostic["basename_sha256"] is None
+                ),
+                "B0_FACTS_DIRECTORY_DIAGNOSTIC",
+            )
         return value
     fields = {
         "schema",

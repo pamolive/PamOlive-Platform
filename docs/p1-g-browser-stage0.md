@@ -13,6 +13,20 @@ HA/partition sur un même hôte, restauration et retour arrière passent. Les
 promotion. Les tests d'extension conservent aussi leurs exclusions contextuelles.
 Ces résultats ne qualifient pas le prochain commit ni ses images.
 
+Au15novembre, les deux CI Platform de `7237070` sont terminées :
+[push 43668586779](https://github.com/pamolive/PamOlive-Platform/actions/runs/43668586779)
+et [PR 43668590784](https://github.com/pamolive/PamOlive-Platform/actions/runs/43668590784).
+Chacune passe sécurité, les deux anciennes bibliothèques P2 installées,
+1 439 tests généraux comptés dont 42 exclusions, transports natifs, deux nœuds
+sur le même hôte et restauration/rollback sur copie synthétique sous rôle
+restreint. Chacune refuse au scan final : 35 groupes High non arbitrés, zéro
+Critical, aucune exemption. Leurs sujets de build sont distincts, dont un
+merge temporaire pour le run PR ; aucun transfert de digest n'est effectué.
+Le [stage0 43668586769](https://github.com/pamolive/PamOlive-Platform/actions/runs/43668586769)
+refuse toujours `certutil` absent, avec nettoyage confirmé. Le diagnostic D0
+de noms de répertoire reste une tranche séparée ; il ne fournit aucun succès
+NSS, navigateur, TLS ou CDP.
+
 ## Entrées fermées et responsabilités
 
 `qualification/b0_pre` contient un contrôleur standard-library, deux assets

@@ -23,6 +23,43 @@ const CONFIG = 'sha256:a0d7b2b49ffa0e99787a00b7ec2af46eca58020082713f002ca9f0f1c
 const LIMIT = 700 * 1024;
 function need(value, code) { if (!value) { const error = new Error(code); error.code = code; throw error; } }
 function sha(data) { return crypto.createHash('sha256').update(data).digest('hex'); }
+function directoryDiagnostic(directoryName, name) {
+  const diagnostic = {code: 'B0_FACTS_DIRECTORY_ENTRY_REFUSED',
+    directory_context: directoryName === SOURCE_DIR ? 'sources_list_d' : 'trusted_gpg_d',
+    basename_status: 'unavailable_or_refused', basename_utf8_bytes: null, basename_sha256: null};
+  // Check UTF16 length before byte counting/hashing. At most512 code units can
+  // reach UTF8 handling; oversized/malformed values never get string-coerced.
+  if (typeof name !== 'string' || name.length === 0 || name.length > 512 ||
+      name === '.' || name === '..' || /[\x00-\x1f\x7f-\x9f/\\\ufffd]/.test(name)) return Object.freeze(diagnostic);
+  for (let i = 0; i < name.length; i++) {
+    const unit = name.charCodeAt(i);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const next = name.charCodeAt(++i);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return Object.freeze(diagnostic);
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) return Object.freeze(diagnostic);
+  }
+  const size = Buffer.byteLength(name, 'utf8');
+  if (size > 512) return Object.freeze(diagnostic);
+  return Object.freeze({...diagnostic, basename_status: 'hashed', basename_utf8_bytes: size, basename_sha256: sha(name)});
+}
+function directoryDiagnosticValid(value) {
+  return value && [Object.prototype, null].includes(Object.getPrototypeOf(value)) &&
+    Object.keys(value).length === 5 &&
+    ['code', 'directory_context', 'basename_status', 'basename_utf8_bytes', 'basename_sha256'].every(key => Object.hasOwn(value, key)) &&
+    value.code === 'B0_FACTS_DIRECTORY_ENTRY_REFUSED' &&
+    ['sources_list_d', 'trusted_gpg_d'].includes(value.directory_context) &&
+    ((value.basename_status === 'hashed' && Number.isInteger(value.basename_utf8_bytes) && value.basename_utf8_bytes > 0 &&
+      value.basename_utf8_bytes <= 512 && typeof value.basename_sha256 === 'string' && value.basename_sha256.length === 64 && /^[a-f0-9]{64}$/.test(value.basename_sha256)) ||
+     (value.basename_status === 'unavailable_or_refused' && value.basename_utf8_bytes === null && value.basename_sha256 === null));
+}
+function failureFacts(error) {
+  const result = {schema: 'pamolive.b0-d0-public-facts/1', phase: 'public_file_inventory_only', ok: false,
+    code: typeof error.code === 'string' && /^B0_FACTS_[A-Z0-9_]+$/.test(error.code) ? error.code : 'B0_FACTS_REFUSED',
+    stage0_passed: false, primary_fingerprints: null, subkey_fingerprints: null, authority: false, release_qualified: false};
+  if (result.code === 'B0_FACTS_DIRECTORY_ENTRY_REFUSED' && directoryDiagnosticValid(error.directory_entry_diagnostic))
+    result.directory_entry_diagnostic = error.directory_entry_diagnostic;
+  return result;
+}
 function text(data) { try { return new TextDecoder('utf-8', {fatal: true}).decode(data); }
   catch (_) { need(false, 'B0_FACTS_UTF8_REFUSED'); } }
 function clean(value, maximum = 8192) {
@@ -129,7 +166,12 @@ function reader(io = fs) {
         const entry = directory.readSync();
         if (entry === null) break;
         need(names.length < maximum && !seen.has(entry.name), 'B0_FACTS_DIRECTORY_BUDGET');
-        need(accept(entry.name), 'B0_FACTS_DIRECTORY_ENTRY_REFUSED');
+        if (!(typeof entry.name === 'string' && accept(entry.name))) {
+          const error = new Error('B0_FACTS_DIRECTORY_ENTRY_REFUSED');
+          error.code = 'B0_FACTS_DIRECTORY_ENTRY_REFUSED';
+          error.directory_entry_diagnostic = directoryDiagnostic(directoryName, entry.name);
+          throw error;
+        }
         seen.add(entry.name); names.push(entry.name);
       }
     } finally { directory.closeSync(); }
@@ -331,9 +373,7 @@ function main() {
     need(process.platform === 'linux' && process.arch === 'x64' && process.getuid() > 0 && process.getgid() > 0 && Number(process.versions.node.split('.')[0]) >= 20, 'B0_FACTS_RUNTIME_PROFILE_REFUSED');
     result = collect(); result.nodeVersion = process.version;
   } catch (error) {
-    result = {schema: 'pamolive.b0-d0-public-facts/1', phase: 'public_file_inventory_only', ok: false,
-      code: typeof error.code === 'string' && /^B0_FACTS_[A-Z0-9_]+$/.test(error.code) ? error.code : 'B0_FACTS_REFUSED',
-      stage0_passed: false, primary_fingerprints: null, subkey_fingerprints: null, authority: false, release_qualified: false};
+    result = failureFacts(error);
   }
   let encoded;
   try { encoded = encodeBounded(result); }

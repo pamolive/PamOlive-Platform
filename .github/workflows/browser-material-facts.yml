@@ -12,8 +12,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      B0_FACTS_SOURCES_SHA: 36957d79743968b9e4fd25faf36f3ea3821a284f5be28ea0459913697f6e8558
-      B0_FACTS_MANIFEST_SHA: c274fd8fb6565c3ddc274b10691d1fe9a6644f380c268d206e9ba0a40f16e573
+      B0_FACTS_SOURCES_SHA: 92493f63cc331d9f2a9214f3694d5f5c510d1269f929e2429984fb7211b1d592
+      B0_FACTS_MANIFEST_SHA: 82713c2b857fd145f7e34331d27ca6e54a2d51e3a60e85a6c903577a91e98976
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -47,9 +47,9 @@ jobs:
           python -I -B qualification/b0_facts/run_pure.py
           node --version
           node --check qualification/b0_facts/facts.cjs
-          node --test qualification/b0_facts/test_facts.cjs
-          python -m ruff check qualification/b0_facts
-          python -m ruff format --check qualification/b0_facts
+          node --test qualification/b0_facts/test_facts.cjs qualification/b0_facts/test_directory_diagnostic.cjs
+          python -m ruff check --no-cache qualification/b0_facts
+          python -m ruff format --check --no-cache qualification/b0_facts
           python -m bandit -r qualification/b0_facts -lll
       - name: Observe resource margins and create a closed public-facts spool
         run: >-
