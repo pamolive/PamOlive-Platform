@@ -6,7 +6,45 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 
 La [roadmap réconciliée](implementation-roadmap.md) distingue désormais les lots P1-F/G, P2 et P3 du premier ordre historique. Référence publiée : main `dcaa116be6f026f67ad3825feb38d90ac632ce80`, PR1 fusionnée, [CI complète réussie](https://github.com/pamolive/PamOlive-Platform/actions/runs/43074618211) et [image GHCR publiée/attestée](https://github.com/pamolive/PamOlive-Platform/actions/runs/43078536377). Les résultats détaillés P0/P1 demeurent dans leurs rapports ; leur portée historique est conservée.
 
-Point courant du 14 novembre : le socle PR2 est `2f28224`. Ses deux CI terminent
+### État courant du 15 novembre : bibliothèque reçue, réservation Vault limitée
+
+Au parent `bd8d2283a2c27c81eef3652fa0e4e5e02ba99216`, les deux CI dédiées
+[push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43690947578) et
+[PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43690955625)
+reçoivent chacune les **30 tests installés** du vérificateur public, sans exclusion,
+avec 20 comparaisons concordantes au corpus. Cela remplace l'état « installé en
+attente » des paragraphes historiques ci-dessous, sans remplacer P0 ni ses appelants.
+
+Les deux CI Platform du même head —
+[push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43690947572) et
+[PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43690955671) —
+passent sécurité, anciennes bibliothèques P2, 1 439 tests généraux comptés dont
+42 exclusions, portes 130/166/22, transports, HA même hôte et restauration de
+23 migrations/374 lignes. Elles refusent uniquement le scan : **35 groupes High**,
+zéro Critical. La promotion reste bloquée avec la provenance de build incomplète.
+
+Le [runtime de réservation Vault](p2-vault-reservation-runtime.md) selon
+[ADR-024](adr-024-vault-reservation-boundary.md) est maintenant intégré comme
+source de développement séparée : 51 tests purs initiaux, puis un cas de bind N0
+strict supplémentaire, soit 52 purs. La réception locale historique
+N0R7 compte dix méthodes mTLS/PostgreSQL réelles réussies, nettoyage confirmé et
+PG historique inchangé. Il ne produit que `pending_proofs`, `authorized:false`,
+sans secret ni autorité d'action. Un lot local distinct reçoit ensuite deux cas :
+vrai restart du service avec PG conservé et writer client jetable `os._exit(73)`
+après commit, suivis du retry mTLS de la même ligne/dates/nonce privé/audit.
+Le bind privé exact est corroboré par code épinglé et TLS ; les dix anciens
+cas wildcard ne sont pas rejoués. Les faits H1 réels et 190 clients CLI
+récoltés/drainés, six stdin complets, nettoyage 4/3/1 et PG inchangé sont reçus ;
+18 retours non nuls sont des sondes readiness avant succès. Les quatre exits 137
+sans OOM sont les `kill` de nettoyage prévus. Aucune CI Vault réelle encore.
+Pas de Vault installé/image minimale reçus, crash serveur/PG power-loss,
+expiration attendue, backup/restore ou frontière OS Web hostile qualifiés.
+Le rollback clandestin sous même incarnation reste hors garantie. Aucun service
+Web/P0 ou migration Django n'est changé ; P2 n'est pas terminé.
+
+### Historique des sujets et refus précédents
+
+Point du 14 novembre : le socle PR2 est `2f28224`. Ses deux CI terminent
 migrations, 1345 tests généraux comptés / 42 exclusions, portes dédiées,
 transports SSH/RDP, deux nœuds avec partition de route PostgreSQL sur un même
 hôte et restauration/retour arrière. Elles échouent uniquement au scan final :

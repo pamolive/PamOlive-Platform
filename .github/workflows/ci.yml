@@ -41,7 +41,7 @@ jobs:
         run: python -m pip_audit --strict --no-deps --disable-pip -r requirements.lock -f cyclonedx-json -o "$RUNNER_TEMP/pamolive-sbom.cdx.json"
       - name: Reject medium and high severity application findings
         if: always()
-        run: python -m bandit -r config platform_core platform_modules components/vault/src components/vault-registry/src components/pam-trust-verifier/src -ll -f json -o "$RUNNER_TEMP/pamolive-bandit-application.json"
+        run: python -m bandit -r config platform_core platform_modules components/vault/src components/vault/runtime/pamolive_vault_runtime components/vault-registry/src components/pam-trust-verifier/src -ll -f json -o "$RUNNER_TEMP/pamolive-bandit-application.json"
       - name: Retain all deployment findings for review
         if: always()
         run: python -m bandit -r deploy --exit-zero -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-all.json"
@@ -152,6 +152,8 @@ jobs:
           python -m pip wheel --no-build-isolation --no-deps --require-hashes --wheel-dir "$RUNNER_TEMP/pamolive-database-wheels" -r requirements-database-build.lock
           python -m pip install --find-links="$RUNNER_TEMP/pamolive-database-wheels" -r requirements-dev.lock -r requirements-security.lock
       - run: python -m pip check
+      - name: Verify the source-only Vault reservation boundaries without network or SQL
+        run: python -I -B qualification/vault_reservation/run_pure.py
       - run: ruff check .
       - run: python manage.py check
       - run: python manage.py makemigrations --check --dry-run

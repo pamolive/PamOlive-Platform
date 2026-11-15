@@ -74,6 +74,39 @@ réussie. La qualification navigateur/JavaScript reste distincte et non exécut�
 
 ## P2 — architecture hybride et domaines sensibles
 
+### État courant du 15 novembre
+
+Le vérificateur public V1 du head `bd8d228` a reçu ses 30 tests installés sans
+exclusion dans deux CI dédiées ; les contrôles P0 et leurs appelants demeurent
+distincts. Les deux CI Platform exactes passent leurs portes fonctionnelles,
+1 439 tests généraux comptés dont 42 exclusions et restauration, puis refusent
+les 35 groupes High non arbitrés, zéro Critical. Aucune promotion n'en découle.
+
+Le [lot vertical de réservation Vault](p2-vault-reservation-runtime.md) intègre
+les sources R2 sous [ADR-024](adr-024-vault-reservation-boundary.md) : 51 purs et
+dix méthodes mTLS/PostgreSQL réellement reçues sur un laboratoire synthétique.
+Le bind N0 est ensuite limité aux deux adresses exactes, avec un cas pur ajouté
+(52 au total). Un laboratoire distinct reçoit deux nouveaux cas : vrai restart
+du service avec PG conservé et writer client jetable sorti par `os._exit(73)`
+après commit, puis retry mTLS avec même ligne/dates/nonce privé/audit. Le bind
+privé exact est corroboré par code épinglé et TLS. Les dix anciens cas wildcard
+restent historiques, sans rejeu ; aucune CI Vault réelle encore.
+Slot administré hors Web, DER par connexion, runtime SQL non-owner et retry
+durable aboutissent seulement à `pending_proofs`, sans secret ni autorité d'action.
+Pas de migration Django, service de production, Vault installé ou image minimale.
+
+La réception des deux cas confirme les faits H1, 190 clients CLI récoltés/drainés,
+six stdin complets et nettoyage 4/3/1, lease libre et PG inchangé. Les 18 retours
+non nuls sont des sondes readiness avant succès ; les quatre exits 137 sans OOM
+sont les arrêts de nettoyage prévus. Restent les lots crash réel du serveur et
+PG power-loss, perte réseau réelle, expiration attendue, backup/restore avec
+nouvelle incarnation et frontière OS Web hostile. L'ancrage indépendant des
+usages/compteurs reste nécessaire avant
+toute remise ; une tête PAM fraîche ne détecte pas un rollback clandestin du
+ledger sous la même incarnation. Ces sources ne soldent ni P2 ni les High.
+
+### Historique des préparations et premiers refus
+
 Premier complément du15novembre :
 [R1b.1 matériaux publics PAM](p2-public-material-verifier.md), source locale
 `77613e8`, ajoute la bibliothèque pure selon [ADR-023](adr-023-public-pam-material-verifier.md).
