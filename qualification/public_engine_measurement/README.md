@@ -1,8 +1,9 @@
 # Mesure publique commune W/A1 — DATA seulement
 
-Source proposée pour le job Platform existant. Root intègre/revoit/publie et
-décide ensuite l'exécution. Aucun Docker, CLI, réseau, SQL ou image exécuté par
-l'auteur. Les tests utilisent seulement un faux runner. Pas de nouveau workflow.
+Collecteur intégré au job Platform existant. Les tests locaux utilisent un
+faux runner ; les quatre lectures réelles sont reçues séparément pour chaque
+commit et run CI. La première réception d47 identifie Docker29.4.2/containerd,
+sans admettre de profil. Aucun nouveau workflow de mesure.
 
 Quatre argv fixes, via `/usr/bin/docker --host unix:///var/run/docker.sock
 --config <nouveau dossier vide>` : version, info, image inspect du PG17.12
@@ -64,5 +65,11 @@ sans continue-on-error. Les anciennes portes s'exécutent donc avant cette mesur
 Le fragment n'ajoute ni permission ni job. Checkout doit conserver
 `persist-credentials: false` et les actions existantes épinglées.
 
-Tests : `CorePython -I -B -X utf8 <dossier>/run_pure.py`, sept méthodes et audit
+Tests : `CorePython -I -B -X utf8 <dossier>/run_pure.py`, huit méthodes et audit
 subprocess/socket/sqlite, zéro skip. Aucun test n'exécute le vrai collecteur main.
+
+Le champ public `server_git_commit` complète la requête version : hexadécimal
+minuscule de7à40caractères ou redaction sans valeur, empreinte ou longueur.
+Il fournit l'entrée ServerGitCommit du profil A1 sans commande supplémentaire
+ni admission de profil. L'API de découverte reste distincte de l'API opérationnelle
+approuvée séparément. Ce champ n'est pas présent dans l'ancien reçu d47.

@@ -74,7 +74,27 @@ réussie. La qualification navigateur/JavaScript reste distincte et non exécut�
 
 ## P2 — architecture hybride et domaines sensibles
 
-### État courant du 15 novembre
+### Etat courant du 16 novembre
+
+PR11 d47faeb recoit ses deux campagnes Platform push/PR : gates applicatifs,
+PostgreSQL/P0, W62, natifs, HA meme hote, restauration et Compose passes ; scan
+seul en echec avec 35 groupes High. Les 1 479 tests generaux rapportes gardent
+40 exclusions de methodes et deux de classes. Le run installe distinct recoit
+52 tests sans exclusion et ses cinq controles. Les deux collectes publiques sont recues.
+Le rapport public observe Docker29.4.2, API1.54 et stockage containerd overlayfs.
+Il distingue maintenant en pratique Id de manifeste et digest de configuration.
+Le prochain correctif ajoute ServerGitCommit, sans nouvelle commande, avec huit
+tests purs. Ces observations ne donnent aucune autorite au runtime.
+
+Les materiaux publics A1 sont publies et recus comme DATA seulement, sans
+load ni execution W3. Les propositions classiques W/V et A1 sont refusees sur
+ce runner ; adaptation containerd explicite, profils Root, identite PG et
+proprietes PGDATA restent requis avant les essais SQL/mTLS. Les 35 High et
+la provenance de build bloquent main/image. Aucune modification NAS.
+Voir les [preuves et limites courantes](implementation-status.md).
+
+### Reference precedente du 15 novembre
+
 
 La source W1 est publiée dans [PR10 `6a9a987`](https://github.com/pamolive/PamOlive-Platform/pull/10).
 Les deux CI Platform sont reçues : 62 tests purs W sans exclusion ni tentative

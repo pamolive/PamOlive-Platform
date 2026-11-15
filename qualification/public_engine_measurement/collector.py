@@ -22,6 +22,7 @@ VERSION = (
     '"client_os":{{json .Client.Os}},"client_arch":{{json .Client.Arch}},'
     '"server_version":{{json .Server.Version}},"server_api_max":{{json .Server.APIVersion}},'
     '"server_api_min":{{json .Server.MinAPIVersion}},'
+    '"server_git_commit":{{json .Server.GitCommit}},'
     '"server_os":{{json .Server.Os}},"server_arch":{{json .Server.Arch}}}'
 )
 INFO = (
@@ -158,6 +159,7 @@ def project(name, value):
             "client_os",
             "client_arch",
             "server_version",
+            "server_git_commit",
             "server_api_max",
             "server_api_min",
             "server_os",
@@ -169,6 +171,8 @@ def project(name, value):
             valid = type(item) is str and (
                 key.endswith("_version")
                 and re.fullmatch(r"[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,3}(?:-(?:ce|ee))?", item)
+                or key == "server_git_commit"
+                and re.fullmatch(r"[a-f0-9]{7,40}", item)
                 or "_api" in key
                 and re.fullmatch(r"1\.[0-9]{1,3}", item)
                 or key.endswith("_os")

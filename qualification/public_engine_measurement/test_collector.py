@@ -16,6 +16,7 @@ def version():
         "client_os": "linux",
         "client_arch": "amd64",
         "server_version": "29.6.1",
+        "server_git_commit": "abcdef123",
         "server_api_min": "1.44",
         "server_api_max": "1.55",
         "server_os": "linux",
@@ -160,6 +161,18 @@ class CollectorTests(unittest.TestCase):
         self.assertNotIn(c.sha(secret.encode()), text)
         changed = dict(version(), client_version=secret, server_api_max=secret)
         self.assertEqual(c.project("version", changed)["client_version"], {"redacted": True})
+
+    def test_server_commit_is_public_hex_only(self):
+        self.assertIn(".Server.GitCommit", c.VERSION)
+        self.assertEqual(c.project("version", version())["server_git_commit"], "abcdef123")
+        for bad in ("", "ABCDEF1", "a" * 6, "a" * 41, "PRIVATE_SYNTHETIC_COMMIT", None):
+            with self.subTest(value=bad):
+                value = c.project("version", dict(version(), server_git_commit=bad))
+                self.assertEqual(value["server_git_commit"], {"redacted": True})
+                encoded = json.dumps(value)
+                if type(bad) is str and bad:
+                    self.assertNotIn(bad, encoded)
+                    self.assertNotIn(c.sha(bad.encode()), encoded)
 
     def test_closed_shapes_duplicate_and_overflow_refused(self):
         for raw in (b'{"x":1,"x":2}', b'{"x":NaN}', b"x" * 32769):

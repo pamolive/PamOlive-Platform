@@ -6,7 +6,50 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 
 La [roadmap réconciliée](implementation-roadmap.md) distingue désormais les lots P1-F/G, P2 et P3 du premier ordre historique. Référence publiée : main `dcaa116be6f026f67ad3825feb38d90ac632ce80`, PR1 fusionnée, [CI complète réussie](https://github.com/pamolive/PamOlive-Platform/actions/runs/43074618211) et [image GHCR publiée/attestée](https://github.com/pamolive/PamOlive-Platform/actions/runs/43078536377). Les résultats détaillés P0/P1 demeurent dans leurs rapports ; leur portée historique est conservée.
 
-### État courant du 15 novembre : source W et qualification CI
+### Reception du 16 novembre : PR11 et donnees publiques du laboratoire
+
+La [PR11 d47faeb](https://github.com/pamolive/PamOlive-Platform/pull/11) publie
+le collecteur de metadonnees. Sa [CI PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43770422458)
+et sa [CI push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43770333284)
+sont recues separement : PostgreSQL17.12/P0, W62 purs, natifs, HA sur un hote,
+restauration et Compose passent. Chaque campagne rapporte 1 479 tests generaux,
+40 exclusions de methodes et deux de classes. Seul le scan strict echoue, avec
+35 groupes High ; les deux observations publiques et uploads ont reussi.
+Le [run installe distinct](https://github.com/pamolive/PamOlive-Platform/actions/runs/43770422438)
+a aussi ete recu avec 52 tests, zero echec/erreur/exclusion, cinq controles de
+reception et nettoyage confirmes. Ces resultats ne qualifient pas le service W.
+
+Le rapport public PR mesure CLI/Engine29.4.2, API de decouverte1.54/min1.40,
+Linux/amd64, overlayfs et io.containerd.snapshotter.v1. L'outil est regulier,
+UID/GID0, mode0755, taille45 526 415, SHA3e898b1e7498b1bf98ec29a3d2ce77f9f09dd357e0b8dbf6ca69b463a871de88.
+Les quatre lectures et la stabilite du binaire sont confirmees. L'Id inspecte
+PostgreSQL correspond au manifeste6f7593, distinct de sa configuration140936 ;
+les profils de laboratoire classiques doivent refuser cette representation.
+L'Id d'image applicative est egalement distinct de son digest de configuration.
+Aucune observation ne devient automatiquement un profil admis.
+
+Le correctif suivant ajoute la donnee publique ServerGitCommit manquante pour
+le profil A1 : meme requete version, hexadecimal ferme ou redaction, aucun
+nouvel appel. Huit tests purs passent, sans exclusion ni tentative externe ;
+les sept cas precedents sont conserves. Une nouvelle CI reste necessaire pour
+recevoir ce champ : il n'est pas infere depuis la version du serveur.
+
+Les [materiaux publics A1/W3](https://github.com/pamolive/PamOlive-Platform/releases/tag/data/a1-w3-inputs-20261115-dff762b7)
+sont livres comme DATA uniquement, en preversion non-latest : TAR40 membres,
+46 643 200 octets, SHAdff762b7743d10314a5e386e50bc223f87f0e96c8d0ebe9a316315871c6105d8,
+manifeste SHA2c6c31440779ed422eaffd3e65ebc91d8ce0019ef35c2ac1af042414e43d8eae.
+Revue source, reception locale exacte du TAR et revue des notes sont favorables ;
+les deux assets distants ont aussi ete recus et rehashes independamment. Ce
+n'est ni une image produit ni une execution W3 : son modele classique reste
+incompatible avec le runner containerd observe. Les metadonnees privees et
+anciennes propositions d'autorisation sont exclues de la livraison publique.
+
+Main reste dcaa116, sans nouvelle image PamOlive ni ecriture NAS. Les 35 High
+et la provenance de build incomplete restent bloquants. Prochaine porte :
+adaptation explicite containerd des laboratoires, profil Root externe, identite
+PostgreSQL et proprietes PGDATA avant W/V SQL/mTLS ou execution A1.
+
+### Reference precedente du 15 novembre : source W et qualification CI
 
 La source W1 est publiée dans la [PR10 `6a9a987`](https://github.com/pamolive/PamOlive-Platform/pull/10).
 Ses deux campagnes Platform sont reçues séparément : 62 tests purs W sans

@@ -1,4 +1,4 @@
-"""Closed seven fake-runner tests. No collector main or real Docker invocation."""
+"""Closed eight fake-runner tests. No collector main or real Docker invocation."""
 
 import json
 import sys
@@ -25,7 +25,7 @@ def main():
     import test_collector
 
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(test_collector.CollectorTests)
-    assert suite.countTestCases() == 7
+    assert suite.countTestCases() == 8
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     print(
         json.dumps(
@@ -41,7 +41,7 @@ def main():
     )
     return (
         0
-        if result.wasSuccessful() and result.testsRun == 7 and not result.skipped and not ATTEMPTS
+        if result.wasSuccessful() and result.testsRun == 8 and not result.skipped and not ATTEMPTS
         else 1
     )
 
