@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     env:
-      VAULT_SOURCES_SHA: 3836b10383405d080873f0b56b7f06aea1ea8ebb07de80f35bb4ace70f4f0a4d
-      VAULT_ASSETS_SHA: 328a3bd97fe0ae7a11c2efdff4dbedf323c1077f69c3ae6f55871e481b96f0db
+      VAULT_SOURCES_SHA: 7e2fe96c95d784ef4ad5df1cf9057c2914be8f544a4ab15f87781af369076143
+      VAULT_ASSETS_SHA: bf25bddb92dcd558ae95992076a0e6fe2425dc24efa56ae6351e9ee0cf4b52a7
       VAULT_PAYLOAD_SHA: e958ce089e79dc8ed87943d9c74fe559bb7e930c4e7898f778a219a6a10f12fe
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
@@ -41,6 +41,8 @@ jobs:
         run: python -I -B qualification/vault_runtime_installed_ci/capture_adversarial.py
       - name: Six startup-hook refusals without executing hooks
         run: python -I -B qualification/vault_runtime_installed_ci/startup_adversarial.py
+      - name: Eight real kernel-profile parser composition tests
+        run: python -I -B qualification/vault_runtime_installed_ci/mount_profile_adversarial.py
       - name: Fifty-five pure harness tests without production imports
         run: python -I -B qualification/vault_runtime_installed_ci/run_pure.py
       - name: Seventeen existing wheel DATA regressions

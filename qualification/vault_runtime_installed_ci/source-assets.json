@@ -103,8 +103,8 @@
       "sha256": "efae894120a464ec5f332d7e8f3b83e347af8abfe9f02d889c98715e1ed5e5e9"
     },
     "workload_entry.py": {
-      "bytes": 2944,
-      "sha256": "42d5c0a95f28d618e797fe2d7642268036224ef7342a92f0e95f65dfd7573a3b"
+      "bytes": 2936,
+      "sha256": "c31fef9c839d48e7ab7ca2dd4e69b1a54b99018933f7911789cb684c1b37d0de"
     },
     "workload_host.py": {
       "bytes": 10945,

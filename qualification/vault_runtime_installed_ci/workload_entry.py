@@ -60,7 +60,7 @@ def main():
     support.need(all(schema.digest(value) for value in bindings.values()))
     try:
         support.load("entrypoint.py").profile(
-            proc(Path("/proc/self/status"), 65536), proc(Path("/proc/self/mountinfo"), 262144)
+            proc(Path("/proc/self/status"), 65536), proc(Path("/proc/mounts"), 262144)
         )
         support.need(bindings["expected_source"] == orchestrate.PAYLOAD_SHA)
         support.need(
