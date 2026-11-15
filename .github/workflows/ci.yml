@@ -154,6 +154,8 @@ jobs:
       - run: python -m pip check
       - name: Verify the source-only Vault reservation boundaries without network or SQL
         run: python -I -B qualification/vault_reservation/run_pure.py
+      - name: Reject altered or overbroad Vault reservation wheel payloads as data
+        run: python -I -B qualification/vault_reservation/test_wheel.py
       - run: ruff check .
       - run: python manage.py check
       - run: python manage.py makemigrations --check --dry-run
