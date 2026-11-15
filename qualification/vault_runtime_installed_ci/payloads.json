@@ -148,6 +148,10 @@
     "tests/test_runtime.py": {
       "bytes": 29469,
       "sha256": "9f66f9270fa96f299b9b806d1d8dd2b141ea79fdf401c5e5caa4b64a7b8d6e67"
+    },
+    "integration/serve_lab.py": {
+      "bytes": 4772,
+      "sha256": "d03c7de950243148a007ad312651a22e304d60353c3cf79b45043d4fe0cd80d4"
     }
   },
   "root_notice": {

@@ -153,6 +153,7 @@ class OrchestrationTests(unittest.TestCase):
                     "site_PTH": 0,
                 },
                 "tests": {"run": 52, "failures": 0, "errors": 0, "skips": 0},
+                "test_errors": [],
                 "attempts": {},
                 "probes": dict.fromkeys(schema.PROBES, 1),
                 "input_sha256": sha((self.work / "input.json").read_bytes()),

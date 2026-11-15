@@ -14,9 +14,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     env:
-      VAULT_SOURCES_SHA: 7e2fe96c95d784ef4ad5df1cf9057c2914be8f544a4ab15f87781af369076143
-      VAULT_ASSETS_SHA: bf25bddb92dcd558ae95992076a0e6fe2425dc24efa56ae6351e9ee0cf4b52a7
-      VAULT_PAYLOAD_SHA: e958ce089e79dc8ed87943d9c74fe559bb7e930c4e7898f778a219a6a10f12fe
+      VAULT_SOURCES_SHA: 01d810e294caf566bbd7bbe55ac714654fd38e4bdc91556ef3d0d66ec45810e9
+      VAULT_ASSETS_SHA: ce51cff87ba43885bcc7a2c4643f9f540be1ff4d0a89db2cdc76c60be3e67e21
+      VAULT_PAYLOAD_SHA: d9e7ff40d7395a109833225b5051feb1f85f6dc9f7061a07c3fa97110bc6b4a6
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -33,7 +33,7 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: '3.12'
-      - name: Capture the exact 35 inputs from the real component paths
+      - name: Capture the exact 36 inputs from the real component paths
         run: >-
           python -I -B qualification/vault_runtime_installed_ci/capture_inputs.py
           --repository "$GITHUB_WORKSPACE" --payload-sha256 "$VAULT_PAYLOAD_SHA"
@@ -43,7 +43,9 @@ jobs:
         run: python -I -B qualification/vault_runtime_installed_ci/startup_adversarial.py
       - name: Eight real kernel-profile parser composition tests
         run: python -I -B qualification/vault_runtime_installed_ci/mount_profile_adversarial.py
-      - name: Fifty-five pure harness tests without production imports
+      - name: Six real public lab-helper source regressions without SQL
+        run: python -I -B -S qualification/vault_runtime_installed_ci/serve_lab_adversarial.py
+      - name: Sixty-five pure harness tests without production imports
         run: python -I -B qualification/vault_runtime_installed_ci/run_pure.py
       - name: Seventeen existing wheel DATA regressions
         run: python -I -B qualification/vault_reservation/test_wheel.py

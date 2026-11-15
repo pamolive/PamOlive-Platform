@@ -5,17 +5,15 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+if __name__ == "__main__":
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import psycopg
-import uvicorn
-from pamolive_vault_runtime.assembly import application
 from pamolive_vault_runtime.bounded import closed, digest, json_object, need
-from pamolive_vault_runtime.slot import _read_ro
-from pamolive_vault_runtime.transport import configuration, tls_context
 
 
 def local_bytes(path, maximum):
+    from pamolive_vault_runtime.slot import _read_ro
+
     raw, _ = _read_ro(Path(path), 0)
     need(len(raw) <= maximum)
     return raw
@@ -104,6 +102,8 @@ def connector(path, *, role):
     )
 
     def connect():
+        import psycopg
+
         return psycopg.connect(**args)
 
     return connect
@@ -114,6 +114,11 @@ def main():
     parser.add_argument("--execute-new-synthetic-lab", action="store_true", required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     args = parser.parse_args()
+
+    import uvicorn
+    from pamolive_vault_runtime.assembly import application
+    from pamolive_vault_runtime.transport import configuration, tls_context
+
     values = lab_inputs(args.manifest)
     app = application(
         slot_path=Path(values["slot_path"]),

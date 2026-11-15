@@ -14,10 +14,16 @@ each runtime Python invocation, alongside the existing PTH/PYC guards.
 The original source-only results are 55 harness tests, not 52 installed runtime
 tests. Root adds the real-checkout capture, seven adversarial capture tests and
 six inert startup-hook regressions. No hook bytes are imported or executed.
-No actual Linux build or installation has yet been received for this integration.
+The second CI subject `1e81df6` reached all three real wheel builds, installations,
+RECORD gates and pip checks, then its 52-test child reported zero failures and one
+error. This remains a failed campaign, without an installed52 success receipt.
+The source staging contained six test fixtures but omitted the public
+`integration/serve_lab.py` loaded by one original test; the missing-file boundary
+is independently reproduced without executing a package or a build.
 
 The workflow must check the source checksum list before invoking Python, then
-capture exactly 35 files from the actual component paths using `capture_inputs.py`.
+capture exactly 36 files (29 build inputs plus seven fixtures) from the actual
+component paths using `capture_inputs.py`.
 The generated `inputs/` and `checkout-capture.json` are ignored by Git. There is
 no second committed implementation. Every selected byte must match the pinned
 payload manifest, including the contracts license metadata and root notice.
@@ -25,8 +31,9 @@ The capture finishes its source checks before writing a new destination, refuses
 an existing destination, and rechecks source and copy after writing. A partial
 or changed copy never yields a successful receipt.
 
-Before allocation, run the closed 55-test harness, the separate seven capture
-and six startup tests, and the existing 17 wheel DATA tests. Acquire 16 hash-pinned public
+Before allocation, run the closed 65-test harness, the separate seven capture,
+six startup, eight mount-profile and six real-helper source tests, and the existing
+17 wheel DATA tests. The original 52 runtime methods remain byte-exact. Acquire 16 hash-pinned public
 wheels on the host, stage three closed read-only mounts, then explicitly pull
 the pinned public Python S0. No registry credential or source checkout is mounted.
 The inherited guard accepts only an ephemeral GitHub-hosted nonroot Linux runner,
@@ -60,3 +67,25 @@ never raw build logs, state, keys or source trees. No automatic second run after
 failure. Receiving this campaign will not qualify SQL/mTLS, restore, a minimal
 Vault image, build attestation, KMS, or independent secret release. Those are
 separate gates. The application's 35 High groups remain blocking.
+
+The seventh fixture is the exact public lab helper, not a production module added
+to the runtime wheel. Its import leaves `sys.path` unchanged and does not import a
+database driver. Only the explicit `__main__` startup adds the source path; psycopg
+is imported lazily inside the returned connection callable. The installed child
+still refuses every driver import before connection, and installs or stubs none.
+An independent R2 counterexample found that the host helper tests still needed
+Core's third-party environment. R3 also loads the RO slot reader only inside
+`local_bytes`, and the real Uvicorn/application/TLS stack only inside `main`
+after argument parsing. Import and manifest/connector validation use the actual
+stdlib-only bounded module. All six source tests must pass with `-I -B -S`, with
+no site-packages or dependency stubs. Operational startup still requires and
+loads the actual reviewed libraries; installed52 keeps its separate environment.
+
+Child schema `/3` requires `test_errors`, an array of at most eight unique pairs
+of original52 test identifiers and closed exception-type enums. `addError` keeps
+the error count but never formats the exception or traceback. Unknown/class-level
+identifiers and excess diagnostics are omitted, not converted into invented test
+methods; their errors still prevent success. No messages, paths, bodies or local
+variables are exported. Old child `/2` is refused, including when rehashed. Empty
+diagnostics are required for success; diagnostic observations never promote a
+failed child or relax guards, profiles, RECORD, source or SQL bindings.

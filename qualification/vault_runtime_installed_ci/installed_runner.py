@@ -87,6 +87,30 @@ def installed_probe(description):
     }
 
 
+class ErrorResult(unittest.TextTestResult):
+    """Retain only known test identities and closed exception kinds, never tracebacks."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.diagnostics = []
+
+    def addError(self, test, error):
+        # Do not call unittest's traceback formatter or str(exception).
+        self.errors.append((test, ""))
+        name = test.id()
+        if type(name) is not str or len(name) > 256 or name not in schema.TEST_IDS:
+            return  # Class/setup/foreign identities remain counted errors, never invented methods.
+        if len(self.diagnostics) == 8 or any(row["test_id"] == name for row in self.diagnostics):
+            return
+        kind = type(error[1]).__name__
+        self.diagnostics.append(
+            {
+                "test_id": name,
+                "exception_type": kind if kind in schema.ERROR_TYPES else "Other",
+            }
+        )
+
+
 def suite_tests(stage, *, importer=importlib.import_module):
     tests = stage / "tests"
     need(str(tests) not in sys.path)
@@ -103,13 +127,17 @@ def suite_tests(stage, *, importer=importlib.import_module):
         )
         # Test traceback text is bounded/discarded, never a public report field.
         capture = CAPTURE(8192, False)
-        result = unittest.TextTestRunner(stream=capture, verbosity=0).run(suite)
-        return {
+        result = unittest.TextTestRunner(stream=capture, verbosity=0, resultclass=ErrorResult).run(
+            suite
+        )
+        counts = {
             "run": result.testsRun,
             "failures": len(result.failures),
             "errors": len(result.errors),
             "skips": len(result.skipped),
         }
+        schema.diagnostics(result.diagnostics)
+        return counts, result.diagnostics
     finally:
         sys.path.remove(str(tests))
 
@@ -137,6 +165,7 @@ def execute(description, descriptor_sha256, stage, report_path):
         "venv": None,
         "installed": None,
         "tests": None,
+        "test_errors": [],
         "attempts": {},
         "probes": {},
         "input_sha256": descriptor_sha256,
@@ -155,7 +184,7 @@ def execute(description, descriptor_sha256, stage, report_path):
             report["failure_code"] = "FILES"
             report["installed"] = installed_probe(description)
             report["failure_code"] = "TESTS"
-            report["tests"] = suite_tests(stage)
+            report["tests"], report["test_errors"] = suite_tests(stage)
             need(report["tests"] == {"run": 52, "failures": 0, "errors": 0, "skips": 0})
             policy.guard.require_clean()
             report.update(state="INSTALLED_RUNTIME_52_PASS", failure_code="NONE")

@@ -12,7 +12,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(ROOT))
 attempts = {}
 support = importlib.import_module("support")
-IDS_SHA = "547c2b96a4c523919d78819f58bee3721c60e428b3a70d52a0642a5633fec990"
+IDS_SHA = "46b13c9fdfbbccbd2d1e235bdc2c8e14a98fc702496fb3867b8597191a81e7e4"
 PRODUCTION = {
     "pamolive_vault_runtime",
     "pamolive_vault_contracts",
@@ -34,7 +34,7 @@ def expected_ids():
         and value["schema"] == "pamolive.vault-installed-pure-test-ids/1"
     )
     names = value["ids"]
-    support.need(type(names) is list and len(names) == len(set(names)) == 55)
+    support.need(type(names) is list and len(names) == len(set(names)) == 65)
     support.need(all(type(name) is str and 0 < len(name) <= 256 for name in names))
     return set(names)
 
@@ -73,7 +73,7 @@ def main():
     started = time.monotonic()
     suite = unittest.defaultTestLoader.discover(str(ROOT), pattern="test_*.py")
     names = suite_ids(suite)
-    support.need(len(names) == 55 and len(set(names)) == 55 and set(names) == expected_ids())
+    support.need(len(names) == 65 and len(set(names)) == 65 and set(names) == expected_ids())
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     summary = {
         "run": result.testsRun,
@@ -89,7 +89,7 @@ def main():
     print(json.dumps(summary))
     raise SystemExit(
         not result.wasSuccessful()
-        or result.testsRun != 55
+        or result.testsRun != 65
         or bool(result.skipped)
         or bool(attempts)
         or bool(summary["production_packages_imported"])

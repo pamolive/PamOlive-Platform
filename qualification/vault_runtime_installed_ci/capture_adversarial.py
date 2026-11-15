@@ -45,10 +45,17 @@ class CaptureTests(unittest.TestCase):
             rows = {}
             for index in range(count):
                 name = (
-                    "LICENSE"
-                    if index == 0 and group in {"runtime", "contracts"}
+                    sorted(c.adapter.STAGE)[index]
+                    if group == "runtime-tests"
                     else (
-                        ("tests/" if group == "runtime-tests" else "") + group + str(index) + ".txt"
+                        "LICENSE"
+                        if index == 0 and group in {"runtime", "contracts"}
+                        else (
+                            ("tests/" if group == "runtime-tests" else "")
+                            + group
+                            + str(index)
+                            + ".txt"
+                        )
                     )
                 )
                 raw = notice if name == "LICENSE" else (group + str(index)).encode()
@@ -67,10 +74,10 @@ class CaptureTests(unittest.TestCase):
         repo, destination, payload = self.fixture()
         (repo / "not-selected.txt").write_bytes(b"SYNTHETIC UNSELECTED")
         result = c.capture(repo, destination, payload)
-        self.assertEqual(result["captured_files"], 35)
-        self.assertEqual(len(result["files"]), 35)
+        self.assertEqual(result["captured_files"], 36)
+        self.assertEqual(len(result["files"]), 36)
         self.assertFalse(result["actual_build_install_or_authority"])
-        self.assertEqual(len([p for p in destination.rglob("*") if p.is_file()]), 35)
+        self.assertEqual(len([p for p in destination.rglob("*") if p.is_file()]), 36)
         self.assertEqual((repo / "not-selected.txt").read_bytes(), b"SYNTHETIC UNSELECTED")
 
     def test_changed_source_refuses_before_first_destination_write(self):
@@ -133,7 +140,7 @@ class CaptureTests(unittest.TestCase):
         with patch.object(c, "read_regular", read), self.assertRaises(ValueError):
             c.capture(repo, destination, payload)
         self.assertTrue(destination.exists())
-        self.assertEqual(len([p for p in destination.rglob("*") if p.is_file()]), 35)
+        self.assertEqual(len([p for p in destination.rglob("*") if p.is_file()]), 36)
 
 
 if __name__ == "__main__":

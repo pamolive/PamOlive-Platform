@@ -45,7 +45,7 @@ STAGE = {
         "history/r1/bounded.py",
         "history/r1/transport.py",
     )
-}
+} | {"integration/serve_lab.py"}
 SQL_SHA = "78cbd52dc5b30fa1139dedaf29b903fbd0becd5272d648ddd60ee35b4769a72f"
 
 
@@ -85,10 +85,11 @@ def descriptor(value):
 
 
 def validate_stage(stage, expected):
+    need(type(expected) is dict and set(expected) == STAGE)
     need(stage.is_absolute() and stage == stage.resolve(strict=True))
     need(len(stage.parents) >= 6)
     actual = set()
-    directories = {"tests", "tests/history", "tests/history/r1"}
+    directories = {"tests", "tests/history", "tests/history/r1", "integration"}
     for path in stage.rglob("*"):
         row = path.lstat()
         need(not path.is_symlink() and not getattr(row, "st_file_attributes", 0) & 1024)

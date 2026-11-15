@@ -6,9 +6,23 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 
 La [roadmap réconciliée](implementation-roadmap.md) distingue désormais les lots P1-F/G, P2 et P3 du premier ordre historique. Référence publiée : main `dcaa116be6f026f67ad3825feb38d90ac632ce80`, PR1 fusionnée, [CI complète réussie](https://github.com/pamolive/PamOlive-Platform/actions/runs/43074618211) et [image GHCR publiée/attestée](https://github.com/pamolive/PamOlive-Platform/actions/runs/43078536377). Les résultats détaillés P0/P1 demeurent dans leurs rapports ; leur portée historique est conservée.
 
-### État courant du 15 novembre : bibliothèque reçue, réservation Vault limitée
+### État courant du 15 novembre : qualification installée en correction
 
-Le dernier candidat reçu est `edec99a`, parent `6cbb4d0`, dans la
+Le [candidat PR8](https://github.com/pamolive/PamOlive-Platform/pull/8),
+`1e81df6`, construit et installe réellement les trois composants Vault hors
+réseau dans sa [CI dédiée](https://github.com/pamolive/PamOlive-Platform/actions/runs/43747230903).
+Les wheels et leurs RECORD passent, ainsi que les deux contrôles pip ; les
+52 tests installés rendent zéro failure, **une error**, zéro skip. Les 16
+processus et le nettoyage sont reçus ; aucun succès installé52 n'est déclaré.
+La correction locale ajoute la fixture publique manquante, garde les 52 méthodes
+intactes et apporte des diagnostics fermés enfant `/3`. La contre-revue et la
+nouvelle CI doivent être reçues avant validation. Voir
+[la réception détaillée](p2-vault-runtime-installed-qualification.md).
+Main reste `dcaa116` ; aucune nouvelle image ni mise à niveau NAS.
+
+### Réception précédente : PostgreSQL 17.12 et réservation limitée
+
+Le candidat précédent reçu est `edec99a`, parent `6cbb4d0`, dans la
 [PR7 en brouillon](https://github.com/pamolive/PamOlive-Platform/pull/7).
 Les [CI PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43736103902)
 et [push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43736048530)
@@ -51,8 +65,9 @@ Le packaging [ADR-025](adr-025-vault-runtime-installation.md) ajoute seulement
 les métadonnées du runtime, une notice et un contrôle borné des quatorze fichiers
 de sa wheel. Les huit modules et le SQL restent inchangés. Une construction
 locale et sa réception comme données ne sont pas une installation du service.
-L'installation Linux autonome, ses RECORD installés et son exécution restent
-à recevoir. Les reçus `67ee7c9` (`1352eef8…`) et `80ccdb1` (`7605f5fd…`)
+L'installation Linux autonome et ses RECORD sont maintenant observés dans PR8,
+mais son exécution des 52 tests reste en échec comme indiqué plus haut.
+Les reçus `67ee7c9` (`1352eef8…`) et `80ccdb1` (`7605f5fd…`)
 demeurent distincts ; aucun résultat de parent n'est transféré.
 
 La [maintenance PostgreSQL 17.12](postgresql-17-12-qualification.md) reçoit

@@ -11,7 +11,7 @@ import schema
 import wheel_gate
 from support import ROOT, load, need, read_regular, sha
 
-PAYLOAD_SHA = "e958ce089e79dc8ed87943d9c74fe559bb7e930c4e7898f778a219a6a10f12fe"
+PAYLOAD_SHA = "d9e7ff40d7395a109833225b5051feb1f85f6dc9f7061a07c3fa97110bc6b4a6"
 WORK = Path("/work/vault-installed")
 BOOTSTRAP = (
     "import runpy,sys; sys.path.insert(0,sys.argv.pop(1)); "

@@ -76,6 +76,16 @@ réussie. La qualification navigateur/JavaScript reste distincte et non exécut�
 
 ### État courant du 15 novembre
 
+Le [lot de qualification installée PR8](https://github.com/pamolive/PamOlive-Platform/pull/8)
+reçoit sur `1e81df6` trois builds/installations hors réseau, leurs gates
+wheel/RECORD et pip. Les 52 tests installés ont zéro failure, **une error**,
+zéro skip ; la campagne reste refusée malgré le nettoyage confirmé. La
+correction locale complète explicitement le stage avec le helper public requis,
+conserve les 52 méthodes et borne les diagnostics de l'enfant `/3`.
+Prochaine porte : contre-revue, puis nouvelle CI installée exacte. Voir
+[les résultats et la limite de diagnostic historique](p2-vault-runtime-installed-qualification.md).
+Aucune promotion de main/image/NAS n'en découle.
+
 Le candidat suivant `edec99a`, [PR7](https://github.com/pamolive/PamOlive-Platform/pull/7),
 reçoit les régressions sur PostgreSQL17.12 réellement observé par SHOW170012
 dans ses [CI PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43736103902)

@@ -1,4 +1,4 @@
-"""Capture the 35 pinned files from the real checkout, without package imports.
+"""Capture the 36 pinned files from the real checkout, without package imports.
 
 Generated inputs are never committed as another copy of the implementation.
 The workflow verifies this source and its dependencies before invoking Python.
@@ -15,6 +15,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 support = importlib.import_module("support")
+adapter = importlib.import_module("adapter_v2")
 need, read_regular, sha = support.need, support.read_regular, support.sha
 
 BASES = {
@@ -23,7 +24,7 @@ BASES = {
     "verifier": "components/pam-trust-verifier",
     "contracts": "components/vault-registry",
 }
-COUNTS = {"runtime": 12, "verifier": 11, "contracts": 6, "runtime-tests": 6}
+COUNTS = {"runtime": 12, "verifier": 11, "contracts": 6, "runtime-tests": 7}
 
 
 def selected(payload):
@@ -36,6 +37,7 @@ def selected(payload):
         and set(payload["groups"]) == {"runtime", "verifier", "contracts"}
     )
     groups = {**payload["groups"], "runtime-tests": payload["runtime_tests"]}
+    need(set(payload["runtime_tests"]) == adapter.STAGE)
     rows = []
     for group, files in groups.items():
         need(type(files) is dict and len(files) == COUNTS[group])
@@ -52,7 +54,7 @@ def selected(payload):
             need(type(pin["bytes"]) is int and 0 <= pin["bytes"] <= 1024**2)
             need(type(pin["sha256"]) is str and re.fullmatch("[a-f0-9]{64}", pin["sha256"]))
             rows.append((group, name, pin))
-    need(len(rows) == 35)
+    need(len(rows) == 36)
     return rows
 
 
@@ -69,7 +71,7 @@ def capture(repository, destination, payload):
         need({"bytes": len(raw), "sha256": sha(raw)} == pin)
         buffers[(group, name)] = raw
         observed[source.relative_to(repository).as_posix()] = pin
-    need(len(observed) == 35)
+    need(len(observed) == 36)
     root_notice = read_regular(repository / "LICENSE", 65536)
     need({"bytes": len(root_notice), "sha256": sha(root_notice)} == payload["root_notice"])
     need(buffers[("contracts", "LICENSE")] == root_notice)

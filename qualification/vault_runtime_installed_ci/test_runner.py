@@ -55,8 +55,9 @@ class RunnerTests(unittest.TestCase):
                 return modules[name]
 
             with patch.object(installed_runner.sys, "prefix", str(prefix)), current.install():
-                result = installed_runner.suite_tests(stage, importer=importer)
+                result, diagnostics = installed_runner.suite_tests(stage, importer=importer)
                 self.assertEqual(result, {"run": 52, "failures": 0, "errors": 0, "skips": 0})
+                self.assertEqual(diagnostics, [])
                 with self.assertRaises(ForbiddenIO):
                     current.guard.require_clean()
             self.assertEqual(len(seen), 6)
@@ -73,7 +74,7 @@ class RunnerTests(unittest.TestCase):
                     adapter_v2.runtime_prelaunch(site)
                 path.unlink()
 
-    def test_stage_requires_six_exact_files_no_source_fallback_or_softskip(self):
+    def test_stage_requires_seven_exact_files_no_source_fallback_or_softskip(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
             stage = Path(directory) / "stage/components/vault/runtime"
             expected = {}
@@ -84,6 +85,8 @@ class RunnerTests(unittest.TestCase):
                 path.write_bytes(raw)
                 expected[name] = sha(raw)
             adapter_v2.validate_stage(stage, expected)
+            with self.assertRaises(ValueError):
+                adapter_v2.validate_stage(stage, {**expected, "integration/extra.py": "1" * 64})
             extra = stage / "src/hidden.py"
             extra.parent.mkdir()
             extra.write_bytes(b"PUBLIC EXTRA")
