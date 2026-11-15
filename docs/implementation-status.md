@@ -6,7 +6,37 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 
 La [roadmap réconciliée](implementation-roadmap.md) distingue désormais les lots P1-F/G, P2 et P3 du premier ordre historique. Référence publiée : main `dcaa116be6f026f67ad3825feb38d90ac632ce80`, PR1 fusionnée, [CI complète réussie](https://github.com/pamolive/PamOlive-Platform/actions/runs/43074618211) et [image GHCR publiée/attestée](https://github.com/pamolive/PamOlive-Platform/actions/runs/43078536377). Les résultats détaillés P0/P1 demeurent dans leurs rapports ; leur portée historique est conservée.
 
-### État courant du 15 novembre : tests installés reçus, témoin W en préparation
+### État courant du 15 novembre : source W et qualification CI
+
+La [source W1](p2-usage-anchor-source-qualification.md) est implémentée localement,
+avec 62 tests purs réussis sans exclusion ni tentative d'I/O externe et revue
+indépendante. Le demandeur de l'intention est fixé par W, les mutations Service
+ont leur contrôle final et les observations terminales conservent leurs contrôles
+d'identité/contexte. Le correctif HTTP conserve le profil fermé du serveur.
+La wheel de développement est construite hors ligne et vérifiée comme données ;
+elle n'est pas installée. Aucun SQL/mTLS réel ni service W n'est réceptionné.
+La CI ajoute ses tests et son analyse statique sans retirer les anciens gates.
+Le laboratoire réel W/V est la prochaine porte ; il reste distinct de la source.
+
+Le [correctif CI PR9](https://github.com/pamolive/PamOlive-Platform/pull/9),
+`acd8bc3`, publie l'acquisition Kerberos par hash authentifié. Ses campagnes
+[runtime installé](https://github.com/pamolive/PamOlive-Platform/actions/runs/43759468228)
+et [vérificateur public](https://github.com/pamolive/PamOlive-Platform/actions/runs/43759468205)
+reçoivent respectivement 52 et 30 tests sans failure/error/skip, avec vérification
+des artefacts et nettoyage. Ces deux campagnes ne qualifient pas W.
+Les CI générales [push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43759420683)
+et [PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43759468105)
+sont reçues séparément : build et exclusion des fichiers privés réussis, PostgreSQL 17.12,
+régressions, transports natifs, restauration et Compose corroborés. Chaque run échoue
+uniquement au scan final : 35 groupes High non triés, zéro finding ignoré.
+Les 1 479 tests généraux rapportés conservent 40 exclusions de méthodes et deux
+de classes ; ces exclusions ne sont pas des réussites.
+Le checkout merge de la PR a l'arbre exact du head ; les deux ensembles d'artefacts
+et journaux sont rehashés indépendamment, sans transfert de résultat entre runs.
+Main reste `dcaa116`, sans nouvelle image ni écriture NAS ; les 35 groupes High
+et la provenance de build incomplète bloquent toujours la promotion.
+
+### Réception précédente du 15 novembre : candidat `27cf3b4`
 
 Le correctif `27cf3b4` de la [PR8](https://github.com/pamolive/PamOlive-Platform/pull/8)
 reçoit sa [CI installée exacte](https://github.com/pamolive/PamOlive-Platform/actions/runs/43753095373) :

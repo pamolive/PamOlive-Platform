@@ -14,3 +14,9 @@ qualification/p2_installed_ci/materials-plan.json -text whitespace=blank-at-eol,
 # Keep the reviewed helper manifest and pure runner byte-exact across checkouts.
 qualification/vault_runtime_installed_ci/helper-pins.json -text whitespace=cr-at-eol
 qualification/vault_runtime_installed_ci/run_pure.py -text whitespace=cr-at-eol
+# Keep the reviewed W source snapshot and independent codec oracle byte-exact.
+components/usage-anchor/integration/scenario.py -text whitespace=cr-at-eol
+components/usage-anchor/pamolive_usage_anchor/client.py -text whitespace=cr-at-eol
+components/usage-anchor/pamolive_usage_anchor/ledger.py -text whitespace=cr-at-eol
+components/usage-anchor/tests/fixtures.py -text whitespace=cr-at-eol
+components/usage-anchor/tests/golden/codec.json -text whitespace=cr-at-eol

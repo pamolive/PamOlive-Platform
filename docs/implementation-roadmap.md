@@ -76,6 +76,28 @@ réussie. La qualification navigateur/JavaScript reste distincte et non exécut�
 
 ### État courant du 15 novembre
 
+La [tranche source W1](p2-usage-anchor-source-qualification.md) ajoute le témoin
+indépendant, ses schémas SQL explicites et son client miroir V. Les régressions
+locales comptent 62 réussites sans exclusion/tentative externe après les
+corrections R2, HTTP et SQL fixe. Une wheel est construite hors ligne et reçue
+comme données, sans installation. Les revues et les contrats sont conservés ;
+la CI ajoute tests purs et analyse statique W aux gates existants.
+Ce lot ne livre ni service opérationnel, ni remise de secret. Prochaine porte :
+laboratoire SQL/mTLS W/V neuf, avec permissions, concurrence, panne et reprise.
+
+Le correctif d'acquisition Kerberos est publié dans
+[PR9 `acd8bc3`](https://github.com/pamolive/PamOlive-Platform/pull/9).
+Ses nouvelles CI installées reçoivent 52 tests runtime et 30 tests vérificateur
+public, distincts des tests W. Les campagnes Platform push et PR sont reçues séparément : build et
+exclusion réussis, PostgreSQL 17.12, régressions, transports natifs, restauration
+et Compose corroborés ; seul le scan refuse les 35 groupes High non triés.
+Les deux réceptions conservent leurs artefacts et leurs exclusions, sans transfert.
+Aucun résultat ancien n'est transféré au nouveau head.
+Les 35 groupes High et la provenance de build incomplète continuent à bloquer
+main/image ; aucune mise à niveau NAS.
+
+#### Réception précédente : `27cf3b4`
+
 Le correctif `27cf3b4` reçoit maintenant les **52 tests installés sans erreur,
 failure ou skip** dans sa
 [CI exacte](https://github.com/pamolive/PamOlive-Platform/actions/runs/43753095373).

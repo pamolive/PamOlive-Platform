@@ -1,9 +1,17 @@
 # Contrat W1 — témoin indépendant des usages
 
-Statut normatif : accepté pour implémentation par ADR-026 ; runtime et tests réels
-non réceptionnés. La filiation documentaire figée reste conservée dans output ;
-les mentions de proposition ci-dessous décrivent cette filiation, pas un succès
-d'exécution. ADR-026 et les clarifications suivantes ont priorité.
+Statut normatif : accepté pour implémentation par ADR-026.
+
+Source W1 implémentée localement. La régression HTTP a été exécutée sur
+62 tests purs avant correction, avec un échec attendu, puis sur 62 tests après
+correction sans failure, error, skip ni tentative d'I/O externe. Les 59 méthodes
+existantes sont conservées ; les signatures synthétiques sont réellement
+vérifiées. Ces résultats ne réceptionnent ni SQL/mTLS réel, ni service W installé,
+ni durabilité, ni origine humaine ou indépendance d'hôte.
+
+La filiation documentaire figée reste conservée dans output ; les mentions de
+proposition ci-dessous décrivent cette filiation historique. ADR-026 et les
+clarifications suivantes ont priorité.
 
 **C01 — ClientData signé :** la canonicalité byte-exacte porte sur B/E/F et le
 wrapper JSON d'assertion, jamais sur les bytes décodés clientDataJSON signés.
@@ -11,15 +19,46 @@ Parsing strict sans doublons, bornes, champs et valeurs fermés ; transmettre le
 bytes originaux au vérificateur maintenu. Ordre de propriétés et espaces valides
 restent admis avec leur signature propre, sans réécriture.
 
+**C02 — Demandeur de l'intention :** le slot W-only impose le champ canonique
+`intent_requester_person_id`, commissionné indépendamment. Bind compare
+exactement ce champ au demandeur du draft avant SQL. Une autre personne
+habilitée P0 ne devient pas le demandeur de cette intention, même avec le même
+ID/hash et de vraies signatures. Slot ancien incomplet : refus fermé ; aucune
+inférence depuis le draft, les alias ou les rôles. Le pin de tout le slot
+engage déjà ce champ ; les contrats partagés ADR-024 restent inchangés.
+
+**C03 — Bord de commit :** Dans `Service`, toute mutation métier passant par
+`PostgresLedger.transaction`, ainsi que le retry d'un bind encore pending,
+enregistre un callback local d'autorité/contexte RO et d'heure SQL. Le ledger
+l'exécute après les écritures et l'audit, juste avant la sortie transactionnelle ;
+pour ces chemins, une mutation enregistrée sans callback provoque un rollback.
+Ce contrôle ne prend aucun nouveau verrou métier et n'effectue aucun appel
+réseau. Il ne garantit pas que l'instant physique de durabilité du COMMIT est
+antérieur à l'échéance ; un ACK inconnu reste 503/uncertain et ne réarme aucun usage.
+
+L'administration hors ligne de fermeture/révocation suit son circuit distinct
+`Administration._locked` et conserve l'ordre global des verrous et de l'audit.
+Le callback d'admission runtime ne lui est pas imposé : ce chemin reste utilisable
+pour fermer ou révoquer un contexte expiré, sous ses propres contrôles d'accès et
+de transaction SQL. Il n'ouvre, ne renouvelle et ne réarme aucun usage.
+
+Le retry terminal exact reste une observation sans mutation, y compris
+après expiration de l'opération. Le DER et le purpose courants, la liaison au
+contexte/tenant, le propriétaire et l'instance de l'opération, le bundle reçu
+byte-exact et ses hashes restent contrôlés ; le slot et le principal courants
+doivent encore être valides. Seules la revérification des preuves/compteurs,
+la fraîcheur d'admission de l'opération/lease/checkpoint et le callback mutateur
+sont sautés. Aucune nouvelle consommation ni prolongation n'en découle.
+
 Les références aux golden désignent les oracles statiques de codec dans
 `components/usage-anchor/tests/golden/codec.json`, à copier byte pour byte depuis
 le corpus indépendant. Leurs signatures sont des placeholders non autoritaires.
-Le [plan de validation](p2-usage-anchor-validation.md) décrit des travaux à faire,
-pas des tests déjà exécutés.
+Le [plan de validation](p2-usage-anchor-validation.md) distingue les tests purs
+locaux reçus des essais SQL/mTLS/concurrence qui restent à exécuter.
 
 # Addendum normatif W1 — fermeture des contrats avant code
 
-15 novembre 2026. Proposition pour arbitrage Root puis contre-revue ciblée AppSec ; numéro ADR non attribué ici. **Aucune implémentation, remise ni réception opérationnelle.** Cet addendum supplante uniquement les clauses contradictoires du gel initial `fb1bcf5b402792ef1218644adc3c20d08163e336e5d3f8b9ba7697f02f7e8ab1`, dont les huit fichiers restent inchangés. Il répond à `report.json` AppSec SHA-256 `e6a2c5ce480816952680adbf0e65fbddf3d2395e5fb2972867919ce5877bb9cc`, gel AppSec `ec736b33fe70ecb40c11c07f1a21980fe4102ed8e958f68b7f89f0f4fe2b6886` et aux décisions Root A–E.
+Texte historique du 15 novembre 2026, avant implémentation : proposition pour arbitrage Root puis contre-revue ciblée AppSec ; numéro ADR non attribué à ce stade. **À ce stade historique, aucune implémentation, remise ni réception opérationnelle.** Le statut courant est décrit en tête. Cet addendum supplante uniquement les clauses contradictoires du gel initial `fb1bcf5b402792ef1218644adc3c20d08163e336e5d3f8b9ba7697f02f7e8ab1`, dont les huit fichiers restent inchangés. Il répond à `report.json` AppSec SHA-256 `e6a2c5ce480816952680adbf0e65fbddf3d2395e5fb2972867919ce5877bb9cc`, gel AppSec `ec736b33fe70ecb40c11c07f1a21980fe4102ed8e958f68b7f89f0f4fe2b6886` et aux décisions Root A–E.
 
 Les octets et types des trois engagements sont désormais dans [les octets normatifs](#octets-normatifs), avec golden indépendants de codec dans `GOLDEN-CODEC.json`. Ces golden ne portent aucune signature valide ni autorité PAM ; aucune primitive d'authentification n'est exécutée pour ce dossier. Le plan de réception supplémentaire est dans [le plan de validation](p2-usage-anchor-validation.md).
 

@@ -1,8 +1,14 @@
 # ADR-026 — Témoin synchrone des usages Vault V2
 
 Statut : accepté pour implémentation le 15 novembre 2026, après confrontation
-architecture/cryptographie et AppSec indépendante. Le service, ses transports et
-sa durabilité ne sont pas encore réceptionnés. Aucune remise de secret autorisée.
+architecture/cryptographie et AppSec indépendante. Aucune remise de secret autorisée.
+
+Source W1 implémentée localement. La régression HTTP a été exécutée sur
+62 tests purs avant correction, avec un échec attendu, puis sur 62 tests après
+correction sans failure, error, skip ni tentative d'I/O externe. Les 59 méthodes
+existantes sont conservées ; les signatures synthétiques sont réellement
+vérifiées. Ces résultats ne réceptionnent ni SQL/mTLS réel, ni service W installé,
+ni durabilité, ni origine humaine ou indépendance d'hôte.
 
 ## Problème et frontière de confiance
 
@@ -91,6 +97,46 @@ Il reste absent des logs publics, erreurs et réponses terminales. `authorized:f
 décrit le résultat ; l'absence structurelle de route/provider de remise est le
 contrôle effectif.
 
+## Corrections R2 après confrontation indépendante
+
+Le slot W impose `intent_requester_person_id`, UUID canonique provenant de
+l'intention indépendante commissionnée. Le même intent ID/hash et des
+signatures valides ne suffisent pas à autoriser un autre demandeur. W compare
+ce pin au demandeur du draft avant toute transaction ; un ancien slot sans
+ce champ refuse sans enrichissement automatique. Ce champ reste propre à W :
+aucune extension implicite du contexte partagé ADR-024 ou du registre P0.
+
+Dans `Service`, toute mutation métier passant par
+`PostgresLedger.transaction`, ainsi que le retry d'un bind encore pending,
+enregistre un callback local d'autorité/contexte RO et d'heure SQL. Le ledger
+l'exécute après les écritures et l'audit, juste avant la sortie transactionnelle ;
+pour ces chemins, une mutation enregistrée sans callback provoque un rollback.
+Ce contrôle ne prend aucun nouveau verrou métier et n'effectue aucun appel
+réseau. Il ne garantit pas que l'instant physique de durabilité du COMMIT est
+antérieur à l'échéance ; un ACK inconnu reste 503/uncertain et ne réarme aucun usage.
+
+L'administration hors ligne de fermeture/révocation suit son circuit distinct
+`Administration._locked` et conserve l'ordre global des verrous et de l'audit.
+Le callback d'admission runtime ne lui est pas imposé : ce chemin reste utilisable
+pour fermer ou révoquer un contexte expiré, sous ses propres contrôles d'accès et
+de transaction SQL. Il n'ouvre, ne renouvelle et ne réarme aucun usage.
+
+Le retry terminal exact reste une observation sans mutation, y compris
+après expiration de l'opération. Le DER et le purpose courants, la liaison au
+contexte/tenant, le propriétaire et l'instance de l'opération, le bundle reçu
+byte-exact et ses hashes restent contrôlés ; le slot et le principal courants
+doivent encore être valides. Seules la revérification des preuves/compteurs,
+la fraîcheur d'admission de l'opération/lease/checkpoint et le callback mutateur
+sont sautés. Aucune nouvelle consommation ni prolongation n'en découle.
+
+Les branches terminales SQL exigent explicitement bundle, digest et réponse
+non NULL. Les probes de permissions sont rollback-only même si l'instruction
+interdite réussit par erreur. La probe monotone teste un compteur positif1→0
+avec version avancée et attend P0001 ; une simple erreur de plage23514 ne
+prouve pas le trigger. Ces choix ferment des défauts de source reproduits ;
+les tests purs et les deux revues indépendantes ne remplacent pas le vrai
+laboratoire PostgreSQL/mTLS/concurrence.
+
 ## Restauration, compatibilité et limites
 
 W garde les tombstones ; expiration ne supprime pas une clé consommée. Restaurer
@@ -123,5 +169,7 @@ indépendance d'hôte. La qualification installée ADR-025 reste une porte disti
 
 Filiation locale conservée : proposition architecture `fb1bcf5b…`, addendum
 `94257dc0…`, revue AppSec `9c932c70…`. La revue clôt A–E au niveau conception,
-avec la précision clientDataJSON ci-dessus ; aucun test SQL/TLS/signature du
-nouveau service n'a encore été exécuté à cette décision.
+avec la précision clientDataJSON ci-dessus. Lors de cette décision initiale de
+conception, aucun test SQL/TLS/signature du nouveau service n'était encore reçu.
+Cette mention est historique ; le statut local courant et les 62 tests purs reçus
+sont décrits en tête, sans réception SQL/mTLS ou de service installé.

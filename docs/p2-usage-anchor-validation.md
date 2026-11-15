@@ -1,6 +1,18 @@
-# Plan de validation W1 — réception non encore exécutée
+# Plan de validation W1 — réception réelle restant à exécuter
 
-Plan uniquement : aucun runtime W n'est encore livré. Ces cas complètent les24 scénarios du gel fb1b et supplantent toutes les attentes de quarantaine. Les golden fournis sont des oracles de codec indépendants, pas des tests de signature, SQL ou transport. La tentative initiale du runner existant reste0 test reçu à cause de psycopg absent ; aucun test produit n'est rejoué ici.
+Source W1 implémentée localement. La régression HTTP a été exécutée sur
+62 tests purs avant correction, avec un échec attendu, puis sur 62 tests après
+correction sans failure, error, skip ni tentative d'I/O externe. Les 59 méthodes
+existantes sont conservées ; les signatures synthétiques sont réellement
+vérifiées. Ces résultats ne réceptionnent ni SQL/mTLS réel, ni service W installé,
+ni durabilité, ni origine humaine ou indépendance d'hôte.
+
+La tentative initiale du runner, alors bloquée par psycopg absent, conserve son
+résultat historique 0 test reçu ; elle n'est pas réécrite par les réceptions
+locales ultérieures. Les cas ci-dessous complètent les 24 scénarios du gel fb1b et
+supplantent les attentes de quarantaine. Les golden restent des oracles statiques
+de codec ; leurs placeholders ne deviennent pas des signatures autoritaires.
+Les essais de laboratoire SQL/mTLS/concurrence restent à réaliser.
 
 | Cas supplémentaire | Essai à réaliser avant réception | Résultat requis |
 | --- | --- | --- |
@@ -24,6 +36,28 @@ Plan uniquement : aucun runtime W n'est encore livré. Ces cas complètent les24
 | A18 Canonicalité | Duplicatekey/clééchappée/whitespace/nullouter/boolouter/float/paddingbase64/idrawIddiff/fieldunknown |400structure avant vérification ; WebAuthn userHandle null/crossOriginfalse seulement aux emplacements documentés ; E/B/F nouveaux budgets distincts d'ADR022 |
 | A19 Nonce autorisé | W0 mTLS authentifié et canal de confirmation approuvé vs appel anonyme/erreur/log/terminal-status | Transcript complet avec nonce présent pour recalcul du challenge autorisé ; nonce absent des surfaces publiques ; aucun secret ni capacité implicite |
 | A20 Crash atomique refus | Crash réel avant/après commit négatif, SQL conservé et puis rollbackV même incarnation dans30s | Avant : aucun compteur/terminal partiel ; après : refusedterminal conservé et retry statut seul ; aucune réactivation ni nouveau nonce |
+
+## Régressions R2 obligatoires sur le laboratoire réel
+
+- Même intention ID/hash, demandeur substitué, quatre signatures synthétiques
+  encore valides : bind403 avant toute transaction. Slot sans le pin W-only
+  du demandeur : refus, sans migration implicite du contexte partagé.
+- Sur les chemins `Service` passant par `PostgresLedger.transaction`, dépasser
+  l'échéance après l'audit mais avant le contrôle final : rollback des
+  compteurs/usages/terminal/audit. Mutation enregistrée sans callback : rollback.
+  Le retry pending garde son contrôle final. La fermeture/révocation admin
+  hors ligne garde son circuit distinct et reste utilisable après expiration.
+- Retry terminal ancien : réponse conservée sans mutation ni nouvelle
+  vérification des preuves/compteurs/fraîcheur d'admission ou callback mutateur ;
+  DER/purpose courant, slot/principal valide, contexte/tenant/propriétaire,
+  instance et bundle/hashes exacts restent contrôlés.
+- Perdre l'ACK après le contrôle final :503/uncertain, puis statut idempotent ;
+  ne pas attribuer au callback une garantie de durabilité physique à l'heure.
+- Sous rôle réel, prouver que les probes refusées annulent aussi un succès
+  SQL inattendu ; distinguer trigger monotone positif1→0/P0001 et plage23514.
+  Vérifier trois formes terminales incomplètes par contraintes réelles.
+- Préflight indépendant des deux bases W/V fraîches avant seeding : les deux
+  commits ne sont pas atomiques ; seed partiel reste non admis, sans réparation.
 
 La tranche suivante doit réaliser le trajet V réservé → W réel mTLS/SQL propre → baseline et transcript W → nouvelles confirmations V2 synthétiques → terminal positif **et négatif** W → miroir V, sans secret. Elle doit produire des observations SQL directes sous rôles réels, contrôles DER par connexion, concurrence/admin, crash/retry, expiryattendue et rollbackV ; aucun lot de DTO ou mock de commit ne suffit à son reçu. Les limites OS/mêmehôte, humanité indépendante des fixtures, garde KMS et restauration W restent des portes séparées.
 

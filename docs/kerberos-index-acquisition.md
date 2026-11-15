@@ -45,8 +45,22 @@ acquisition/inventaire/SBOM/recipe/contexte totalisent 82 réussites, sans skip.
 La contre-revue indépendante confirme le delta, les tests et l'ajout du module à
 la suite CI ; les commandes de construction/exclusion restent intactes.
 
-Ces essais ne réalisent pas de vérification gpgv, acquisition, compilation ou
-test d'image réels. La CI du prochain commit doit encore recevoir ces portes.
-Le recipe, contexte Git et digest d'image seront calculés depuis les vrais octets
-du nouveau build. Les 35 groupes High et la provenance de build incomplète restent
-ouverts ; aucune exception, fusion main ou publication d'image n'en découle.
+Ces essais purs ne réalisent pas de vérification gpgv, acquisition, compilation
+ou test d'image réels. À leur issue, la nouvelle CI restait à recevoir ; elle
+calcule recipe, contexte Git et digest d'image depuis les vrais octets du build.
+
+## Réceptions push et PR exactes `acd8bc3`
+
+Le [run push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43759420683)
+et le [run PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43759468105)
+du commit `acd8bc38ffc92f257f2f4bb6e1a495cbf01ee2f5` ont passé construction et
+exclusion des fichiers privés. PostgreSQL 17.12, régressions, transports natifs,
+restauration et Compose sont corroborés par les artefacts et journaux reçus
+indépendamment. Les 303 tests du job sécurité passent ; le rapport général compte
+1 479 tests avec 40 exclusions de méthodes et deux de classes, conservées comme
+exclusions. Ces réceptions ne démontrent pas la cause du refus historique `27cf3b4`.
+
+Le seul échec de chacun des runs est le scan final : 35 groupes High non triés
+et zéro finding ignoré. La provenance de build reste incomplète. Les deux
+réceptions vérifient séparément leurs ZIP, journaux et checkout exacts ; aucun
+succès n'est transféré. Aucune exception, fusion main ou publication d'image n'en découle.

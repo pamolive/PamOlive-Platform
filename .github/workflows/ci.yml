@@ -41,7 +41,7 @@ jobs:
         run: python -m pip_audit --strict --no-deps --disable-pip -r requirements.lock -f cyclonedx-json -o "$RUNNER_TEMP/pamolive-sbom.cdx.json"
       - name: Reject medium and high severity application findings
         if: always()
-        run: python -m bandit -r config platform_core platform_modules components/vault/src components/vault/runtime/pamolive_vault_runtime components/vault-registry/src components/pam-trust-verifier/src -ll -f json -o "$RUNNER_TEMP/pamolive-bandit-application.json"
+        run: python -m bandit -r config platform_core platform_modules components/vault/src components/vault/runtime/pamolive_vault_runtime components/vault-registry/src components/pam-trust-verifier/src components/usage-anchor/pamolive_usage_anchor -ll -f json -o "$RUNNER_TEMP/pamolive-bandit-application.json"
       - name: Retain all deployment findings for review
         if: always()
         run: python -m bandit -r deploy --exit-zero -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-all.json"
@@ -178,6 +178,8 @@ jobs:
         run: python -I -B qualification/vault_reservation/run_pure.py
       - name: Reject altered or overbroad Vault reservation wheel payloads as data
         run: python -I -B qualification/vault_reservation/test_wheel.py
+      - name: Verify the 62 source-only usage-anchor tests without network or SQL
+        run: timeout --signal=TERM --kill-after=2s 60s python -I -B components/usage-anchor/tests/run_pure.py
       - run: ruff check .
       - run: python manage.py check
       - run: python manage.py makemigrations --check --dry-run
