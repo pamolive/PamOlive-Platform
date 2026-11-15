@@ -3,9 +3,10 @@
 Le runtime de réservation reste limité à `pending_proofs`, sans remise. La
 nouvelle [campagne CI](../.github/workflows/vault-runtime-installed.yml) et son
 [runner](../qualification/vault_runtime_installed_ci/README.md) sont implémentés
-localement. La campagne Linux du `1e81df6` a réellement construit et installé les
-trois wheels, mais son enfant a rendu une erreur sur 52 tests. Elle reste en
-échec. Les 30 tests du vérificateur public installé ne la remplacent pas.
+localement. La campagne Linux du `27cf3b4` reçoit les trois wheels construites et
+installées et les **52 tests installés sans failure, error ou skip**. Le reçu est
+vérifié indépendamment, avec nettoyage confirmé. Les essais refusés précédents
+restent historiques ; les 30 tests du vérificateur public ne les remplacent pas.
 
 Le packaging des contrats ajoute `license-files=["LICENSE"]` et la notice de
 658 octets identique à celle du dépôt. Retirer cette seule ligne restitue
@@ -67,7 +68,35 @@ Aucun driver n'est installé ou simulé pour les tests installés.
 L'enfant `/3` exporte au plus huit couples identifiant de test original/type
 d'exception fermé, sans message, chemin ni traceback. Le consommateur refuse
 l'ancien enfant `/2` ; les erreurs empêchent toujours la qualification. La
-nouvelle exécution Linux reste à recevoir avant de solder ce défaut.
+nouvelle exécution Linux est reçue ci-dessous pour ce sujet précis.
+
+## Réception exacte du correctif `27cf3b4`
+
+La [CI installée](https://github.com/pamolive/PamOlive-Platform/actions/runs/43753095373)
+du commit `27cf3b45f25435a53b4e8ffe37e962c78f6bffd3` termine au vert. Root et
+NSS téléchargent chacun réellement le ZIP, vérifient son digest API et les quatre
+JSON exacts. Root puis AppSec reçoivent les observations contre les attentes R3
+indépendantes de source, input, SQL, distributions et capture :
+
+- 36 entrées capturées depuis les composants réels et 16 matériaux publics liés
+  au manifeste attendu ; aucune autorité créée par ces données.
+- 16 processus terminés à zéro, récoltés et drainés, sans incertitude de cleanup ;
+  trois builds et installations hors réseau, trois gates de RECORD et deux
+  contrôles pip réussis.
+- Enfant `/3` : 52 tests, zéro failure/error/skip, `test_errors` vide, origines des
+  trois paquets dans le venv, 18 fichiers et SQL attendus, zéro PTH/tentative du
+  garde ; les six probes adverses sont refusées comme prévu.
+- Conteneur exit0, OOMfalse et ressources libérées ; le second reçu de cleanup
+  confirme séparément la libération. Ce fait n'est pas déduit du seul succès des
+  tests. La contre-revue indépendante n'exécute ni serveur, SQL ni Docker.
+
+La [PR8](https://github.com/pamolive/PamOlive-Platform/pull/8) reste en brouillon.
+Les sources de build et les 52 méthodes n'ont pas changé pour contourner les
+garde-fous. Les deux échecs historiques et le HOLD CI R2 restent conservés. Ce
+reçu qualifie le périmètre des tests installés ; il ne reçoit ni démarrage SQL/mTLS
+du service installé, ni image minimale, restauration, attestation de build,
+KMS, remise de secret ou indépendance sur deux hôtes. Aucun résultat n'est
+transféré automatiquement à un autre commit.
 
 La campagne utilise un runner GitHub Linux éphémère, son daemon exclusif,
 16 wheels publiques verrouillées et un seul conteneur network-none/user1000,

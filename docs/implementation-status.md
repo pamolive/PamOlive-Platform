@@ -6,17 +6,45 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 
 La [roadmap réconciliée](implementation-roadmap.md) distingue désormais les lots P1-F/G, P2 et P3 du premier ordre historique. Référence publiée : main `dcaa116be6f026f67ad3825feb38d90ac632ce80`, PR1 fusionnée, [CI complète réussie](https://github.com/pamolive/PamOlive-Platform/actions/runs/43074618211) et [image GHCR publiée/attestée](https://github.com/pamolive/PamOlive-Platform/actions/runs/43078536377). Les résultats détaillés P0/P1 demeurent dans leurs rapports ; leur portée historique est conservée.
 
-### État courant du 15 novembre : qualification installée en correction
+### État courant du 15 novembre : tests installés reçus, témoin W en préparation
+
+Le correctif `27cf3b4` de la [PR8](https://github.com/pamolive/PamOlive-Platform/pull/8)
+reçoit sa [CI installée exacte](https://github.com/pamolive/PamOlive-Platform/actions/runs/43753095373) :
+**52 tests, zéro failure/error/skip**, 16 phases, trois wheels/RECORD et deux
+contrôles pip réussis. Root et NSS vérifient chacun le ZIP réellement téléchargé ;
+la réception sémantique Root puis la contre-revue AppSec confirment les quatre
+JSON, leurs bindings et le nettoyage distinct. Les imports du helper sont
+paresseux, son banc passe sans site-packages et les 52 méthodes sont conservées.
+Voir [le reçu et sa portée](p2-vault-runtime-installed-qualification.md).
+Le lot suivant prépare le vrai laboratoire PostgreSQL/mTLS W sur CI Linux isolée ;
+aucune réception W réelle ni remise de secret n'en découle.
+Main reste `dcaa116`, sans nouvelle image ou mise à niveau NAS. Les 35 groupes
+High et la provenance de build incomplète bloquent toujours la promotion.
+
+La [CI générale PR du même sujet](https://github.com/pamolive/PamOlive-Platform/actions/runs/43753095371)
+est refusée pendant la reconstruction Kerberos de l'étape construction/exclusion :
+le contrôle composé « entrée SHA256 unique et hash de Sources.xz conforme au
+Release signé » échoue. L'unicité et le hash ne sont pas distinguables dans ce
+rapport historique. Les signatures et gardes précédentes ont passé ; la sonde
+d'exclusion des fichiers privés et les scans finaux ne sont pas atteints.
+L'hypothèse d'une rotation de miroir n'est pas démontrée sans les bytes du
+builder. Une correction ciblée de l'acquisition et des diagnostics est
+implémentée localement sous revue : [index par hash](kerberos-index-acquisition.md),
+22 régressions durables et 82 tests ciblés réussis sans skip. La nouvelle CI reste
+à recevoir ; aucune garde n'est supprimée. Ce refus reste distinct
+du reçu des 52 tests installés.
+
+### Historique du défaut de fixture : candidat `1e81df6`
 
 Le [candidat PR8](https://github.com/pamolive/PamOlive-Platform/pull/8),
 `1e81df6`, construit et installe réellement les trois composants Vault hors
 réseau dans sa [CI dédiée](https://github.com/pamolive/PamOlive-Platform/actions/runs/43747230903).
 Les wheels et leurs RECORD passent, ainsi que les deux contrôles pip ; les
-52 tests installés rendent zéro failure, **une error**, zéro skip. Les 16
+52 tests installés rendaient zéro failure, **une error**, zéro skip. Les 16
 processus et le nettoyage sont reçus ; aucun succès installé52 n'est déclaré.
 La correction locale ajoute la fixture publique manquante, garde les 52 méthodes
 intactes et apporte des diagnostics fermés enfant `/3`. La contre-revue et la
-nouvelle CI doivent être reçues avant validation. Voir
+nouvelle CI sont maintenant reçues sur `27cf3b4`, comme indiqué ci-dessus. Voir
 [la réception détaillée](p2-vault-runtime-installed-qualification.md).
 Main reste `dcaa116` ; aucune nouvelle image ni mise à niveau NAS.
 

@@ -76,17 +76,40 @@ réussie. La qualification navigateur/JavaScript reste distincte et non exécut�
 
 ### État courant du 15 novembre
 
+Le correctif `27cf3b4` reçoit maintenant les **52 tests installés sans erreur,
+failure ou skip** dans sa
+[CI exacte](https://github.com/pamolive/PamOlive-Platform/actions/runs/43753095373).
+Les 16 phases, trois wheels et RECORD, pip, origines/bindings/garde et nettoyage
+sont corroborés par les téléchargements Root/NSS et une réception AppSec
+indépendante. Le défaut de fixture est fermé pour ce sujet. Voir
+[la réception détaillée](p2-vault-runtime-installed-qualification.md).
+Prochaine porte : laboratoire W sur PostgreSQL/mTLS réel, clusters W/V neufs,
+source et rôles isolés, sans remise. Les tests installés ne le remplacent pas.
+Les 35 groupes High et la provenance de build restent bloquants ; aucune
+promotion de main/image/NAS.
+
+Autre porte actuelle : la CI générale PR `27cf3b4` s'arrête à l'acquisition de
+l'index source Kerberos, avant la sonde d'exclusion des fichiers privés et les
+scans finaux. Garder le refus composé unicité/SHA, produire des diagnostics
+fermés et tester une acquisition de l'index liée au Release vérifié. Ne pas
+attribuer ce run aux 35 groupes High historiques ni présumer une cause miroir.
+Le [correctif ciblé](kerberos-index-acquisition.md) est maintenant implémenté
+localement : 22 régressions durables et 82 tests ciblés passent, contre-revue
+indépendante favorable. La nouvelle acquisition/build réels restent à recevoir.
+
+#### Historique du candidat installé `1e81df6`
+
 Le [lot de qualification installée PR8](https://github.com/pamolive/PamOlive-Platform/pull/8)
 reçoit sur `1e81df6` trois builds/installations hors réseau, leurs gates
 wheel/RECORD et pip. Les 52 tests installés ont zéro failure, **une error**,
 zéro skip ; la campagne reste refusée malgré le nettoyage confirmé. La
 correction locale complète explicitement le stage avec le helper public requis,
 conserve les 52 méthodes et borne les diagnostics de l'enfant `/3`.
-Prochaine porte : contre-revue, puis nouvelle CI installée exacte. Voir
+Cette porte est désormais reçue sur `27cf3b4`, comme indiqué ci-dessus. Voir
 [les résultats et la limite de diagnostic historique](p2-vault-runtime-installed-qualification.md).
 Aucune promotion de main/image/NAS n'en découle.
 
-Le candidat suivant `edec99a`, [PR7](https://github.com/pamolive/PamOlive-Platform/pull/7),
+Le candidat précédent `edec99a`, [PR7](https://github.com/pamolive/PamOlive-Platform/pull/7),
 reçoit les régressions sur PostgreSQL17.12 réellement observé par SHOW170012
 dans ses [CI PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43736103902)
 et [push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43736048530).
@@ -94,7 +117,8 @@ Les portes fonctionnelles et de restauration passent ; les deux scans refusent
 toujours les 35 groupes High et la provenance de build reste incomplète.
 Le détail exact des exclusions et de la revue est dans
 [la réception](postgresql-17-12-qualification.md), sans transfert de succès anciens.
-Le runtime Vault installé reste à qualifier. [ADR-026](adr-026-independent-usage-anchor.md)
+À ce head, le runtime Vault installé restait à qualifier ; le reçu `27cf3b4`
+ci-dessus ferme seulement ses tests installés. [ADR-026](adr-026-independent-usage-anchor.md)
 accepte ensuite la tranche du témoin d'usage indépendant ; code en développement
 local, hors publication de ce lot,
 aucune réception W/mTLS/SQL ni remise de secret. Les P0 et anciens chemins restent
@@ -116,14 +140,15 @@ Aucun merge main ni image nouvelle.
 
 Le packaging sous [ADR-025](adr-025-vault-runtime-installation.md) est intégré,
 sans changement des huit modules ni du schéma SQL. La wheel locale et ses
-quatorze fichiers sont reçus comme données ; le runtime installé sous Linux
-reste à qualifier. Réception CI exacte du head :
+quatorze fichiers étaient reçus comme données sur ce head ; les tests installés
+sous Linux sont ensuite reçus séparément sur `27cf3b4`. Réception CI du head historique :
 `cdabdd693f66ae2a0125dccc84d908f61ca1943b80f9642f1eaa91eef044c54a`.
 Les résultats précédents `67ee7c9` et `80ccdb1` sont historiques, conservés.
 
-Prochain sujet de maintenance : [PostgreSQL 17.12 en CI](postgresql-17-12-qualification.md),
-image immuable et version serveur exigée avant tests. Les métadonnées officielles
-sont reçues ; son démarrage et les nouvelles régressions restent en attente.
+La maintenance [PostgreSQL 17.12 en CI](postgresql-17-12-qualification.md) a reçu
+ses régressions au head `edec99a`, avec image immuable et version serveur exigée
+avant tests. La qualification de l'image auxiliaire locale et sa restauration
+restent distinctes et en attente.
 Les bases/volumes locaux existants, le NAS et les garanties P0 restent inchangés.
 
 Le vérificateur public V1 du head `bd8d228` a reçu ses 30 tests installés sans
@@ -140,10 +165,11 @@ Le bind N0 est ensuite limité aux deux adresses exactes, avec un cas pur ajout�
 du service avec PG conservé et writer client jetable sorti par `os._exit(73)`
 après commit, puis retry mTLS avec même ligne/dates/nonce privé/audit. Le bind
 privé exact est corroboré par code épinglé et TLS. Les dix anciens cas wildcard
-restent historiques, sans rejeu ; aucune CI Vault réelle encore.
+restent historiques, sans rejeu ; aucune CI SQL/mTLS du service Vault encore.
 Slot administré hors Web, DER par connexion, runtime SQL non-owner et retry
 durable aboutissent seulement à `pending_proofs`, sans secret ni autorité d'action.
-Pas de migration Django, service de production, Vault installé ou image minimale.
+Pas de migration Django, service de production ou image minimale. Les tests
+installés reçus ensuite sur `27cf3b4` ne qualifient pas ce parcours SQL/mTLS.
 
 La réception des deux cas confirme les faits H1, 190 clients CLI récoltés/drainés,
 six stdin complets et nettoyage 4/3/1, lease libre et PG inchangé. Les 18 retours

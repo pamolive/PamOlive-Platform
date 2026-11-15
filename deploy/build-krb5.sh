@@ -34,7 +34,6 @@ if test "$phase" = fetch; then
   # APT may use sqv. This is an additional REAL gpgv operation, not invented status.
   gpgv --keyring "$proof/debian-archive-keyring.gpg" --status-fd 3 \
     --output "$proof/Release" "$proof/InRelease" 3> "$proof/gpgv.status"
-  fetch https://security.debian.org/debian-security/dists/trixie-security/main/source/Sources.xz "$proof/Sources.xz"
   python - <<'PYCHECK'
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -42,6 +41,7 @@ import hashlib
 import lzma
 from pathlib import Path
 import re
+import subprocess
 p = Path('/usr/share/pamolive/krb5-backport')
 release = (p/'Release').read_text()
 def fields(text):
@@ -66,11 +66,31 @@ assert parsedate_to_datetime(r['Date']) <= now < parsedate_to_datetime(r['Valid-
 status = (p/'gpgv.status').read_text()
 assert '[GNUPG:] VALIDSIG ' in status
 assert not re.search(r'\[GNUPG:\] (?:BADSIG|ERRSIG|EXPKEYSIG|EXPSIG|REVKEYSIG|NO_PUBKEY|FAILURE) ', status)
+# Select only the fixed SHA256 index from the already authenticated Release.
+assert r.get('Acquire-By-Hash') == 'yes', 'sources_index_by_hash'
+index_rows = [line.split() for line in r.get('SHA256', '').splitlines()
+              if line.split() and line.split()[-1] == 'main/source/Sources.xz']
+assert len(index_rows) == 1, 'sources_index_entry_count'
+assert len(index_rows[0]) == 3, 'sources_index_row'
+index_sha, index_size, index_path = index_rows[0]
+assert re.fullmatch(r'[0-9a-f]{64}', index_sha), 'sources_index_hash_format'
+assert re.fullmatch(r'[0-9]{1,8}', index_size), 'sources_index_size'
+assert 0 < int(index_size) <= 33554432, 'sources_index_size'
+subprocess.run([
+    'curl', '--proto', '=https', '--tlsv1.2', '--fail', '--silent', '--show-error',
+    '--max-time', '120', '--max-filesize', '33554432', '--output', str(p/'Sources.xz'),
+    'https://security.debian.org/debian-security/dists/trixie-security/main/source/by-hash/SHA256/' + index_sha,
+], check=True)
+# Freshness must still hold after acquisition, as in the original ordering.
+now = datetime.now(timezone.utc)
+assert parsedate_to_datetime(r['Date']) <= now < parsedate_to_datetime(r['Valid-Until'])
+assert 0 < (p/'Sources.xz').stat().st_size <= 33554432, 'sources_index_size'
 data = (p/'Sources.xz').read_bytes()
 matches = [line.split() for line in r['SHA256'].splitlines()
            if line.split() and line.split()[-1] == 'main/source/Sources.xz']
-assert len(matches) == 1 and matches[0][0] == hashlib.sha256(data).hexdigest()
-assert int(matches[0][1]) == len(data)
+assert len(matches) == 1, 'sources_index_entry_count'
+assert matches[0][0] == hashlib.sha256(data).hexdigest(), 'sources_index_hash'
+assert int(matches[0][1]) == len(data), 'sources_index_size'
 # Decompression is bounded even if a future signed repository grows unexpectedly.
 decoder = lzma.LZMADecompressor()
 raw = decoder.decompress(data, max_length=32*1024*1024+1)
