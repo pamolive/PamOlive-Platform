@@ -85,7 +85,7 @@ jobs:
     timeout-minutes: 90
     services:
       postgres:
-        image: postgres:17
+        image: docker.io/library/postgres@sha256:6f7593c161689b6b02c78668b314af7da8811b592c5519108c57a49d0b6ad788 # 17.12, linux/amd64
         env:
           POSTGRES_USER: pamolive
           POSTGRES_PASSWORD: ci-only-database-password
@@ -152,6 +152,28 @@ jobs:
           python -m pip wheel --no-build-isolation --no-deps --require-hashes --wheel-dir "$RUNNER_TEMP/pamolive-database-wheels" -r requirements-database-build.lock
           python -m pip install --find-links="$RUNNER_TEMP/pamolive-database-wheels" -r requirements-dev.lock -r requirements-security.lock
       - run: python -m pip check
+      - name: Require the pinned PostgreSQL 17.12 server before regressions
+        run: |
+          timeout --signal=TERM --kill-after=2s 15s python - <<'PY'
+          import json
+          import os
+          import psycopg
+
+          try:
+              with psycopg.connect(
+                  os.environ["DATABASE_URL"],
+                  connect_timeout=5,
+                  options="-c default_transaction_read_only=on -c statement_timeout=5000",
+              ) as connection:
+                  with connection.cursor() as cursor:
+                      cursor.execute("SHOW server_version_num")
+                      actual = cursor.fetchone()[0]
+          except psycopg.Error:
+              raise SystemExit("Pinned PostgreSQL read-only version probe failed") from None
+          if actual != "170012":
+              raise SystemExit("Pinned PostgreSQL server version mismatch")
+          print(json.dumps({"schema": "pamolive.ci-postgres-version/1", "server_version_num": 170012, "read_only_probe": True}))
+          PY
       - name: Verify the source-only Vault reservation boundaries without network or SQL
         run: python -I -B qualification/vault_reservation/run_pure.py
       - name: Reject altered or overbroad Vault reservation wheel payloads as data

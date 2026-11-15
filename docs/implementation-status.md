@@ -8,26 +8,42 @@ La [roadmap réconciliée](implementation-roadmap.md) distingue désormais les l
 
 ### État courant du 15 novembre : bibliothèque reçue, réservation Vault limitée
 
-Le candidat de développement courant est `67ee7c9`, parent `6c17536`, dans la
+Le dernier candidat reçu est `6cbb4d0`, parent `80ccdb1`, dans la
 [PR #6 en brouillon](https://github.com/pamolive/PamOlive-Platform/pull/6).
 Les deux CI Platform exactes —
-[PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43713258395) et
-[push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43713256970) —
+[PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43730559794) et
+[push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43730556377) —
 passent les portes exécutées de sécurité, acquisition/build, exclusion post-build
 des credentials, PostgreSQL, natives, SSH10/RDP9, HA/partition sur le même hôte,
 restauration restreinte (23 migrations/374 lignes) et démarrage Compose. Elles
 échouent uniquement au scan final : **35 groupes High non arbitrés**,
 102 correspondances High sur 349 OS, zéro Critical et aucun match ignoré.
-Les 52 purs Vault passent séparément dans chacun. La suite générale annonce
+Les 52 purs Vault et 17 tests adverses de validation de wheel comme données
+passent séparément dans chacun. La suite générale annonce
 **1 457 tests et 42 entrées Skip : 40 méthodes et deux exclusions setUpClass** ;
 deux autres suites de 20 ont chacune un skip. Les marqueurs 42 + 1 + 1 restent
 distincts ; aucune soustraction ne fournit ici un nombre de réussites.
-Le [vérificateur public installé](https://github.com/pamolive/PamOlive-Platform/actions/runs/43713258465)
+Le [vérificateur public installé](https://github.com/pamolive/PamOlive-Platform/actions/runs/43730559799)
 reçoit séparément 30 tests sans skip et 20 comparaisons de corpus. Neuf ZIP et
 les sources/pins sont liés au sujet exact dans la réception
-`1352eef85222a261faabc3300bd49aa6a3377be87a307f6e62b61663d9c616d6`.
+`cdabdd693f66ae2a0125dccc84d908f61ca1943b80f9642f1eaa91eef044c54a`.
+Root a collecté les neuf ZIP ; leur vérification indépendante conserve
+413 fichiers initiaux et distingue les sept checkouts des trois runs.
 La provenance de build demeure incomplète ; ni `main`, ni image, ni NAS ne sont
 mis à niveau. Ces CI ne qualifient pas le runtime Vault installé.
+
+Le packaging [ADR-025](adr-025-vault-runtime-installation.md) ajoute seulement
+les métadonnées du runtime, une notice et un contrôle borné des quatorze fichiers
+de sa wheel. Les huit modules et le SQL restent inchangés. Une construction
+locale et sa réception comme données ne sont pas une installation du service.
+L'installation Linux autonome, ses RECORD installés et son exécution restent
+à recevoir. Les reçus `67ee7c9` (`1352eef8…`) et `80ccdb1` (`7605f5fd…`)
+demeurent distincts ; aucun résultat de parent n'est transféré.
+
+La [maintenance PostgreSQL 17.12](postgresql-17-12-qualification.md) prépare
+maintenant un service CI épinglé par digest et une sonde de version en lecture
+seule avant les régressions. Sa CI reste à recevoir ; le PostgreSQL 17.11
+historique local et les installations existantes ne sont pas modifiés.
 
 Le parent `6c17536` conserve ses résultats distincts : PR fonctionnelle puis
 scan High en échec, push arrêté au timeout TLS d'acquisition avant assertion

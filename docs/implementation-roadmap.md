@@ -76,9 +76,10 @@ réussie. La qualification navigateur/JavaScript reste distincte et non exécut�
 
 ### État courant du 15 novembre
 
-La [PR #6](https://github.com/pamolive/PamOlive-Platform/pull/6), head `67ee7c9`,
+La [PR #6](https://github.com/pamolive/PamOlive-Platform/pull/6), dernier head reçu `6cbb4d0`,
 reste en brouillon. Les deux CI Platform exactes passent les portes exécutées,
 dont acquisition/build et exclusion post-build des credentials, 52 purs Vault,
+17 cas adverses du contrôle de wheel comme données,
 PostgreSQL, natives, SSH/RDP, HA même hôte, restauration et Compose. Elles refusent
 uniquement les 35 groupes High ; la provenance de build reste incomplète.
 La suite générale annonce 1 457 tests / 42 entrées Skip (40 méthodes et deux
@@ -88,6 +89,18 @@ n'est présenté comme réussite. Le vérificateur public installé reçoit sép
 historique distinct, sans transfert rétrospectif du succès courant. Résultats et
 corrigenda dans [l'état d'implémentation](implementation-status.md).
 Aucun merge main ni image nouvelle.
+
+Le packaging sous [ADR-025](adr-025-vault-runtime-installation.md) est intégré,
+sans changement des huit modules ni du schéma SQL. La wheel locale et ses
+quatorze fichiers sont reçus comme données ; le runtime installé sous Linux
+reste à qualifier. Réception CI exacte du head :
+`cdabdd693f66ae2a0125dccc84d908f61ca1943b80f9642f1eaa91eef044c54a`.
+Les résultats précédents `67ee7c9` et `80ccdb1` sont historiques, conservés.
+
+Prochain sujet de maintenance : [PostgreSQL 17.12 en CI](postgresql-17-12-qualification.md),
+image immuable et version serveur exigée avant tests. Les métadonnées officielles
+sont reçues ; son démarrage et les nouvelles régressions restent en attente.
+Les bases/volumes locaux existants, le NAS et les garanties P0 restent inchangés.
 
 Le vérificateur public V1 du head `bd8d228` a reçu ses 30 tests installés sans
 exclusion dans deux CI dédiées ; les contrôles P0 et leurs appelants demeurent
