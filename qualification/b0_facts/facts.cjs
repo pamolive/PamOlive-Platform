@@ -9,7 +9,7 @@ const KEYRING = '/usr/share/keyrings/ubuntu-archive-keyring.gpg';
 const OS_PATHS = ['/etc/os-release', '/usr/lib/os-release'];
 const SOURCE_DIR = '/etc/apt/sources.list.d';
 const TRUST_DIR = '/etc/apt/trusted.gpg.d';
-const TRUST_FILES = ['ubuntu-keyring-2012-archive.gpg', 'ubuntu-keyring-2018-archive.gpg'];
+const TRUST_FILES = ['ubuntu-keyring-2012-archive.gpg', 'ubuntu-keyring-2018-archive.gpg', 'ubuntu-keyring-2012-cdimage.gpg'];
 const TOOLS = ['/usr/bin/certutil', '/usr/bin/apt-get', '/usr/bin/apt-config',
   '/usr/bin/dpkg', '/usr/bin/dpkg-deb', '/usr/bin/gpgv', '/usr/bin/sqv'];
 const NSS = ['libnss3.so', 'libnssutil3.so', 'libsmime3.so', 'libssl3.so', 'libnspr4.so',
@@ -121,6 +121,8 @@ function reader(io = fs) {
   }
   function read(file, maximum, keep = true) {
     const result = resolve(file);
+    if (file === TRUST_DIR + '/ubuntu-keyring-2012-cdimage.gpg')
+      need(result.chain.length === 0 && result.resolved_path === file, 'B0_FACTS_CDIMAGE_ALIAS_REFUSED');
     if (!result.present) return {fact: result, data: null};
     const before = result.info;
     need(before.isFile() && before.nlink === 1n && before.size >= 0n && before.size <= BigInt(maximum), 'B0_FACTS_FILE_TYPE_OR_BUDGET');

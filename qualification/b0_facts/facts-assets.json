@@ -2,8 +2,8 @@
   "schema": "pamolive.b0-d0-assets/1",
   "assets": {
     "facts.cjs": {
-      "bytes": 25318,
-      "sha256": "f196c77a9c73a8d63bac1d838c5476bd442ee39c07436e4a9a2c87f0fdc93736"
+      "bytes": 25524,
+      "sha256": "7e543e3b65f62431683a955cf6f150fed554e28671002a8ec6e6ed19747b7f38"
     },
     "facts-pins.json": {
       "bytes": 362,

@@ -33,6 +33,29 @@ avec contre-revue indépendante des bornes, de la confidentialité, des 15
 empreintes de sources et des seuls changements de commandes CI. Aucun succès
 réel de cet inventaire corrigé n'est revendiqué avant sa propre mesure CI.
 
+La mesure suivante [3833ba3, run43678917448](https://github.com/pamolive/PamOlive-Platform/actions/runs/43678917448)
+conserve le refus mais exporte bien son diagnostic : `trusted_gpg_d`, basename
+31octets et empreinte correspondant exactement au nom public connu
+`ubuntu-keyring-2012-cdimage.gpg`. Cette comparaison de noms ne démontre ni
+contenu, certificat, fingerprint ou autorité de la clé. Exit42/OOMfalse et
+nettoyage confirmé ; le stage0 distinct refuse toujours `certutil` absent.
+
+Le nouvel incrément ajoute uniquement ce troisième basename à l'inventaire
+public fermé. Le fichier éventuel est soumis aux mêmes métadonnées root,
+limites64KiB, contrôles d'identité et hash sans rétention/export de son contenu.
+Pour ce seul nouveau chemin, une chaîne d'alias est refusée avant ouverture,
+même vers un autre fichier déjà permis. Les deux anciens noms et leurs règles
+restent identiques. Aucun GPG, parsing/import de clé, fingerprint certifié,
+`Signed-By` CDimage ou autorisation de dépôt n'est ajouté.
+
+Les 37 tests Node et 36 Python précédents restent inchangés ; neuf nouveaux
+FakeFS portent le total Node à46. Une revue AppSec distincte ajoute six
+contre-cas. La copie de livraison normalise en LF les deux seuls fichiers
+unsigned assets/workflow, avec JSON strictement égal ; le checksum déjà LF
+conserve ses octets hors le digest assets actualisé. Ses16entrées ferment les
+17payloads. Workflow : deux pins et troisième fichier de test, autres commandes
+et lifecycle inchangés. Cette nouvelle lecture CDimage reste à mesurer en CI.
+
 ## Contrat et réutilisation
 
 `qualification/b0_facts/adapter.py` réutilise une copie figée du lifecycle

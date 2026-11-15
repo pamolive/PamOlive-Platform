@@ -27,6 +27,15 @@ refuse toujours `certutil` absent, avec nettoyage confirmé. Le diagnostic D0
 de noms de répertoire reste une tranche séparée ; il ne fournit aucun succès
 NSS, navigateur, TLS ou CDP.
 
+Les deux CI Platform suivantes, `3833ba3`, sont également collectées :
+[push43678917489](https://github.com/pamolive/PamOlive-Platform/actions/runs/43678917489)
+et [PR43678920598](https://github.com/pamolive/PamOlive-Platform/actions/runs/43678920598).
+Sécurité, anciennes bibliothèques P2, 1 397 réussites/42 exclusions générales,
+portes natives, HA sur le même hôte et restauration/rollback passent. Le seul
+refus final conserve35groupes High, zéro Critical et aucune exemption. Ces
+mesures restent liées aux deux sujets exacts ; elles ne qualifient pas l'ajout
+CDimage suivant ni une autre image ou architecture.
+
 ## Entrées fermées et responsabilités
 
 `qualification/b0_pre` contient un contrôleur standard-library, deux assets

@@ -12,8 +12,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      B0_FACTS_SOURCES_SHA: 92493f63cc331d9f2a9214f3694d5f5c510d1269f929e2429984fb7211b1d592
-      B0_FACTS_MANIFEST_SHA: 82713c2b857fd145f7e34331d27ca6e54a2d51e3a60e85a6c903577a91e98976
+      B0_FACTS_SOURCES_SHA: c6fec3c2a7dfde395c0bc1ca73f1400d3091c4e6596c7f8f305a5eba48a0e2bf
+      B0_FACTS_MANIFEST_SHA: 2253243042643e471c6cfa8206d90d9f79c84e3627fc91de7be53968fe1f60e1
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -47,7 +47,7 @@ jobs:
           python -I -B qualification/b0_facts/run_pure.py
           node --version
           node --check qualification/b0_facts/facts.cjs
-          node --test qualification/b0_facts/test_facts.cjs qualification/b0_facts/test_directory_diagnostic.cjs
+          node --test qualification/b0_facts/test_facts.cjs qualification/b0_facts/test_directory_diagnostic.cjs qualification/b0_facts/test_cdimage_inventory.cjs
           python -m ruff check --no-cache qualification/b0_facts
           python -m ruff format --check --no-cache qualification/b0_facts
           python -m bandit -r qualification/b0_facts -lll
