@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-ADAPTER_HASH = "60b917df3c13db5cea7e69d95e1862293c9a451e15e43c774108de12acf1226e"
+ADAPTER_HASH = "649ac99037fc41fa24b80fe93bd6833dd968dbdbaf879f51127d25972b5f4878"
 GATE_HASH = "13bb617e396ed5eaf62eb163dc653764668563013f21a1cb4d1eff5de0bf1d12"
 MANIFEST_HASH = "c3c219a7233a8fe3ef93eea81363fe9d846cfde538bb9c1fe3af967bb8b02ed0"
 

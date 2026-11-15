@@ -28,6 +28,49 @@ class ForbiddenIO(RuntimeError):
     pass
 
 
+REQUIRE_FAILURE_CODES = frozenset(
+    {
+        "application_or_SDK_fallback",
+        "buildtools_in_verifier",
+        "case_comparison_count",
+        "distribution_origin",
+        "file_read",
+        "file_size",
+        "file_type",
+        "guard_probe_count",
+        "installed_distribution_root",
+        "installed_file_hash",
+        "installed_file_path",
+        "installed_file_proof_required",
+        "installed_package_origin",
+        "installed_six_modules_closed",
+        "installed_tests_failed",
+        "minimal_distributions",
+        "module_origin",
+        "opened_file",
+        "runtime_in_build",
+        "source_fallback_stage",
+        "system_site",
+        "tests_and_fixtures_siblings",
+        "venv_prefix",
+        "verifier_site_PTH",
+    }
+)
+
+
+def failure_code(error):
+    if type(error) is ForbiddenIO:
+        return "FORBIDDEN_IO"
+    if (
+        type(error) is ValueError
+        and len(error.args) == 1
+        and type(error.args[0]) is str
+        and error.args[0] in REQUIRE_FAILURE_CODES
+    ):
+        return error.args[0]
+    return "UNCLASSIFIED_FAILURE"
+
+
 FILESYSTEM_MUTATIONS = frozenset(
     {
         "os.remove",
@@ -407,7 +450,9 @@ def main():
             )
     except BaseException as caught:
         failure = caught
-        report.update(state="FAILED", exception_type=type(caught).__name__)
+        report.update(
+            state="FAILED", exception_type=type(caught).__name__, failure_code=failure_code(caught)
+        )
     finally:
         report.update(
             forbidden_attempts=dict(guard.attempts),

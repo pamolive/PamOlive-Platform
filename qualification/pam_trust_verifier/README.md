@@ -31,7 +31,7 @@ in both. Expected distribution totals are 4 build and 11 verifier.
 Tests and fixtures are staged as siblings with no src. The unchanged r2 child
 installs IO/import counters before package import, verifies installed origins
 and exact six source files, then requires 30 methods with zero skips/errors/
-failures and 20 current case matches. Its filesystem guard allows only the
+failures and 20 current case matches. Its filesystem guard remains unchanged and allows only the
 single exact exclusive report create in its final block. Swallowed forbidden
 IO still fails through counters. These Python hooks do not prove native/OS
 confinement. The old seven-wheel/two-package job is unchanged and supplies no
@@ -45,11 +45,13 @@ native wheels. This Python controller does not enforce that external profile.
 Its reviewed IO helper retains at most 1MiB stdout/256KiB stderr per owned
 child, with 120s after spawn and 900s total; failures and bounded prefixes remain.
 
-Thirty adapter pure tests have passed. They import no verifier/Django and run
+Thirty existing adapter tests and twelve child-diagnostic tests form the exact
+42-method pure gate, with zero skips and external attempts required. They
+import no verifier/Django and run
 no controller main, wheel backend, venv or pip. Popen/run/socket/DNS/HTTP are
-prohibited in that suite; acquisition is exercised only with mocks. Candidate
-integration, isolated installed qualification and CI remain unexecuted pending
-Root and independent review. Neither source nor installed results supply full
+prohibited in that suite; acquisition is exercised only with mocks. This new DAG requires Root and independent mapping review before integration
+or a future installed CI attempt. Prior failed CI runs stay failed; no
+installed success is transferred to this source mapping. Neither source nor installed results supply full
 P0 acceptance, human independence, MFA/possession, action permission, release,
 service or build-attestation authority. The selected CLI plans are
 `acquisition-plan.json` and `adapter-plan.json`, in this directory. The external
@@ -61,7 +63,7 @@ From the checkout root, the separate public acquisition phase is:
 
 ```sh
 python -I -B qualification/pam_trust_verifier/acquire_materials.py acquire \
-  --plan-sha256 f59ab7a8434cea6f66680afef3bbbd2200d7d57d4e872b6fd8e347630a77467f \
+  --plan-sha256 bc65c92ffc630e302515f7abc2dae60617231dfbb134fd6d58a39f26e781f36e \
   --repository "$PWD" --destination "$RUNNER_TEMP/public-verifier-thirteen-new"
 ```
 
@@ -70,10 +72,31 @@ inside that allocation is:
 
 ```sh
 /usr/local/bin/python3 -I -B /controller/qualify_installed.py run \
-  --plan-sha256 b613d548ee872642dcc2bfe2880dce462a10361d47904934302d8c0b442f517a \
+  --plan-sha256 46b9bc5562fc33a9c4081293ff5a6f002eca3714e0e209bbcd9b359e5832ccf1 \
   --source /source --materials /materials --work /work/public-verifier-selected-n0r1
 ```
 
 These commands do not themselves create the outer allocation or export its
 tmpfs evidence. Their presence is not a completed qualification or an execution
 authorization from a plan field. Preserve failed runs; never reuse the work leaf.
+
+## Bounded failed-child diagnostic r2
+
+A reaped and fully drained probe-build or probe-verifier exit1 can retain
+only a strict bounded typed child failure report at its fixed report path.
+The parent still raises the original owned_process_failed error. Huge integer
+elapsed_seconds values are range-checked before math.isfinite; diagnostics
+cannot replace the original failure with OverflowError. No raw exception
+message/log, unknown field or success-shaped failure is admitted. Existing
+success validators, file guards and external counters are unchanged.
+
+Run the pure gate from the checkout root, before acquisition:
+
+```sh
+python -I -B qualification/pam_trust_verifier/run_pure.py
+```
+
+This runs the 30 historical adapter methods plus 12 diagnostic methods,
+not the 30 installed public-verifier methods. The latter require the
+separate externally confined Linux execution; its cause of failure on
+the ef1285 CI subject remains unobserved at preparation time.

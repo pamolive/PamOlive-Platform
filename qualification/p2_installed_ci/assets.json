@@ -11,11 +11,11 @@
     },
     "controller.py": {
       "bytes": 38545,
-      "sha256": "db55e1ab31e0ef239d8dfa2e3cd8a95437536d172385563a52e569e7998b2040"
+      "sha256": "b3ef48c9dd6c88a5054e30ebc7f90d2f82a141924904609fb7a02f0fdbce2e2f"
     },
     "entrypoint.py": {
       "bytes": 13129,
-      "sha256": "5ad35ab0852019eed7fad908cd52363d146feb6594cc3fd313a1eed0d38e4efc"
+      "sha256": "91854349e21a67c844a4ddcb63e1fc34c3133ebe759cdda556da4b02f2dbcff9"
     },
     "legacy_controller.py": {
       "bytes": 29843,
@@ -27,11 +27,11 @@
     },
     "pins.json": {
       "bytes": 1631,
-      "sha256": "68c443caba38b6991782bd8d8cae594b7f1e71faae74e8b3c23528cd95a6bf76"
+      "sha256": "a26872f5437f90c91492873223396098e946a1925ebd065a3c4042173974c4d6"
     },
     "selected-inputs.json": {
-      "bytes": 86105,
-      "sha256": "86f19dfbfd96dfea841e4a53d2fb130d15cda3d4ffcf35c57fedb3f6877923fc"
+      "bytes": 86460,
+      "sha256": "e0508041b704e1ac225402f8a3539c5cb6db06e985273a9d9c48523e768bf056"
     }
   },
   "schema": "pamolive.p2-installed-ci-assets/1"

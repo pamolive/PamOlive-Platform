@@ -7,6 +7,7 @@ import hashlib
 import importlib.machinery
 import importlib.util
 import json
+import math
 import os
 import platform
 import re
@@ -39,6 +40,102 @@ RUNTIME_NAMES = {
     "webauthn",
 }
 IO = None
+PROBE_REQUIRE_CODES = frozenset(
+    {
+        "application_or_SDK_fallback",
+        "buildtools_in_verifier",
+        "case_comparison_count",
+        "distribution_origin",
+        "file_read",
+        "file_size",
+        "file_type",
+        "guard_probe_count",
+        "installed_distribution_root",
+        "installed_file_hash",
+        "installed_file_path",
+        "installed_file_proof_required",
+        "installed_package_origin",
+        "installed_six_modules_closed",
+        "installed_tests_failed",
+        "minimal_distributions",
+        "module_origin",
+        "opened_file",
+        "runtime_in_build",
+        "source_fallback_stage",
+        "system_site",
+        "tests_and_fixtures_siblings",
+        "venv_prefix",
+        "verifier_site_PTH",
+    }
+)
+PROBE_COUNTER_NAMES = frozenset(
+    {
+        "socket.constructor",
+        "socket.__new__",
+        "socket.bind",
+        "socket.connect",
+        "socket.sendto",
+        "socket.sendmsg",
+        "socket.getaddrinfo",
+        "socket.gethostbyaddr",
+        "socket.gethostbyname",
+        "socket.gethostname",
+        "socket.getnameinfo",
+        "socket.getservbyname",
+        "socket.getservbyport",
+        "socket.sethostname",
+        "DNS",
+        "sqlite3.connect",
+        "sqlite3.connect/handle",
+        "subprocess.Popen",
+        "os.system",
+        "os.posix_spawn",
+        "os.exec",
+        "os.spawn",
+        "file.descriptor_open",
+        "file.unresolved_path",
+        "file.open_arguments",
+        "file.write",
+        "file.global_site",
+        "file.read_outside_roots",
+    }
+    | {
+        "import." + name
+        for name in (
+            "django",
+            "platform_core",
+            "platform_modules",
+            "config",
+            "boto3",
+            "botocore",
+            "requests",
+            "psycopg",
+            "ldap",
+            "sqlalchemy",
+            "pamolive_vault_contracts",
+            "pamolive_vault_envelope",
+        )
+    }
+    | {
+        "file.mutation.os." + name
+        for name in (
+            "remove",
+            "rmdir",
+            "rename",
+            "mkdir",
+            "link",
+            "symlink",
+            "chmod",
+            "chown",
+            "utime",
+            "truncate",
+            "chdir",
+            "chflags",
+            "setxattr",
+            "removexattr",
+        )
+    }
+)
 
 
 def require(value, code):
@@ -101,6 +198,210 @@ def document(path, expected=None, maximum=256 * 1024):
     raw = bootstrap_read(path, maximum)
     require(expected is None or sha(raw) == expected, "document_hash")
     return json.loads(raw, object_pairs_hook=unique), raw
+
+
+def failed_probe_report(work, phase, name, process, expected):
+    """Failure metadata only, after confirmed silent exit1, from one fixed report."""
+    require(name in ("build", "verifier") and phase == "probe-" + name, "probe_phase")
+    require(
+        process.spawn_attempted is True
+        and type(process.pid) is int
+        and process.pid > 0
+        and type(process.returncode) is int
+        and process.returncode == 1
+        and process.reason == "nonzero_exit"
+        and process.owned_child_reaped is True
+        and process.drains_complete is True
+        and process.killed_owned_child is False
+        and process.exception_type is None
+        and process.cleanup_exception_type is None
+        and type(process.stdout_bytes) is int
+        and process.stdout_bytes == 0
+        and type(process.stderr_bytes) is int
+        and process.stderr_bytes == 0,
+        "probe_process_unconfirmed",
+    )
+    path = work / "reports" / ("probe-" + name + ".json")
+    for parent in path.parents:
+        info = parent.lstat()
+        require(
+            stat.S_ISDIR(info.st_mode)
+            and not parent.is_symlink()
+            and not getattr(info, "st_file_attributes", 0) & 1024,
+            "probe_parent_alias",
+        )
+
+    def identity(info):
+        return tuple(
+            getattr(info, field)
+            for field in (
+                "st_dev",
+                "st_ino",
+                "st_mode",
+                "st_nlink",
+                "st_size",
+                "st_mtime_ns",
+                "st_ctime_ns",
+            )
+        )
+
+    before = path.lstat()
+    require(
+        stat.S_ISREG(before.st_mode)
+        and before.st_nlink == 1
+        and not path.is_symlink()
+        and not getattr(before, "st_file_attributes", 0) & 1024
+        and 0 < before.st_size <= 32768,
+        "probe_file_type_size",
+    )
+    with path.open("rb") as stream:
+        require(identity(os.fstat(stream.fileno())) == identity(before), "probe_open_identity")
+        raw = stream.read(32769)
+        require(identity(os.fstat(stream.fileno())) == identity(before), "probe_post_identity")
+    require(
+        identity(path.lstat()) == identity(before)
+        and len(raw) == before.st_size
+        and len(raw) <= 32768,
+        "probe_read_identity",
+    )
+    depth, quoted, escaped = 0, False, False
+    for byte in raw:
+        if quoted:
+            if escaped:
+                escaped = False
+            elif byte == 92:
+                escaped = True
+            elif byte == 34:
+                quoted = False
+        elif byte == 34:
+            quoted = True
+        elif byte in (91, 123):
+            depth += 1
+            require(depth <= 8, "probe_JSON_depth")
+        elif byte in (93, 125):
+            depth -= 1
+    value = json.loads(
+        raw,
+        object_pairs_hook=unique,
+        parse_constant=lambda _constant: require(False, "probe_JSON_nonfinite"),
+    )
+    required = {
+        "schema",
+        "operation",
+        "state",
+        "authority",
+        "exception_type",
+        "failure_code",
+        "forbidden_attempts",
+        "intentional_guard_probes",
+        "elapsed_seconds",
+        "installed_wheel_only",
+        "OS_network_sandbox_claimed",
+        "full_P0_acceptance",
+        "build_attestation",
+    }
+    require(
+        type(value) is dict
+        and required <= set(value) <= required | {"venv", "installed_files"}
+        and value["schema"] == "pamolive.public-pam-verifier-installed-child/1"
+        and value["operation"] == "probe"
+        and value["state"] == "FAILED"
+        and value["authority"] is False
+        and value["installed_wheel_only"] is True
+        and value["OS_network_sandbox_claimed"] is False
+        and value["full_P0_acceptance"] is False
+        and value["build_attestation"] is False,
+        "probe_failure_schema",
+    )
+    require(
+        type(value["elapsed_seconds"]) in (int, float)
+        and 0 <= value["elapsed_seconds"] <= 900
+        and math.isfinite(value["elapsed_seconds"]),
+        "probe_failure_time",
+    )
+    code, exception = value["failure_code"], value["exception_type"]
+    require(
+        type(code) is str
+        and type(exception) is str
+        and exception
+        in {
+            "ValueError",
+            "ForbiddenIO",
+            "AssertionError",
+            "OSError",
+            "TypeError",
+            "RuntimeError",
+            "ImportError",
+            "ModuleNotFoundError",
+            "MemoryError",
+            "SystemExit",
+            "FileNotFoundError",
+            "PermissionError",
+        }
+        and (
+            (exception == "ForbiddenIO" and code == "FORBIDDEN_IO")
+            or (
+                exception == "ValueError" and code in PROBE_REQUIRE_CODES | {"UNCLASSIFIED_FAILURE"}
+            )
+            or (exception not in {"ValueError", "ForbiddenIO"} and code == "UNCLASSIFIED_FAILURE")
+        ),
+        "probe_failure_code",
+    )
+    for field in ("forbidden_attempts", "intentional_guard_probes"):
+        counters = value[field]
+        require(
+            type(counters) is dict
+            and set(counters) <= PROBE_COUNTER_NAMES
+            and all(type(count) is int and 1 <= count <= 1024 for count in counters.values()),
+            "probe_failure_counters",
+        )
+    if "venv" in value:
+        venv = value["venv"]
+        require(
+            type(venv) is dict
+            and set(venv)
+            == {
+                "distributions",
+                "origins_within_venv",
+                "global_site_fallback",
+                "application_or_SDK_importable",
+            }
+            and venv["distributions"] == expected
+            and venv["global_site_fallback"] is False
+            and venv["application_or_SDK_importable"] is False,
+            "probe_failure_venv",
+        )
+        origins = venv["origins_within_venv"]
+        require(
+            type(origins) is dict
+            and set(origins) == ({"pip"} if name == "build" else {"pip", PACKAGE}),
+            "probe_failure_origins",
+        )
+        for module, origin in origins.items():
+            require(type(origin) is str and 0 < len(origin) <= 512, "probe_failure_origin_size")
+            safe_path(origin)
+            require(
+                re.fullmatch(
+                    r"lib(?:64)?/python3\.12/site-packages/" + re.escape(module) + r"/__init__\.py",
+                    origin,
+                ),
+                "probe_failure_origin_profile",
+            )
+    if "installed_files" in value:
+        files = value["installed_files"]
+        require(
+            name == "verifier"
+            and type(files) is dict
+            and set(files) == {"wheel_files_sha256_matched", "package_files_closed", "site_PTH"}
+            and type(files["wheel_files_sha256_matched"]) is int
+            and 1 <= files["wheel_files_sha256_matched"] <= 64
+            and type(files["package_files_closed"]) is int
+            and files["package_files_closed"] == 6
+            and type(files["site_PTH"]) is int
+            and files["site_PTH"] == 0,
+            "probe_failure_installed_files",
+        )
+    return value
 
 
 def load_io():
@@ -446,7 +747,7 @@ def run(plan, source, materials_directory, work):
             "PYTHONDONTWRITEBYTECODE": "1",
         }
 
-        def call(phase, command, cwd=work):
+        def call(phase, command, cwd=work, *, probe_name=None):
             remaining = 900 - (time.monotonic() - started)
             require(remaining > 0, "total_time_budget")
             with (
@@ -467,6 +768,13 @@ def run(plan, source, materials_directory, work):
                     stderr_sink=err,
                 )
             report["processes"].append({"phase": phase, **result.facts()})
+            if not result.ok and probe_name is not None:
+                try:
+                    report["venvs"][probe_name] = failed_probe_report(
+                        work, phase, probe_name, result, expected[probe_name]
+                    )
+                except (OSError, ValueError, TypeError, KeyError, RecursionError):
+                    pass  # Invalid diagnostics never replace the original process failure.
             require(result.ok, "owned_process_failed")
 
         def pip(phase, python, *arguments):
@@ -636,6 +944,7 @@ def run(plan, source, materials_directory, work):
                     str(probe_report),
                     *(["--installed-files", str(installed_files)] if name == "verifier" else []),
                 ],
+                probe_name=name,
             )
             result, _ = document(probe_report)
             require(

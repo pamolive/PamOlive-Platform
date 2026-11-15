@@ -16,7 +16,7 @@
   },
   "P0_Vault_authority": false,
   "Root_style_map_metadata_r2_sha256": "b09218725717cab781b9c49f7e079e63f4ee5f97490311f0342540b25813a98a",
-  "assets_sha256": "c2ac1e2e97e5f29b8f234daed6154de4e144af7c8259ae930dcf9da25585995a",
+  "assets_sha256": "c9685c1c927796bd117b3cffe424338b48aef02bb10a23642f59b64f5e50a611",
   "attestation_verified": false,
   "authority": false,
   "build_verified": false,
@@ -70,8 +70,9 @@
   "execution_GO": false,
   "future_sequence_not_executed": [
     "checksum before Python/network",
-    "pure tests with external mocks",
-    "verify366 plus maintained acquisition gate bytes",
+    "57 pure outer runner tests with external mocks",
+    "verify368 plus maintained acquisition gate bytes",
+    "42 pure adapter/child diagnostic tests",
     "host acquire13 public wheels",
     "prepare3closedROdirectories",
     "pull exact Source05a on host",
@@ -80,7 +81,7 @@
     "reconcile own objects even on failure",
     "upload bounded public-report only"
   ],
-  "independent_mapping_review_pending": false,
+  "independent_mapping_review_pending": true,
   "installed_qualification_observed": false,
   "lifecycle": {
     "CLI_observed_hash_is_not_authentication": true,
@@ -104,10 +105,10 @@
   },
   "no_source_package_Django_P0_SQL_network_Docker_real_process_execution": true,
   "pins": {
-    "adapter_plan_sha256": "b613d548ee872642dcc2bfe2880dce462a10361d47904934302d8c0b442f517a",
+    "adapter_plan_sha256": "46b9bc5562fc33a9c4081293ff5a6f002eca3714e0e209bbcd9b359e5832ccf1",
     "authority": false,
     "cleanup_seconds": 60,
-    "controller_files": 12,
+    "controller_files": 14,
     "diff_ids": [
       "sha256:dd57f90311a2567b55ff22eeacff1602fd04ad7566e315957731359eab173b90",
       "sha256:3dc3efdf011007403514ffd3b699da9deef847535ae30a3639ef3fee93c1375e",
@@ -126,9 +127,9 @@
     "payload_manifest_sha256": "3628a50534a0bb37c142ffcee201ca3aaa232d926d13db65b552033627d1c340",
     "public_report_bytes": 524288,
     "pull_seconds": 300,
-    "qualifier_sha256": "60b917df3c13db5cea7e69d95e1862293c9a451e15e43c774108de12acf1226e",
+    "qualifier_sha256": "649ac99037fc41fa24b80fe93bd6833dd968dbdbaf879f51127d25972b5f4878",
     "schema": "pamolive.p2-installed-ci-pins/1",
-    "selected_inputs_sha256": "86f19dfbfd96dfea841e4a53d2fb130d15cda3d4ffcf35c57fedb3f6877923fc",
+    "selected_inputs_sha256": "e0508041b704e1ac225402f8a3539c5cb6db06e985273a9d9c48523e768bf056",
     "source_files": 354,
     "source_index": "sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b",
     "source_review_freeze": "a23412c48cc2e3c4d6f71c2aea143fa74e88f34c355e0736ac9e2374a324d919",
@@ -149,10 +150,10 @@
     "upload_only": "public-report.json"
   },
   "pure_command": "python -I -B qualification/p2_installed_ci/run_pure.py",
-  "root_integration_map_pending": false,
+  "root_integration_map_pending": true,
   "schema": "pamolive.p2-installed-linux-ci-candidate-plan/1",
-  "source_checksums_sha256": "a94fc26abfc101cbbe8edbfc64e1e642a9e15778b8302484909cac0d97359e7c",
-  "state": "FAILURE_DIAGNOSTIC_MAPPING_REVIEWED_PENDING_ROOT_GO",
+  "source_checksums_sha256": "a9ac9fda77f3b377c71927c4f070e60105ee12180d2c118e5cbc3191cb59398a",
+  "state": "CHILD_DIAGNOSTIC_R2_DAG_PENDING_ROOT_REVIEW_NO_GO",
   "style": {
     "Python_B": true,
     "Ruff_check_no_cache": true,
@@ -161,5 +162,15 @@
     "owned_files": 4,
     "profile": "Core line100"
   },
-  "workflow_sha256": "ef42027b16d8000931005e1b27b69d2b23af0b044ed47f76b5609ac28da599f4"
+  "workflow_sha256": "cf6fe92ddb5667b395290510bb01c2997b9fd822d319b812369d059a8add89f0",
+  "child_diagnostic_R2": {
+    "origin_FREEZE_sha256": "e6a57dfca6c2b1bc9ece2cb6ece03456f1f8d9c5d63ac0b78dd87e515d72b828",
+    "independent_AppSec_review_sha256": "9a6ded7a8f50a0f79f7f204bebcda96fec6005b4821b374c2946367c988a5121",
+    "pure_adapter_methods": 42,
+    "failure_remains_failure": true,
+    "raw_logs_exported": false,
+    "cause_of_ef1285_installed_probe_failure": "NOT_OBSERVED"
+  },
+  "adapter_pure_command": "python -I -B qualification/pam_trust_verifier/run_pure.py",
+  "historical_CI_failures_reclassified": false
 }

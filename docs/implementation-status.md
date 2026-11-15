@@ -84,6 +84,16 @@ Le scan OS/native a refusé le runtime initial. ADR-019 actualise Python, FreeRD
 
 Les anciennes portes NAS cochées plus bas concernent les anciennes versions et ne prouvent ni installation de cette image ni autorisation de toucher les services existants. Le programme actuel autorise les laboratoires isolés si leurs conditions sont vérifiées ; sinon le développement et les publications continuent sur Docker Desktop.
 
+Au candidat PR5 `ef1285e`, les deux CI Platform confirment désormais les
+régressions applicatives :1439tests comptés/42exclusions, transports, HA même
+hôte et restauration23migrations/374lignes ; sécurité et anciennes bibliothèques
+P2 passent. Le scan refuse35groupesHigh, zéroCritical. Les deux nouvelles CI
+installées conservent enfin leur échec : dix processus réussis, puis probe-build
+exit1 sans sortie ; les30tests installés restent non atteints. Un diagnostic
+enfant borné est ajouté avec42tests synthétiques, sans relâcher les gardes,
+en conservant57tests du banc. La cause interne et la réception installée restent
+à établir. Les prototypes Vault externes au dépôt ne valent pas service livré.
+
 ## Lecture du checkout P1
 
 Les capacités ci-dessous décrivent des livraisons de périmètres différents. Pour le checkout local après remédiation, consulter [P0-3](p0-3-validation.md) et [P0-4](p0-4-validation.md). Les anciennes qualifications NAS, image et transport ne qualifient pas automatiquement les modifications locales non publiées. Le témoin indépendant, le commissionnement réel et la qualification native Linux du contrôle P0-3 restent des portes explicites. Les onze noms produit de la roadmap correspondent aux applications techniques existantes ; ils ne désignent pas onze modules déjà achevés.

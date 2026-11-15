@@ -12,9 +12,9 @@
   "existing_manifest_sha256": "c3c219a7233a8fe3ef93eea81363fe9d846cfde538bb9c1fe3af967bb8b02ed0",
   "existing_public_https_mechanism_only": true,
   "files_sha256": {
-    "acquire_materials.py": "0801b3ab3d18d2ff102e2a0d9e57322fd11589a07ef307dd6badc25491e3c4bd",
+    "acquire_materials.py": "3ca08b0f4366de38e0bd278ddab6ec31cb1a378f98f8a7161ee335f5eb05d262",
     "materials-plan.json": "9984894027d99aa19b51625f1f73ee106272635120d832d7d1fede94243b9d74",
-    "qualify_installed.py": "60b917df3c13db5cea7e69d95e1862293c9a451e15e43c774108de12acf1226e",
+    "qualify_installed.py": "649ac99037fc41fa24b80fe93bd6833dd968dbdbaf879f51127d25972b5f4878",
     "requirements-bootstrap.lock": "b0a3c24adafaa80938f5a5de87790e7408bf61db711d37a02221d666cdb4d803",
     "requirements-build.lock": "0496f2e6a919f0b7391a91009453b77d9a641b5b8045593d7fa22762e6765a52",
     "requirements-runtime.lock": "2515552b7a6df614896818005840e258a184859eabac15390dfd7b130883842c"

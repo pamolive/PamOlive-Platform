@@ -3,7 +3,7 @@
   "ZIP_member_max_bytes": 25165824,
   "ZIP_total_max_bytes": 67108864,
   "acquisition_install_build_wheel_network_Docker_CI": false,
-  "adapter_revision": "selected-integrated-source; FS guard r2 unchanged",
+  "adapter_revision": "selected-integrated-source; FS guard r2; failed-child diagnostic r2",
   "authority": false,
   "build_wheels_including_pip": 4,
   "current_case_comparisons": 20,
@@ -23,9 +23,9 @@
   },
   "files_sha256": {
     "bounded_io.py": "98233b610f2d53dfd698d0d91f61f3d3ebcb1693a847983f0472f89a885f414f",
-    "installed_tests.py": "70e75c5b545c906a5c9b2f6b8ded1fcd7838fbd71f80ec06a7d2a06e53f08183",
+    "installed_tests.py": "6698fe25943f33cae21e027a8436ab3208f14c5d757b4fe31878b3cda495d0a3",
     "materials-plan.json": "9984894027d99aa19b51625f1f73ee106272635120d832d7d1fede94243b9d74",
-    "qualify_installed.py": "60b917df3c13db5cea7e69d95e1862293c9a451e15e43c774108de12acf1226e",
+    "qualify_installed.py": "649ac99037fc41fa24b80fe93bd6833dd968dbdbaf879f51127d25972b5f4878",
     "requirements-bootstrap.lock": "b0a3c24adafaa80938f5a5de87790e7408bf61db711d37a02221d666cdb4d803",
     "requirements-build.lock": "0496f2e6a919f0b7391a91009453b77d9a641b5b8045593d7fa22762e6765a52",
     "requirements-runtime.lock": "2515552b7a6df614896818005840e258a184859eabac15390dfd7b130883842c"
@@ -61,10 +61,18 @@
   "source_per_file_max_bytes": 2097152,
   "source_r2_independent_review_sha256": "e90a86fb726ef58dc98a69b4fcc851b5377e8c7c152244ec5b4f6f352f7f3d0d",
   "source_runner_forbidden": true,
-  "state": "INTEGRABLE_SELECTED_SOURCE_CANDIDATE_NO_EXECUTION",
+  "state": "CHILD_DIAGNOSTIC_R2_INTEGRABLE_DAG_PENDING_ROOT_REVIEW",
   "total_public_materials": 13,
   "venvs": [
     "build",
     "verifier"
-  ]
+  ],
+  "child_diagnostic": {
+    "origin_FREEZE_sha256": "e6a57dfca6c2b1bc9ece2cb6ece03456f1f8d9c5d63ac0b78dd87e515d72b828",
+    "independent_AppSec_review_sha256": "9a6ded7a8f50a0f79f7f204bebcda96fec6005b4821b374c2946367c988a5121",
+    "pure_adapter_methods": 42,
+    "failure_remains_failure": true,
+    "raw_logs_exported": false,
+    "cause_of_ef1285_installed_probe_failure": "NOT_OBSERVED"
+  }
 }

@@ -31,7 +31,7 @@ grants no service authority, publication, membership, possession, MFA, counters,
 human independence, Vault identity binding, full P0 acceptance or build attestation.
 
 Inputs retain the a234 source review as origin, with its repository-style mapping
-applied to the selected 366 files (component354 and qualification12). The current
+applied to the selected 368 files (component354 and qualification14). The current
 selected-inputs manifest is pinned in pins.json. PAYLOAD-MANIFEST3628 and public
 materials998489 remain unchanged (13 wheels,
 8,939,939 bytes, nine runtime plus four build including pip). Source acquisition
@@ -128,3 +128,14 @@ unexpected files as evidence and repair the producing step instead.
 Repository integration: package payload unchanged; qualifier inputs rebound via the independently reviewed Root style map. The helper differs only in standard-library import order; its concrete hash is pinned. Current pins accept one concrete set, never old-or-new. H1 is corrected before real execution. No installed result is claimed by integration.
 
 Failure diagnostic overlay: a reaped, drained start --attach exit42 can carry a strictly typed failure packet. It remains FAILED and is never accepted by the success validator. Malformed packets, raw-output fields, unknown errors, other IO failures or fake success with exit42 refuse. The first two 7083 CI runs failed with confirmed cleanup; their inner cause was not retained and remains unknown. The overlay has 57 pure tests; only a future CI run can observe its installed result.
+
+Child diagnostic R2 DAG: the selected qualifier now retains only a strict
+bounded failed-child report after a reaped, drained probe exit1, preserving
+the original failure. Its pure gate is exactly42 methods and runs after
+controller verify and before acquisition. The historical outer57 test file
+and run_pure remain byte-identical. Only selection counts change in the
+outer controller; only qualifier/adapter-plan pins change in entrypoint.
+No H1, successful packet validator, sandbox or file-guard change. The
+ef1285 CI failures and prior missing-diagnostic evidence stay failed; no
+inner installed cause or new installed result is inferred. This mapping
+requires separate Root review and future execution authorization.

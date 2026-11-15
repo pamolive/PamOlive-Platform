@@ -127,3 +127,33 @@ liées au transcript V2, puis compteurs et ledger transactionnel avant toute
 remise réseau. Les 35 groupes High de l'image applicative et la provenance de
 build incomplète restent bloquants pour sa promotion. Aucun nouveau déploiement
 NAS, compte privilégié réel ou image stable ne découle de ce lot.
+
+
+## Réception du diagnostic installé au candidat ef1285e
+
+Les deux runs installés [push43680558504](https://github.com/pamolive/PamOlive-Platform/actions/runs/43680558504)
+et [PR43680562752](https://github.com/pamolive/PamOlive-Platform/actions/runs/43680562752)
+conservent maintenant leur paquet d'échec : `QUALIFIER_FAILED`, exception externe
+`SystemExit`, exception du qualifier `ValueError`. Les dix premiers processus
+réussissent, y compris construction du wheel, licences, RECORD et installation.
+Le onzième, `probe-build`, rend1 sans stdout/stderr, récolté et drainé. Son erreur
+interne n'est pas connue ; les30tests installés ne sont pas encore atteints.
+Sources et matériaux restent inchangés ; OOMfalse et nettoyage confirmé.
+
+La correction suivante conserve seulement un rapport JSON d'échec de probe,
+sur chemin fixe, borné à32KiB et de forme fermée, après sortie1 confirmée et sans
+autre erreur de processus. Elle conserve le refus initial ; aucune garde de
+lecture/import, validation de succès, politique H1 ou limite Docker ne change.
+La revue adverse a trouvé une conversion `isfinite` susceptible de lever un
+OverflowError sur un entier JSON géant ; la R2 vérifie la borne avant conversion.
+Les42tests synthétiques incluent cette régression, les30anciens restant intacts.
+Le workflow vérifie les368entrées publiques (354composant+14qualifier) avant
+ces42tests et avant acquisition. Les57tests du banc restent distincts. Ces
+résultats purs ne constituent pas un succès installé ou une autorité P2.
+
+Les deux CI Platform d'ef1285e passent sécurité et anciennes bibliothèques P2,
+1439tests généraux comptés/42exclusions, portes SSH/RDP, HA même hôte et
+restauration synthétique de23migrations/374lignes sous rôle restreint. Leur seul
+échec final est le scan des35groupesHigh non arbitrés, zéroCritical. Le push
+qualifie ef1285e ; le run PR qualifie sa fusion temporaire f601c2d. Aucun résultat
+des anciennes bibliothèques n'est transféré aux30tests du nouveau vérificateur.
