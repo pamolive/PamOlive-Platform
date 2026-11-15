@@ -157,3 +157,23 @@ restauration synthétique de23migrations/374lignes sous rôle restreint. Leur se
 échec final est le scan des35groupesHigh non arbitrés, zéroCritical. Le push
 qualifie ef1285e ; le run PR qualifie sa fusion temporaire f601c2d. Aucun résultat
 des anciennes bibliothèques n'est transféré aux30tests du nouveau vérificateur.
+
+
+## Correction de l'énumération des métadonnées Python
+
+Au head eaa386d, les deux qualifications installées refusent précisément deux
+lectures hors racines, après inventaire réussi du venv de build. Le chemin réel
+n'est pas exporté. La reproduction indépendante avec le module metadata exact
+de S0 montre deux refus masqués en explorant le ZIP standard absent. La vue VFS
+de l'image vérifie son absence ; le module stdlib est identique au témoin hôte.
+
+La sonde énumère désormais explicitement tous les répertoires actifs de sys.path,
+sans sous-ensemble venv ni déduplication. Seul le ZIP par défaut exact et absent
+du profil Linux/CPython3.12.16 est omis, après contrôle de ses parents. Une archive
+présente, un alias, une entrée inconnue ou un répertoire étranger ne deviennent
+pas des lectures autorisées. Les racines de lecture, gardes, compteurs et critères
+de distributions/origines restent inchangés. Le second lookup du paquet installé
+utilise la même liste.54tests purs couvrent l'adaptateur, dont les42cas précédents,
+et57tests du banc restent distincts. Une seule fixture historique reçoit deux
+contextes sys.path adaptés, avec ses assertions intactes. La nouvelle CI devra
+confirmer les30tests installés ; aucun succès n'est déduit du seul reproducer.

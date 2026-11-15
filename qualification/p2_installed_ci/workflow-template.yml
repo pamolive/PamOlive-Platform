@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      P2_SOURCES_SHA: a9ac9fda77f3b377c71927c4f070e60105ee12180d2c118e5cbc3191cb59398a
-      P2_ASSETS_SHA: c9685c1c927796bd117b3cffe424338b48aef02bb10a23642f59b64f5e50a611
+      P2_SOURCES_SHA: 5995e3852d3793609420277abcea65e5d2730f1085acfaaac58bbc1b4660d419
+      P2_ASSETS_SHA: 4124bff9afa21db723b53c2e3a9467772a553d04b39598fb56d550ee0e9d5d29
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -36,7 +36,7 @@ jobs:
         run: python -I -B qualification/p2_installed_ci/run_pure.py
       - name: Check all selected public payload and acquisition code before host acquisition
         run: python -I -B qualification/p2_installed_ci/controller.py verify --assets-sha256 "$P2_ASSETS_SHA" --work "$P2_WORK" --repository "$GITHUB_WORKSPACE"
-      - name: Forty-two pure installed-child diagnostics and adapter guards only
+      - name: Fifty-four pure metadata, installed-child diagnostics and adapter guards only
         run: python -I -B qualification/pam_trust_verifier/run_pure.py
       - name: Acquire exactly thirteen public wheels separately on host
         timeout-minutes: 32

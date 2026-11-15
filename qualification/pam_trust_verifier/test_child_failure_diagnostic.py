@@ -371,6 +371,7 @@ class ChildFailureDiagnosticTests(unittest.TestCase):
         with (
             patch.object(CHILD.sys, "prefix", str(prefix)),
             patch.object(CHILD.sys, "base_prefix", "/synthetic/base"),
+            patch.object(CHILD.sys, "path", []),
             patch.object(CHILD.site, "ENABLE_USER_SITE", False),
             patch.object(
                 CHILD, "bounded_read", return_value=b"include-system-site-packages = false"
@@ -383,6 +384,7 @@ class ChildFailureDiagnosticTests(unittest.TestCase):
         with (
             patch.object(CHILD.sys, "prefix", str(prefix)),
             patch.object(CHILD.sys, "base_prefix", "/synthetic/base"),
+            patch.object(CHILD.sys, "path", []),
             patch.object(CHILD.site, "ENABLE_USER_SITE", False),
             patch.object(
                 CHILD, "bounded_read", return_value=b"include-system-site-packages = false"

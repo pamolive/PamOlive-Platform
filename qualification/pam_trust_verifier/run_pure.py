@@ -1,4 +1,4 @@
-"""Exactly 42 synthetic adapter tests; closed checkout data, no package import."""
+"""Exactly 54 synthetic adapter tests; closed checkout data, no package import."""
 
 import hashlib
 import json
@@ -41,12 +41,13 @@ def main():
     ):
         import test_adapter_pure
         import test_child_failure_diagnostic
+        import test_metadata_paths
 
         # Fixture path only; source_payload still checks its closed 353-entry manifest.
         test_adapter_pure.SOURCE = SOURCE
         suite = unittest.TestSuite(
             unittest.defaultTestLoader.loadTestsFromModule(module)
-            for module in (test_adapter_pure, test_child_failure_diagnostic)
+            for module in (test_adapter_pure, test_child_failure_diagnostic, test_metadata_paths)
         )
         result = unittest.TextTestRunner(verbosity=2).run(suite)
     print(
@@ -61,12 +62,13 @@ def main():
                 "elapsed_seconds": time.monotonic() - started,
                 "package_or_qualifier_main_executed": False,
                 "source_fixture_manifest": SOURCE_MANIFEST,
+                "metadata_path_counterprobes": test_metadata_paths.OBSERVATIONS,
             }
         )
     )
     raise SystemExit(
         0
-        if result.testsRun == 42 and result.wasSuccessful() and not result.skipped and not attempts
+        if result.testsRun == 54 and result.wasSuccessful() and not result.skipped and not attempts
         else 1
     )
 

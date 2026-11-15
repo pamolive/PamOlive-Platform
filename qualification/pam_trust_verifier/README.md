@@ -45,8 +45,8 @@ native wheels. This Python controller does not enforce that external profile.
 Its reviewed IO helper retains at most 1MiB stdout/256KiB stderr per owned
 child, with 120s after spawn and 900s total; failures and bounded prefixes remain.
 
-Thirty existing adapter tests and twelve child-diagnostic tests form the exact
-42-method pure gate, with zero skips and external attempts required. They
+Thirty adapter, twelve child-diagnostic and twelve metadata-path tests form the exact
+54-method pure gate, with zero skips and external attempts required. They
 import no verifier/Django and run
 no controller main, wheel backend, venv or pip. Popen/run/socket/DNS/HTTP are
 prohibited in that suite; acquisition is exercised only with mocks. This new DAG requires Root and independent mapping review before integration
@@ -72,7 +72,7 @@ inside that allocation is:
 
 ```sh
 /usr/local/bin/python3 -I -B /controller/qualify_installed.py run \
-  --plan-sha256 46b9bc5562fc33a9c4081293ff5a6f002eca3714e0e209bbcd9b359e5832ccf1 \
+  --plan-sha256 16c16a0a1e8f14cb07192efc4da5a8e0fc9a8ec1b5a7cfe174057f234e8ed98b \
   --source /source --materials /materials --work /work/public-verifier-selected-n0r1
 ```
 
@@ -96,7 +96,25 @@ Run the pure gate from the checkout root, before acquisition:
 python -I -B qualification/pam_trust_verifier/run_pure.py
 ```
 
-This runs the 30 historical adapter methods plus 12 diagnostic methods,
+This runs 30 historical adapter methods plus 12 diagnostic and 12 metadata methods,
 not the 30 installed public-verifier methods. The latter require the
 separate externally confined Linux execution; its cause of failure on
 the ef1285 CI subject remains unobserved at preparation time.
+
+## Prospective pinned-S0 metadata path correction
+
+Both distribution enumeration and installed-file distribution lookup now pass
+every validated actual sys.path directory explicitly to stdlib metadata. No
+directory subset, deduplication or sys.path mutation hides global extras. The
+only omission is the exact absent /usr/local/lib/python312.zip under Linux
+CPython3.12.16 and /usr/local base prefixes, after non-alias parent checks.
+An existing zip, symlink, active archive, wrong type or other missing entry
+refuses with the existing distribution_origin diagnostic. IO guards, roots,
+swallowed-attempt counters and distribution/origin checks are unchanged.
+
+The two eaa386 installed CI failures observed two forbidden reads, not their
+paths. A real stdlib source/pure reproduction establishes the absent-zip
+mechanism; only a future Linux run establishes whether this fixes that CI.
+One historical mocked test gains only an empty sys.path fixture; its original
+assertions and test identity remain, and original bytes are preserved outside
+the checkout in the preparation evidence. No test-specific runtime fallback.

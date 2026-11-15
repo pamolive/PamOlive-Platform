@@ -176,6 +176,62 @@ def bounded_json(path):
     return json.loads(raw)
 
 
+def metadata_directories():
+    """All active directory entries, with one absent pinned-S0 default zip omitted.
+
+    No sys.path mutation, directory subset, normalization or deduplication. Validate
+    the complete list before metadata performs any directory or archive reads.
+    """
+    require(type(sys.path) is list and len(sys.path) <= 32, "distribution_origin")
+    directories = []
+    for entry in tuple(sys.path):
+        require(
+            type(entry) is str and 0 < len(entry) <= 4096 and "\0" not in entry,
+            "distribution_origin",
+        )
+        path = Path(entry)
+        require(
+            path.is_absolute()
+            and str(path) == entry
+            and ".." not in path.parts
+            and not entry.startswith("//"),
+            "distribution_origin",
+        )
+        default_zip = entry == "/usr/local/lib/python312.zip"
+        if default_zip:
+            require(
+                sys.platform == "linux"
+                and sys.implementation.name == "cpython"
+                and sys.version_info[:3] == (3, 12, 16)
+                and sys.base_prefix == sys.base_exec_prefix == "/usr/local",
+                "distribution_origin",
+            )
+        for part in path.parents:
+            try:
+                info = os.lstat(part)
+            except OSError:
+                require(False, "distribution_origin")
+            require(
+                stat.S_ISDIR(info.st_mode) and not getattr(info, "st_file_attributes", 0) & 1024,
+                "distribution_origin",
+            )
+        try:
+            info = os.lstat(path)
+        except FileNotFoundError:
+            require(default_zip, "distribution_origin")
+            continue
+        except OSError:
+            require(False, "distribution_origin")
+        require(
+            not default_zip
+            and stat.S_ISDIR(info.st_mode)
+            and not getattr(info, "st_file_attributes", 0) & 1024,
+            "distribution_origin",
+        )
+        directories.append(entry)
+    return tuple(directories)
+
+
 def distribution_probe(expected, module):
     prefix = Path(sys.prefix).resolve()
     require(sys.prefix != sys.base_prefix and not site.ENABLE_USER_SITE, "venv_prefix")
@@ -188,7 +244,7 @@ def distribution_probe(expected, module):
     def normal(value):
         return re.sub(r"[-_.]+", "-", value).lower()
 
-    items = list(importlib.metadata.distributions())
+    items = list(importlib.metadata.distributions(path=metadata_directories()))
     actual = {normal(item.metadata["Name"]): item.version for item in items}
     require(len(items) == len(actual) and actual == expected, "minimal_distributions")
     for item in items:
@@ -241,7 +297,13 @@ def distribution_probe(expected, module):
 
 def installed_files_probe(expected):
     prefix = Path(sys.prefix).resolve()
-    distribution = importlib.metadata.distribution("pamolive-pam-trust-verifier")
+    matches = [
+        item
+        for item in importlib.metadata.distributions(path=metadata_directories())
+        if re.sub(r"[-_.]+", "-", item.metadata["Name"]).lower() == "pamolive-pam-trust-verifier"
+    ]
+    require(len(matches) == 1, "installed_distribution_root")
+    distribution = matches[0]
     base = Path(distribution.locate_file("")).resolve()
     require(base.is_relative_to(prefix), "installed_distribution_root")
     for name, digest in expected.items():

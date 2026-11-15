@@ -3,7 +3,7 @@
   "ZIP_member_max_bytes": 25165824,
   "ZIP_total_max_bytes": 67108864,
   "acquisition_install_build_wheel_network_Docker_CI": false,
-  "adapter_revision": "selected-integrated-source; FS guard r2; failed-child diagnostic r2",
+  "adapter_revision": "selected-integrated-source; FS guard r2; failed-child diagnostic r2; directory-only stdlib metadata discovery",
   "authority": false,
   "build_wheels_including_pip": 4,
   "current_case_comparisons": 20,
@@ -23,7 +23,7 @@
   },
   "files_sha256": {
     "bounded_io.py": "98233b610f2d53dfd698d0d91f61f3d3ebcb1693a847983f0472f89a885f414f",
-    "installed_tests.py": "6698fe25943f33cae21e027a8436ab3208f14c5d757b4fe31878b3cda495d0a3",
+    "installed_tests.py": "2c769ce4814d0dbff14994f3fcc14493598064cdb48a15cb8fa3b9ba3c8f8061",
     "materials-plan.json": "9984894027d99aa19b51625f1f73ee106272635120d832d7d1fede94243b9d74",
     "qualify_installed.py": "649ac99037fc41fa24b80fe93bd6833dd968dbdbaf879f51127d25972b5f4878",
     "requirements-bootstrap.lock": "b0a3c24adafaa80938f5a5de87790e7408bf61db711d37a02221d666cdb4d803",
@@ -61,7 +61,7 @@
   "source_per_file_max_bytes": 2097152,
   "source_r2_independent_review_sha256": "e90a86fb726ef58dc98a69b4fcc851b5377e8c7c152244ec5b4f6f352f7f3d0d",
   "source_runner_forbidden": true,
-  "state": "CHILD_DIAGNOSTIC_R2_INTEGRABLE_DAG_PENDING_ROOT_REVIEW",
+  "state": "METADATA_PATH_SOURCE_FIX_PENDING_REVIEW_NOT_RUN",
   "total_public_materials": 13,
   "venvs": [
     "build",
@@ -74,5 +74,14 @@
     "failure_remains_failure": true,
     "raw_logs_exported": false,
     "cause_of_ef1285_installed_probe_failure": "NOT_OBSERVED"
+  },
+  "metadata_discovery": {
+    "all_active_directories_preserved_in_order_without_dedup": true,
+    "only_missing_zip_exception": "/usr/local/lib/python312.zip",
+    "exception_profile": "Linux CPython3.12.16 base_prefix=base_exec_prefix=/usr/local",
+    "existing_zip_aliases_archives_unexpected_missing_entries_refused": true,
+    "read_roots_file_guard_counters_or_success_validator_changed": false,
+    "pure_methods": 54,
+    "actual_failed_CI_path_measured": false
   }
 }

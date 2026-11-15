@@ -31,7 +31,7 @@ grants no service authority, publication, membership, possession, MFA, counters,
 human independence, Vault identity binding, full P0 acceptance or build attestation.
 
 Inputs retain the a234 source review as origin, with its repository-style mapping
-applied to the selected 368 files (component354 and qualification14). The current
+applied to the selected 369 files (component354 and qualification15). The current
 selected-inputs manifest is pinned in pins.json. PAYLOAD-MANIFEST3628 and public
 materials998489 remain unchanged (13 wheels,
 8,939,939 bytes, nine runtime plus four build including pip). Source acquisition
@@ -131,7 +131,7 @@ Failure diagnostic overlay: a reaped, drained start --attach exit42 can carry a 
 
 Child diagnostic R2 DAG: the selected qualifier now retains only a strict
 bounded failed-child report after a reaped, drained probe exit1, preserving
-the original failure. Its pure gate is exactly42 methods and runs after
+the original failure. Its pure gate is exactly54 methods and runs after
 controller verify and before acquisition. The historical outer57 test file
 and run_pure remain byte-identical. Only selection counts change in the
 outer controller; only qualifier/adapter-plan pins change in entrypoint.
@@ -139,3 +139,11 @@ No H1, successful packet validator, sandbox or file-guard change. The
 ef1285 CI failures and prior missing-diagnostic evidence stay failed; no
 inner installed cause or new installed result is inferred. This mapping
 requires separate Root review and future execution authorization.
+
+The metadata-path source candidate preserves all active sys.path directories
+and omits only the validated absent pinned-S0 default zip. It adds twelve pure
+metadata tests (total54). Qualifier649ac, acquisition3ca08 and its acquisition
+plan remain exact; entrypoint changes only its adapter-plan pin. Outer counts
+are369/354/15; its 57 pure tests and H1/profile/success validator are unchanged.
+The two eaa386 failed CI subjects remain failed; observed paths are unknown,
+and no new installed success or operational authority is claimed.

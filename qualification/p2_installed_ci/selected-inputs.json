@@ -1423,8 +1423,8 @@
       "sha256": "c84788ea5d60a472749765b5ab0bea1a7c1b94b8fe4300b6b411c26b7c11103f"
     },
     "qualification/pam_trust_verifier/README.md": {
-      "bytes": 5904,
-      "sha256": "7389cb354dabfc94b77e199eae29d15deba025bab2d908ca1b95a1d85bf882d9"
+      "bytes": 7042,
+      "sha256": "be36d6e49b0fc34b44e80e26f98427f618e4854aa6dc0be09707799e75720ed2"
     },
     "qualification/pam_trust_verifier/acquire_materials.py": {
       "bytes": 6373,
@@ -1435,16 +1435,16 @@
       "sha256": "bc65c92ffc630e302515f7abc2dae60617231dfbb134fd6d58a39f26e781f36e"
     },
     "qualification/pam_trust_verifier/adapter-plan.json": {
-      "bytes": 3905,
-      "sha256": "46b9bc5562fc33a9c4081293ff5a6f002eca3714e0e209bbcd9b359e5832ccf1"
+      "bytes": 4415,
+      "sha256": "16c16a0a1e8f14cb07192efc4da5a8e0fc9a8ec1b5a7cfe174057f234e8ed98b"
     },
     "qualification/pam_trust_verifier/bounded_io.py": {
       "bytes": 6794,
       "sha256": "98233b610f2d53dfd698d0d91f61f3d3ebcb1693a847983f0472f89a885f414f"
     },
     "qualification/pam_trust_verifier/installed_tests.py": {
-      "bytes": 16632,
-      "sha256": "6698fe25943f33cae21e027a8436ab3208f14c5d757b4fe31878b3cda495d0a3"
+      "bytes": 18919,
+      "sha256": "2c769ce4814d0dbff14994f3fcc14493598064cdb48a15cb8fa3b9ba3c8f8061"
     },
     "qualification/pam_trust_verifier/materials-plan.json": {
       "bytes": 7787,
@@ -1467,16 +1467,20 @@
       "sha256": "2515552b7a6df614896818005840e258a184859eabac15390dfd7b130883842c"
     },
     "qualification/pam_trust_verifier/run_pure.py": {
-      "bytes": 2535,
-      "sha256": "44f8dd19656b9ecbe78bf5f9c0176b87fe15377332c78525e16646fb65622333"
+      "bytes": 2672,
+      "sha256": "b62b88eaae77d6a5f55b0f3c1fd49d2af1ca30d3d87c041ed540df7ddb14a3c9"
     },
     "qualification/pam_trust_verifier/test_adapter_pure.py": {
       "bytes": 26353,
       "sha256": "e11731ac6e9240d508ef9f363d1c442d80912addeaa68dd886036149ddf227a8"
     },
     "qualification/pam_trust_verifier/test_child_failure_diagnostic.py": {
-      "bytes": 21782,
-      "sha256": "b9440199fea3249a685ef7c7900b190f1759cc74aa31d9fced8a6bfe7e664a85"
+      "bytes": 21880,
+      "sha256": "f61e30c046dde6d154cb136208c8b22e83b8eaba03fe6d41749c1d792ba27372"
+    },
+    "qualification/pam_trust_verifier/test_metadata_paths.py": {
+      "bytes": 13452,
+      "sha256": "3a608835a315c33c43897ec2dcb52d138a489709f3f38965067eaf60915f4e67"
     }
   },
   "fixture_notice_status": "Accepted by Root in ADR-023; project AGPL and original notices retained.",
@@ -1486,9 +1490,9 @@
   },
   "preserves_existing_P0_P2_components_and_Docker_guards": true,
   "prototype_freezes_logs_caches_runners_excluded": true,
-  "qualification_files": 14,
+  "qualification_files": 15,
   "schema": "pamolive.public-verifier-integrable-source-selection/2",
   "source_modules_test_and_338_fixtures_byte_identical": true,
   "source_origin_freeze_sha256": "476f4ac4ba06f773daade2840eebc7646e4469810875f447e5f7447df1ebac06",
-  "state": "CHILD_DIAGNOSTIC_R2_INTEGRABLE_DAG_PENDING_ROOT_REVIEW"
+  "state": "METADATA_PATH_SOURCE_FIX_PENDING_REVIEW_NOT_RUN"
 }

@@ -94,6 +94,13 @@ enfant borné est ajouté avec42tests synthétiques, sans relâcher les gardes,
 en conservant57tests du banc. La cause interne et la réception installée restent
 à établir. Les prototypes Vault externes au dépôt ne valent pas service livré.
 
+Les deux qualifications installées du head PR5 `eaa386d` identifient deux
+lectures hors racines pendant la sonde Python, nettoyage confirmé sans OOM.
+La correction de l'énumération metadata conserve toutes les gardes et examine
+tous les répertoires actifs, en omettant seulement le ZIP standard S0 absent.
+54tests purs d'adaptateur et57du banc passent sur le candidat préparé. La
+réception Linux des30tests installés reste obligatoire, sans transfert de succès.
+
 ## Lecture du checkout P1
 
 Les capacités ci-dessous décrivent des livraisons de périmètres différents. Pour le checkout local après remédiation, consulter [P0-3](p0-3-validation.md) et [P0-4](p0-4-validation.md). Les anciennes qualifications NAS, image et transport ne qualifient pas automatiquement les modifications locales non publiées. Le témoin indépendant, le commissionnement réel et la qualification native Linux du contrôle P0-3 restent des portes explicites. Les onze noms produit de la roadmap correspondent aux applications techniques existantes ; ils ne désignent pas onze modules déjà achevés.

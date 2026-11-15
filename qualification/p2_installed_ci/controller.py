@@ -349,7 +349,7 @@ def stage_file(target, raw):
 def verify_selected(repository, pins, buffers, legacy):
     """Pin every selected host script BEFORE acquisition can execute it."""
     selection = legacy.strict_json(buffers["selected-inputs.json"])
-    need(len(selection["files"]) == 368, "SELECTED_COUNT")
+    need(len(selection["files"]) == 369, "SELECTED_COUNT")
     groups = {"components/pam-trust-verifier/": set(), "qualification/pam_trust_verifier/": set()}
     total = 0
     for name, row in selection["files"].items():
@@ -363,13 +363,13 @@ def verify_selected(repository, pins, buffers, legacy):
         prefix = next((prefix for prefix in groups if name.startswith(prefix)), None)
         need(prefix is not None, "SELECTED_PREFIX")
         groups[prefix].add(name[len(prefix) :])
-    need([len(values) for values in groups.values()] == [354, 14], "SELECTED_GROUPS")
+    need([len(values) for values in groups.values()] == [354, 15], "SELECTED_GROUPS")
     for prefix, names in groups.items():
         closed_files(repository / prefix, names)
     for name, digest in selection["inherited_existing_checkout_files"].items():
         safe_name(name)
         need(sha(regular(repository / name, MIB)) == digest, "INHERITED_PUBLIC_GATE_PIN")
-    return {"selected_files": 368, "source": 354, "controller": 14, "authority": False}
+    return {"selected_files": 369, "source": 354, "controller": 15, "authority": False}
 
 
 def prepare(work, repository, material_directory, pins, buffers, legacy):
@@ -377,7 +377,7 @@ def prepare(work, repository, material_directory, pins, buffers, legacy):
     need(not work.exists(), "ONE_USE_WORK")
     verify_selected(repository, pins, buffers, legacy)
     selection = legacy.strict_json(buffers["selected-inputs.json"])
-    need(len(selection["files"]) == 368, "SELECTED_COUNT")
+    need(len(selection["files"]) == 369, "SELECTED_COUNT")
     groups = {"source": {}, "controller": {}}
     for name, row in selection["files"].items():
         safe_name(name)
@@ -390,7 +390,7 @@ def prepare(work, repository, material_directory, pins, buffers, legacy):
                 break
         else:
             raise Refusal("SELECTED_PREFIX")
-    need(len(groups["source"]) == 354 and len(groups["controller"]) == 14, "SELECTED_GROUPS")
+    need(len(groups["source"]) == 354 and len(groups["controller"]) == 15, "SELECTED_GROUPS")
     closed_files(repository / "components/pam-trust-verifier", groups["source"])
     closed_files(repository / "qualification/pam_trust_verifier", groups["controller"])
     material_rows = legacy.strict_json(buffers["materials-plan.json"])["selected_materials"]
