@@ -41,6 +41,46 @@ solveur ni autorité de dépôt n'est créé.
 
 ## Validation et limites
 
+Le candidat `8b0cf1a` a ensuite été exécuté dans deux phases distinctes le
+15 novembre. Le [stage0](https://github.com/pamolive/PamOlive-Platform/actions/runs/43665571008)
+observe Node `v26.13.0`, nonroot, rootfs RO, capacités nulles et NNP, puis refuse
+`B0_PRE_CERTUTIL_MISSING`. Chromium, NSS, TLS et CDP restent non mesurés.
+Le [lecteur de faits](https://github.com/pamolive/PamOlive-Platform/actions/runs/43665571053)
+atteint sa vérification des sources, puis refuse `B0_FACTS_SIGNED_BY_UNSUPPORTED` :
+code enfant42, pas d'OOM, objets possédés et réservation libérés. Le rapport
+incomplet ne permet pas d'affirmer les versions OS ou NSS, ni le chemin exact
+de la déclaration ayant provoqué ce refus. Aucun de ces essais n'est une réussite
+de qualification navigateur.
+
+L'historique public de la configuration MCR déclare une référence NodeSource
+pour Node26 avec un autre `Signed-By`. Il s'agit d'une cause candidate, pas d'un
+fait mesuré dans le système de fichiers. Reconnaître cette seule déclaration
+pour inventaire ne donnera aucune autorité à son dépôt ou à sa clé et ne doit
+ouvrir aucun nouveau fichier de clé. Une future mesure conserve ces deux
+échecs historiques.
+
+Le lecteur reconnaît désormais seulement le tuple déclaré exact Node26,
+`deb`/HTTPS/`nodistro`/`main`, sans architecture explicite, dans le fichier
+`nodesource.list` sans alias. La projection conserve son véritable `Signed-By`
+avec `candidate_not_authorized` et `key_material_inspected=false` ; son keyring
+reste hors des chemins autorisés, sans même être staté. Une autre version,
+destination, option, composante, clé ou un fichier source différent refuse.
+La projection Ubuntu et le lifecycle restent inchangés. Cette extension est
+testée sur FakeFS ; la présence réelle du tuple reste à mesurer en CI.
+
+Les tests du lecteur passent de21 à28groupes Node, avec mutations des champs,
+options, chemins et alias et une sentinelle interdisant toute lecture de la clé
+candidate. Les31tests Python historiques restent inchangés et réussis, sans
+exclusion. Les anciens rapports8b restent conservés séparément.
+
+La contre-revue indépendante ajoute54contre-cas. Le scanner conserve ses
+plugins, filtres, paramètres et flags : quatre nouveaux signaux sont classés
+individuellement, trois SHA de fichiers publics exacts et une chaîne factice
+d'un test d'URI refusé. Trois anciennes empreintes remplacées, absentes de leur
+fichier courant, quittent seulement le baseline actif ; leurs décisions restent
+dans le commit parent et les preuves de revue. Il reste333décisions actives,
+sans suppression de détection ou de contrôle.
+
 Avant intégration, Root a rejoué 31 tests Python sous interdiction de création
 réelle de processus/réseau et 21 tests Node sur FakeFS, sans exclusion. Ces
 comptages incluent les 18 tests stage0 inchangés et ne représentent aucune

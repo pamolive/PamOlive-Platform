@@ -175,3 +175,132 @@ test('no executable/network/private Env APIs in probe dependencies', () => {
   // Pure dependency contract; this imports only this reviewed module and fake fs.
   assert.deepEqual(Object.keys(F).sort(), ['CONFIG', 'IMAGE', 'KEYRING', 'LIMIT', 'allowed', 'collect', 'encodeBounded', 'osFacts', 'packages', 'reader', 'sourceRecord', 'sources', 'uri'].sort());
 });
+
+const NODE_SOURCE_FILE = '/etc/apt/sources.list.d/nodesource.list';
+const NODE_KEY_REFERENCE = '/etc/apt/keyrings/nodesource.gpg';
+const NODE_URI = 'https://deb.nodesource.com/node_26.x';
+const nodeList = 'deb [signed-by=' + NODE_KEY_REFERENCE + '] ' + NODE_URI + ' nodistro main\n';
+function nodeRow() {
+  return {types: 'deb', uris: NODE_URI, suites: 'nodistro', components: 'main', 'signed-by': NODE_KEY_REFERENCE};
+}
+function candidateOnly(row) {
+  assert.equal(row.signed_by, NODE_KEY_REFERENCE);
+  assert.equal(row.reference_status, 'candidate_not_authorized');
+  assert.equal(row.classification, 'recognized_candidate_reference_not_authorized');
+  assert.equal(row.key_material_inspected, false);
+  assert.equal(row.repository_authorized, false);
+  assert.equal(Object.hasOwn(row, 'sha256'), false);
+  assert.equal(Object.hasOwn(row, 'primary_fingerprints'), false);
+}
+test('exact Node26 tuple is a public candidate reference only; no key material is read', () => {
+  const io = fixture().add(NODE_SOURCE_FILE, 'file', nodeList)
+    .add(NODE_KEY_REFERENCE, 'file', 'NEVER_OPEN_NODE_KEY');
+  const originalStat = io.lstatSync.bind(io), originalOpen = io.openSync.bind(io), opened = [];
+  io.lstatSync = name => { assert.notEqual(name, NODE_KEY_REFERENCE); return originalStat(name); };
+  io.openSync = name => { opened.push(name); assert.notEqual(name, NODE_KEY_REFERENCE); return originalOpen(name); };
+  const facts = F.collect(io), candidate = facts.repositories.find(row => row.path === NODE_SOURCE_FILE);
+  candidateOnly(candidate);
+  assert.deepEqual(candidate.uris, [NODE_URI]); assert.deepEqual(candidate.types, ['deb']);
+  assert.deepEqual(candidate.suites, ['nodistro']); assert.deepEqual(candidate.components, ['main']);
+  assert.equal(candidate.architectures, null); assert.equal(candidate.enabled, 'yes');
+  assert.ok(opened.includes(F.KEYRING));
+  assert.equal(facts.keyring.path, F.KEYRING);
+  assert.equal(facts.keyring.sha256, require('node:crypto').createHash('sha256').update('NEVER_EXPORT_RAW_KEYRING').digest('hex'));
+  assert.ok(!facts.files.some(row => row.path === NODE_KEY_REFERENCE));
+  assert.equal(F.allowed(NODE_KEY_REFERENCE), false);
+  assert.equal(F.encodeBounded(facts).includes('NEVER_OPEN_NODE_KEY'), false);
+  for (const key of ['authority', 'stage0_passed', 'build_verified', 'attestation_verified', 'release_qualified', 'Release_signatures_verified', 'archives_verified', 'TLS_observed', 'sandbox_observed', 'CDP_observed']) assert.equal(facts[key], false);
+  assert.equal(facts.certutil_functional, null); assert.equal(facts.keyring.primary_fingerprints, null);
+});
+test('Node key path remains inaccessible even if absent/alias/FIFO/oversize', () => {
+  for (const variation of [null, {kind: 'link', target: '/etc/shadow'}, {kind: 'fifo'}, {size: 1n << 40n}]) {
+    const io = fixture().add(NODE_SOURCE_FILE, 'file', nodeList);
+    if (variation) io.add(NODE_KEY_REFERENCE, 'file', 'NO_READ', variation);
+    const stat = io.lstatSync.bind(io);
+    io.lstatSync = name => { assert.notEqual(name, NODE_KEY_REFERENCE); return stat(name); };
+    candidateOnly(F.collect(io).repositories.find(row => row.path === NODE_SOURCE_FILE));
+    const before = io.opens;
+    refuses(() => F.reader(io).read(NODE_KEY_REFERENCE, 65536), 'B0_FACTS_PATH_REFUSED');
+    assert.equal(io.opens, before);
+  }
+});
+test('Node candidate requires exact declared source file; Ubuntu projection unchanged', () => {
+  for (const file of [null, '/etc/apt/sources.list', '/etc/apt/sources.list.d/other.list', '/etc/apt/sources.list.d/nodesource.sources', '/etc/apt/sources.list.d/../sources.list.d/nodesource.list']) {
+    refuses(() => F.sources(Buffer.from(nodeList), 'list', file), 'B0_FACTS_SIGNED_BY_UNSUPPORTED');
+  }
+  const ubuntu = F.sources(Buffer.from(source), 'sources', '/etc/apt/sources.list.d/ubuntu.sources')[0];
+  assert.deepEqual(ubuntu, {types: ['deb'], uris: ['http://archive.ubuntu.com/ubuntu/'], suites: ['noble', 'noble-updates'], components: ['main', 'universe'], architectures: null, signed_by: F.KEYRING, enabled: 'yes', repository_authorized: false});
+  assert.equal(Object.hasOwn(ubuntu, 'reference_status'), false);
+  // Preserve the old Ubuntu-keyring projection exactly; it is not authority
+  // for a URI and never becomes a recognized NodeSource candidate.
+  const oldProjection = F.sourceRecord({...nodeRow(), 'signed-by': F.KEYRING}, NODE_SOURCE_FILE);
+  assert.equal(oldProjection.signed_by, F.KEYRING);
+  assert.equal(oldProjection.repository_authorized, false);
+  assert.equal(Object.hasOwn(oldProjection, 'reference_status'), false);
+});
+test('Node candidate source file aliases remain refused without changing Ubuntu alias reader', () => {
+  const io = fixture().add('/etc/apt/sources.list.d/alias.list', 'file', nodeList)
+    .add(NODE_SOURCE_FILE, 'link', '', {target: 'alias.list'});
+  // Avoid directory lexical order selecting alias.list first: exercise the
+  // closed reader with only the declared node filename returned by FakeFS.
+  const directory = io.opendirSync.bind(io);
+  io.opendirSync = (name, options) => name === '/etc/apt/sources.list.d' ?
+    {readSync: (() => { let once = false; return () => once ? null : (once = true, {name: 'nodesource.list'}); })(), closeSync: () => {}} : directory(name, options);
+  refuses(() => F.collect(io), 'B0_FACTS_CANDIDATE_SOURCE_ALIAS_REFUSED');
+});
+test('every Node tuple member divergence remains refused, including missing or mixed data', () => {
+  const mutations = {
+    types: ['deb-src', 'deb deb-src', 'deb deb'],
+    uris: ['http://deb.nodesource.com/node_26.x', 'https://deb.nodesource.com/node_24.x', 'https://deb.nodesource.com/node_26.x/', 'https://deb.nodesource.com/node_26.x https://archive.ubuntu.com/ubuntu/', 'https://mirror.example/node_26.x'],
+    suites: ['noble', 'nodistro noble', 'nodistro nodistro'],
+    components: ['universe', 'main universe', 'main main'],
+    'signed-by': ['/etc/apt/keyrings/other.gpg', '/etc/apt/keyrings/./nodesource.gpg', '/usr/share/keyrings/nodesource.gpg', NODE_KEY_REFERENCE + ' ' + F.KEYRING, '-----BEGIN PGP PUBLIC KEY BLOCK-----'],
+    architectures: ['', 'amd64', 'arm64', 'amd64 arm64'],
+    enabled: ['', 'no', 'true'],
+  };
+  for (const [key, values] of Object.entries(mutations)) for (const value of values) {
+    const row = {...nodeRow(), [key]: value};
+    assert.throws(() => F.sourceRecord(row, NODE_SOURCE_FILE), error => /^B0_FACTS_/.test(error.code));
+  }
+  for (const key of Object.keys(nodeRow())) {
+    const row = nodeRow(); delete row[key];
+    assert.throws(() => F.sourceRecord(row, NODE_SOURCE_FILE), error => /^B0_FACTS_/.test(error.code));
+  }
+  candidateOnly(F.sourceRecord({...nodeRow(), enabled: 'yes'}, NODE_SOURCE_FILE));
+});
+test('Node credentials/query/fragment/port/control/backslash/substitutions and options refused', () => {
+  for (const value of ['https://user:secret@deb.nodesource.com/node_26.x', NODE_URI + '?token=secret', NODE_URI + '#secret', 'https://deb.nodesource.com:8443/node_26.x', NODE_URI + '\n', NODE_URI + '/$TOKEN', NODE_URI + '/`whoami`', NODE_URI + '\\evil']) {
+    assert.throws(() => F.sourceRecord({...nodeRow(), uris: value}, NODE_SOURCE_FILE), error => /^B0_FACTS_/.test(error.code));
+  }
+  for (const options of ['trusted=yes', 'arch=amd64', 'allow-insecure=yes', 'signed-by=' + NODE_KEY_REFERENCE + ' signed-by=' + NODE_KEY_REFERENCE]) {
+    const line = 'deb [signed-by=' + NODE_KEY_REFERENCE + ' ' + options + '] ' + NODE_URI + ' nodistro main\n';
+    assert.throws(() => F.sources(Buffer.from(line), 'list', NODE_SOURCE_FILE), error => /^B0_FACTS_/.test(error.code));
+  }
+  assert.throws(() => F.sourceRecord({...nodeRow(), trusted: 'yes'}, NODE_SOURCE_FILE), error => /^B0_FACTS_/.test(error.code));
+});
+test('FakeFS collect rejects divergent Node source path/URI/version/suite/components/options without key reads', () => {
+  const altered = [
+    [NODE_SOURCE_FILE, nodeList.replace('node_26.x', 'node_24.x')],
+    [NODE_SOURCE_FILE, nodeList.replace('node_26.x', 'node_27.x')],
+    [NODE_SOURCE_FILE, nodeList.replace('https://', 'http://')],
+    [NODE_SOURCE_FILE, nodeList.replace('deb.nodesource.com', 'mirror.example')],
+    [NODE_SOURCE_FILE, nodeList.replace('https://', 'https://user:secret@')],
+    [NODE_SOURCE_FILE, nodeList.replace(' nodistro ', '?token=secret nodistro ')],
+    [NODE_SOURCE_FILE, nodeList.replace(' nodistro ', ' noble ')],
+    [NODE_SOURCE_FILE, nodeList.replace(' main\n', ' main universe\n')],
+    [NODE_SOURCE_FILE, nodeList.replace(' main\n', ' universe\n')],
+    [NODE_SOURCE_FILE, nodeList.replace('deb [', 'deb-src [')],
+    [NODE_SOURCE_FILE, nodeList.replace('] ', ' arch=amd64] ')],
+    [NODE_SOURCE_FILE, nodeList.replace('] ', ' trusted=yes] ')],
+    [NODE_SOURCE_FILE, nodeList.replace(NODE_KEY_REFERENCE, '/root/private.gpg')],
+    ['/etc/apt/sources.list.d/other.list', nodeList],
+    ['/etc/apt/sources.list.d/nodesource.sources', nodeList],
+  ];
+  for (const [file, data] of altered) {
+    const io = fixture().add(file, 'file', data).add(NODE_KEY_REFERENCE, 'file', 'NEVER_OPEN_NODE_KEY');
+    const open = io.openSync.bind(io), opened = [];
+    io.openSync = name => { opened.push(name); return open(name); };
+    assert.throws(() => F.collect(io), error => /^B0_FACTS_/.test(error.code) && !error.message.includes('secret'));
+    assert.ok(!opened.includes(NODE_KEY_REFERENCE)); assert.ok(!opened.includes('/root/private.gpg'));
+  }
+});

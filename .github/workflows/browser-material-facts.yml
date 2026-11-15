@@ -12,8 +12,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      B0_FACTS_SOURCES_SHA: 48cfa3a408b5958c795bfc9e9cf4c4534f559a359bc26eb01e1ee87773063cdf
-      B0_FACTS_MANIFEST_SHA: a16d8758e037f35a45639f68366013638615b3f0e6f54658e1fe18837d2d171d
+      B0_FACTS_SOURCES_SHA: 36957d79743968b9e4fd25faf36f3ea3821a284f5be28ea0459913697f6e8558
+      B0_FACTS_MANIFEST_SHA: c274fd8fb6565c3ddc274b10691d1fe9a6644f380c268d206e9ba0a40f16e573
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:

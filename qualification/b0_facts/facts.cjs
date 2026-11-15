@@ -195,7 +195,7 @@ function uri(value) {
     !parsed.port && /^[A-Za-z0-9.-]+$/.test(parsed.hostname) && /^[A-Za-z0-9/_.-]+$/.test(parsed.pathname), 'B0_FACTS_URI_REFUSED');
   return value;
 }
-function sourceRecord(row) {
+function sourceRecord(row, sourcePath = null) {
   const permitted = new Set(['types', 'uris', 'suites', 'components', 'architectures', 'signed-by', 'enabled']);
   need(Object.keys(row).every(key => permitted.has(key)), 'B0_FACTS_SOURCE_FIELD_UNSUPPORTED');
   need(['types', 'uris', 'suites', 'components', 'signed-by'].every(key => row[key]), 'B0_FACTS_SOURCE_REQUIRED');
@@ -203,14 +203,29 @@ function sourceRecord(row) {
   const types = split('types'), uris = split('uris').map(uri), suites = split('suites'), components = split('components');
   need(types.every(v => v === 'deb' || v === 'deb-src') && suites.every(v => /^[a-z][a-z0-9-]{0,31}$/.test(v)) &&
     components.every(v => /^[a-z][a-z0-9-]{0,31}$/.test(v)), 'B0_FACTS_SOURCE_VALUE');
+  if (row['signed-by'] === '/etc/apt/keyrings/nodesource.gpg') {
+    need(Object.values(row).every(value => typeof value === 'string' && !/[\x00-\x1f\x7f-\x9f]/.test(value)) &&
+      sourcePath === '/etc/apt/sources.list.d/nodesource.list' &&
+      types.length === 1 && types[0] === 'deb' &&
+      uris.length === 1 && uris[0] === 'https://deb.nodesource.com/node_26.x' &&
+      suites.length === 1 && suites[0] === 'nodistro' &&
+      components.length === 1 && components[0] === 'main' &&
+      !Object.hasOwn(row, 'architectures') &&
+      (!Object.hasOwn(row, 'enabled') || row.enabled === 'yes'), 'B0_FACTS_SIGNED_BY_UNSUPPORTED');
+    // Recognize a declared public reference only. Never resolve/read this key.
+    return {types, uris, suites, components, architectures: null,
+      signed_by: row['signed-by'], enabled: 'yes', repository_authorized: false,
+      reference_status: 'candidate_not_authorized',
+      classification: 'recognized_candidate_reference_not_authorized', key_material_inspected: false};
+  }
   need(row['signed-by'] === KEYRING, 'B0_FACTS_SIGNED_BY_UNSUPPORTED');
   const architectures = row.architectures ? split('architectures') : null;
   need(!architectures || architectures.every(v => /^[a-z0-9][a-z0-9-]{0,31}$/.test(v)), 'B0_FACTS_SOURCE_ARCH');
   need(!row.enabled || ['yes', 'no'].includes(row.enabled), 'B0_FACTS_SOURCE_ENABLED');
   return {types, uris, suites, components, architectures, signed_by: KEYRING, enabled: row.enabled || 'yes', repository_authorized: false};
 }
-function sources(data, kind) {
-  if (kind === 'sources') return deb822(data, 4096, 256 * 1024, 64).map(sourceRecord);
+function sources(data, kind, sourcePath = null) {
+  if (kind === 'sources') return deb822(data, 4096, 256 * 1024, 64).map(row => sourceRecord(row, sourcePath));
   const records = [];
   for (const raw of lines(data, 4096)) {
     const line = raw.replace(/\s+#.*$/, '').trim(); if (!line || line.startsWith('#')) continue;
@@ -222,7 +237,7 @@ function sources(data, kind) {
       need(pair && !Object.hasOwn(options, pair[1]), 'B0_FACTS_LIST_OPTIONS_UNSUPPORTED'); options[pair[1]] = pair[2];
     }
     records.push(sourceRecord({types: match[1], uris: match[3], suites: match[4], components: match[5],
-      'signed-by': options['signed-by'], ...(options.arch ? {architectures: options.arch.replaceAll(',', ' ')} : {})}));
+      'signed-by': options['signed-by'], ...(options.arch ? {architectures: options.arch.replaceAll(',', ' ')} : {})}, sourcePath));
   }
   return records;
 }
@@ -269,7 +284,9 @@ function collect(io = fs) {
     const item = r.read(file, 65536); inventory.push(item.fact);
     if (!item.data) continue;
     sourceBytes += item.data.length; need(sourceBytes <= 256 * 1024, 'B0_FACTS_SOURCES_TOTAL');
-    const parsed = sources(item.data, file.endsWith('.sources') ? 'sources' : 'list');
+    const parsed = sources(item.data, file.endsWith('.sources') ? 'sources' : 'list', file);
+    if (parsed.some(record => record.reference_status === 'candidate_not_authorized'))
+      need(item.fact.chain.length === 0 && item.fact.resolved_path === file, 'B0_FACTS_CANDIDATE_SOURCE_ALIAS_REFUSED');
     need(repositories.length + parsed.length <= 64, 'B0_FACTS_SOURCE_COUNT');
     repositories.push(...parsed.map(record => ({path: file, ...record})));
   }
