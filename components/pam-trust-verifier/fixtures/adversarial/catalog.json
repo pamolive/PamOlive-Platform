@@ -1,0 +1,248 @@
+{
+  "schema": "pamolive.synthetic-signed-adversarial-catalog/1",
+  "cases": [
+    {
+      "case_id": "positive-complete-higher",
+      "chain_files_in_supplied_order": [
+        "cases/positive-complete-higher/chain/01.json",
+        "cases/positive-complete-higher/chain/02.json",
+        "cases/positive-complete-higher/chain/03.json",
+        "cases/positive-complete-higher/chain/04.json"
+      ],
+      "context_file": "cases/positive-complete-higher/expected-context.json",
+      "checkpoint_file": "cases/positive-complete-higher/checkpoint.json",
+      "expected_verdict_file": "cases/positive-complete-higher/expected-verdict.json",
+      "expected_verdict": "accept"
+    },
+    {
+      "case_id": "positive-complete-lower",
+      "chain_files_in_supplied_order": [
+        "cases/positive-complete-lower/chain/01.json",
+        "cases/positive-complete-lower/chain/02.json",
+        "cases/positive-complete-lower/chain/03.json",
+        "cases/positive-complete-lower/chain/04.json"
+      ],
+      "context_file": "cases/positive-complete-lower/expected-context.json",
+      "checkpoint_file": "cases/positive-complete-lower/checkpoint.json",
+      "expected_verdict_file": "cases/positive-complete-lower/expected-verdict.json",
+      "expected_verdict": "accept"
+    },
+    {
+      "case_id": "reject-affected-custodian-cosigns-change",
+      "chain_files_in_supplied_order": [
+        "cases/reject-affected-custodian-cosigns-change/chain/01.json",
+        "cases/reject-affected-custodian-cosigns-change/chain/02.json"
+      ],
+      "context_file": "cases/reject-affected-custodian-cosigns-change/expected-context.json",
+      "checkpoint_file": "cases/reject-affected-custodian-cosigns-change/checkpoint.json",
+      "expected_verdict_file": "cases/reject-affected-custodian-cosigns-change/expected-verdict.json",
+      "expected_verdict": "reject"
+    },
+    {
+      "case_id": "reject-new-custodians-self-authorize",
+      "chain_files_in_supplied_order": [
+        "cases/reject-new-custodians-self-authorize/chain/01.json",
+        "cases/reject-new-custodians-self-authorize/chain/02.json"
+      ],
+      "context_file": "cases/reject-new-custodians-self-authorize/expected-context.json",
+      "checkpoint_file": "cases/reject-new-custodians-self-authorize/checkpoint.json",
+      "expected_verdict_file": "cases/reject-new-custodians-self-authorize/expected-verdict.json",
+      "expected_verdict": "reject"
+    },
+    {
+      "case_id": "reject-historic-identity-reassigned-after-recommission",
+      "chain_files_in_supplied_order": [
+        "cases/reject-historic-identity-reassigned-after-recommission/chain/01.json",
+        "cases/reject-historic-identity-reassigned-after-recommission/chain/02.json",
+        "cases/reject-historic-identity-reassigned-after-recommission/chain/03.json",
+        "cases/reject-historic-identity-reassigned-after-recommission/chain/04.json"
+      ],
+      "context_file": "cases/reject-historic-identity-reassigned-after-recommission/expected-context.json",
+      "checkpoint_file": "cases/reject-historic-identity-reassigned-after-recommission/checkpoint.json",
+      "expected_verdict_file": "cases/reject-historic-identity-reassigned-after-recommission/expected-verdict.json",
+      "expected_verdict": "reject"
+    },
+    {
+      "case_id": "reject-historic-account-reassigned-after-recommission",
+      "chain_files_in_supplied_order": [
+        "cases/reject-historic-account-reassigned-after-recommission/chain/01.json",
+        "cases/reject-historic-account-reassigned-after-recommission/chain/02.json",
+        "cases/reject-historic-account-reassigned-after-recommission/chain/03.json",
+        "cases/reject-historic-account-reassigned-after-recommission/chain/04.json"
+      ],
+      "context_file": "cases/reject-historic-account-reassigned-after-recommission/expected-context.json",
+      "checkpoint_file": "cases/reject-historic-account-reassigned-after-recommission/checkpoint.json",
+      "expected_verdict_file": "cases/reject-historic-account-reassigned-after-recommission/expected-verdict.json",
+      "expected_verdict": "reject"
+    },
+    {
+      "case_id": "reject-historic-credential-reassigned-after-recommission",
+      "chain_files_in_supplied_order": [
+        "cases/reject-historic-credential-reassigned-after-recommission/chain/01.json",
+        "cases/reject-historic-credential-reassigned-after-recommission/chain/02.json",
+        "cases/reject-historic-credential-reassigned-after-recommission/chain/03.json",
+        "cases/reject-historic-credential-reassigned-after-recommission/chain/04.json"
+      ],
+      "context_file": "cases/reject-historic-credential-reassigned-after-recommission/expected-context.json",
+      "checkpoint_file": "cases/reject-historic-credential-reassigned-after-recommission/checkpoint.json",
+      "expected_verdict_file": "cases/reject-historic-credential-reassigned-after-recommission/expected-verdict.json",
+      "expected_verdict": "reject"
+    },
+    {
+      "case_id": "reject-historic-spki-reassigned-after-recommission",
+      "chain_files_in_supplied_order": [
+        "cases/reject-historic-spki-reassigned-after-recommission/chain/01.json",
+        "cases/reject-historic-spki-reassigned-after-recommission/chain/02.json",
+        "cases/reject-historic-spki-reassigned-after-recommission/chain/03.json",
+        "cases/reject-historic-spki-reassigned-after-recommission/chain/04.json"
+      ],
+      "context_file": "cases/reject-historic-spki-reassigned-after-recommission/expected-context.json",
+      "checkpoint_file": "cases/reject-historic-spki-reassigned-after-recommission/checkpoint.json",
+      "expected_verdict_file": "cases/reject-historic-spki-reassigned-after-recommission/expected-verdict.json",
+      "expected_verdict": "reject"
+    },
+    {
+      "case_id": "reject-historic-custody-key-reassigned-after-recommission",
+      "chain_files_in_supplied_order": [
+        "cases/reject-historic-custody-key-reassigned-after-recommission/chain/01.json",
+        "cases/reject-historic-custody-key-reassigned-after-recommission/chain/02.json",
+        "cases/reject-historic-custody-key-reassigned-after-recommission/chain/03.json",
+        "cases/reject-historic-custody-key-reassigned-after-recommission/chain/04.json"
+      ],
+      "context_file": "cases/reject-historic-custody-key-reassigned-after-recommission/expected-context.json",
+      "checkpoint_file": "cases/reject-historic-custody-key-reassigned-after-recommission/checkpoint.json",
+      "expected_verdict_file": "cases/reject-historic-custody-key-reassigned-after-recommission/expected-verdict.json",
+      "expected_verdict": "reject"
+    },
+    {
+      "case_id": "reject-credential-reactivated-by-update",
+      "chain_files_in_supplied_order": [
+        "cases/reject-credential-reactivated-by-update/chain/01.json",
+        "cases/reject-credential-reactivated-by-update/chain/02.json",
+        "cases/reject-credential-reactivated-by-update/chain/03.json",
+        "cases/reject-credential-reactivated-by-update/chain/04.json"
+      ],
+      "context_file": "cases/reject-credential-reactivated-by-update/expected-context.json",
+      "checkpoint_file": "cases/reject-credential-reactivated-by-update/checkpoint.json",
+      "expected_verdict_file": "cases/reject-credential-reactivated-by-update/expected-verdict.json",
+      "expected_verdict": "reject"
+    },
+    {
+      "case_id": "reject-signed-suffix-without-bootstrap",
+      "chain_files_in_supplied_order": [
+        "cases/reject-signed-suffix-without-bootstrap/chain/01.json",
+        "cases/reject-signed-suffix-without-bootstrap/chain/02.json"
+      ],
+      "context_file": "cases/reject-signed-suffix-without-bootstrap/expected-context.json",
+      "checkpoint_file": "cases/reject-signed-suffix-without-bootstrap/checkpoint.json",
+      "expected_verdict_file": "cases/reject-signed-suffix-without-bootstrap/expected-verdict.json",
+      "expected_verdict": "reject"
+    },
+    {
+      "case_id": "reject-signed-fork-previous-hash",
+      "chain_files_in_supplied_order": [
+        "cases/reject-signed-fork-previous-hash/chain/01.json",
+        "cases/reject-signed-fork-previous-hash/chain/02.json",
+        "cases/reject-signed-fork-previous-hash/chain/03.json"
+      ],
+      "context_file": "cases/reject-signed-fork-previous-hash/expected-context.json",
+      "checkpoint_file": "cases/reject-signed-fork-previous-hash/checkpoint.json",
+      "expected_verdict_file": "cases/reject-signed-fork-previous-hash/expected-verdict.json",
+      "expected_verdict": "reject"
+    },
+    {
+      "case_id": "reject-signed-skipped-revision",
+      "chain_files_in_supplied_order": [
+        "cases/reject-signed-skipped-revision/chain/01.json",
+        "cases/reject-signed-skipped-revision/chain/02.json",
+        "cases/reject-signed-skipped-revision/chain/03.json"
+      ],
+      "context_file": "cases/reject-signed-skipped-revision/expected-context.json",
+      "checkpoint_file": "cases/reject-signed-skipped-revision/checkpoint.json",
+      "expected_verdict_file": "cases/reject-signed-skipped-revision/expected-verdict.json",
+      "expected_verdict": "reject"
+    },
+    {
+      "case_id": "reject-signed-checkpoint-wrong-tenant",
+      "chain_files_in_supplied_order": [
+        "cases/reject-signed-checkpoint-wrong-tenant/chain/01.json",
+        "cases/reject-signed-checkpoint-wrong-tenant/chain/02.json",
+        "cases/reject-signed-checkpoint-wrong-tenant/chain/03.json",
+        "cases/reject-signed-checkpoint-wrong-tenant/chain/04.json"
+      ],
+      "context_file": "cases/reject-signed-checkpoint-wrong-tenant/expected-context.json",
+      "checkpoint_file": "cases/reject-signed-checkpoint-wrong-tenant/checkpoint.json",
+      "expected_verdict_file": "cases/reject-signed-checkpoint-wrong-tenant/expected-verdict.json",
+      "expected_verdict": "reject"
+    },
+    {
+      "case_id": "reject-signed-checkpoint-wrong-head",
+      "chain_files_in_supplied_order": [
+        "cases/reject-signed-checkpoint-wrong-head/chain/01.json",
+        "cases/reject-signed-checkpoint-wrong-head/chain/02.json",
+        "cases/reject-signed-checkpoint-wrong-head/chain/03.json",
+        "cases/reject-signed-checkpoint-wrong-head/chain/04.json"
+      ],
+      "context_file": "cases/reject-signed-checkpoint-wrong-head/expected-context.json",
+      "checkpoint_file": "cases/reject-signed-checkpoint-wrong-head/checkpoint.json",
+      "expected_verdict_file": "cases/reject-signed-checkpoint-wrong-head/expected-verdict.json",
+      "expected_verdict": "reject"
+    },
+    {
+      "case_id": "reject-signed-checkpoint-wrong-generation",
+      "chain_files_in_supplied_order": [
+        "cases/reject-signed-checkpoint-wrong-generation/chain/01.json",
+        "cases/reject-signed-checkpoint-wrong-generation/chain/02.json",
+        "cases/reject-signed-checkpoint-wrong-generation/chain/03.json",
+        "cases/reject-signed-checkpoint-wrong-generation/chain/04.json"
+      ],
+      "context_file": "cases/reject-signed-checkpoint-wrong-generation/expected-context.json",
+      "checkpoint_file": "cases/reject-signed-checkpoint-wrong-generation/checkpoint.json",
+      "expected_verdict_file": "cases/reject-signed-checkpoint-wrong-generation/expected-verdict.json",
+      "expected_verdict": "reject"
+    },
+    {
+      "case_id": "reject-signed-checkpoint-expired-exact",
+      "chain_files_in_supplied_order": [
+        "cases/reject-signed-checkpoint-expired-exact/chain/01.json",
+        "cases/reject-signed-checkpoint-expired-exact/chain/02.json",
+        "cases/reject-signed-checkpoint-expired-exact/chain/03.json",
+        "cases/reject-signed-checkpoint-expired-exact/chain/04.json"
+      ],
+      "context_file": "cases/reject-signed-checkpoint-expired-exact/expected-context.json",
+      "checkpoint_file": "cases/reject-signed-checkpoint-expired-exact/checkpoint.json",
+      "expected_verdict_file": "cases/reject-signed-checkpoint-expired-exact/expected-verdict.json",
+      "expected_verdict": "reject"
+    },
+    {
+      "case_id": "reject-signed-checkpoint-future",
+      "chain_files_in_supplied_order": [
+        "cases/reject-signed-checkpoint-future/chain/01.json",
+        "cases/reject-signed-checkpoint-future/chain/02.json",
+        "cases/reject-signed-checkpoint-future/chain/03.json",
+        "cases/reject-signed-checkpoint-future/chain/04.json"
+      ],
+      "context_file": "cases/reject-signed-checkpoint-future/expected-context.json",
+      "checkpoint_file": "cases/reject-signed-checkpoint-future/checkpoint.json",
+      "expected_verdict_file": "cases/reject-signed-checkpoint-future/expected-verdict.json",
+      "expected_verdict": "reject"
+    },
+    {
+      "case_id": "reject-signed-checkpoint-over-ttl",
+      "chain_files_in_supplied_order": [
+        "cases/reject-signed-checkpoint-over-ttl/chain/01.json",
+        "cases/reject-signed-checkpoint-over-ttl/chain/02.json",
+        "cases/reject-signed-checkpoint-over-ttl/chain/03.json",
+        "cases/reject-signed-checkpoint-over-ttl/chain/04.json"
+      ],
+      "context_file": "cases/reject-signed-checkpoint-over-ttl/expected-context.json",
+      "checkpoint_file": "cases/reject-signed-checkpoint-over-ttl/checkpoint.json",
+      "expected_verdict_file": "cases/reject-signed-checkpoint-over-ttl/expected-verdict.json",
+      "expected_verdict": "reject"
+    }
+  ],
+  "source_revision": "a57350fe908c5c2fc57ee1dd6dc8a74e0a836ea8",
+  "not_product_API_or_admin_format": true,
+  "single_generator_controls_all_keys": true,
+  "authority": false
+}

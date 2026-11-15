@@ -29,12 +29,19 @@ jobs:
         run: python -m pip_audit --strict --no-deps --disable-pip -r requirements.lock -f json -o "$RUNNER_TEMP/pamolive-dependency-audit.json"
       - name: Reject known vulnerabilities in the seven P2 library build and test materials
         run: python -m pip_audit --strict --no-deps --disable-pip -r requirements-bootstrap.lock -r requirements-python-build-tools-linux.lock -r requirements-p2-test-linux.lock -f json -o "$RUNNER_TEMP/pamolive-p2-materials-audit.json"
+      - name: Reject known vulnerabilities in the thirteen public PAM verifier materials
+        run: >-
+          python -m pip_audit --strict --no-deps --disable-pip
+          -r qualification/pam_trust_verifier/requirements-bootstrap.lock
+          -r qualification/pam_trust_verifier/requirements-build.lock
+          -r qualification/pam_trust_verifier/requirements-runtime.lock
+          -f json -o "$RUNNER_TEMP/pamolive-public-verifier-materials-audit.json"
       - name: Produce the application CycloneDX SBOM
         if: always()
         run: python -m pip_audit --strict --no-deps --disable-pip -r requirements.lock -f cyclonedx-json -o "$RUNNER_TEMP/pamolive-sbom.cdx.json"
       - name: Reject medium and high severity application findings
         if: always()
-        run: python -m bandit -r config platform_core platform_modules components/vault/src components/vault-registry/src -ll -f json -o "$RUNNER_TEMP/pamolive-bandit-application.json"
+        run: python -m bandit -r config platform_core platform_modules components/vault/src components/vault-registry/src components/pam-trust-verifier/src -ll -f json -o "$RUNNER_TEMP/pamolive-bandit-application.json"
       - name: Retain all deployment findings for review
         if: always()
         run: python -m bandit -r deploy --exit-zero -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-all.json"
@@ -66,6 +73,7 @@ jobs:
           path: |
             ${{ runner.temp }}/pamolive-dependency-audit.json
             ${{ runner.temp }}/pamolive-p2-materials-audit.json
+            ${{ runner.temp }}/pamolive-public-verifier-materials-audit.json
             ${{ runner.temp }}/pamolive-sbom.cdx.json
             ${{ runner.temp }}/pamolive-bandit-application.json
             ${{ runner.temp }}/pamolive-bandit-deploy-all.json

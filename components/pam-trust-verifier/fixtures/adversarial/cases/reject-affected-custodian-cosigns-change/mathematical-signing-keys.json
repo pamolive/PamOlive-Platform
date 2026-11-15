@@ -1,0 +1,44 @@
+{
+  "schema": "pamolive.synthetic-public-mathematical-signers/1",
+  "not_trust_roots_or_admin_context": true,
+  "entries": {
+    "cases/reject-affected-custodian-cosigns-change/chain/01.json": {
+      "message_sha256": "3c13314aa23d2ac2df39334a268f0f05cd59031c4e650d28d251e55af0ae36ca",
+      "registry_signing_keys": {
+        "00000000-0000-0000-0000-000000000001": {
+          "public_key": "D1v1rfVXMKm5mpa_cj590E3mpH8Q8XsSpj3uIzh-j_8",
+          "claimed_key_source": "bootstrap body keys"
+        },
+        "00000000-0000-0000-0000-000000000002": {
+          "public_key": "C1wbqbQYc0mt9YdtH9trOm3Jhj4Z-Vkq_lVO6NhyK8A",
+          "claimed_key_source": "bootstrap body keys"
+        }
+      },
+      "commissioning_signing_keys": {
+        "fixture-commissioner": "RpqtsCqwxeS4XYFTpm8MXgIFOY-qAE_yxPdXYPDNkm0"
+      },
+      "mathematically_verified_not_authorization": true
+    },
+    "cases/reject-affected-custodian-cosigns-change/chain/02.json": {
+      "message_sha256": "61857343860882411bbc94563adfdd41df297fa73016386aa9b29b88e47b500e",
+      "registry_signing_keys": {
+        "00000000-0000-0000-0000-000000000001": {
+          "public_key": "D1v1rfVXMKm5mpa_cj590E3mpH8Q8XsSpj3uIzh-j_8",
+          "claimed_key_source": "previous body keys"
+        },
+        "00000000-0000-0000-0000-000000000002": {
+          "public_key": "C1wbqbQYc0mt9YdtH9trOm3Jhj4Z-Vkq_lVO6NhyK8A",
+          "claimed_key_source": "previous body keys"
+        }
+      },
+      "commissioning_signing_keys": {},
+      "mathematically_verified_not_authorization": true
+    },
+    "cases/reject-affected-custodian-cosigns-change/checkpoint.json": {
+      "message_sha256": "b34f3745849596ce88f41951d4ab4fcfbe940993ad396d7c3d55adccacb5fbb3",
+      "public_key": "gVL4pJ2pgaw4XRlBIaSpaNT2WQsbJoIyxoD7HxcCCVY",
+      "mathematically_verified_not_authorization": true
+    }
+  },
+  "authority": false
+}

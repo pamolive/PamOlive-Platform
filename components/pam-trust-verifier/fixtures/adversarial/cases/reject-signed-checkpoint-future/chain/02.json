@@ -1,0 +1,165 @@
+{
+  "body": {
+    "format": "pamolive.pam.trust-registry/1",
+    "installation": "fixture-adversarial-P0-é",
+    "organization": "00000000-0000-0000-0000-000000000064",
+    "generation": "e0000000-0000-4000-8000-000000000001",
+    "revision": 2,
+    "operation": "update",
+    "previous_hash": "0a5b2ed7af741055bdc9c9d723ac4162921bff019483ef7ca75df97a11e60318",
+    "issued_at": "2026-11-14T12:05:00.000000+00:00",
+    "expires_at": "2026-11-15T12:05:00.000000+00:00",
+    "persons": {
+      "00000000-0000-0000-0000-000000000001": {
+        "active": true,
+        "identity_ids": [],
+        "account_ids": [],
+        "endpoint_ids": [],
+        "roles": [],
+        "authenticators": []
+      },
+      "00000000-0000-0000-0000-000000000002": {
+        "active": true,
+        "identity_ids": [],
+        "account_ids": [],
+        "endpoint_ids": [],
+        "roles": [],
+        "authenticators": []
+      },
+      "00000000-0000-0000-0000-000000000003": {
+        "active": true,
+        "identity_ids": [],
+        "account_ids": [],
+        "endpoint_ids": [],
+        "roles": [],
+        "authenticators": []
+      },
+      "00000000-0000-0000-0000-000000000004": {
+        "active": true,
+        "identity_ids": [
+          "00000000-0000-0000-0000-00000000012c"
+        ],
+        "account_ids": [
+          "fixture:actor:A"
+        ],
+        "endpoint_ids": [
+          "00000000-0000-0000-0000-000000000065"
+        ],
+        "roles": [
+          "requester"
+        ],
+        "authenticators": [
+          {
+            "active": true,
+            "id": "OC2QX19fwEqzvEzuPJIHEW_hdO-3XodMs72j2QRIjHQ",
+            "enrollment_id": "00000000-0000-0000-0000-000000000190",
+            "public_key": "pQECAyYgASFYIMCDb11ux-1gytNczaoRXw0PpNF1-4hNdHroCMuBsaOwIlggUZlQC3wLY5bvZ-M0neAxC8xch0uYxIgegwAmTr2Buck",
+            "rp_id": "pam.adversarial.fixture.test",
+            "origin": "https://pam.adversarial.fixture.test"
+          }
+        ]
+      },
+      "00000000-0000-0000-0000-000000000005": {
+        "active": true,
+        "identity_ids": [
+          "00000000-0000-0000-0000-00000000012d"
+        ],
+        "account_ids": [
+          "fixture:actor:B"
+        ],
+        "endpoint_ids": [
+          "00000000-0000-0000-0000-000000000065"
+        ],
+        "roles": [
+          "reviewer"
+        ],
+        "authenticators": [
+          {
+            "active": true,
+            "id": "MZWLYM51sh9CQi1brYje8a1Y-GUIyEpWrIWR5ph8-Tw",
+            "enrollment_id": "00000000-0000-0000-0000-000000000191",
+            "public_key": "pQECAyYgASFYIPZWhqgZJ1iGKSkp4rwjjhD0wZFZt9HEvTqCxY6bDCuUIlggWptP7-usUEanceMZCSML2Z21qXz_BNwKSCcht7hcRn8",
+            "rp_id": "pam.adversarial.fixture.test",
+            "origin": "https://pam.adversarial.fixture.test"
+          }
+        ]
+      },
+      "00000000-0000-0000-0000-000000000006": {
+        "active": true,
+        "identity_ids": [
+          "00000000-0000-0000-0000-00000000012e"
+        ],
+        "account_ids": [
+          "fixture:actor:C"
+        ],
+        "endpoint_ids": [
+          "00000000-0000-0000-0000-000000000065"
+        ],
+        "roles": [
+          "reviewer"
+        ],
+        "authenticators": [
+          {
+            "active": true,
+            "id": "4jL9bRc3_jsQW9SuLyLwrZNc3EaObvua0y-tpjUGzL0",
+            "enrollment_id": "00000000-0000-0000-0000-000000000192",
+            "public_key": "pQECAyYgASFYIPiqQ5vDF8aQ08Rbox-OiNj7IR5-tO759sfSigKMJ79qIlgggH4tpcD7E3x0wy6IaNuCZx9YWWx_mBqgyHO7aPlpPp8",
+            "rp_id": "pam.adversarial.fixture.test",
+            "origin": "https://pam.adversarial.fixture.test"
+          }
+        ]
+      }
+    },
+    "custodians": {
+      "00000000-0000-0000-0000-000000000001": {
+        "active": true,
+        "public_key": "D1v1rfVXMKm5mpa_cj590E3mpH8Q8XsSpj3uIzh-j_8"
+      },
+      "00000000-0000-0000-0000-000000000002": {
+        "active": true,
+        "public_key": "C1wbqbQYc0mt9YdtH9trOm3Jhj4Z-Vkq_lVO6NhyK8A"
+      },
+      "00000000-0000-0000-0000-000000000003": {
+        "active": true,
+        "public_key": "8U5q7LLBLDlYZ05bmVK9OKrs5cxeeTMGoQiitsre9Oo"
+      }
+    },
+    "policy": {
+      "standard_min": 2,
+      "critical_min": 2
+    },
+    "targets": {
+      "00000000-0000-0000-0000-000000000065": {
+        "scope": {
+          "organization": "00000000-0000-0000-0000-000000000064",
+          "endpoint": "00000000-0000-0000-0000-000000000065",
+          "epoch": 1,
+          "resource": "00000000-0000-0000-0000-000000000066",
+          "account": "00000000-0000-0000-0000-000000000067",
+          "username": "fixture-technical",
+          "protocol": "ssh",
+          "hostname": "target.adversarial.fixture.test",
+          "port": 2222,
+          "domain": "",
+          "auth_method": "password",
+          "fingerprint": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIghlKJPdHZPoOJbTzBKfp+4yj78VwZWf/QjbUHYEzVr"
+        },
+        "critical": true,
+        "min_reviewers": 2,
+        "contract_id": "",
+        "sponsor_person": "",
+        "contract_required": false,
+        "sponsor_required": false
+      }
+    },
+    "fixture_signed_unknown_field": {
+      "NFC": "café",
+      "NFD": "café"
+    }
+  },
+  "signatures": {
+    "00000000-0000-0000-0000-000000000001": "OhbMnR97o9Bupk5K-n-4sDxMraz47lKleFjwOpyzrAyqnJKwytWEP_AffZ0Dsv3iHYX6inHVEwM8f5nLPk66Aw",
+    "00000000-0000-0000-0000-000000000002": "4r-JyD8eLAhKFXJ3mphLZ2lv5lMXUUWiICjzda49LXobc6lFOdQBbvZMwsbGDs5BNY-N8WonohZ6Wve4TFclBg"
+  },
+  "commissioning_signatures": {}
+}

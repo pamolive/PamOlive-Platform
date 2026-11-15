@@ -1,0 +1,42 @@
+{
+  "schema": "pamolive.synthetic-materials-fixture-context/1",
+  "fixture_only_not_an_administration_format": true,
+  "installation": "fixture-P0-installation-é",
+  "organization": "00000000-0000-0000-0000-000000000064",
+  "expected_head": {
+    "revision": 4,
+    "generation": "00000000-0000-0000-0000-0000000000c9",
+    "registry_hash": "45443fe79f80694237a3bc845ef1fa798c9efd3adb79811737557b4171def1dd",
+    "body_message_sha256": "d106f1aebd60eebde8e1939226ca5034b04481893365f22da91018b18cf493be"
+  },
+  "commissioning_keys": {
+    "fixture-commissioner": {
+      "active": true,
+      "not_before": "2026-11-14T11:00:00.000000+00:00",
+      "not_after": "2026-11-17T12:00:00.000000+00:00",
+      "public_key": "EJ1GiXvdTrZ1WPSUMEGloW8WYH5pnFC5e_ZNsUPnzUA"
+    }
+  },
+  "checkpoint_keys": {
+    "fixture-witness": {
+      "active": true,
+      "not_before": "2026-11-14T11:00:00.000000+00:00",
+      "not_after": "2026-11-17T12:00:00.000000+00:00",
+      "public_key": "Wb777cl28v5YM-TGGt69yCSAwHPzj-Vawfb72pHS0IY"
+    }
+  },
+  "explicit_current_time": "2026-11-14T12:16:01.000000+00:00",
+  "credential_spki_sha256": {
+    "r_ba2WubzApglvXg9nlEmvs6H9w0UKXEAjwHv9MmRuc": "a77d492c7f838e7845d88e584144a44bd12c75fac42dd707c526059428372308",
+    "Mtn1A1MV58BQ9WcrBioxRAJO_Cj-cHjrel7p7bn8yvU": "655219ad5fdc1c50c05c9209a2eca9927e0457718cc0e338b3f9f887a385809b",
+    "QmjPIj8qk80yE7R5xWdStBV0XNI1zU6h5FK-t_6JLmE": "2ceccb36a8588ebbcd335a5bcfe7f14767baaa87d821878f30a49fcb4c15f8ff"
+  },
+  "registry_max_seconds": 86400,
+  "checkpoint_max_seconds": 60,
+  "independent_human_custody_proven": false,
+  "action_authorization_proven": false,
+  "enrollment_possession_proven": false,
+  "counter_state_proven": false,
+  "account_org_membership_proven": false,
+  "Vault_installation_binding_proven": false
+}

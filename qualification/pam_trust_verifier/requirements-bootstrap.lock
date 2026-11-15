@@ -1,0 +1,3 @@
+# Packaging tool only; official universal wheel verified through PyPI metadata.
+# https://pypi.org/pypi/pip/26.3/json (Python >=3.10; release 2026-11-02).
+pip==26.3 --hash=sha256:f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13

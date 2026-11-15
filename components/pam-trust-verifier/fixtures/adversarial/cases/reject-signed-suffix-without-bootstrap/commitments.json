@@ -1,0 +1,16 @@
+[
+  {
+    "position": 1,
+    "revision": 2,
+    "generation": "e0000000-0000-4000-8000-000000000001",
+    "registry_hash": "7b5872ee55545268e7185fedf04dba1b9fb52b9182a12c6ced3a76007bfc8eba",
+    "body_message_sha256": "661974191fd71fc0bcbeb40cf28e93cc813097f57f55494c86cc30d7f460f6b1"
+  },
+  {
+    "position": 2,
+    "revision": 3,
+    "generation": "e0000000-0000-4000-8000-000000000001",
+    "registry_hash": "c01c437e1fc20c3dadf9db0f5a1c9f634aceb2c3b07ead78062b26a7e5081455",
+    "body_message_sha256": "3dfdfc5e5b5a8a6c9616323684d66bb02c69c640a6c7f4c47c2709d95a7be5d4"
+  }
+]

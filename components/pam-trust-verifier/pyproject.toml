@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pamolive-pam-trust-verifier"
+version = "0.1.0a1"
+description = "Bounded public PAM V1 material inspection, without action authority"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE", "LICENSE-DJANGO.txt", "NOTICE.txt"]
+dependencies = ["cryptography==50.0.2", "webauthn==3.0.1", "cbor2==6.2.1"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

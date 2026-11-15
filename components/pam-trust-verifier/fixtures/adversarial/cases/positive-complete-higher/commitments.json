@@ -1,0 +1,30 @@
+[
+  {
+    "position": 1,
+    "revision": 1,
+    "generation": "e0000000-0000-4000-8000-000000000001",
+    "registry_hash": "0a5b2ed7af741055bdc9c9d723ac4162921bff019483ef7ca75df97a11e60318",
+    "body_message_sha256": "3c13314aa23d2ac2df39334a268f0f05cd59031c4e650d28d251e55af0ae36ca"
+  },
+  {
+    "position": 2,
+    "revision": 2,
+    "generation": "e0000000-0000-4000-8000-000000000001",
+    "registry_hash": "7b5872ee55545268e7185fedf04dba1b9fb52b9182a12c6ced3a76007bfc8eba",
+    "body_message_sha256": "661974191fd71fc0bcbeb40cf28e93cc813097f57f55494c86cc30d7f460f6b1"
+  },
+  {
+    "position": 3,
+    "revision": 3,
+    "generation": "e0000000-0000-4000-8000-000000000001",
+    "registry_hash": "c01c437e1fc20c3dadf9db0f5a1c9f634aceb2c3b07ead78062b26a7e5081455",
+    "body_message_sha256": "3dfdfc5e5b5a8a6c9616323684d66bb02c69c640a6c7f4c47c2709d95a7be5d4"
+  },
+  {
+    "position": 4,
+    "revision": 4,
+    "generation": "f0000000-0000-4000-8000-000000000001",
+    "registry_hash": "f87f0101f3249dccd6ee800de4b9a0d57b67a0e44929211b336b3a397857350b",
+    "body_message_sha256": "2f9e9334f5b30c92d55cd3741808a676502fc4c3931dce13a3214178b466b132"
+  }
+]

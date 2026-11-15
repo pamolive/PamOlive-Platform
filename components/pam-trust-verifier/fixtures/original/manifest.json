@@ -1,0 +1,75 @@
+{
+  "schema": "pamolive.synthetic-public-materials-oracles/1",
+  "files": {
+    "canonical/01-bootstrap-body.utf8": {
+      "bytes": 2588,
+      "sha256": "3fce5861522f2ffc29789d637d14774c831f10b6929b66b8f19ebb9cc26b7ad9"
+    },
+    "canonical/01-bootstrap-envelope.utf8": {
+      "bytes": 3009,
+      "sha256": "b7e6f14f258d863a0558536ddde657cf30186044fffa62a2edb457bfeb3916e2"
+    },
+    "canonical/02-public-bindings-body.utf8": {
+      "bytes": 3558,
+      "sha256": "7762e16a71cf0487baefb73be42a9d641524a79039e87430318e24af098af5d7"
+    },
+    "canonical/02-public-bindings-envelope.utf8": {
+      "bytes": 3868,
+      "sha256": "dd2ec5078d4a36a09893d5ac51ebfb31007f7aba5a78ed338a5161920968212f"
+    },
+    "canonical/03-credential-inactive-body.utf8": {
+      "bytes": 3559,
+      "sha256": "cfd044579f05f58bef157dadfe4c97d680780a2427dc0f0ce9c044fd8cc76633"
+    },
+    "canonical/03-credential-inactive-envelope.utf8": {
+      "bytes": 3869,
+      "sha256": "659b148c83f337a6a175b99a13056d90f0f1b9fbe1147a4156a53d5d02853277"
+    },
+    "canonical/04-recommission-body.utf8": {
+      "bytes": 2655,
+      "sha256": "6f6d5ce40d5fe6b199f76f7e2855f5360c42631beeace8f90974cee248d72925"
+    },
+    "canonical/04-recommission-envelope.utf8": {
+      "bytes": 3076,
+      "sha256": "c40df514b73801523d06994bca6604be69d0dad14b400855ebb7af206fd0975d"
+    },
+    "canonical/checkpoint-body.utf8": {
+      "bytes": 385,
+      "sha256": "87dcdb5f9b09251975de9fc605b66a29b6bc38085daad60adb1812b05edb27de"
+    },
+    "chain/01-bootstrap.json": {
+      "bytes": 4224,
+      "sha256": "2c50bfbc4a3b552684e4475044d98889696bd870ff4700c7271f65d2b956224f"
+    },
+    "chain/02-public-bindings.json": {
+      "bytes": 5419,
+      "sha256": "8b2d23084357fac8adc7d4fc0926a27b27bc83f1a9c79e023a26325363ac1a76"
+    },
+    "chain/03-credential-inactive.json": {
+      "bytes": 5420,
+      "sha256": "3ddab1b51ec85de7c92b41bbd240af4571ba2737e09301bc91b303d8d2065539"
+    },
+    "chain/04-recommission.json": {
+      "bytes": 4291,
+      "sha256": "d5cf46c8075e981fc4fd1be2fa7aec6704d99ccd492147d5eb04e36f6e97ad91"
+    },
+    "checkpoint.json": {
+      "bytes": 587,
+      "sha256": "85e26be4b290615427bf5120849f5f72dbc47c2ef8d9f9798716e3b6568fc17a"
+    },
+    "commitments.json": {
+      "bytes": 1079,
+      "sha256": "61048bff49abc3d64c86fa313e9f87a278db81bf5d2daa2dfb3820da159cff78"
+    },
+    "expected-context.json": {
+      "bytes": 1800,
+      "sha256": "3470dee4c8cef13451533282c5f420d3f1f37160aa4f3470bdebeb29463301cf"
+    }
+  },
+  "product_imports": false,
+  "private_keys_serialized": false,
+  "original_wire_or_SQL_export_claimed": false,
+  "existing_P0_verifier_acceptance_tested": false,
+  "new_P2_verifier_implemented": false,
+  "authority": false
+}

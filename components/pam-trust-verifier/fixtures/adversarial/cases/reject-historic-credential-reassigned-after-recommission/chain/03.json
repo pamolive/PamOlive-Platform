@@ -1,0 +1,140 @@
+{
+  "body": {
+    "format": "pamolive.pam.trust-registry/1",
+    "installation": "fixture-adversarial-P0-é",
+    "organization": "00000000-0000-0000-0000-000000000064",
+    "generation": "10000000-0000-4000-8000-000000000001",
+    "revision": 3,
+    "operation": "recommission",
+    "previous_hash": "7b5872ee55545268e7185fedf04dba1b9fb52b9182a12c6ced3a76007bfc8eba",
+    "issued_at": "2026-11-14T12:10:00.000000+00:00",
+    "expires_at": "2026-11-15T12:10:00.000000+00:00",
+    "persons": {
+      "00000000-0000-0000-0000-000000000001": {
+        "active": true,
+        "identity_ids": [],
+        "account_ids": [],
+        "endpoint_ids": [],
+        "roles": [],
+        "authenticators": []
+      },
+      "00000000-0000-0000-0000-000000000002": {
+        "active": true,
+        "identity_ids": [],
+        "account_ids": [],
+        "endpoint_ids": [],
+        "roles": [],
+        "authenticators": []
+      },
+      "00000000-0000-0000-0000-000000000003": {
+        "active": true,
+        "identity_ids": [],
+        "account_ids": [],
+        "endpoint_ids": [],
+        "roles": [],
+        "authenticators": []
+      },
+      "00000000-0000-0000-0000-000000000004": {
+        "active": true,
+        "identity_ids": [
+          "00000000-0000-0000-0000-00000000012c"
+        ],
+        "account_ids": [
+          "fixture:actor:A"
+        ],
+        "endpoint_ids": [
+          "00000000-0000-0000-0000-000000000065"
+        ],
+        "roles": [
+          "requester"
+        ],
+        "authenticators": []
+      },
+      "00000000-0000-0000-0000-000000000005": {
+        "active": true,
+        "identity_ids": [
+          "00000000-0000-0000-0000-00000000012d"
+        ],
+        "account_ids": [
+          "fixture:actor:B"
+        ],
+        "endpoint_ids": [
+          "00000000-0000-0000-0000-000000000065"
+        ],
+        "roles": [
+          "reviewer"
+        ],
+        "authenticators": []
+      },
+      "00000000-0000-0000-0000-000000000006": {
+        "active": true,
+        "identity_ids": [
+          "00000000-0000-0000-0000-00000000012e"
+        ],
+        "account_ids": [
+          "fixture:actor:C"
+        ],
+        "endpoint_ids": [
+          "00000000-0000-0000-0000-000000000065"
+        ],
+        "roles": [
+          "reviewer"
+        ],
+        "authenticators": []
+      }
+    },
+    "custodians": {
+      "00000000-0000-0000-0000-000000000001": {
+        "active": true,
+        "public_key": "D1v1rfVXMKm5mpa_cj590E3mpH8Q8XsSpj3uIzh-j_8"
+      },
+      "00000000-0000-0000-0000-000000000002": {
+        "active": true,
+        "public_key": "C1wbqbQYc0mt9YdtH9trOm3Jhj4Z-Vkq_lVO6NhyK8A"
+      },
+      "00000000-0000-0000-0000-000000000003": {
+        "active": true,
+        "public_key": "8U5q7LLBLDlYZ05bmVK9OKrs5cxeeTMGoQiitsre9Oo"
+      }
+    },
+    "policy": {
+      "standard_min": 2,
+      "critical_min": 2
+    },
+    "targets": {
+      "00000000-0000-0000-0000-000000000065": {
+        "scope": {
+          "organization": "00000000-0000-0000-0000-000000000064",
+          "endpoint": "00000000-0000-0000-0000-000000000065",
+          "epoch": 1,
+          "resource": "00000000-0000-0000-0000-000000000066",
+          "account": "00000000-0000-0000-0000-000000000067",
+          "username": "fixture-technical",
+          "protocol": "ssh",
+          "hostname": "target.adversarial.fixture.test",
+          "port": 2222,
+          "domain": "",
+          "auth_method": "password",
+          "fingerprint": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIghlKJPdHZPoOJbTzBKfp+4yj78VwZWf/QjbUHYEzVr"
+        },
+        "critical": true,
+        "min_reviewers": 2,
+        "contract_id": "",
+        "sponsor_person": "",
+        "contract_required": false,
+        "sponsor_required": false
+      }
+    },
+    "fixture_signed_unknown_field": {
+      "NFC": "café",
+      "NFD": "café"
+    }
+  },
+  "signatures": {
+    "00000000-0000-0000-0000-000000000001": "5ewzePLLDNriwOfA62XfdLPE85yKXte63dQd6rnAWfNGa57zs_jbnQpcREFKNcp08zIilYZ6ODpCTRqQBrLrCg",
+    "00000000-0000-0000-0000-000000000002": "lP6BLYgI0qdnJv5G0MXj_60qxPvJAbIkJ9oAXT5F1KMUp0OPFD1P8b7XyLsHV9nR1V1N1E3_6bNlAjymZnF8CA"
+  },
+  "commissioning_signatures": {
+    "fixture-commissioner": "jdKtoxu9w_rACDaZiPQ9bu_n4Rbxz_J7fppc51T3HkH-takfSITSGJ25VNIx1465TFWETg7BiNOLyMvnkKXcDQ"
+  }
+}

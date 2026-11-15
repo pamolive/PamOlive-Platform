@@ -1,0 +1,70 @@
+{
+  "Root_materials_plan_sha256": "9984894027d99aa19b51625f1f73ee106272635120d832d7d1fede94243b9d74",
+  "ZIP_member_max_bytes": 25165824,
+  "ZIP_total_max_bytes": 67108864,
+  "acquisition_install_build_wheel_network_Docker_CI": false,
+  "adapter_revision": "selected-integrated-source; FS guard r2 unchanged",
+  "authority": false,
+  "build_wheels_including_pip": 4,
+  "current_case_comparisons": 20,
+  "execution_authorized_by_plan": false,
+  "file_policy": {
+    "O_DIRECTORY_alone_is_readonly": true,
+    "Python_audit_not_OS_sandbox": true,
+    "mutation_events": 14,
+    "mutation_open_flags": [
+      "CREAT",
+      "TRUNC",
+      "APPEND",
+      "EXCL",
+      "full-composite-TMPFILE"
+    ],
+    "report_admission": "one exact exclusive create in finally only"
+  },
+  "files_sha256": {
+    "bounded_io.py": "98233b610f2d53dfd698d0d91f61f3d3ebcb1693a847983f0472f89a885f414f",
+    "installed_tests.py": "70e75c5b545c906a5c9b2f6b8ded1fcd7838fbd71f80ec06a7d2a06e53f08183",
+    "materials-plan.json": "9984894027d99aa19b51625f1f73ee106272635120d832d7d1fede94243b9d74",
+    "qualify_installed.py": "60b917df3c13db5cea7e69d95e1862293c9a451e15e43c774108de12acf1226e",
+    "requirements-bootstrap.lock": "b0a3c24adafaa80938f5a5de87790e7408bf61db711d37a02221d666cdb4d803",
+    "requirements-build.lock": "0496f2e6a919f0b7391a91009453b77d9a641b5b8045593d7fa22762e6765a52",
+    "requirements-runtime.lock": "2515552b7a6df614896818005840e258a184859eabac15390dfd7b130883842c"
+  },
+  "future_outer_runner_profile_required": [
+    "Linux CPython3.12.16 amd64 regular ABI glibc>=2.34",
+    "nonroot/read-only root and input mounts/caps0/NNP",
+    "network none; no Docker socket/host services",
+    "private bounded work permitting dlopen only for pinned wheels",
+    "exclusive allocation and resource limits separately reviewed"
+  ],
+  "max_command_seconds_after_Popen": 120,
+  "max_command_stderr_bytes": 262144,
+  "max_command_stdout_bytes": 1048576,
+  "max_total_seconds": 900,
+  "previous_freeze_sha256": "db1761ecd8b2fe9494dc4853d562d0c45126a53e190fd89f1b115abd3a5ce4be",
+  "previous_native_review_sha256": "8e426adcc4f8af09e872ba0076c703a1f329ac32663acb8af34b3f758acaee96",
+  "prototype_adapter_independent_review_sha256": "fb9a4267d20fd32ad5b1ba8de13777232e6d43df6ddc253c392c75b7342a86d7",
+  "prototype_adapter_origin_freeze_sha256": "6689b081d03fb8e42c90892dd1225743d3c1c2ed52a2ad4c46180cbe6e092705",
+  "prototype_origin_freeze_sha256": "476f4ac4ba06f773daade2840eebc7646e4469810875f447e5f7447df1ebac06",
+  "prototype_origin_manifest_sha256": "6fc5738c3501c2a8315b6b9e5b6d9fe75c0ec1c96feb09c25c648d27776a967c",
+  "prototype_tree_fallback": false,
+  "public_wheel_max_bytes": 8388608,
+  "qualification_executed": false,
+  "reference_controller_sha256": "9110e4661c3cc8158d2ef163eabc8183a62634ee0b8dc51a8f11966e83554689",
+  "regular_file_before_read": true,
+  "runtime_wheels": 9,
+  "schema": "pamolive.public-pam-verifier-installed-run-plan/3",
+  "source_aggregate_max_bytes": 8388608,
+  "source_fixture_test_stage_siblings": true,
+  "source_methods": 30,
+  "source_payload_manifest_sha256": "3628a50534a0bb37c142ffcee201ca3aaa232d926d13db65b552033627d1c340",
+  "source_per_file_max_bytes": 2097152,
+  "source_r2_independent_review_sha256": "e90a86fb726ef58dc98a69b4fcc851b5377e8c7c152244ec5b4f6f352f7f3d0d",
+  "source_runner_forbidden": true,
+  "state": "INTEGRABLE_SELECTED_SOURCE_CANDIDATE_NO_EXECUTION",
+  "total_public_materials": 13,
+  "venvs": [
+    "build",
+    "verifier"
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "schema": "pamolive.signed-adversarial-fixture-expectation/1",
+  "case_id": "reject-historic-identity-reassigned-after-recommission",
+  "expected_materials_verdict": "reject",
+  "first_expected_rejection_position": 4,
+  "rule_reference": {
+    "source_revision": "a57350fe908c5c2fc57ee1dd6dc8a74e0a836ea8",
+    "source_path": "platform_modules/pam/trust_registry.py",
+    "function": "_remember_owners",
+    "reason": "Historical identity owner cannot change across recommission; current body has no duplicate."
+  },
+  "notes": [
+    "Valid recommission prefix and subsequent update are retained; no current-body duplicate masks historical owner failure."
+  ],
+  "all_emitted_signatures_math_valid_under_disclosed_signing_keys": true,
+  "no_invalid_signature_substitute_for_semantic_failure": true,
+  "current_body_duplicates_absent": true,
+  "P0_verifier_acceptance_executed": false,
+  "authority": false
+}

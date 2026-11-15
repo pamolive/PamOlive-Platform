@@ -1,0 +1,18 @@
+{
+  "schema": "pamolive.signed-adversarial-fixture-expectation/1",
+  "case_id": "reject-signed-suffix-without-bootstrap",
+  "expected_materials_verdict": "reject",
+  "first_expected_rejection_position": 1,
+  "rule_reference": {
+    "source_revision": "a57350fe908c5c2fc57ee1dd6dc8a74e0a836ea8",
+    "source_path": "platform_modules/pam/trust_registry.py",
+    "function": "_history/_verify_transition",
+    "reason": "First supplied revision must be bootstrap1; a signed suffix cannot reconstruct permanent owner maps."
+  },
+  "notes": [],
+  "all_emitted_signatures_math_valid_under_disclosed_signing_keys": true,
+  "no_invalid_signature_substitute_for_semantic_failure": true,
+  "current_body_duplicates_absent": true,
+  "P0_verifier_acceptance_executed": false,
+  "authority": false
+}

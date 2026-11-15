@@ -1,0 +1,28 @@
+{
+  "Root_local_materials_closure_sha256": "a0b0b0c773c9f08c73a773885e0e53f6e8797ca0fe157e5f085653fc4c41cd54",
+  "Root_prior_audit_sha256": "fb44b8c47d79d8041759640fafaa55d3d8c136ca72d7ad4dfe1a605a3b300a8a",
+  "between_files_total_seconds": 1800,
+  "count": 13,
+  "declared_bytes": 8939939,
+  "download_seconds_per_file": 300,
+  "execution_authorized_by_plan": false,
+  "existing_gate": "deploy/python_materials.py",
+  "existing_gate_sha256": "13bb617e396ed5eaf62eb163dc653764668563013f21a1cb4d1eff5de0bf1d12",
+  "existing_manifest": "deploy/python-materials.linux-amd64.json",
+  "existing_manifest_sha256": "c3c219a7233a8fe3ef93eea81363fe9d846cfde538bb9c1fe3af967bb8b02ed0",
+  "existing_public_https_mechanism_only": true,
+  "files_sha256": {
+    "acquire_materials.py": "0801b3ab3d18d2ff102e2a0d9e57322fd11589a07ef307dd6badc25491e3c4bd",
+    "materials-plan.json": "9984894027d99aa19b51625f1f73ee106272635120d832d7d1fede94243b9d74",
+    "qualify_installed.py": "60b917df3c13db5cea7e69d95e1862293c9a451e15e43c774108de12acf1226e",
+    "requirements-bootstrap.lock": "b0a3c24adafaa80938f5a5de87790e7408bf61db711d37a02221d666cdb4d803",
+    "requirements-build.lock": "0496f2e6a919f0b7391a91009453b77d9a641b5b8045593d7fa22762e6765a52",
+    "requirements-runtime.lock": "2515552b7a6df614896818005840e258a184859eabac15390dfd7b130883842c"
+  },
+  "implicit_dependency_install": false,
+  "network_disabled_for_following_installed_phase": true,
+  "one_use_destination": true,
+  "prior_checks_not_installed_build_or_service_evidence": true,
+  "schema": "pamolive.public-verifier-thirteen-acquisition-plan/1",
+  "state": "PREPARED_NOT_RUN"
+}

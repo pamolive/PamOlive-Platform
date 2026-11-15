@@ -1,0 +1,14 @@
+{
+  "body": {
+    "format": "pamolive.pam.trust-checkpoint/1",
+    "installation": "fixture-P0-installation-é",
+    "organization": "00000000-0000-0000-0000-000000000064",
+    "generation": "00000000-0000-0000-0000-0000000000c9",
+    "revision": 4,
+    "registry_hash": "45443fe79f80694237a3bc845ef1fa798c9efd3adb79811737557b4171def1dd",
+    "issued_at": "2026-11-14T12:16:00.000000+00:00",
+    "expires_at": "2026-11-14T12:17:00.000000+00:00"
+  },
+  "key_id": "fixture-witness",
+  "signature": "I3DbHZOmLQMbmPT0vwoLwgXjNuKTx8hOlwXIq6D3Bt0bnU6Ox4wBs6C82I_rA3VEXqwlrCcHvav76yaiXL9mAg"
+}

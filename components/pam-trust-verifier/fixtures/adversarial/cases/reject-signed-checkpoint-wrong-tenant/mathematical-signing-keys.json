@@ -1,0 +1,76 @@
+{
+  "schema": "pamolive.synthetic-public-mathematical-signers/1",
+  "not_trust_roots_or_admin_context": true,
+  "entries": {
+    "cases/reject-signed-checkpoint-wrong-tenant/chain/01.json": {
+      "message_sha256": "3c13314aa23d2ac2df39334a268f0f05cd59031c4e650d28d251e55af0ae36ca",
+      "registry_signing_keys": {
+        "00000000-0000-0000-0000-000000000001": {
+          "public_key": "D1v1rfVXMKm5mpa_cj590E3mpH8Q8XsSpj3uIzh-j_8",
+          "claimed_key_source": "bootstrap body keys"
+        },
+        "00000000-0000-0000-0000-000000000002": {
+          "public_key": "C1wbqbQYc0mt9YdtH9trOm3Jhj4Z-Vkq_lVO6NhyK8A",
+          "claimed_key_source": "bootstrap body keys"
+        }
+      },
+      "commissioning_signing_keys": {
+        "fixture-commissioner": "RpqtsCqwxeS4XYFTpm8MXgIFOY-qAE_yxPdXYPDNkm0"
+      },
+      "mathematically_verified_not_authorization": true
+    },
+    "cases/reject-signed-checkpoint-wrong-tenant/chain/02.json": {
+      "message_sha256": "661974191fd71fc0bcbeb40cf28e93cc813097f57f55494c86cc30d7f460f6b1",
+      "registry_signing_keys": {
+        "00000000-0000-0000-0000-000000000001": {
+          "public_key": "D1v1rfVXMKm5mpa_cj590E3mpH8Q8XsSpj3uIzh-j_8",
+          "claimed_key_source": "previous body keys"
+        },
+        "00000000-0000-0000-0000-000000000002": {
+          "public_key": "C1wbqbQYc0mt9YdtH9trOm3Jhj4Z-Vkq_lVO6NhyK8A",
+          "claimed_key_source": "previous body keys"
+        }
+      },
+      "commissioning_signing_keys": {},
+      "mathematically_verified_not_authorization": true
+    },
+    "cases/reject-signed-checkpoint-wrong-tenant/chain/03.json": {
+      "message_sha256": "3dfdfc5e5b5a8a6c9616323684d66bb02c69c640a6c7f4c47c2709d95a7be5d4",
+      "registry_signing_keys": {
+        "00000000-0000-0000-0000-000000000001": {
+          "public_key": "D1v1rfVXMKm5mpa_cj590E3mpH8Q8XsSpj3uIzh-j_8",
+          "claimed_key_source": "previous body keys"
+        },
+        "00000000-0000-0000-0000-000000000002": {
+          "public_key": "C1wbqbQYc0mt9YdtH9trOm3Jhj4Z-Vkq_lVO6NhyK8A",
+          "claimed_key_source": "previous body keys"
+        }
+      },
+      "commissioning_signing_keys": {},
+      "mathematically_verified_not_authorization": true
+    },
+    "cases/reject-signed-checkpoint-wrong-tenant/chain/04.json": {
+      "message_sha256": "72a8254c0c1121f88fcb16d2e71f53a4d588543d774273078b6b4e8a39027c51",
+      "registry_signing_keys": {
+        "00000000-0000-0000-0000-000000000001": {
+          "public_key": "D1v1rfVXMKm5mpa_cj590E3mpH8Q8XsSpj3uIzh-j_8",
+          "claimed_key_source": "recommission body keys under fixture commissioner"
+        },
+        "00000000-0000-0000-0000-000000000002": {
+          "public_key": "C1wbqbQYc0mt9YdtH9trOm3Jhj4Z-Vkq_lVO6NhyK8A",
+          "claimed_key_source": "recommission body keys under fixture commissioner"
+        }
+      },
+      "commissioning_signing_keys": {
+        "fixture-commissioner": "RpqtsCqwxeS4XYFTpm8MXgIFOY-qAE_yxPdXYPDNkm0"
+      },
+      "mathematically_verified_not_authorization": true
+    },
+    "cases/reject-signed-checkpoint-wrong-tenant/checkpoint.json": {
+      "message_sha256": "dcd97925abfc12a27b364278e42d110748920f308dd9ae163b2d7ecd15d306a6",
+      "public_key": "gVL4pJ2pgaw4XRlBIaSpaNT2WQsbJoIyxoD7HxcCCVY",
+      "mathematically_verified_not_authorization": true
+    }
+  },
+  "authority": false
+}

@@ -1,0 +1,299 @@
+{
+  "schema": "pamolive.p0-public-function-compatibility/1",
+  "state": "SELECTED_REAL_P0_FUNCTION_COMPATIBILITY_MATCHES_FIXTURES",
+  "authority": false,
+  "cases": [
+    {
+      "case_id": "root-original-positive",
+      "expected_verdict": "accept",
+      "observed_selected_functions_verdict": "accept",
+      "failure": null,
+      "expectation_matches": true,
+      "transitions_completed": 4,
+      "ownership_calls_completed": 4,
+      "action_authority": false
+    },
+    {
+      "case_id": "positive-complete-higher",
+      "expected_verdict": "accept",
+      "observed_selected_functions_verdict": "accept",
+      "failure": null,
+      "expectation_matches": true,
+      "transitions_completed": 4,
+      "ownership_calls_completed": 4,
+      "action_authority": false
+    },
+    {
+      "case_id": "positive-complete-lower",
+      "expected_verdict": "accept",
+      "observed_selected_functions_verdict": "accept",
+      "failure": null,
+      "expectation_matches": true,
+      "transitions_completed": 4,
+      "ownership_calls_completed": 4,
+      "action_authority": false
+    },
+    {
+      "case_id": "reject-affected-custodian-cosigns-change",
+      "expected_verdict": "reject",
+      "observed_selected_functions_verdict": "reject",
+      "failure": {
+        "stage": "transition",
+        "position": 2
+      },
+      "expectation_matches": true,
+      "transitions_completed": 1,
+      "ownership_calls_completed": 1,
+      "action_authority": false
+    },
+    {
+      "case_id": "reject-new-custodians-self-authorize",
+      "expected_verdict": "reject",
+      "observed_selected_functions_verdict": "reject",
+      "failure": {
+        "stage": "transition",
+        "position": 2
+      },
+      "expectation_matches": true,
+      "transitions_completed": 1,
+      "ownership_calls_completed": 1,
+      "action_authority": false
+    },
+    {
+      "case_id": "reject-historic-identity-reassigned-after-recommission",
+      "expected_verdict": "reject",
+      "observed_selected_functions_verdict": "reject",
+      "failure": {
+        "stage": "ownership",
+        "position": 4
+      },
+      "expectation_matches": true,
+      "transitions_completed": 4,
+      "ownership_calls_completed": 3,
+      "action_authority": false
+    },
+    {
+      "case_id": "reject-historic-account-reassigned-after-recommission",
+      "expected_verdict": "reject",
+      "observed_selected_functions_verdict": "reject",
+      "failure": {
+        "stage": "ownership",
+        "position": 4
+      },
+      "expectation_matches": true,
+      "transitions_completed": 4,
+      "ownership_calls_completed": 3,
+      "action_authority": false
+    },
+    {
+      "case_id": "reject-historic-credential-reassigned-after-recommission",
+      "expected_verdict": "reject",
+      "observed_selected_functions_verdict": "reject",
+      "failure": {
+        "stage": "ownership",
+        "position": 4
+      },
+      "expectation_matches": true,
+      "transitions_completed": 4,
+      "ownership_calls_completed": 3,
+      "action_authority": false
+    },
+    {
+      "case_id": "reject-historic-spki-reassigned-after-recommission",
+      "expected_verdict": "reject",
+      "observed_selected_functions_verdict": "reject",
+      "failure": {
+        "stage": "ownership",
+        "position": 4
+      },
+      "expectation_matches": true,
+      "transitions_completed": 4,
+      "ownership_calls_completed": 3,
+      "action_authority": false
+    },
+    {
+      "case_id": "reject-historic-custody-key-reassigned-after-recommission",
+      "expected_verdict": "reject",
+      "observed_selected_functions_verdict": "reject",
+      "failure": {
+        "stage": "ownership",
+        "position": 4
+      },
+      "expectation_matches": true,
+      "transitions_completed": 4,
+      "ownership_calls_completed": 3,
+      "action_authority": false
+    },
+    {
+      "case_id": "reject-credential-reactivated-by-update",
+      "expected_verdict": "reject",
+      "observed_selected_functions_verdict": "reject",
+      "failure": {
+        "stage": "transition",
+        "position": 4
+      },
+      "expectation_matches": true,
+      "transitions_completed": 3,
+      "ownership_calls_completed": 3,
+      "action_authority": false
+    },
+    {
+      "case_id": "reject-signed-suffix-without-bootstrap",
+      "expected_verdict": "reject",
+      "observed_selected_functions_verdict": "reject",
+      "failure": {
+        "stage": "transition",
+        "position": 1
+      },
+      "expectation_matches": true,
+      "transitions_completed": 0,
+      "ownership_calls_completed": 0,
+      "action_authority": false
+    },
+    {
+      "case_id": "reject-signed-fork-previous-hash",
+      "expected_verdict": "reject",
+      "observed_selected_functions_verdict": "reject",
+      "failure": {
+        "stage": "transition",
+        "position": 3
+      },
+      "expectation_matches": true,
+      "transitions_completed": 2,
+      "ownership_calls_completed": 2,
+      "action_authority": false
+    },
+    {
+      "case_id": "reject-signed-skipped-revision",
+      "expected_verdict": "reject",
+      "observed_selected_functions_verdict": "reject",
+      "failure": {
+        "stage": "transition",
+        "position": 3
+      },
+      "expectation_matches": true,
+      "transitions_completed": 2,
+      "ownership_calls_completed": 2,
+      "action_authority": false
+    },
+    {
+      "case_id": "reject-signed-checkpoint-wrong-tenant",
+      "expected_verdict": "reject",
+      "observed_selected_functions_verdict": "reject",
+      "failure": {
+        "stage": "checkpoint",
+        "position": "checkpoint"
+      },
+      "expectation_matches": true,
+      "transitions_completed": 4,
+      "ownership_calls_completed": 4,
+      "action_authority": false
+    },
+    {
+      "case_id": "reject-signed-checkpoint-wrong-head",
+      "expected_verdict": "reject",
+      "observed_selected_functions_verdict": "reject",
+      "failure": {
+        "stage": "checkpoint",
+        "position": "checkpoint"
+      },
+      "expectation_matches": true,
+      "transitions_completed": 4,
+      "ownership_calls_completed": 4,
+      "action_authority": false
+    },
+    {
+      "case_id": "reject-signed-checkpoint-wrong-generation",
+      "expected_verdict": "reject",
+      "observed_selected_functions_verdict": "reject",
+      "failure": {
+        "stage": "checkpoint",
+        "position": "checkpoint"
+      },
+      "expectation_matches": true,
+      "transitions_completed": 4,
+      "ownership_calls_completed": 4,
+      "action_authority": false
+    },
+    {
+      "case_id": "reject-signed-checkpoint-expired-exact",
+      "expected_verdict": "reject",
+      "observed_selected_functions_verdict": "reject",
+      "failure": {
+        "stage": "checkpoint",
+        "position": "checkpoint"
+      },
+      "expectation_matches": true,
+      "transitions_completed": 4,
+      "ownership_calls_completed": 4,
+      "action_authority": false
+    },
+    {
+      "case_id": "reject-signed-checkpoint-future",
+      "expected_verdict": "reject",
+      "observed_selected_functions_verdict": "reject",
+      "failure": {
+        "stage": "checkpoint",
+        "position": "checkpoint"
+      },
+      "expectation_matches": true,
+      "transitions_completed": 4,
+      "ownership_calls_completed": 4,
+      "action_authority": false
+    },
+    {
+      "case_id": "reject-signed-checkpoint-over-ttl",
+      "expected_verdict": "reject",
+      "observed_selected_functions_verdict": "reject",
+      "failure": {
+        "stage": "checkpoint",
+        "position": "checkpoint"
+      },
+      "expectation_matches": true,
+      "transitions_completed": 4,
+      "ownership_calls_completed": 4,
+      "action_authority": false
+    }
+  ],
+  "digest_checks": 72,
+  "canonical_checks": 164,
+  "disclosed_key_mathematical_checks": 186,
+  "fingerprint_calls": 98,
+  "imported_project_modules_verified": 72,
+  "source_revision": "a57350fe908c5c2fc57ee1dd6dc8a74e0a836ea8",
+  "full_P0_acceptance": false,
+  "publication": false,
+  "SQL_history_executed": false,
+  "possession_MFA_counters_membership_or_human_independence": false,
+  "profile_differences": [
+    "Input order is supplied explicitly; P0 _history normally iterates SQL order_by(revision).",
+    "Rows are transient fixture adapters; five owner maps are intentionally mutable scratch state, not persisted model evidence or audit anchors.",
+    "Synthetic settings and fixed UTC fixture time; no enrollment ingestion or current account membership."
+  ],
+  "forbidden_attempt_counts": {},
+  "intentional_guard_probe_counts": {
+    "socket.constructor": 1,
+    "socket.getaddrinfo": 1,
+    "sqlite3.connect": 1,
+    "psycopg.connect": 1,
+    "psycopg.Connection.connect": 1,
+    "psycopg.AsyncConnection.connect": 1,
+    "psycopg.pq.PGconn.connect": 1,
+    "django.wrapper.ensure_connection": 1,
+    "django.cursor.execute": 1
+  },
+  "guards_installed_before_django_setup": true,
+  "child_no_bytecode": true,
+  "OS_network_sandbox_claimed": false,
+  "digest_checks_completed": 72,
+  "canonical_checks_completed": 164,
+  "disclosed_key_mathematical_checks_completed": 186,
+  "fingerprint_calls_completed": 98,
+  "host_library_versions": {
+    "Django": "5.2.19",
+    "cryptography": "50.0.2",
+    "webauthn": "3.0.1",
+    "psycopg": "3.2.10",
+    "cbor2": "6.2.1"
+  }
+}

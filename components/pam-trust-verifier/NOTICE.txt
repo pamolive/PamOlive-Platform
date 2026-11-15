@@ -1,0 +1,12 @@
+Prototype public PAM V1 rules derive from PamOlive commit
+a57350fe908c5c2fc57ee1dd6dc8a74e0a836ea8, under AGPL-3.0-or-later (LICENSE).
+
+The timezone-aware timestamp fallback in _context.py preserves the behavior
+and regular expression of django.utils.dateparse.parse_datetime, Django 5.2.19.
+Copyright Django Software Foundation and individual contributors. Django is
+distributed under its BSD three-clause license, reproduced in LICENSE-DJANGO.txt.
+This attribution does not add a Django runtime dependency.
+
+Cryptographic operations use cryptography and WebAuthn maintained APIs.
+No independent audit, standards certification, closed-wheel provenance or
+production authorization is asserted by these source notices or tests.

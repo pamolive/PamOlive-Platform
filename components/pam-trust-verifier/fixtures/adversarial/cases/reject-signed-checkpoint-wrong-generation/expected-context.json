@@ -1,0 +1,33 @@
+{
+  "schema": "pamolive.signed-adversarial-fixture-context/1",
+  "fixture_only_not_administration_format": true,
+  "installation": "fixture-adversarial-P0-é",
+  "organization": "00000000-0000-0000-0000-000000000064",
+  "expected_head": {
+    "revision": 4,
+    "generation": "10000000-0000-4000-8000-000000000001",
+    "registry_hash": "58df783923e54b532b90ed12d46f12817d513c2395988bf5c37f723ed6acaebe"
+  },
+  "commissioning_keys": {
+    "fixture-commissioner": {
+      "active": true,
+      "public_key": "RpqtsCqwxeS4XYFTpm8MXgIFOY-qAE_yxPdXYPDNkm0",
+      "not_before": "2026-11-13T12:00:00.000000+00:00",
+      "not_after": "2026-11-17T12:00:00.000000+00:00"
+    }
+  },
+  "checkpoint_keys": {
+    "fixture-witness": {
+      "active": true,
+      "public_key": "gVL4pJ2pgaw4XRlBIaSpaNT2WQsbJoIyxoD7HxcCCVY",
+      "not_before": "2026-11-13T12:00:00.000000+00:00",
+      "not_after": "2026-11-17T12:00:00.000000+00:00"
+    }
+  },
+  "explicit_current_time": "2026-11-14T12:30:00.000000+00:00",
+  "registry_max_seconds": 86400,
+  "checkpoint_max_seconds": 60,
+  "full_bootstrap_history_required": true,
+  "authority": false,
+  "human_independence_or_action_or_possession_or_membership_or_Vault_binding_proven": false
+}

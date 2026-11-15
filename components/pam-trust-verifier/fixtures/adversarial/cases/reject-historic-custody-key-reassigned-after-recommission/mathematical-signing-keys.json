@@ -1,0 +1,76 @@
+{
+  "schema": "pamolive.synthetic-public-mathematical-signers/1",
+  "not_trust_roots_or_admin_context": true,
+  "entries": {
+    "cases/reject-historic-custody-key-reassigned-after-recommission/chain/01.json": {
+      "message_sha256": "3c13314aa23d2ac2df39334a268f0f05cd59031c4e650d28d251e55af0ae36ca",
+      "registry_signing_keys": {
+        "00000000-0000-0000-0000-000000000001": {
+          "public_key": "D1v1rfVXMKm5mpa_cj590E3mpH8Q8XsSpj3uIzh-j_8",
+          "claimed_key_source": "bootstrap body keys"
+        },
+        "00000000-0000-0000-0000-000000000002": {
+          "public_key": "C1wbqbQYc0mt9YdtH9trOm3Jhj4Z-Vkq_lVO6NhyK8A",
+          "claimed_key_source": "bootstrap body keys"
+        }
+      },
+      "commissioning_signing_keys": {
+        "fixture-commissioner": "RpqtsCqwxeS4XYFTpm8MXgIFOY-qAE_yxPdXYPDNkm0"
+      },
+      "mathematically_verified_not_authorization": true
+    },
+    "cases/reject-historic-custody-key-reassigned-after-recommission/chain/02.json": {
+      "message_sha256": "661974191fd71fc0bcbeb40cf28e93cc813097f57f55494c86cc30d7f460f6b1",
+      "registry_signing_keys": {
+        "00000000-0000-0000-0000-000000000001": {
+          "public_key": "D1v1rfVXMKm5mpa_cj590E3mpH8Q8XsSpj3uIzh-j_8",
+          "claimed_key_source": "previous body keys"
+        },
+        "00000000-0000-0000-0000-000000000002": {
+          "public_key": "C1wbqbQYc0mt9YdtH9trOm3Jhj4Z-Vkq_lVO6NhyK8A",
+          "claimed_key_source": "previous body keys"
+        }
+      },
+      "commissioning_signing_keys": {},
+      "mathematically_verified_not_authorization": true
+    },
+    "cases/reject-historic-custody-key-reassigned-after-recommission/chain/03.json": {
+      "message_sha256": "2624743a8664419b733293838744bff1d78d0c542cf2b127653ffb652ac53d29",
+      "registry_signing_keys": {
+        "00000000-0000-0000-0000-000000000007": {
+          "public_key": "iyOyDJRNrYepulQIqSTOv5M7iN3Z0idD5bnH8t0xcgg",
+          "claimed_key_source": "recommission body keys under fixture commissioner"
+        },
+        "00000000-0000-0000-0000-000000000008": {
+          "public_key": "XpHmaP5QfxO1UVhhdsiMfbHsvGxArTJ19U-BAuVxTmU",
+          "claimed_key_source": "recommission body keys under fixture commissioner"
+        }
+      },
+      "commissioning_signing_keys": {
+        "fixture-commissioner": "RpqtsCqwxeS4XYFTpm8MXgIFOY-qAE_yxPdXYPDNkm0"
+      },
+      "mathematically_verified_not_authorization": true
+    },
+    "cases/reject-historic-custody-key-reassigned-after-recommission/chain/04.json": {
+      "message_sha256": "5449c20cf67fe6b8763458d86624be9dd27bb9da33c099731174ce5656f11182",
+      "registry_signing_keys": {
+        "00000000-0000-0000-0000-000000000008": {
+          "public_key": "XpHmaP5QfxO1UVhhdsiMfbHsvGxArTJ19U-BAuVxTmU",
+          "claimed_key_source": "previous body keys"
+        },
+        "00000000-0000-0000-0000-000000000009": {
+          "public_key": "decBmrzTko2tnu6O2kM4B7BaS-DJSGBwUHag5cR_PMs",
+          "claimed_key_source": "previous body keys"
+        }
+      },
+      "commissioning_signing_keys": {},
+      "mathematically_verified_not_authorization": true
+    },
+    "cases/reject-historic-custody-key-reassigned-after-recommission/checkpoint.json": {
+      "message_sha256": "1c2fc8028ba7eb8e72ed4e698ae3b8fcd0b2ca74bd55c72a3872cdb169b54401",
+      "public_key": "gVL4pJ2pgaw4XRlBIaSpaNT2WQsbJoIyxoD7HxcCCVY",
+      "mathematically_verified_not_authorization": true
+    }
+  },
+  "authority": false
+}
