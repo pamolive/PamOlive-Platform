@@ -23,6 +23,8 @@ jobs:
           python -m pip check
       - name: Verify native inventory and SBOM qualification tools
         run: python -m unittest tests.test_native_inventory tests.test_native_sbom tests.test_native_dns tests.test_image_scan_policy tests.test_database_driver tests.test_ldap_fixture_permissions tests.test_krb5_inventory tests.test_krb5_acquisition tests.test_krb5_sbom tests.test_scan_scratch tests.test_build_recipe tests.test_build_context tests.test_runtime_environment tests.test_secret_baseline_metadata tests.test_python_materials tests.test_python_materials_resilience tests.test_ensurepip_bundle
+      - name: Verify public metadata projections without Engine or network
+        run: python -I -S -B qualification/public_engine_measurement/run_pure.py
       - name: Verify portable reviewed secret metadata before the unchanged secret scan
         run: python -m deploy.check_secret_baseline .secrets.baseline
       - name: Reject known vulnerabilities in the application lock
@@ -368,6 +370,28 @@ jobs:
           bash deploy/check_registry_install_ci.sh
       - name: Scan the exact image, qualify native matching and enforce individually reviewed findings
         run: bash deploy/check_image_scan_ci.sh
+      # Insert AFTER the final image scan, BEFORE existing artifact upload/cleanup.
+      - name: Observe public Docker and image metadata without changing the Engine
+        if: always()
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          source="$GITHUB_WORKSPACE/qualification/public_engine_measurement"
+          printf '%s  %s\n' 68e27280e8990a02e19a770609570f0ce879d31a59073229547c6a90715ac4f7 "$source/collector.py" | sha256sum --check --status
+          work="$RUNNER_TEMP/public-engine-${{ github.run_id }}-${{ github.run_attempt }}"
+          test ! -e "$work"
+          env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C \
+            /usr/bin/python3 -I -S -B "$source/collector.py" --work "$work"
+      - name: Retain only public Engine DATA
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: public-engine-data-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/public-engine-${{ github.run_id }}-${{ github.run_attempt }}/public-report.json
+          if-no-files-found: warn
+          retention-days: 7
       - name: Retain image identity and full security evidence even when promotion is blocked
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

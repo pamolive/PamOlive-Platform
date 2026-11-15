@@ -76,6 +76,20 @@ réussie. La qualification navigateur/JavaScript reste distincte et non exécut�
 
 ### État courant du 15 novembre
 
+La source W1 est publiée dans [PR10 `6a9a987`](https://github.com/pamolive/PamOlive-Platform/pull/10).
+Les deux CI Platform sont reçues : 62 tests purs W sans exclusion ni tentative
+externe, PostgreSQL/P0, natifs, restauration et Compose corroborés. Chacune est
+refusée uniquement au scan final, avec 35 groupes High non triés. Les 1 479 tests
+généraux rapportés conservent 40 exclusions de méthodes et deux de classes.
+Runtime installé52 et vérificateur30
+sont reçus séparément pour ce head, sans qualification du service W.
+Le prochain incrément ajoute une
+[collecte publique du runner et des images locales](../qualification/public_engine_measurement/README.md),
+avec sept tests intégrés et treize contre-épreuves indépendantes. La vraie mesure
+CI précède toute admission de profil ; elle n'exécute aucun conteneur ni SQL et
+n'ouvre aucun contexte privé. Les laboratoires W/V et A1 Linux ont des corrections
+de confidentialité et de contrôle de reçu/profil à terminer avant livraison.
+
 La [tranche source W1](p2-usage-anchor-source-qualification.md) ajoute le témoin
 indépendant, ses schémas SQL explicites et son client miroir V. Les régressions
 locales comptent 62 réussites sans exclusion/tentative externe après les

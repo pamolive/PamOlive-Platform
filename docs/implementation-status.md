@@ -8,6 +8,31 @@ La [roadmap réconciliée](implementation-roadmap.md) distingue désormais les l
 
 ### État courant du 15 novembre : source W et qualification CI
 
+La source W1 est publiée dans la [PR10 `6a9a987`](https://github.com/pamolive/PamOlive-Platform/pull/10).
+Ses deux campagnes Platform sont reçues séparément : 62 tests purs W sans
+failure/error/skip/tentative externe, PostgreSQL/P0, transports natifs,
+restauration et Compose corroborés. Chacune rapporte 1 479 tests généraux avec
+40 exclusions de méthodes et deux de classes, sans les compter comme réussites.
+Le seul échec reste le scan final, 35 groupes High non triés, zéro finding ignoré.
+Les campagnes distinctes
+runtime installé (52 tests) et vérificateur public (30 tests) du même head sont
+reçues indépendamment, avec ZIP et nettoyage vérifiés. Elles ne qualifient pas W.
+
+Une [collecte publique Docker/Engine](../qualification/public_engine_measurement/README.md)
+est maintenant intégrée : quatre lectures fixes et les attributs du binaire
+Docker (type, propriétaire, permissions, taille et SHA), sans création, démarrage ou
+téléchargement d'image, sans SQL ni lecture d'environnement applicatif. Sept
+tests depuis le dépôt et treize contre-épreuves indépendantes passent sans I/O
+opérationnelle. La CI ajoute ces observations après ses gates stricts, avec
+rapport public projeté et sans acceptation automatique d'un profil. La première
+exécution réelle reste à recevoir ; ses résultats serviront à fixer le profil
+du prochain laboratoire avant toute donnée synthétique privée.
+
+Les propositions de laboratoire W/V et de témoin A1 Linux restent hors livraison.
+Leurs revues ont relevé des métadonnées locales à exclure des dérivés publics ;
+le laboratoire W/V doit aussi recevoir l'admission exacte du profil hôte et
+compléter son parseur de reçu. Aucun contexte privé n'est démarré pour ces lots.
+
 La [source W1](p2-usage-anchor-source-qualification.md) est implémentée localement,
 avec 62 tests purs réussis sans exclusion ni tentative d'I/O externe et revue
 indépendante. Le demandeur de l'intention est fixé par W, les mutations Service
