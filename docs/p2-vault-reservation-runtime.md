@@ -137,6 +137,53 @@ ensuite ses deux cas avec le bind `10.253.249.3`, corroboré par les sources
 épinglées et les connexions TLS réussies. Aucune table de listeners kernel n'a
 été interrogée indépendamment par la contre-réception.
 
+## Réception CI exacte du candidat 6c17536
+
+La [PR #6](https://github.com/pamolive/PamOlive-Platform/pull/6) est en brouillon.
+Les jobs PR utilisent la fusion temporaire `91243b7` des parents exacts `bd8d228`
+et `6c17536` ; les jobs push utilisent `6c17536`. Neuf ZIP d'artefacts sont liés
+par leurs digests dans la réception
+`066e674b78e871eaeb9b0ae8abf8bbc757beff674e8ebd8bec2751ad88c8a198`.
+
+La [CI PR Platform](https://github.com/pamolive/PamOlive-Platform/actions/runs/43707126018)
+passe les 52 purs Vault, 1 439 tests généraux dont 42 exclusions, portes dédiées
+130/166/22, SSH 10/RDP 9, HA/partition sur le même hôte et restauration restreinte
+23 migrations/374 lignes. Deux suites distinctes de 20 ont chacune une exclusion.
+Seul le scan final refuse : 35 groupes High non triés, 102 correspondances High
+sur 349 OS, zéro Critical, compiled 0, aucun match ignoré. Le
+[vérificateur installé](https://github.com/pamolive/PamOlive-Platform/actions/runs/43707125940)
+reçoit ses 30 tests sans exclusion et 20 comparaisons ; ce n'est pas le runtime Vault.
+
+Le [push Platform](https://github.com/pamolive/PamOlive-Platform/actions/runs/43707121106)
+passe les purs et la suite générale, puis échoue pendant l'acquisition d'un
+matériau Python : délai de négociation TLS, BuildKit exit 1. Les assertions
+post-build d'exclusion des credentials et les portes image suivantes ne sont
+pas reçues sur ce run. Aucun défaut de compilation ou fuite n'est établi par
+ce log ; l'endpoint précis n'est pas identifié. Pas de relance ni de garde assoupli.
+
+## Premier essai de restauration : réception partielle seulement
+
+Le contrôleur backup/restore R2, gel
+`08164d6a64b486b054690e2fac4fa93d236a239f7a1d80dec530eb5d1bc646fe`,
+a reçu ses revues AppSec/PG et 77 tests purs sans exclusion. Root exécute ensuite
+le seul essai `vault-restore-n0r1`. Un dump de la base synthétique neuve est
+restauré dans une seconde base neuve du même cluster jetable, sous propriétaire
+NOLOGIN via un login restreint ; les grants courants sont réappliqués.
+L'observation après restauration confirme propriétaires exacts, lignes/audits
+identiques, source explicitement fermée et ancien contexte ouvert refusé 403 par
+le nouveau slot scellé hors sauvegarde. Le SQL de commissionnement explicite
+retourne son marqueur, mais **la probe finale échoue**. Aucun résultat complet
+de conflit, requête fraîche ou dénis runtime/Web/worker n'est reçu.
+
+Rapport public : `9f902fef7a5f9afc8d601db614458473561fe7f14e385dbf5f421ac7fdfbe3c8`.
+183 CLI récoltées/drainées, 12 stdin complets, nettoyage des quatre conteneurs,
+trois volumes et réseau sans OOM ; lease libre et 19 champs PG historique
+inchangés. Les dumps, SQL et snapshots privés ne sont pas publiés.
+Conserver cet échec et diagnostiquer avant un nouveau test, sans renouvellement
+automatique des matériaux ou prolongation 40 s / 30 s. Une restauration logique
+sur un cluster ne qualifie ni PITR, ni panne PostgreSQL, ni reprise multi-hôte,
+ni détection d'un rollback clandestin sous la même incarnation.
+
 ## Limites et lot suivant
 
 Ni la bibliothèque V1 ni une réservation pending ne sont une capacité de remise.

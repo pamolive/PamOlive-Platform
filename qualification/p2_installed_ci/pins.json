@@ -23,7 +23,7 @@
   "pull_seconds": 300,
   "qualifier_sha256": "649ac99037fc41fa24b80fe93bd6833dd968dbdbaf879f51127d25972b5f4878",
   "schema": "pamolive.p2-installed-ci-pins/1",
-  "selected_inputs_sha256": "3ae3ecdb26194afb49c8b7fc61e288b81f5f725656c54ad311227f70ff6427f5",
+  "selected_inputs_sha256": "4cc42e3973cca72f9d542013cc7b0e01232a2e9a03272b3c5826531bff68827b",
   "source_files": 354,
   "source_index": "sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b",
   "source_review_freeze": "a23412c48cc2e3c4d6f71c2aea143fa74e88f34c355e0736ac9e2374a324d919",

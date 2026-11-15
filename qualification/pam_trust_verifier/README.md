@@ -63,7 +63,7 @@ From the checkout root, the separate public acquisition phase is:
 
 ```sh
 python -I -B qualification/pam_trust_verifier/acquire_materials.py acquire \
-  --plan-sha256 bc65c92ffc630e302515f7abc2dae60617231dfbb134fd6d58a39f26e781f36e \
+  --plan-sha256 a0108569a4480e8e966c3e081cfbe3c92c865fe818c3273a45de2375897654ba \
   --repository "$PWD" --destination "$RUNNER_TEMP/public-verifier-thirteen-new"
 ```
 

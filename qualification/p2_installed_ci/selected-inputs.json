@@ -1424,15 +1424,15 @@
     },
     "qualification/pam_trust_verifier/README.md": {
       "bytes": 7042,
-      "sha256": "be36d6e49b0fc34b44e80e26f98427f618e4854aa6dc0be09707799e75720ed2"
+      "sha256": "a82cd54dbadbc2cd3732edaf80e644300fb59c4200eacfeba2ffc567d8a6d1f7"
     },
     "qualification/pam_trust_verifier/acquire_materials.py": {
       "bytes": 6373,
-      "sha256": "3ca08b0f4366de38e0bd278ddab6ec31cb1a378f98f8a7161ee335f5eb05d262"
+      "sha256": "190666075113c2ffa50946e326a3ec80037af89cf9974ce94ceb05c63844964e"
     },
     "qualification/pam_trust_verifier/acquisition-plan.json": {
       "bytes": 1631,
-      "sha256": "bc65c92ffc630e302515f7abc2dae60617231dfbb134fd6d58a39f26e781f36e"
+      "sha256": "a0108569a4480e8e966c3e081cfbe3c92c865fe818c3273a45de2375897654ba"
     },
     "qualification/pam_trust_verifier/adapter-plan.json": {
       "bytes": 4415,
@@ -1486,7 +1486,7 @@
   "fixture_notice_status": "Accepted by Root in ADR-023; project AGPL and original notices retained.",
   "inherited_existing_checkout_files": {
     "deploy/python-materials.linux-amd64.json": "c3c219a7233a8fe3ef93eea81363fe9d846cfde538bb9c1fe3af967bb8b02ed0",
-    "deploy/python_materials.py": "13bb617e396ed5eaf62eb163dc653764668563013f21a1cb4d1eff5de0bf1d12"
+    "deploy/python_materials.py": "0956e68ea06451fab2c3f5ce9f5aedf603b0fa5724f18366c937a48e5ebce8b2"
   },
   "preserves_existing_P0_P2_components_and_Docker_guards": true,
   "prototype_freezes_logs_caches_runners_excluded": true,

@@ -76,6 +76,14 @@ réussie. La qualification navigateur/JavaScript reste distincte et non exécut�
 
 ### État courant du 15 novembre
 
+La [PR #6](https://github.com/pamolive/PamOlive-Platform/pull/6), head `6c17536`,
+reste en brouillon. Sa CI PR reçoit les 52 purs Vault et les régressions
+fonctionnelles/PG/natives/HA/restauration, puis refuse les 35 groupes High ;
+30 tests installés du vérificateur public passent séparément. Le push échoue
+pendant l'acquisition TLS d'un matériau Python, avant les assertions image.
+Ces résultats distincts sont détaillés dans
+[l'état d'implémentation](implementation-status.md). Aucun merge ni image nouvelle.
+
 Le vérificateur public V1 du head `bd8d228` a reçu ses 30 tests installés sans
 exclusion dans deux CI dédiées ; les contrôles P0 et leurs appelants demeurent
 distincts. Les deux CI Platform exactes passent leurs portes fonctionnelles,
@@ -104,6 +112,13 @@ nouvelle incarnation et frontière OS Web hostile. L'ancrage indépendant des
 usages/compteurs reste nécessaire avant
 toute remise ; une tête PAM fraîche ne détecte pas un rollback clandestin du
 ledger sous la même incarnation. Ces sources ne soldent ni P2 ni les High.
+
+Premier essai de restauration logique : dump/restauration sous rôle restreint
+vers une seconde base synthétique et refus 403 de l'ancien contexte reçus, mais
+probe finale après commissionnement en échec. Conserver ce refus et diagnostiquer
+avant un nouveau lot ; ne pas prolonger la fenêtre 40 s / TTL 30 s pour réussir.
+Nettoyage local complet et PG historique inchangé. Restauration complète, PITR
+et reprise sur hôtes indépendants restent à qualifier.
 
 ### Historique des préparations et premiers refus
 

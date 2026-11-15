@@ -68,11 +68,23 @@ imported or executed, and no archive is extracted during acquisition.
 Budgets are: 256 KiB JSON, exactly 32 distinct public inputs, at most 32 MiB per
 input and 64 MiB total reviewed compressed input bytes. Reads use at most 64 KiB
 chunks; HTTP Content-Length (when present), exact byte count and SHA256 must all
-agree before use. Each socket operation has a 30-second timeout; each file has
-a five-minute deadline checked between reads, and acquisition has a 30-minute
-deadline checked between files. Socket blocking may extend a deadline by at
-most the current socket timeout. Output directories must be fresh; files use
-exclusive creation, and failures do not delete preexisting files.
+agree before use. The opener timeout is at most 30 seconds and the remaining
+budget. Each file shares one five-minute monotonic budget across all attempts;
+the full acquisition shares a thirty-minute budget. Checks occur before opens,
+before/after reads and after each download. These are cooperative deadlines:
+DNS and an in-progress blocking transport call can overrun before control returns.
+There is no hard wall-clock cancellation guarantee.
+
+At most three fresh public GETs are allowed for explicitly typed timeouts,
+connection resets/aborts, temporary DNS errors and HTTP 408/429/500/502/503/504.
+Backoff is fixed at one then two seconds within the same budget; Retry-After,
+redirects, resumed ranges, alternate hosts and credential handlers cannot change
+the request. Certificate/TLS verification, changed URLs, encoding, byte count,
+hash mismatches, filesystem errors and unknown errors are terminal. Every retry
+starts with a fresh exclusive file and a new hash/count. A partial file is removed
+only when its original regular-file identity and parent identity still match;
+replacement, links or uncertainty stop cleanup/retry and preserve the object.
+These guards rely on the trusted build runner, not an atomic hostile-host sandbox.
 
 Source decompression is capped at 64 MiB before tar metadata parsing; source
 archives have at most 2,048 visible members, regular files/directories only,
@@ -157,9 +169,9 @@ chain. Existing scans, ELF policies and untriaged High findings remain binding.
 
 ```powershell
 .\.venv\Scripts\python.exe -B deploy/python_materials.py check-locks --manifest deploy/python-materials.linux-amd64.json
-.\.venv\Scripts\python.exe -B -m unittest tests.test_python_materials
-.\.venv\Scripts\python.exe -m ruff check deploy/python_materials.py tests/test_python_materials.py
-.\.venv\Scripts\python.exe -m ruff format --check deploy/python_materials.py tests/test_python_materials.py
+.\.venv\Scripts\python.exe -B -m unittest tests.test_python_materials tests.test_python_materials_resilience
+.\.venv\Scripts\python.exe -B -m ruff check --no-cache deploy/python_materials.py tests/test_python_materials.py tests/test_python_materials_resilience.py
+.\.venv\Scripts\python.exe -B -m ruff format --check --no-cache deploy/python_materials.py tests/test_python_materials.py tests/test_python_materials_resilience.py
 ```
 
 The CLI has `acquire`, `capture-derived` and `check-locks` commands; use `--help`
@@ -169,3 +181,53 @@ build was run to validate this integration before coordinator review. Root must
 first commit the reviewed input recipe/context, then run a new exact production
 and native-test build, inspect the generated evidence and installed inventories,
 and repeat the required native/PAM/P0 and scan gates for that new subject.
+
+The transport-only resilience change follows the measured TLS-handshake timeout
+in push CI 43707121106 of `6c17536`; that log does not identify the exact endpoint
+or material. The original 18 tests remain byte-identical; 18 new synthetic tests
+exercise retries, terminal failures, budgets and file ownership, with seven more
+independent counter-tests. No new real download/build success follows from these
+mock tests. The security workflow includes the new module. The public-verifier
+acquisition's explicit gate pin and its selected-source/assets/workflow pin chain
+are refreshed together; material bytes, package versions and locks are unchanged.
+
+
+## Historical public-digest review decisions
+
+The transport update replaces 18 occurrences of nine public file SHA256 pins.
+Their former baseline identities are absent from the corresponding current files.
+The strict scanner returned code 3 while removing precisely these stale identities
+from its temporary copy; code 3 is not accepted as a CI success. Only these 18
+identities are retired from the active baseline. All other 2,541 entries and all
+detector/filter settings remain identical. The final scan must include this archive.
+
+The full original baseline remains in commit
+[6c17536](https://github.com/pamolive/PamOlive-Platform/blob/6c17536e95974ec8472d537500b46983d1bffb02/.secrets.baseline),
+SHA256 `937088320c6a362e6b88180b59b0a7c786d6077dd58f2568baa43d3754ed66b6`.
+The following is the explicit archive of the retired decision metadata and its
+public preimage. Each row has detector type `Hex High Entropy String`,
+`is_secret=false` and `is_verified=false` (no network verification).
+The line number refers to the original file in that exact commit. The detector
+identifier is SHA1 of the displayed public SHA256, not an authentication secret.
+This historical classification does not exempt a future reappearance.
+
+| Filename | Historical line | Detector identifier | Public SHA256 preimage | Hashed public file at 6c17536 |
+| --- | --- | --- | --- | --- |
+| `.github/workflows/p2-public-verifier.yml` | 17 | `1b33b76db816291cff72045cd8ee6d25441125c8` | `5995e3852d3793609420277abcea65e5d2730f1085acfaaac58bbc1b4660d419` | `qualification/p2_installed_ci/source-checksums.sha256` |
+| `.github/workflows/p2-public-verifier.yml` | 18 | `e107e9fda456ccc991c7e72b4060c264919d6ffb` | `4124bff9afa21db723b53c2e3a9467772a553d04b39598fb56d550ee0e9d5d29` | `qualification/p2_installed_ci/assets.json` |
+| `qualification/p2_installed_ci/assets.json` | 30 | `1941f8afed3e12ad5ca7cebdd1723b1f62267e70` | `d6213ab785eb41bd3e852583bad2ef764af1bed4d2f26e327da684c2dede46e2` | `qualification/p2_installed_ci/pins.json` |
+| `qualification/p2_installed_ci/assets.json` | 34 | `70aefa1289e7ef5359c71f3429ee72464428cff6` | `3ae3ecdb26194afb49c8b7fc61e288b81f5f725656c54ad311227f70ff6427f5` | `qualification/p2_installed_ci/selected-inputs.json` |
+| `qualification/p2_installed_ci/pins.json` | 26 | `70aefa1289e7ef5359c71f3429ee72464428cff6` | `3ae3ecdb26194afb49c8b7fc61e288b81f5f725656c54ad311227f70ff6427f5` | `qualification/p2_installed_ci/selected-inputs.json` |
+| `qualification/p2_installed_ci/plan.json` | 155 | `1b33b76db816291cff72045cd8ee6d25441125c8` | `5995e3852d3793609420277abcea65e5d2730f1085acfaaac58bbc1b4660d419` | `qualification/p2_installed_ci/source-checksums.sha256` |
+| `qualification/p2_installed_ci/plan.json` | 165 | `6134b98f67d64b26fe4c5ac74f697f3cbc7143ca` | `c8cede850d78586bc7e4b9459a90bcb66be81b96ca9da9a7d09854db1c0943c3` | `qualification/p2_installed_ci/workflow-template.yml` |
+| `qualification/p2_installed_ci/plan.json` | 132 | `70aefa1289e7ef5359c71f3429ee72464428cff6` | `3ae3ecdb26194afb49c8b7fc61e288b81f5f725656c54ad311227f70ff6427f5` | `qualification/p2_installed_ci/selected-inputs.json` |
+| `qualification/p2_installed_ci/plan.json` | 19 | `e107e9fda456ccc991c7e72b4060c264919d6ffb` | `4124bff9afa21db723b53c2e3a9467772a553d04b39598fb56d550ee0e9d5d29` | `qualification/p2_installed_ci/assets.json` |
+| `qualification/p2_installed_ci/selected-inputs.json` | 1427 | `63f9eca77af2ada011e8e8076aee8122e5f6285a` | `be36d6e49b0fc34b44e80e26f98427f618e4854aa6dc0be09707799e75720ed2` | `qualification/pam_trust_verifier/README.md` |
+| `qualification/p2_installed_ci/selected-inputs.json` | 1435 | `6b0c7023df6709cda8447878021ea7c145f4bd00` | `bc65c92ffc630e302515f7abc2dae60617231dfbb134fd6d58a39f26e781f36e` | `qualification/pam_trust_verifier/acquisition-plan.json` |
+| `qualification/p2_installed_ci/selected-inputs.json` | 1431 | `ab62af4a591bd3a939bc1b48d0ac4d8649355438` | `3ca08b0f4366de38e0bd278ddab6ec31cb1a378f98f8a7161ee335f5eb05d262` | `qualification/pam_trust_verifier/acquire_materials.py` |
+| `qualification/p2_installed_ci/selected-inputs.json` | 1489 | `ecdfb1bd9fd8e74f92328bb4fd70d970720c95a6` | `13bb617e396ed5eaf62eb163dc653764668563013f21a1cb4d1eff5de0bf1d12` | `deploy/python_materials.py` |
+| `qualification/p2_installed_ci/workflow-template.yml` | 17 | `1b33b76db816291cff72045cd8ee6d25441125c8` | `5995e3852d3793609420277abcea65e5d2730f1085acfaaac58bbc1b4660d419` | `qualification/p2_installed_ci/source-checksums.sha256` |
+| `qualification/p2_installed_ci/workflow-template.yml` | 18 | `e107e9fda456ccc991c7e72b4060c264919d6ffb` | `4124bff9afa21db723b53c2e3a9467772a553d04b39598fb56d550ee0e9d5d29` | `qualification/p2_installed_ci/assets.json` |
+| `qualification/pam_trust_verifier/acquire_materials.py` | 16 | `ecdfb1bd9fd8e74f92328bb4fd70d970720c95a6` | `13bb617e396ed5eaf62eb163dc653764668563013f21a1cb4d1eff5de0bf1d12` | `deploy/python_materials.py` |
+| `qualification/pam_trust_verifier/acquisition-plan.json` | 15 | `ab62af4a591bd3a939bc1b48d0ac4d8649355438` | `3ca08b0f4366de38e0bd278ddab6ec31cb1a378f98f8a7161ee335f5eb05d262` | `qualification/pam_trust_verifier/acquire_materials.py` |
+| `qualification/pam_trust_verifier/acquisition-plan.json` | 10 | `ecdfb1bd9fd8e74f92328bb4fd70d970720c95a6` | `13bb617e396ed5eaf62eb163dc653764668563013f21a1cb4d1eff5de0bf1d12` | `deploy/python_materials.py` |

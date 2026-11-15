@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      P2_SOURCES_SHA: 5995e3852d3793609420277abcea65e5d2730f1085acfaaac58bbc1b4660d419
-      P2_ASSETS_SHA: 4124bff9afa21db723b53c2e3a9467772a553d04b39598fb56d550ee0e9d5d29
+      P2_SOURCES_SHA: d89789d3692bc4cfaedb3fb74f347bdcfd33c0dc8adf4cdb33d037e7ab93a694
+      P2_ASSETS_SHA: d7d230a8af01b27df353361b458e39a096f3449b1595d881bbc11af88271209a
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -40,7 +40,7 @@ jobs:
         run: python -I -B qualification/pam_trust_verifier/run_pure.py
       - name: Acquire exactly thirteen public wheels separately on host
         timeout-minutes: 32
-        run: python -I -B qualification/pam_trust_verifier/acquire_materials.py acquire --plan-sha256 bc65c92ffc630e302515f7abc2dae60617231dfbb134fd6d58a39f26e781f36e --repository "$GITHUB_WORKSPACE" --destination "$P2_MATERIALS"
+        run: python -I -B qualification/pam_trust_verifier/acquire_materials.py acquire --plan-sha256 a0108569a4480e8e966c3e081cfbe3c92c865fe818c3273a45de2375897654ba --repository "$GITHUB_WORKSPACE" --destination "$P2_MATERIALS"
       - name: Prepare three closed public read-only input directories
         run: python -I -B qualification/p2_installed_ci/controller.py prepare --assets-sha256 "$P2_ASSETS_SHA" --work "$P2_WORK" --repository "$GITHUB_WORKSPACE" --materials "$P2_MATERIALS"
       - name: Pull only pinned public S0 on host

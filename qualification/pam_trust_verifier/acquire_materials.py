@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ADAPTER_HASH = "649ac99037fc41fa24b80fe93bd6833dd968dbdbaf879f51127d25972b5f4878"
-GATE_HASH = "13bb617e396ed5eaf62eb163dc653764668563013f21a1cb4d1eff5de0bf1d12"
+GATE_HASH = "0956e68ea06451fab2c3f5ce9f5aedf603b0fa5724f18366c937a48e5ebce8b2"
 MANIFEST_HASH = "c3c219a7233a8fe3ef93eea81363fe9d846cfde538bb9c1fe3af967bb8b02ed0"
 
 

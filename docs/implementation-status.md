@@ -8,6 +8,22 @@ La [roadmap réconciliée](implementation-roadmap.md) distingue désormais les l
 
 ### État courant du 15 novembre : bibliothèque reçue, réservation Vault limitée
 
+Le candidat de développement `6c17536` est publié dans la
+[PR #6 en brouillon](https://github.com/pamolive/PamOlive-Platform/pull/6).
+Sa [CI PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43707126018)
+passe les portes fonctionnelles, PostgreSQL, natives, HA même hôte et restauration,
+puis refuse **35 groupes High non arbitrés**. La suite générale compte 1 439 tests,
+dont 42 exclus (1 397 exécutés) ; deux autres suites de 20 gardent chacune une
+exclusion. Les 52 purs Vault passent et le
+[vérificateur public installé](https://github.com/pamolive/PamOlive-Platform/actions/runs/43707125940)
+reçoit séparément ses 30 tests sans exclusion et 20 comparaisons de corpus.
+Le [push du même head](https://github.com/pamolive/PamOlive-Platform/actions/runs/43707121106)
+échoue plus tôt : délai TLS pendant `python_materials.py acquire`, avant les
+assertions post-build d'exclusion des credentials et les portes image suivantes.
+Il ne reçoit pas les succès de la PR par transfert. Réception exacte :
+`066e674b78e871eaeb9b0ae8abf8bbc757beff674e8ebd8bec2751ad88c8a198`.
+Ni `main`, ni image, ni NAS ne sont mis à niveau.
+
 Au parent `bd8d2283a2c27c81eef3652fa0e4e5e02ba99216`, les deux CI dédiées
 [push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43690947578) et
 [PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43690955625)
@@ -41,6 +57,18 @@ Pas de Vault installé/image minimale reçus, crash serveur/PG power-loss,
 expiration attendue, backup/restore ou frontière OS Web hostile qualifiés.
 Le rollback clandestin sous même incarnation reste hors garantie. Aucun service
 Web/P0 ou migration Django n'est changé ; P2 n'est pas terminé.
+
+Un premier laboratoire de restauration déclaré a ensuite réellement exécuté
+`pg_dump`, la création d'une seconde base synthétique neuve, sa restauration sous
+rôle restreint et les grants courants. Propriétaires et lignes/audits restaurés
+concordent ; le nouveau slot externe refuse l'ancien contexte ouvert avec 403,
+et la base source reste fermée. La dernière probe après commissionnement échoue :
+**la campagne complète n'est pas validée**. Les assertions finales de requête,
+conflit et permissions restent à recevoir. Les 183 clients CLI et 12 stdin sont
+récoltés/drainés, nettoyage 4 conteneurs/3 volumes/1 réseau confirmé sans OOM,
+lease libre et PG historique inchangé. Rapport public :
+`9f902fef7a5f9afc8d601db614458473561fe7f14e385dbf5f421ac7fdfbe3c8`.
+Les dumps, requêtes, nonces et journaux privés restent hors publication.
 
 ### Historique des sujets et refus précédents
 

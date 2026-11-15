@@ -10,13 +10,16 @@ import gzip
 import hashlib
 import io
 import json
+import os
 import platform
 import re
+import socket
 import ssl
 import stat
 import sys
 import tarfile
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
@@ -26,6 +29,10 @@ MAX_JSON = 262144
 MAX_FILE = 32 * 1024 * 1024
 MAX_TOTAL = 64 * 1024 * 1024
 CHUNK = 65536
+DOWNLOAD_ATTEMPTS = 3
+DOWNLOAD_SECONDS = 300
+ACQUISITION_SECONDS = 1800
+RETRY_HTTP = frozenset({408, 429, 500, 502, 503, 504})
 SCHEMA = "pamolive.python-materials.v1"
 TARGET = {
     "implementation": "cpython",
@@ -368,45 +375,135 @@ def https_opener():
     )
 
 
-def download(row, destination, opener):
+class _RetryDownload(MaterialsError):
+    """Only an explicitly classified failure of a public GET, never file IO."""
+
+
+def retryable_transport(error, url):
+    if isinstance(error, urllib.error.HTTPError):
+        return (
+            error.geturl() == url
+            and error.code in RETRY_HTTP
+            and (
+                error.headers is None
+                or error.headers.get("Content-Encoding", "identity") == "identity"
+            )
+        )
+    if isinstance(error, urllib.error.URLError):
+        error = error.reason
+    if isinstance(error, ssl.SSLError):
+        return False
+    return isinstance(error, (TimeoutError, ConnectionResetError, ConnectionAbortedError)) or (
+        isinstance(error, socket.gaierror) and error.errno == socket.EAI_AGAIN
+    )
+
+
+def get_transport(operation, url):
+    # Confine retries to open/read; filesystem errors cannot enter this path.
+    try:
+        return operation()
+    except Exception as error:
+        retry = retryable_transport(error, url)
+        if isinstance(error, urllib.error.HTTPError):
+            error.close()
+        if retry:
+            raise _RetryDownload("download_transient") from None
+        raise
+
+
+def download_identity(info):
+    require(
+        stat.S_ISREG(info.st_mode)
+        and info.st_nlink == 1
+        and not (getattr(info, "st_file_attributes", 0) & 1024),
+        "download_file_identity",
+    )
+    return info.st_dev, info.st_ino
+
+
+def cleanup_download(target, identity, directory_identity):
+    # Never remove a preexisting, replaced, linked or ambiguously owned object.
+    directory = target.parent.lstat()
+    require(
+        stat.S_ISDIR(directory.st_mode)
+        and not target.parent.is_symlink()
+        and not (getattr(directory, "st_file_attributes", 0) & 1024)
+        and (directory.st_dev, directory.st_ino) == directory_identity,
+        "download_cleanup_directory",
+    )
+    require(download_identity(target.lstat()) == identity, "download_cleanup_changed")
+    target.unlink()
+
+
+def download(row, destination, opener, *, deadline=None):
     safe_path(row["filename"], basename=True)
     valid_url(row["url"], row["filename"])
     directory = Path(destination)
-    require(directory.is_dir() and not directory.is_symlink(), "download_directory")
+    directory_info = directory.lstat()
+    require(
+        stat.S_ISDIR(directory_info.st_mode)
+        and not directory.is_symlink()
+        and not (getattr(directory_info, "st_file_attributes", 0) & 1024),
+        "download_directory",
+    )
+    directory_identity = directory_info.st_dev, directory_info.st_ino
     target = directory / row["filename"]
     require(not target.exists() and not target.is_symlink(), "download_exists")
-    created, started = False, time.monotonic()
-    request = urllib.request.Request(
-        row["url"], headers={"Accept-Encoding": "identity", "User-Agent": "PamOlive-materials/1"}
-    )
-    try:
-        with opener.open(request, timeout=30) as response:
-            require(
-                response.status == 200 and response.geturl() == row["url"],
-                "http_status_or_redirect",
-            )
-            require(
-                response.headers.get("Content-Encoding", "identity") == "identity", "http_encoding"
-            )
-            length = response.headers.get("Content-Length")
-            require(length is None or length == str(row["size"]), "http_size")
-            h, count = hashlib.sha256(), 0
-            with target.open("xb") as stream:
-                created = True
-                while True:
-                    require(time.monotonic() - started <= 300, "download_deadline")
-                    block = response.read(min(CHUNK, row["size"] - count + 1))
-                    if not block:
-                        break
-                    count += len(block)
-                    require(count <= row["size"], "download_size")
-                    h.update(block)
-                    stream.write(block)
-            require(count == row["size"] and h.hexdigest() == row["sha256"], "download_integrity")
-    except Exception:
-        if created and target.is_file() and not target.is_symlink():
-            target.unlink()
-        raise
+    end = time.monotonic() + DOWNLOAD_SECONDS
+    if deadline is not None:
+        end = min(end, deadline)
+    for attempt in range(DOWNLOAD_ATTEMPTS):
+        remaining = end - time.monotonic()
+        require(remaining > 0, "download_deadline")
+        require(not target.exists() and not target.is_symlink(), "download_exists")
+        identity = None
+        request = urllib.request.Request(
+            row["url"],
+            headers={"Accept-Encoding": "identity", "User-Agent": "PamOlive-materials/1"},
+            method="GET",
+        )
+        try:
+            with get_transport(
+                lambda: opener.open(request, timeout=min(30, remaining)), row["url"]
+            ) as response:
+                require(response.geturl() == row["url"], "http_status_or_redirect")
+                require(
+                    response.headers.get("Content-Encoding", "identity") == "identity",
+                    "http_encoding",
+                )
+                if response.status in RETRY_HTTP:
+                    raise _RetryDownload("download_transient")
+                require(response.status == 200, "http_status_or_redirect")
+                length = response.headers.get("Content-Length")
+                require(length is None or length == str(row["size"]), "http_size")
+                h, count = hashlib.sha256(), 0
+                with target.open("xb") as stream:
+                    identity = download_identity(os.fstat(stream.fileno()))
+                    while True:
+                        require(time.monotonic() < end, "download_deadline")
+                        block = get_transport(
+                            lambda: response.read(min(CHUNK, row["size"] - count + 1)), row["url"]
+                        )
+                        require(time.monotonic() < end, "download_deadline")
+                        if not block:
+                            break
+                        count += len(block)
+                        require(count <= row["size"], "download_size")
+                        h.update(block)
+                        require(stream.write(block) == len(block), "download_write")
+                require(
+                    count == row["size"] and h.hexdigest() == row["sha256"], "download_integrity"
+                )
+                return
+        except Exception as error:
+            if identity is not None:
+                cleanup_download(target, identity, directory_identity)
+            if not isinstance(error, _RetryDownload):
+                raise
+            require(attempt + 1 < DOWNLOAD_ATTEMPTS, "download_retry_exhausted")
+            delay = attempt + 1  # Fixed 1s/2s; no untrusted Retry-After or jitter.
+            require(time.monotonic() + delay < end, "download_deadline")
+            time.sleep(delay)
 
 
 def verify_file(path, row):
@@ -462,11 +559,12 @@ def acquire(manifest, output, opener=None):
     for role in (*LOCKS, "runtime-inputs"):
         (output / role).mkdir()
     opener = opener or https_opener()
-    started = time.monotonic()
+    deadline = time.monotonic() + ACQUISITION_SECONDS
     for row in manifest["materials"]:
-        require(time.monotonic() - started <= 1800, "acquisition_deadline")
+        require(time.monotonic() < deadline, "acquisition_deadline")
         primary = output / row["roles"][0]
-        download(row, primary, opener)
+        download(row, primary, opener, deadline=deadline)
+        require(time.monotonic() < deadline, "acquisition_deadline")
         verified_bytes = verify_file(primary / row["filename"], row)
         if row["kind"] == "sdist":
             source_inventory(primary / row["filename"], row)
