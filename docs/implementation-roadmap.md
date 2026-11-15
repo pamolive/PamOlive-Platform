@@ -76,13 +76,18 @@ réussie. La qualification navigateur/JavaScript reste distincte et non exécut�
 
 ### État courant du 15 novembre
 
-La [PR #6](https://github.com/pamolive/PamOlive-Platform/pull/6), head `6c17536`,
-reste en brouillon. Sa CI PR reçoit les 52 purs Vault et les régressions
-fonctionnelles/PG/natives/HA/restauration, puis refuse les 35 groupes High ;
-30 tests installés du vérificateur public passent séparément. Le push échoue
-pendant l'acquisition TLS d'un matériau Python, avant les assertions image.
-Ces résultats distincts sont détaillés dans
-[l'état d'implémentation](implementation-status.md). Aucun merge ni image nouvelle.
+La [PR #6](https://github.com/pamolive/PamOlive-Platform/pull/6), head `67ee7c9`,
+reste en brouillon. Les deux CI Platform exactes passent les portes exécutées,
+dont acquisition/build et exclusion post-build des credentials, 52 purs Vault,
+PostgreSQL, natives, SSH/RDP, HA même hôte, restauration et Compose. Elles refusent
+uniquement les 35 groupes High ; la provenance de build reste incomplète.
+La suite générale annonce 1 457 tests / 42 entrées Skip (40 méthodes et deux
+classes), plus deux marqueurs séparés de 1 skip ; aucun calcul par soustraction
+n'est présenté comme réussite. Le vérificateur public installé reçoit séparément
+30 tests sans skip. Le timeout TLS du push parent `6c17536` reste un échec
+historique distinct, sans transfert rétrospectif du succès courant. Résultats et
+corrigenda dans [l'état d'implémentation](implementation-status.md).
+Aucun merge main ni image nouvelle.
 
 Le vérificateur public V1 du head `bd8d228` a reçu ses 30 tests installés sans
 exclusion dans deux CI dédiées ; les contrôles P0 et leurs appelants demeurent

@@ -8,21 +8,37 @@ La [roadmap réconciliée](implementation-roadmap.md) distingue désormais les l
 
 ### État courant du 15 novembre : bibliothèque reçue, réservation Vault limitée
 
-Le candidat de développement `6c17536` est publié dans la
+Le candidat de développement courant est `67ee7c9`, parent `6c17536`, dans la
 [PR #6 en brouillon](https://github.com/pamolive/PamOlive-Platform/pull/6).
-Sa [CI PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43707126018)
-passe les portes fonctionnelles, PostgreSQL, natives, HA même hôte et restauration,
-puis refuse **35 groupes High non arbitrés**. La suite générale compte 1 439 tests,
-dont 42 exclus (1 397 exécutés) ; deux autres suites de 20 gardent chacune une
-exclusion. Les 52 purs Vault passent et le
-[vérificateur public installé](https://github.com/pamolive/PamOlive-Platform/actions/runs/43707125940)
-reçoit séparément ses 30 tests sans exclusion et 20 comparaisons de corpus.
-Le [push du même head](https://github.com/pamolive/PamOlive-Platform/actions/runs/43707121106)
-échoue plus tôt : délai TLS pendant `python_materials.py acquire`, avant les
-assertions post-build d'exclusion des credentials et les portes image suivantes.
-Il ne reçoit pas les succès de la PR par transfert. Réception exacte :
-`066e674b78e871eaeb9b0ae8abf8bbc757beff674e8ebd8bec2751ad88c8a198`.
-Ni `main`, ni image, ni NAS ne sont mis à niveau.
+Les deux CI Platform exactes —
+[PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43713258395) et
+[push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43713256970) —
+passent les portes exécutées de sécurité, acquisition/build, exclusion post-build
+des credentials, PostgreSQL, natives, SSH10/RDP9, HA/partition sur le même hôte,
+restauration restreinte (23 migrations/374 lignes) et démarrage Compose. Elles
+échouent uniquement au scan final : **35 groupes High non arbitrés**,
+102 correspondances High sur 349 OS, zéro Critical et aucun match ignoré.
+Les 52 purs Vault passent séparément dans chacun. La suite générale annonce
+**1 457 tests et 42 entrées Skip : 40 méthodes et deux exclusions setUpClass** ;
+deux autres suites de 20 ont chacune un skip. Les marqueurs 42 + 1 + 1 restent
+distincts ; aucune soustraction ne fournit ici un nombre de réussites.
+Le [vérificateur public installé](https://github.com/pamolive/PamOlive-Platform/actions/runs/43713258465)
+reçoit séparément 30 tests sans skip et 20 comparaisons de corpus. Neuf ZIP et
+les sources/pins sont liés au sujet exact dans la réception
+`1352eef85222a261faabc3300bd49aa6a3377be87a307f6e62b61663d9c616d6`.
+La provenance de build demeure incomplète ; ni `main`, ni image, ni NAS ne sont
+mis à niveau. Ces CI ne qualifient pas le runtime Vault installé.
+
+Le parent `6c17536` conserve ses résultats distincts : PR fonctionnelle puis
+scan High en échec, push arrêté au timeout TLS d'acquisition avant assertion
+post-build. Le correctif courant borne les seuls téléchargements publics
+idempotents sans assouplir TLS, destinations ou empreintes ; le succès de build
+ne prouve pas qu'un retry ait réellement été déclenché. L'ancien calcul
+« 1 397 exécutés » est retiré : les logs exacts du parent annoncent 1 439 tests
+et 42 entrées Skip, dont 40 méthodes et deux classes. Les addenda
+`3edad87793c9f3405e0ee320611ed70831b49c7f6adc26c302f679534fe0a49d`
+et `d7a3e7b19118032180443da4511d5dd9cc0ad5bda1e14e5f93c38a38b0a5914e`
+corrigent les seuls compteurs des deux sujets ; les reçus historiques sont conservés.
 
 Au parent `bd8d2283a2c27c81eef3652fa0e4e5e02ba99216`, les deux CI dédiées
 [push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43690947578) et
@@ -113,7 +129,8 @@ Un complément [HTTP PAM local](p1-g-pam-http-validation.md) prolonge `09b6fa43`
 pending, arrêt et audit ; correction ciblée du rendu des dates bail/relais.
 La régression combinée compte 324 réussites et une exclusion SQLite attendue
 sur 325 tests, avec contrepartie PostgreSQL réussie. Les CI ultérieures du
-candidat8b passent1397réussites/1439tests généraux comptés avec42exclusions.
+candidat8b annoncent 1 439 tests généraux avec 42 entrées Skip. Le précédent
+calcul de 1 397 réussites par soustraction est retiré ; aucun skip n'est une réussite.
 La CI PR atteint les transports, HA même hôte et restauration puis refuse
 35groupes High ; la CI push échoue plus tôt sur un timeout TLS d'acquisition.
 Ces résultats restent liés à leurs sujets exacts. Le complément HTTP

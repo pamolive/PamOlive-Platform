@@ -161,6 +161,31 @@ post-build d'exclusion des credentials et les portes image suivantes ne sont
 pas reçues sur ce run. Aucun défaut de compilation ou fuite n'est établi par
 ce log ; l'endpoint précis n'est pas identifié. Pas de relance ni de garde assoupli.
 
+## Réception CI du candidat suivant 67ee7c9
+
+Les [Platform PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43713258395)
+et [push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43713256970)
+passent toutes les portes exécutées avant le scan final, y compris l'acquisition,
+le build et l'assertion d'exclusion des credentials. Chacune reçoit 52 purs Vault
+sans skip ; la suite générale annonce 1 457 tests et 42 entrées Skip, composées
+de 40 méthodes et deux exclusions setUpClass. Deux autres suites de 20 gardent
+chacune une exclusion. Le scan refuse toujours 35 groupes High non arbitrés,
+102 correspondances High sur 349 OS, zéro Critical et aucun match ignoré.
+Le [vérificateur installé PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43713258465)
+reçoit séparément 30 tests sans skip et 20 comparaisons. Aucun succès de runtime
+Vault réel ou installé n'est transféré depuis cette porte de bibliothèque.
+
+Réception : `1352eef85222a261faabc3300bd49aa6a3377be87a307f6e62b61663d9c616d6`.
+Le correctif borne les retries des matériaux publics ; aucun déclenchement réel
+de retry n'est déduit d'un build réussi. Pour le parent `6c17536`, les logs exacts
+confirment aussi 40 méthodes et deux exclusions de classe parmi 42 entrées Skip.
+Le précédent calcul de 1 397 exécutés, et celui de 1 415 sur le sujet courant,
+sont retirés : les compteurs de classes et méthodes ne se soustraient pas ainsi.
+Les addenda `3edad87793c9f3405e0ee320611ed70831b49c7f6adc26c302f679534fe0a49d`
+et `d7a3e7b19118032180443da4511d5dd9cc0ad5bda1e14e5f93c38a38b0a5914e`
+préservent les reçus scellés et les verdicts historiques. Main, image et NAS
+restent inchangés ; les High et la provenance de build bloquent la promotion.
+
 ## Premier essai de restauration : réception partielle seulement
 
 Le contrôleur backup/restore R2, gel
