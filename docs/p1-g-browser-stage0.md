@@ -78,8 +78,8 @@ La syntaxe YAML locale avait passé sans détecter cette contrainte de contexte.
 Le dossier est maintenant initialisé par une étape sur le runner via ses
 variables d'environnement, puis transmis aux étapes suivantes par `GITHUB_ENV`.
 Les deux assets, leur contrôleur, les pins et les contrôles restent inchangés.
-La reprise CI du correctif demeure une mesure distincte ; le refus initial
-ne constitue pas un lancement Docker ou un succès des prérequis.
+Le refus initial ne constitue pas un lancement Docker ou un succès des
+prérequis ; la reprise réelle du correctif est décrite ci-dessous.
 
 Le workflow vérifie les régressions et les mêmes seuils statiques avant toute
 acquisition. Ses outils hôte reprennent les versions de sécurité du projet
@@ -87,8 +87,40 @@ et Ruff 0.14.3 ; leur provenance n'est pas fermée par un nouveau manifeste de
 wheels hashées. Le bootstrap pip garde son verrou hashé. Cette limite reste
 distincte du pin MCR et ne donne aucune attestation de build.
 
-La mesure CI réelle du nouveau commit reste à effectuer. Un succès stage0
-prouverait seulement présence/version/profil/NSS vide. Il ne prouverait ni
+La mesure réelle du commit `6b3d6ade` est conservée dans le
+[run B0 43653245523](https://github.com/pamolive/PamOlive-Platform/actions/runs/43653245523).
+Le pull explicite et le conteneur confiné ont réellement démarré : Node
+`v26.13.0`, utilisateur nonroot, rootfs RO, capacités supprimées et NNP sont
+observés. Le premier refus est `B0_PRE_CERTUTIL_MISSING` : absence constatée de
+`certutil`, puis NSS fonctionnel, profil NSS vide, présence/version de Chromium
+restent `null` (non mesurés). Le nettoyage des objets possédés est confirmé ;
+il ne signifie pas suppression du cache d'image du runner. L'artifact final
+n'a pas conservé les détails exit/OOM du conteneur : aucune mesure détaillée
+de ces champs n'est donc revendiquée à partir de cet artifact. Son rapport
+public a pour SHA-256 `0fddd8b1c2b4ec3e08760cc4799b425ae65c2edb0e077cce78aaddcab50fd3b1`.
+
+La suite retenue est la préparation d'un dérivé de test de l'image exacte,
+avec outils NSS et dépendances authentifiés et inventoriés, puis une nouvelle
+mesure stage0. Aucun `apt install` opportuniste pendant la mesure ou saut du
+contrôle NSS n'est admis. Les autorités Debian du chantier A1 ne constituent
+pas une preuve pour les dépôts Ubuntu de cette image.
+
+Les deux CI Platform du commit `6b3d6ade` sont terminées :
+[PR 43653247936](https://github.com/pamolive/PamOlive-Platform/actions/runs/43653247936)
+et [push 43653245434](https://github.com/pamolive/PamOlive-Platform/actions/runs/43653245434).
+Dans chacune, les jobs sécurité et bibliothèques P2 installées passent ; les
+1 439 tests généraux comptent 1 397 réussites et 42 exclusions. Les portes
+Directory 130, contrats 166, confiance 22, corpus de restauration 1, OIDC 24,
+SSH 10 et RDP 9 passent. Les trois variantes d'extension comptent 20 tests
+chacune, avec une exclusion contextuelle dans deux variantes. HA/partition sur
+le même hôte et restauration/rollback sous privilèges restreints passent.
+Le seul échec Platform est le scan final : 35 groupes High non arbitrés,
+348 matches OS dont 102 High, zéro Critical et aucun finding ignoré.
+`build_verified` et attestation cryptographique restent faux ; ces sujets
+Docker distincts ne sont ni promus ni publiés. Le sujet PR est le merge de
+test `1ef9c4679099bcf6348d616d2c7b234aa5daaf13`, celui du push est `6b3d6ade`.
+
+Un succès stage0 prouverait seulement présence/version/profil/NSS vide. Il ne prouverait ni
 sandbox Chromium actif, ni confiance TLS/CA, ni CDP, WebAuthn, JavaScript du
 portail, transport PAM ou indépendance humaine. Un NSS neuf n'efface pas le
 Chrome Root Store système. Les futures phases TLS/sandbox/CDP restent hors
