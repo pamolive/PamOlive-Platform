@@ -1,0 +1,91 @@
+name: Installed Vault reservation runtime
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: vault-runtime-installed-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  installed-vault-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    env:
+      VAULT_SOURCES_SHA: 3836b10383405d080873f0b56b7f06aea1ea8ebb07de80f35bb4ace70f4f0a4d
+      VAULT_ASSETS_SHA: 328a3bd97fe0ae7a11c2efdff4dbedf323c1077f69c3ae6f55871e481b96f0db
+      VAULT_PAYLOAD_SHA: e958ce089e79dc8ed87943d9c74fe559bb7e930c4e7898f778a219a6a10f12fe
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Check all runner bytes before Python or acquisition
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qualification/vault_runtime_installed_ci
+          printf '%s  source-checksums.sha256\n' "$VAULT_SOURCES_SHA" | sha256sum --check --strict
+          sha256sum --check --strict source-checksums.sha256
+          printf 'VAULT_WORK=%s/pamolive-p2-installed-%s-%s\n' "$RUNNER_TEMP" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+          printf 'VAULT_MATERIALS=%s/vault-public-materials-%s-%s\n' "$RUNNER_TEMP" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Capture the exact 35 inputs from the real component paths
+        run: >-
+          python -I -B qualification/vault_runtime_installed_ci/capture_inputs.py
+          --repository "$GITHUB_WORKSPACE" --payload-sha256 "$VAULT_PAYLOAD_SHA"
+      - name: Seven adversarial checkout capture tests
+        run: python -I -B qualification/vault_runtime_installed_ci/capture_adversarial.py
+      - name: Six startup-hook refusals without executing hooks
+        run: python -I -B qualification/vault_runtime_installed_ci/startup_adversarial.py
+      - name: Fifty-five pure harness tests without production imports
+        run: python -I -B qualification/vault_runtime_installed_ci/run_pure.py
+      - name: Seventeen existing wheel DATA regressions
+        run: python -I -B qualification/vault_reservation/test_wheel.py
+      - name: Verify closed source and independent expected bindings
+        run: >-
+          python -I -B qualification/vault_runtime_installed_ci/workload_cli.py verify
+          --assets-sha256 "$VAULT_ASSETS_SHA" --work "$VAULT_WORK"
+      - name: Acquire exactly sixteen pinned public wheels on the host
+        timeout-minutes: 32
+        run: >-
+          python -I -B qualification/vault_runtime_installed_ci/workload_cli.py acquire
+          --assets-sha256 "$VAULT_ASSETS_SHA" --work "$VAULT_WORK"
+          --repository "$GITHUB_WORKSPACE" --materials "$VAULT_MATERIALS"
+      - name: Prepare three closed read-only input mounts
+        id: prepare
+        run: >-
+          python -I -B qualification/vault_runtime_installed_ci/workload_cli.py prepare
+          --assets-sha256 "$VAULT_ASSETS_SHA" --work "$VAULT_WORK"
+          --materials "$VAULT_MATERIALS"
+      - name: Explicitly pull only the pinned public Python S0
+        timeout-minutes: 6
+        run: >-
+          python -I -B qualification/vault_runtime_installed_ci/workload_cli.py pull
+          --assets-sha256 "$VAULT_ASSETS_SHA" --work "$VAULT_WORK"
+      - name: Build and install three wheels offline then run the installed 52 tests
+        timeout-minutes: 17
+        run: >-
+          python -I -B qualification/vault_runtime_installed_ci/workload_cli.py run
+          --assets-sha256 "$VAULT_ASSETS_SHA" --work "$VAULT_WORK"
+      - name: Reconcile only the same durable reservation and preserve uncertainty
+        if: always() && steps.prepare.outcome == 'success'
+        timeout-minutes: 2
+        run: >-
+          python -I -B qualification/vault_runtime_installed_ci/workload_cli.py cleanup
+          --assets-sha256 "$VAULT_ASSETS_SHA" --work "$VAULT_WORK"
+      - name: Retain public qualification and cleanup facts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always() && env.VAULT_WORK != ''
+        with:
+          name: vault-installed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.VAULT_WORK }}/public-report.json
+            ${{ env.VAULT_WORK }}/cleanup-public.json
+            qualification/vault_runtime_installed_ci/checkout-capture.json
+            ${{ env.VAULT_MATERIALS }}/acquisition.json
+          if-no-files-found: error
+          retention-days: 7

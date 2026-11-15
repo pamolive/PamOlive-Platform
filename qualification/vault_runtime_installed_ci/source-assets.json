@@ -1,0 +1,122 @@
+{
+  "schema": "pamolive.vault-installed-source-assets/2",
+  "payloads_sha256": "e958ce089e79dc8ed87943d9c74fe559bb7e930c4e7898f778a219a6a10f12fe",
+  "controller_files": {
+    "adapter_v2.py": {
+      "bytes": 6397,
+      "sha256": "e93e21a506ea26d05e705257f463d438aafa9df57e516d5f165452dd79a52cb2"
+    },
+    "guards.py": {
+      "bytes": 5407,
+      "sha256": "fdf799dd6fc9d6371bfe84298006c9edc27c43b3b79cc706475eec4e38dbbc9e"
+    },
+    "helper-pins.json": {
+      "bytes": 1764,
+      "sha256": "b19e49007f7f3655efdea0a4fc891ecfec89c2944809b5589dd6fd8376611de2"
+    },
+    "helpers/base-config.json": {
+      "bytes": 5664,
+      "sha256": "78976a69c067520ef8be34cde307ef9f6fea6dcefa50edb57039773d241ca0db"
+    },
+    "helpers/bounded_io.py": {
+      "bytes": 6794,
+      "sha256": "98233b610f2d53dfd698d0d91f61f3d3ebcb1693a847983f0472f89a885f414f"
+    },
+    "helpers/check_wheel.py": {
+      "bytes": 9535,
+      "sha256": "934d28b98fa99dda14cd0fa951e0e3caed87598ed9b577500a8cba1d8758cb02"
+    },
+    "helpers/controller.py": {
+      "bytes": 38545,
+      "sha256": "40f5bbc845457ed18bf893fbb5d04eb90c6af0959077b0667a3dae3717120b80"
+    },
+    "helpers/entrypoint.py": {
+      "bytes": 13129,
+      "sha256": "02150a10eae8d07dfac6e7918eb8f9b5f8213a975ac568185e85bbb598d1193d"
+    },
+    "helpers/installed_tests.py": {
+      "bytes": 18919,
+      "sha256": "2c769ce4814d0dbff14994f3fcc14493598064cdb48a15cb8fa3b9ba3c8f8061"
+    },
+    "helpers/legacy_controller.py": {
+      "bytes": 29843,
+      "sha256": "7f3bfa46307673ba51c3a21fa3b70171ab9f931547e1903adce2fc02a29e02ce"
+    },
+    "helpers/python_materials.py": {
+      "bytes": 27299,
+      "sha256": "0956e68ea06451fab2c3f5ce9f5aedf603b0fa5724f18366c937a48e5ebce8b2"
+    },
+    "helpers/qualify_installed.py": {
+      "bytes": 37164,
+      "sha256": "649ac99037fc41fa24b80fe93bd6833dd968dbdbaf879f51127d25972b5f4878"
+    },
+    "host_seam.py": {
+      "bytes": 2433,
+      "sha256": "344c02330841b4e4f36e0684617af148885343eac7a5074f1df283c7d8bf55cf"
+    },
+    "installed_runner.py": {
+      "bytes": 8237,
+      "sha256": "4dca5fe074bf37832db5b378310498635c979d507641de49eb98fe094fc8ea2f"
+    },
+    "materials-plan.json": {
+      "bytes": 9548,
+      "sha256": "074356440b344b672028cd8eec33f96c0a866d36e7f3910af4b10a231872a7c6"
+    },
+    "orchestrate.py": {
+      "bytes": 17100,
+      "sha256": "48c6475fc1b6ac1b6d47dc6e6479a86b400d7ba4d3070c033c4dbbd3ca5e58c5"
+    },
+    "payloads.json": {
+      "bytes": 10721,
+      "sha256": "e958ce089e79dc8ed87943d9c74fe559bb7e930c4e7898f778a219a6a10f12fe"
+    },
+    "records.py": {
+      "bytes": 4992,
+      "sha256": "14118329e3a4a461c63fced07a9d069c5a642905a7ae0b34d5e7cd8d4af83894"
+    },
+    "requirements-bootstrap.lock": {
+      "bytes": 244,
+      "sha256": "b0a3c24adafaa80938f5a5de87790e7408bf61db711d37a02221d666cdb4d803"
+    },
+    "requirements-build.lock": {
+      "bytes": 286,
+      "sha256": "0496f2e6a919f0b7391a91009453b77d9a641b5b8045593d7fa22762e6765a52"
+    },
+    "requirements-runtime-linux.lock": {
+      "bytes": 1310,
+      "sha256": "1fc03df1ba311828c755f416df144b24321d04161341e6f18cd06ccac3fe1a36"
+    },
+    "s0-pins.json": {
+      "bytes": 706,
+      "sha256": "33b0cfd98d7eb3aa6a5c1d509cc559bddb77988dc1135b9ecde880689b9151a1"
+    },
+    "schema.py": {
+      "bytes": 8347,
+      "sha256": "55c65fa3cb9989db6838f0bd631ceac438485ed8b2a7a66ef2418176870bbc20"
+    },
+    "support.py": {
+      "bytes": 3219,
+      "sha256": "97f681ec8e1829d0f8c8b233eb4fdf5b3ce243a7f31a0bacc2a6ac60d5906223"
+    },
+    "wheel_gate.py": {
+      "bytes": 6858,
+      "sha256": "efae894120a464ec5f332d7e8f3b83e347af8abfe9f02d889c98715e1ed5e5e9"
+    },
+    "workload_entry.py": {
+      "bytes": 2944,
+      "sha256": "42d5c0a95f28d618e797fe2d7642268036224ef7342a92f0e95f65dfd7573a3b"
+    },
+    "workload_host.py": {
+      "bytes": 10945,
+      "sha256": "9782ec5b5572bb0b62afd900ede64605d4bfd50c3c8b6338d414b1a433ab274e"
+    },
+    "workload_prepare.py": {
+      "bytes": 5420,
+      "sha256": "567a36fe18beb5498b1e4c26a8d0a7584687e63838f857a3f638ebd069fd3e54"
+    },
+    "workload_schema.py": {
+      "bytes": 10554,
+      "sha256": "b28df32e8880e82e936d355b8d6c3c199dd6be668a46e518fe545aa4c02e8369"
+    }
+  }
+}

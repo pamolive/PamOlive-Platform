@@ -11,3 +11,6 @@ platform_core/static/platform_core/vendor/* -text
 components/pam-trust-verifier/fixtures/reference-p0-child-report.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 qualification/pam_trust_verifier/materials-plan.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 qualification/p2_installed_ci/materials-plan.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+# Keep the reviewed helper manifest and pure runner byte-exact across checkouts.
+qualification/vault_runtime_installed_ci/helper-pins.json -text whitespace=cr-at-eol
+qualification/vault_runtime_installed_ci/run_pure.py -text whitespace=cr-at-eol

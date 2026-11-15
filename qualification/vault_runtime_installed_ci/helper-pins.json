@@ -1,0 +1,47 @@
+{
+  "controller.py": {
+    "path": "qualification/p2_installed_ci/controller.py",
+    "sha256": "40f5bbc845457ed18bf893fbb5d04eb90c6af0959077b0667a3dae3717120b80",
+    "bytes": 38545
+  },
+  "legacy_controller.py": {
+    "path": "qualification/p2_installed_ci/legacy_controller.py",
+    "sha256": "7f3bfa46307673ba51c3a21fa3b70171ab9f931547e1903adce2fc02a29e02ce",
+    "bytes": 29843
+  },
+  "bounded_io.py": {
+    "path": "qualification/p2_installed_ci/bounded_io.py",
+    "sha256": "98233b610f2d53dfd698d0d91f61f3d3ebcb1693a847983f0472f89a885f414f",
+    "bytes": 6794
+  },
+  "entrypoint.py": {
+    "path": "qualification/p2_installed_ci/entrypoint.py",
+    "sha256": "02150a10eae8d07dfac6e7918eb8f9b5f8213a975ac568185e85bbb598d1193d",
+    "bytes": 13129
+  },
+  "base-config.json": {
+    "path": "qualification/p2_installed_ci/base-config.json",
+    "sha256": "78976a69c067520ef8be34cde307ef9f6fea6dcefa50edb57039773d241ca0db",
+    "bytes": 5664
+  },
+  "installed_tests.py": {
+    "path": "qualification/pam_trust_verifier/installed_tests.py",
+    "sha256": "2c769ce4814d0dbff14994f3fcc14493598064cdb48a15cb8fa3b9ba3c8f8061",
+    "bytes": 18919
+  },
+  "qualify_installed.py": {
+    "path": "qualification/pam_trust_verifier/qualify_installed.py",
+    "sha256": "649ac99037fc41fa24b80fe93bd6833dd968dbdbaf879f51127d25972b5f4878",
+    "bytes": 37164
+  },
+  "python_materials.py": {
+    "path": "deploy/python_materials.py",
+    "sha256": "0956e68ea06451fab2c3f5ce9f5aedf603b0fa5724f18366c937a48e5ebce8b2",
+    "bytes": 27299
+  },
+  "check_wheel.py": {
+    "path": "qualification/vault_reservation/check_wheel.py",
+    "sha256": "934d28b98fa99dda14cd0fa951e0e3caed87598ed9b577500a8cba1d8758cb02",
+    "bytes": 9535
+  }
+}

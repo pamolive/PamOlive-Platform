@@ -64,9 +64,12 @@ pour les cas TLS/PostgreSQL/restauration. Elle réutilisera les gardes de ressou
 de provenance, d'ownership et de nettoyage existants avec un sujet Linux explicite.
 Les identités Windows/Docker Desktop et leurs anciens résultats ne sont pas
 transposables par simple changement de chemin ou normalisation de champs inconnus.
-La CI devra mesurer son contexte avant allocation, garder les fenêtres 40/30 et
+La CI doit mesurer son contexte avant allocation, garder les fenêtres 40/30 et
 produire des faits observés, avec des accès GitHub en lecture et des données
-exclusivement synthétiques. Ce runner opérationnel n'est pas encore implémenté.
+exclusivement synthétiques. Le [runner d'installation](p2-vault-runtime-installed-qualification.md)
+est maintenant implémenté localement, avec 55 tests de harnais, sept tests de
+capture et six tests de garde de démarrage. Sa contre-revue et son exécution
+Linux restent distinctes ; aucune installation qualifiée n'en découle encore.
 
 ## Alternatives
 

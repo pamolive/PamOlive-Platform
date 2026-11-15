@@ -1,0 +1,12 @@
+{
+  "image": "docker.io/library/python@sha256:05a994d2344eb364cc186910f4fc8786a38215f39f00d0acc25bff33a08f4177",
+  "image_config": "sha256:78976a69c067520ef8be34cde307ef9f6fea6dcefa50edb57039773d241ca0db",
+  "source_index": "sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b",
+  "diff_ids": [
+    "sha256:dd57f90311a2567b55ff22eeacff1602fd04ad7566e315957731359eab173b90",
+    "sha256:3dc3efdf011007403514ffd3b699da9deef847535ae30a3639ef3fee93c1375e",
+    "sha256:96a69f98ae076bdff5264720ee922820291d658c6a2df97f7c4899864ceb7ea8",
+    "sha256:340931a1d98607a7f1319082179f82ba477f1a1de6e3ecf2ea11f4cc0fe454c3"
+  ],
+  "identity_profile": "github-hosted-Linux-classic-store-configID/1"
+}

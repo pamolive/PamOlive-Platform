@@ -9,6 +9,7 @@ description = "Unverified P2 operation formats only; no release authority"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
 dependencies = []
 
 [tool.setuptools.packages.find]

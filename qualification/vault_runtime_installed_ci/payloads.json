@@ -1,0 +1,272 @@
+{
+  "schema": "pamolive.vault-installed-source-payloads/2",
+  "groups": {
+    "runtime": {
+      "pyproject.toml": {
+        "bytes": 678,
+        "sha256": "661713e193a205afdf66d2e46307ba6915bc989d7e24569f3a2e9d37bd28d6cf"
+      },
+      "README.md": {
+        "bytes": 8691,
+        "sha256": "5d48902cfccd456bd4b876ff2d064239eb79974daaa95557c91b016887ecaa36"
+      },
+      "LICENSE": {
+        "bytes": 658,
+        "sha256": "8a6f83b6becb60fccf67d6c5d3b915f6f41272b70f4a987d9ee7867fbb3d69ef"
+      },
+      "sql/schema.sql": {
+        "bytes": 3190,
+        "sha256": "78cbd52dc5b30fa1139dedaf29b903fbd0becd5272d648ddd60ee35b4769a72f"
+      },
+      "pamolive_vault_runtime/__init__.py": {
+        "bytes": 89,
+        "sha256": "74a5adf8e42a34525e743ccee2265e9e587f1d78d8054ac5c0082f31432f2e9a"
+      },
+      "pamolive_vault_runtime/admission.py": {
+        "bytes": 6763,
+        "sha256": "b3951f31d2e2e595ddaea996c170ea555fc4f8f620b347c9a29225c1e8f7b23a"
+      },
+      "pamolive_vault_runtime/asgi.py": {
+        "bytes": 5264,
+        "sha256": "c015da6b40a5a6d6fe70915046c198aa58e8be16aaca24d7344c290a96cc351a"
+      },
+      "pamolive_vault_runtime/assembly.py": {
+        "bytes": 463,
+        "sha256": "c63a8f339cb645d3b83878afac5a874d45b45aeadda841efe98b368535bf4d86"
+      },
+      "pamolive_vault_runtime/bounded.py": {
+        "bytes": 4663,
+        "sha256": "006eb59136f59e7fbd74bf435d1f19a1e315e34a8e568a728a2913fd25acb0ee"
+      },
+      "pamolive_vault_runtime/ledger.py": {
+        "bytes": 10421,
+        "sha256": "f0c03dc16b91ddada9dcbc19b59a2ae1b8ea1ed121892ce9f68ad0d81eb3b81d"
+      },
+      "pamolive_vault_runtime/slot.py": {
+        "bytes": 8274,
+        "sha256": "2547e23ee0ba09b736ddcfc81352726e480ba5d5c5b10c201246b0e007fc33fc"
+      },
+      "pamolive_vault_runtime/transport.py": {
+        "bytes": 3454,
+        "sha256": "07f7f3c6a31386cccfaeb8cb18564b6f821a3832215853345afa7234019fe746"
+      }
+    },
+    "verifier": {
+      "pyproject.toml": {
+        "bytes": 608,
+        "sha256": "3c16b90c4faf2eba32ebf1f397e5d1ed9acea71f1afaae87c93579a6098df60f"
+      },
+      "README.md": {
+        "bytes": 9906,
+        "sha256": "c39b79ae068887086a31604cbdc48b37d1335647f95e4e687d699b6439fdb465"
+      },
+      "LICENSE": {
+        "bytes": 658,
+        "sha256": "8a6f83b6becb60fccf67d6c5d3b915f6f41272b70f4a987d9ee7867fbb3d69ef"
+      },
+      "LICENSE-DJANGO.txt": {
+        "bytes": 1552,
+        "sha256": "b846415d1b514e9c1dff14a22deb906d794bc546ca6129f950a18cd091e2a669"
+      },
+      "NOTICE.txt": {
+        "bytes": 727,
+        "sha256": "88fada6d1c4564ccd962a00641e69a75ca34f159b8aa6db1c62cee4b72da7db5"
+      },
+      "src/pamolive_pam_trust_verifier/__init__.py": {
+        "bytes": 562,
+        "sha256": "af945eb3ff19ec757a00deddff197800b073be6074ff11684432e3977e232cff"
+      },
+      "src/pamolive_pam_trust_verifier/_api.py": {
+        "bytes": 10104,
+        "sha256": "e2cc4224d89ce10cc20dbd35d65a9cc77e15e0d6a789f4cfccee062c82af1fa6"
+      },
+      "src/pamolive_pam_trust_verifier/_codec.py": {
+        "bytes": 4356,
+        "sha256": "6426721d5167252454ae592d1fe29b0df5e51494f16407489804cb8313adc076"
+      },
+      "src/pamolive_pam_trust_verifier/_context.py": {
+        "bytes": 4965,
+        "sha256": "d8ef71426ec25b95e62e9b27dc02bf8c2b722376154d797ca424b1a50bf05d4b"
+      },
+      "src/pamolive_pam_trust_verifier/_crypto.py": {
+        "bytes": 1666,
+        "sha256": "5dffa016bfe27206e8d8022c72c57d03750434774732b88539e090ee02babf2b"
+      },
+      "src/pamolive_pam_trust_verifier/_v1_rules.py": {
+        "bytes": 9812,
+        "sha256": "b7cdaada059a2501b21d6b0fb9e0b5e97ca69fbf179bbb5cdf1d9b7250e37a61"
+      }
+    },
+    "contracts": {
+      "pyproject.toml": {
+        "bytes": 503,
+        "sha256": "22e26bd82b83d4e17382275e4b209d10e53a63669d29815c25becfbdb3bde458"
+      },
+      "README.md": {
+        "bytes": 8110,
+        "sha256": "6adb23731536e0f350ab0577a6648e90d06fb70b7265efea95c2c0135dcb8cba"
+      },
+      "src/pamolive_vault_contracts/__init__.py": {
+        "bytes": 790,
+        "sha256": "02f14e61113d0bd63e1b52fd8d9d9a8db9984efdf3eecf67ceb3faf4bfa972d3"
+      },
+      "src/pamolive_vault_contracts/canonical.py": {
+        "bytes": 5390,
+        "sha256": "f543d6fb39df313992c8f173323162892a3f6980de63c079f665ff74d3c7cf76"
+      },
+      "src/pamolive_vault_contracts/contracts.py": {
+        "bytes": 8133,
+        "sha256": "d4b8837a7f39bcfc57dc58e998e3bd6ddaa4b2c1ebc2fbfe5c2dd8dadbeea72e"
+      },
+      "LICENSE": {
+        "bytes": 658,
+        "sha256": "8a6f83b6becb60fccf67d6c5d3b915f6f41272b70f4a987d9ee7867fbb3d69ef"
+      }
+    }
+  },
+  "runtime_tests": {
+    "tests/fixtures.py": {
+      "bytes": 8137,
+      "sha256": "b555d9d01e693e728eb4f8121af25c76c56d4afde0fc85356d4410791dfd61e4"
+    },
+    "tests/history/r1/bounded.py": {
+      "bytes": 3362,
+      "sha256": "79c0648d517eaa785e5498b842e26fb325664031c40c00c6d46fbc3f50789826"
+    },
+    "tests/history/r1/transport.py": {
+      "bytes": 2761,
+      "sha256": "8c0ddae1e9c74db5e3a305d78b70381272e7e9840d52359f10a4bdd02e3d74f3"
+    },
+    "tests/test_r2_boundaries.py": {
+      "bytes": 11407,
+      "sha256": "731f0eeed817fa0026a3a23576a496cb7a5b65c8aa521e85ab27bff624b4225a"
+    },
+    "tests/test_ro_slot.py": {
+      "bytes": 4127,
+      "sha256": "1f524eaf83c4c18d4ee9f1237977205193a45f1e9c4c592f12fec66e6f8920ee"
+    },
+    "tests/test_runtime.py": {
+      "bytes": 29469,
+      "sha256": "9f66f9270fa96f299b9b806d1d8dd2b141ea79fdf401c5e5caa4b64a7b8d6e67"
+    }
+  },
+  "root_notice": {
+    "bytes": 658,
+    "sha256": "8a6f83b6becb60fccf67d6c5d3b915f6f41272b70f4a987d9ee7867fbb3d69ef"
+  },
+  "contracts_metadata_delta": "Root approved pyprojectlicense-files plus exactLICENSE only;3API modules unchanged",
+  "original_checkout_bytes": {
+    "components/vault/runtime/pyproject.toml": {
+      "bytes": 678,
+      "sha256": "661713e193a205afdf66d2e46307ba6915bc989d7e24569f3a2e9d37bd28d6cf"
+    },
+    "components/vault/runtime/README.md": {
+      "bytes": 8691,
+      "sha256": "5d48902cfccd456bd4b876ff2d064239eb79974daaa95557c91b016887ecaa36"
+    },
+    "components/vault/runtime/LICENSE": {
+      "bytes": 658,
+      "sha256": "8a6f83b6becb60fccf67d6c5d3b915f6f41272b70f4a987d9ee7867fbb3d69ef"
+    },
+    "components/vault/runtime/sql/schema.sql": {
+      "bytes": 3190,
+      "sha256": "78cbd52dc5b30fa1139dedaf29b903fbd0becd5272d648ddd60ee35b4769a72f"
+    },
+    "components/vault/runtime/pamolive_vault_runtime/__init__.py": {
+      "bytes": 89,
+      "sha256": "74a5adf8e42a34525e743ccee2265e9e587f1d78d8054ac5c0082f31432f2e9a"
+    },
+    "components/vault/runtime/pamolive_vault_runtime/admission.py": {
+      "bytes": 6763,
+      "sha256": "b3951f31d2e2e595ddaea996c170ea555fc4f8f620b347c9a29225c1e8f7b23a"
+    },
+    "components/vault/runtime/pamolive_vault_runtime/asgi.py": {
+      "bytes": 5264,
+      "sha256": "c015da6b40a5a6d6fe70915046c198aa58e8be16aaca24d7344c290a96cc351a"
+    },
+    "components/vault/runtime/pamolive_vault_runtime/assembly.py": {
+      "bytes": 463,
+      "sha256": "c63a8f339cb645d3b83878afac5a874d45b45aeadda841efe98b368535bf4d86"
+    },
+    "components/vault/runtime/pamolive_vault_runtime/bounded.py": {
+      "bytes": 4663,
+      "sha256": "006eb59136f59e7fbd74bf435d1f19a1e315e34a8e568a728a2913fd25acb0ee"
+    },
+    "components/vault/runtime/pamolive_vault_runtime/ledger.py": {
+      "bytes": 10421,
+      "sha256": "f0c03dc16b91ddada9dcbc19b59a2ae1b8ea1ed121892ce9f68ad0d81eb3b81d"
+    },
+    "components/vault/runtime/pamolive_vault_runtime/slot.py": {
+      "bytes": 8274,
+      "sha256": "2547e23ee0ba09b736ddcfc81352726e480ba5d5c5b10c201246b0e007fc33fc"
+    },
+    "components/vault/runtime/pamolive_vault_runtime/transport.py": {
+      "bytes": 3454,
+      "sha256": "07f7f3c6a31386cccfaeb8cb18564b6f821a3832215853345afa7234019fe746"
+    },
+    "components/pam-trust-verifier/pyproject.toml": {
+      "bytes": 608,
+      "sha256": "3c16b90c4faf2eba32ebf1f397e5d1ed9acea71f1afaae87c93579a6098df60f"
+    },
+    "components/pam-trust-verifier/README.md": {
+      "bytes": 9906,
+      "sha256": "c39b79ae068887086a31604cbdc48b37d1335647f95e4e687d699b6439fdb465"
+    },
+    "components/pam-trust-verifier/LICENSE": {
+      "bytes": 658,
+      "sha256": "8a6f83b6becb60fccf67d6c5d3b915f6f41272b70f4a987d9ee7867fbb3d69ef"
+    },
+    "components/pam-trust-verifier/LICENSE-DJANGO.txt": {
+      "bytes": 1552,
+      "sha256": "b846415d1b514e9c1dff14a22deb906d794bc546ca6129f950a18cd091e2a669"
+    },
+    "components/pam-trust-verifier/NOTICE.txt": {
+      "bytes": 727,
+      "sha256": "88fada6d1c4564ccd962a00641e69a75ca34f159b8aa6db1c62cee4b72da7db5"
+    },
+    "components/pam-trust-verifier/src/pamolive_pam_trust_verifier/__init__.py": {
+      "bytes": 562,
+      "sha256": "af945eb3ff19ec757a00deddff197800b073be6074ff11684432e3977e232cff"
+    },
+    "components/pam-trust-verifier/src/pamolive_pam_trust_verifier/_api.py": {
+      "bytes": 10104,
+      "sha256": "e2cc4224d89ce10cc20dbd35d65a9cc77e15e0d6a789f4cfccee062c82af1fa6"
+    },
+    "components/pam-trust-verifier/src/pamolive_pam_trust_verifier/_codec.py": {
+      "bytes": 4356,
+      "sha256": "6426721d5167252454ae592d1fe29b0df5e51494f16407489804cb8313adc076"
+    },
+    "components/pam-trust-verifier/src/pamolive_pam_trust_verifier/_context.py": {
+      "bytes": 4965,
+      "sha256": "d8ef71426ec25b95e62e9b27dc02bf8c2b722376154d797ca424b1a50bf05d4b"
+    },
+    "components/pam-trust-verifier/src/pamolive_pam_trust_verifier/_crypto.py": {
+      "bytes": 1666,
+      "sha256": "5dffa016bfe27206e8d8022c72c57d03750434774732b88539e090ee02babf2b"
+    },
+    "components/pam-trust-verifier/src/pamolive_pam_trust_verifier/_v1_rules.py": {
+      "bytes": 9812,
+      "sha256": "b7cdaada059a2501b21d6b0fb9e0b5e97ca69fbf179bbb5cdf1d9b7250e37a61"
+    },
+    "components/vault-registry/pyproject.toml": {
+      "bytes": 475,
+      "sha256": "45a8fb7c2f35d08025d6e3b60424f27138471df516c80f57bf92d7f734cc3d1b"
+    },
+    "components/vault-registry/README.md": {
+      "bytes": 8110,
+      "sha256": "6adb23731536e0f350ab0577a6648e90d06fb70b7265efea95c2c0135dcb8cba"
+    },
+    "components/vault-registry/src/pamolive_vault_contracts/__init__.py": {
+      "bytes": 790,
+      "sha256": "02f14e61113d0bd63e1b52fd8d9d9a8db9984efdf3eecf67ceb3faf4bfa972d3"
+    },
+    "components/vault-registry/src/pamolive_vault_contracts/canonical.py": {
+      "bytes": 5390,
+      "sha256": "f543d6fb39df313992c8f173323162892a3f6980de63c079f665ff74d3c7cf76"
+    },
+    "components/vault-registry/src/pamolive_vault_contracts/contracts.py": {
+      "bytes": 8133,
+      "sha256": "d4b8837a7f39bcfc57dc58e998e3bd6ddaa4b2c1ebc2fbfe5c2dd8dadbeea72e"
+    }
+  }
+}

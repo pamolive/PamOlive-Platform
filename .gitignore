@@ -21,6 +21,9 @@ coverage.xml
 .coverage
 *.whl
 *.egg-info/
+# Generated from the real checkout for the installed Vault qualification.
+qualification/vault_runtime_installed_ci/inputs/
+qualification/vault_runtime_installed_ci/checkout-capture.json
 *-private.pem
 examples/**/build/
 examples/**/dist/
