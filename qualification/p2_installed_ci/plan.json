@@ -16,7 +16,7 @@
   },
   "P0_Vault_authority": false,
   "Root_style_map_metadata_r2_sha256": "b09218725717cab781b9c49f7e079e63f4ee5f97490311f0342540b25813a98a",
-  "assets_sha256": "ab1bb33419d13a6df1d1dd792ab212aaf4f85321e664da81bd71691d9b882497",
+  "assets_sha256": "c2ac1e2e97e5f29b8f234daed6154de4e144af7c8259ae930dcf9da25585995a",
   "attestation_verified": false,
   "authority": false,
   "build_verified": false,
@@ -151,8 +151,8 @@
   "pure_command": "python -I -B qualification/p2_installed_ci/run_pure.py",
   "root_integration_map_pending": false,
   "schema": "pamolive.p2-installed-linux-ci-candidate-plan/1",
-  "source_checksums_sha256": "5a817e7dab25ef15e428c063974c124b7ae9e5c743a10cb6873bfa203caa66c8",
-  "state": "CONCRETE_REPOSITORY_MAPPING_REVIEWED_PENDING_ROOT_GO",
+  "source_checksums_sha256": "a94fc26abfc101cbbe8edbfc64e1e642a9e15778b8302484909cac0d97359e7c",
+  "state": "FAILURE_DIAGNOSTIC_MAPPING_REVIEWED_PENDING_ROOT_GO",
   "style": {
     "Python_B": true,
     "Ruff_check_no_cache": true,
@@ -161,5 +161,5 @@
     "owned_files": 4,
     "profile": "Core line100"
   },
-  "workflow_sha256": "1efc655b6830433f06fd45f862e6de3a989a4a8c24270b949a97bc2f548d92a9"
+  "workflow_sha256": "ef42027b16d8000931005e1b27b69d2b23af0b044ed47f76b5609ac28da599f4"
 }

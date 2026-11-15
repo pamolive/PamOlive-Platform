@@ -78,10 +78,13 @@ Premier complément du15novembre :
 [R1b.1 matériaux publics PAM](p2-public-material-verifier.md), source locale
 `77613e8`, ajoute la bibliothèque pure selon [ADR-023](adr-023-public-pam-material-verifier.md).
 Les30tests de source et30tests purs d'adaptateur passent, avec13matériaux
-audités ; le test installé Linux et sa CI restent à effectuer avant réception.
+audités. Les deux premières CI installées du `7083a96` rendent42 avec nettoyage
+confirmé ; la remontée de leur diagnostic interne est corrigée sous revue,
+avec57tests purs et cinq contre-cas AppSec. La réception installée reste ouverte.
 Cette préparation ne fournit aucun service, contexte commissionné, permission
 d'action, ledger ou remise. La correction du banc sur l'incertitude des clients
-est revue avant son premier lancement. Les prochains contrats devront lier
+est conservée. Les décisions de détection Linux sont rapprochées individuellement
+des fixtures publiques revues, sans modifier filtres ou seuils. Les prochains contrats devront lier
 les actions au transcript V2 puis traiter les compteurs et la consommation
 durable ; le registre public ne suffit pas à autoriser une session.
 

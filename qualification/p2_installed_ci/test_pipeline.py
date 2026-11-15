@@ -18,6 +18,271 @@ import entrypoint as e
 ROOT = Path(__file__).resolve().parent
 
 
+class FailureDiagnosticTests(unittest.TestCase):
+    """Real command/execute/report, with only owned transport and host facts simulated."""
+
+    def failed_packet(self, code="QUALIFIER_FAILED"):
+        value = success_execution()
+        value["state"] = "FAILED"
+        value["tests"]["tests"] = {"run": 3, "failures": 0, "errors": 1, "skips": 0}
+        if code == "QUALIFIER_FAILED":
+            return e.packet(value, e.encode(value), None, code, "SystemExit")
+        return e.packet(None, None, None, code)
+
+    def exercise(
+        self,
+        raw,
+        *,
+        code=42,
+        reason="nonzero_exit",
+        changes=None,
+        stderr=b"",
+        earlier=None,
+        no_parser=False,
+    ):
+        legacy, bounded = c.supports()
+        pins = json.loads((ROOT / "pins.json").read_bytes())
+        entry = (ROOT / "entrypoint.py").read_bytes()
+        with tempfile.TemporaryDirectory() as temporary:
+            work = Path(temporary)
+            identities = {}
+            for name in ("source", "controller", "materials"):
+                (work / name).mkdir()
+                (work / name / "public.txt").write_bytes(b"public")
+                identities[name + "/public.txt"] = c.sha(b"public")
+            state = {
+                "type": c.TYPE,
+                "phase": c.PHASE,
+                "run": "failure-diagnostic",
+                "user": "1000:1000",
+                "image_config": pins["image_config"],
+                "assets_sha256": c.sha(b"assets-fixture"),
+                "identities": identities,
+                "pull": "ready",
+                "started": False,
+                "packet": None,
+                "failure": earlier,
+                "IO": [io_fact()],
+                "IO_total": 1,
+                "IO_uncertain": False,
+            }
+            c.atomic(work / "state.json", state)
+            Docker = c.docker_class(legacy, bounded)
+            client = object.__new__(Docker)
+            client.prefix, client.env, client.work, client.row = ["never-executed"], {}, work, None
+            calls = []
+
+            def factory(_work, _pins, loaded, deadline):
+                client.state, client.cleaning = loaded, False
+                client.work_deadline, client.cleanup_deadline = deadline, deadline + 60
+                return client
+
+            def inspect(_cid):
+                c.validate_profile(client.row, work, entry, {"PUBLIC": "value"})
+                return copy.deepcopy(client.row)
+
+            client.inspect = inspect
+            client.named = lambda _name: [client.row["Id"]] if client.row else []
+            client.image = lambda _pins: None
+
+            def process(command, **_kwargs):
+                operation = command[1]
+                calls.append(operation)
+                durable = json.loads((work / "state.json").read_bytes())
+                self.assertIsNone(durable["IO"][-1]["spawn_attempted"])
+                self.assertEqual(durable["IO_total"], len(durable["IO"]))
+                facts = io_fact(operation)
+                facts.pop("operation")
+                result = bounded.Result(**facts)
+                if operation == "create":
+                    client.row = profile_row(work, "failure-diagnostic", pins, entry)
+                    result.stdout = b"a" * 64
+                if operation == "start":
+                    client.row["ExitCode"] = code
+                    result.returncode, result.reason = code, reason
+                    result.stdout, result.stderr = raw, stderr
+                    result.stdout_bytes, result.stderr_bytes = len(raw), len(stderr)
+                    for field, replacement in (changes or {}).items():
+                        setattr(result, field, replacement)
+                if operation == "rm":
+                    client.row = None
+                return result
+
+            original = c.regular
+            original_load = c.load_buffer
+            parser_entries = []
+
+            def load(name, *args):
+                if name == "p2_ci_entry_validator":
+                    parser_entries.append(name)
+                return original_load(name, *args)
+
+            def reader(path, maximum, empty=False):
+                return (
+                    b"assets-fixture"
+                    if Path(path) == ROOT / "assets.json"
+                    else original(path, maximum, empty)
+                )
+
+            with (
+                patch.object(c, "ci_guard"),
+                patch.object(c, "regular", side_effect=reader),
+                patch.object(c, "load_buffer", side_effect=load),
+                patch.object(legacy, "storage_observation"),
+                patch.object(legacy, "memory_guard"),
+                patch.object(bounded, "run_capped", side_effect=process),
+            ):
+                results = [
+                    c.execute(
+                        "run",
+                        work,
+                        pins,
+                        {"entrypoint.py": entry},
+                        legacy,
+                        bounded,
+                        factory=factory,
+                    )
+                ]
+                results += [
+                    c.execute(
+                        "cleanup",
+                        work,
+                        pins,
+                        {"entrypoint.py": entry},
+                        legacy,
+                        bounded,
+                        factory=factory,
+                    )
+                    for _ in range(2)
+                ]
+            if no_parser:
+                self.assertEqual(parser_entries, [])
+            return results, calls
+
+    def test_exit42_keeps_exact_public_failure_and_failed_test_counts_after_two_cleanups(self):
+        packet = self.failed_packet()
+        results, calls = self.exercise(e.encode(packet))
+        self.assertIn("start", calls)
+        for result in results:
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["state"], "FAILED_OR_UNKNOWN")
+            self.assertEqual(result["failure"], "QUALIFICATION_FAILED")
+            self.assertEqual(result["packet"], packet)
+            self.assertEqual(result["packet"]["execution"]["tests"]["tests"]["errors"], 1)
+            self.assertEqual(result["cleanup"]["exit_code"], 42)
+            self.assertTrue(result["resources_released"])
+            self.assertFalse(result["authority"])
+            attach = next(row for row in result["IO"] if row["operation"] == "start")
+            self.assertEqual(attach["returncode"], 42)
+            self.assertEqual(attach["reason"], "nonzero_exit")
+
+    def test_only_three_reachable_entrypoint_failure_codes_are_admitted(self):
+        for code in (
+            "QUALIFIER_FAILED",
+            "PUBLIC_EXECUTION_UNAVAILABLE_OR_REFUSED",
+            "PUBLIC_EXPORT_BUDGET_REFUSED",
+        ):
+            with self.subTest(code=code):
+                packet = self.failed_packet(code)
+                results, _ = self.exercise(e.encode(packet))
+                self.assertEqual(results[0]["packet"], packet)
+                self.assertFalse(results[0]["ok"])
+
+    def test_prior_failure_is_preserved_with_a_valid_failure_diagnostic(self):
+        results, _ = self.exercise(e.encode(self.failed_packet()), earlier="EARLIER_FAILURE")
+        for result in results:
+            self.assertEqual(result["failure"], "EARLIER_FAILURE")
+            self.assertIsNotNone(result["packet"])
+            self.assertFalse(result["ok"])
+
+    def test_exit42_cannot_publish_a_synthetic_success_packet(self):
+        value = success_execution()
+        packet = e.packet(value, e.encode(value), summary(), "INSTALLED_PUBLIC_FIXTURES_PASS")
+        results, _ = self.exercise(e.encode(packet))
+        for result in results:
+            self.assertIsNone(result["packet"])
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["failure"], "FAILURE_PACKET_NOT_SUCCESS")
+
+    def test_malformed_logs_unknown_fields_duplicate_JSON_and_budgets_refuse(self):
+        raw = e.encode(self.failed_packet())
+        bad = self.failed_packet()
+        bad["execution"]["logs"] = "NEVER_EXPORT"
+        for data in (
+            b"raw log\n" + raw,
+            raw + b"raw log",
+            b"[]",
+            b"{}",
+            json.dumps(bad).encode(),
+            raw.replace(b'"ok":false', b'"ok":false,"ok":false', 1),
+            b"x" * (e.PACKET_MAX + 1),
+        ):
+            with self.subTest(bytes=len(data)):
+                results, _ = self.exercise(data)
+                self.assertIsNone(results[0]["packet"])
+                self.assertFalse(results[0]["ok"])
+
+    def test_wrong_failure_code_exception_summary_pins_and_authority_refuse(self):
+        for fields in (
+            {"code": "UNREVIEWED_ERROR"},
+            {"exception_type": "PRIVATE_ERROR_MESSAGE"},
+            {"parent_summary": {"message": "NEVER_EXPORT"}},
+            {"authority": True},
+            {"qualifier_sha256": "0" * 64},
+            {"code": "PUBLIC_EXPORT_BUDGET_REFUSED"},
+        ):
+            with self.subTest(fields=tuple(fields)):
+                results, _ = self.exercise(json.dumps({**self.failed_packet(), **fields}).encode())
+                self.assertIsNone(results[0]["packet"])
+                self.assertFalse(results[0]["ok"])
+
+    def test_timeout_overflow_unreaped_undrained_and_unconfirmed_facts_never_parse(self):
+        for changes in (
+            {"owned_child_reaped": False},
+            {"drains_complete": False},
+            {"reason": "timeout"},
+            {"reason": "stdout_overflow"},
+            {"exception_type": "OSError"},
+            {"cleanup_exception_type": "OSError"},
+            {"killed_owned_child": True},
+            {"spawn_attempted": False},
+            {"pid": None},
+        ):
+            with self.subTest(fields=tuple(changes)):
+                results, _ = self.exercise(
+                    e.encode(self.failed_packet()), changes=changes, no_parser=True
+                )
+                self.assertIsNone(results[0]["packet"])
+                self.assertEqual(results[0]["failure"], "OWNED_CLI_UNCONFIRMED")
+                self.assertFalse(results[0]["ok"])
+
+    def test_other_nonzero_exit_or_stderr_cannot_publish_failure_diagnostic(self):
+        for options in ({"code": 1}, {"code": 43}, {"stderr": b"NEVER_EXPORT"}):
+            with self.subTest(options=tuple(options)):
+                results, _ = self.exercise(
+                    e.encode(self.failed_packet()), no_parser=True, **options
+                )
+                self.assertIsNone(results[0]["packet"])
+                self.assertFalse(results[0]["ok"])
+
+    def test_exit42_exception_is_never_generalized_to_other_commands(self):
+        legacy, bounded = c.supports()
+        client = object.__new__(c.docker_class(legacy, bounded))
+        client.prefix, client.env, client.work = ["never-executed"], {}, ROOT
+        client.state, client.cleaning = {"IO": [], "IO_total": 0, "IO_uncertain": False}, False
+        client.work_deadline = 100.0
+        facts = io_fact()
+        facts.pop("operation")
+        result = bounded.Result(**{**facts, "returncode": 42, "reason": "nonzero_exit"})
+        with (
+            patch.object(c, "persist_io"),
+            patch.object(c.time, "monotonic", return_value=1.0),
+            patch.object(bounded, "run_capped", return_value=result),
+        ):
+            with self.assertRaisesRegex(c.Refusal, "OWNED_CLI_UNCONFIRMED"):
+                client.command("version")
+
+
 def io_fact(operation="pull", **changes):
     result = {
         "operation": operation,

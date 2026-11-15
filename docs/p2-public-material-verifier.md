@@ -2,7 +2,8 @@
 
 15 novembre 2026. La bibliothèque et son adaptateur sont préparés dans le
 commit local `77613e8`, sur `agent/p2-r1b1-public-verifier-a573`, depuis `a57350f`.
-L'installation Linux et sa CI restent à exécuter. Aucun service Vault, broker,
+La première CI installée du commit `7083a96` a échoué ; elle n'est pas reçue.
+Aucun service Vault, broker,
 ledger, migration ou nouveau chemin d'accès aux secrets n'est livré ici.
 
 [ADR-023](adr-023-public-pam-material-verifier.md) fixe la frontière :
@@ -45,7 +46,7 @@ ne sont pas modifiées. Voir le
 | Bandit du nouveau code de bibliothèque | Zéro finding et zéro erreur sous seuil Medium/High |
 | Secrets | Vrai CLI sur 1 071 fichiers du commit, huit lots exit0 ; 881 nouvelles décisions publiques revues et 313 anciennes conservées, total 1 194 |
 | Revue indépendante | Règles publiques, formats, contextes, UUID avant parsing, imports, fichiers fermés et preuves cryptographiques revus ; contrôles anciens CI conservés |
-| Wheel installé dans Linux isolé | Non exécuté ; gate obligatoire avant réception |
+| Wheel installé dans Linux isolé | Deux tentatives réelles sur `7083a96`, exit42/OOMfalse, objets et clients nettoyés ; aucun succès installé reçu |
 | P0, PostgreSQL, migrations, transports | Aucun nouveau modèle, appelant ou migration ; les CI de la branche publiée devront revalider le périmètre applicatif existant |
 
 Les fixtures sont statiques : 17 fichiers originaux, 320 adverses et un témoin
@@ -64,6 +65,32 @@ autres changements de style préservent les AST, hormis deux pins de fichiers
 recalculés et revus. Les anciens gels restent conservés.
 
 ## Gate installé et suite
+
+Les runs réels [push 43677995953](https://github.com/pamolive/PamOlive-Platform/actions/runs/43677995953)
+et [PR 43678000202](https://github.com/pamolive/PamOlive-Platform/actions/runs/43678000202)
+passent vérifications de sources, acquisition des treize wheels, préparation,
+pull et profil puis démarrent le conteneur. Celui-ci rend42, sans OOM ; les
+18 clients sont récoltés/drainés et le conteneur est supprimé. L'ancien wrapper
+rejette cette sortie avant de parser son paquet public ; le rapport conserve
+`OWNED_CLI_UNCONFIRMED` et aucun diagnostic interne. La cause interne de ces
+deux échecs ne peut être reconstituée depuis les preuves conservées.
+
+Le correctif admet seulement comme transport un `start --attach` exit42 dont
+le client est confirmé récolté/drainé sans autre erreur, puis valide un paquet
+d'échec fermé et borné. Il conserve le refus et le diagnostic ; il n'accepte
+jamais un faux succès exit42. Les validations de succès, profil, ressources et
+incertitude H1 restent inchangées. L'overlay passe 57 tests purs et cinq
+contre-cas AppSec indépendants ; l'ancien contrôleur échoue à six assertions
+attendues des nouveaux tests. Le rebind de ses empreintes est revu séparément.
+
+Les jobs de sécurité de `7083a96` détectent aussi 1 074 identités supplémentaires
+sur Linux : 1 021 Base64 et 53 Hex dans 216 fichiers. Chaque identité et chaque
+préimage est déjà dans l'inventaire public revu ; la contre-revue vérifie les
+positions et les fichiers exacts. La baseline reçoit ces seules 1 074 décisions,
+en conservant les 1 459 anciennes et tous les réglages, total 2 533 avant les
+remplacements d'empreintes du correctif. Le filtre éphémère du CLI n'est pas
+copié. La cause de l'écart Windows/Linux demeure indéterminée ; un succès du
+contrôle Windows n'est pas transféré au prochain contrôle Linux.
 
 L'acquisition publique des 13 entrées est explicite et distincte du test.
 Le banc doit ensuite imposer Linux/amd64, Python 3.12.16, nonroot, rootfs et

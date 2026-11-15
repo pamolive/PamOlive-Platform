@@ -683,8 +683,22 @@ def docker_class(legacy, bounded):
                 raise
             io_history_released(self.state)
             persist_io(self.work, self.state)
+            failure_attach = (
+                attaching
+                and result.reason == "nonzero_exit"
+                and type(result.returncode) is int
+                and result.returncode == 42
+                and result.spawn_attempted is True
+                and type(result.pid) is int
+                and result.pid > 0
+                and result.killed_owned_child is False
+                and result.exception_type is None
+                and result.cleanup_exception_type is None
+            )
             need(
-                result.reason is None and result.owned_child_reaped and result.drains_complete,
+                (result.reason is None or failure_attach)
+                and result.owned_child_reaped
+                and result.drains_complete,
                 "OWNED_CLI_UNCONFIRMED",
             )
             return result.returncode, result.stdout, result.stderr
@@ -794,6 +808,50 @@ def validate_packet(value, pins, entry):
             "PACKET_SUCCESS",
         )
         entry.success(value["execution"], value["parent_summary"])
+    return value
+
+
+def validate_failure_packet(value, entry):
+    """Admit only bounded public failure metadata, never a successful exit42."""
+    need(value["ok"] is False, "FAILURE_PACKET_NOT_SUCCESS")
+    need(
+        value["code"]
+        in {
+            "QUALIFIER_FAILED",
+            "PUBLIC_EXECUTION_UNAVAILABLE_OR_REFUSED",
+            "PUBLIC_EXPORT_BUDGET_REFUSED",
+        },
+        "FAILURE_PACKET_CODE",
+    )
+    need(
+        value["exception_type"]
+        in {
+            None,
+            "Refusal",
+            "ValueError",
+            "OSError",
+            "SystemExit",
+            "MemoryError",
+            "QualificationFailure",
+        },
+        "FAILURE_PACKET_EXCEPTION",
+    )
+    if value["parent_summary"] is not None:
+        entry.parse_summary(entry.encode(value["parent_summary"], 8192))
+    if value["code"] == "QUALIFIER_FAILED":
+        need(
+            value["execution"] is not None
+            and value["exception_type"] is not None
+            and value["parent_summary"] is None,
+            "FAILURE_PACKET_QUALIFIER",
+        )
+    else:
+        need(value["execution"] is None, "FAILURE_PACKET_NO_EXECUTION")
+        if value["code"] == "PUBLIC_EXPORT_BUDGET_REFUSED":
+            need(
+                value["parent_summary"] is None and value["exception_type"] is None,
+                "FAILURE_PACKET_EXPORT",
+            )
     return value
 
 
@@ -931,6 +989,8 @@ def execute(mode, work, pins, buffers, legacy, bounded, *, factory=None):
                 "p2_ci_entry_validator", buffers["entrypoint.py"], HERE / "entrypoint.py"
             )
             value = validate_packet(entry.parse(raw, pins["packet_bytes"]), pins, entry)
+            if code == 42:
+                validate_failure_packet(value, entry)
             encoded_packet = encode(value, pins["packet_bytes"])
             atomic(work / "packet-public.json", value, pins["packet_bytes"])
             state["packet"] = {
@@ -940,7 +1000,7 @@ def execute(mode, work, pins, buffers, legacy, bounded, *, factory=None):
             }
             need(code == 0 and value["ok"], "QUALIFICATION_FAILED")
         except BaseException as error:
-            state["failure"] = (
+            state["failure"] = state.get("failure") or (
                 str(error) if isinstance(error, Refusal) else "QUALIFICATION_UNCONFIRMED"
             )
         finally:

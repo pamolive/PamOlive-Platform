@@ -32,8 +32,13 @@ Au15novembre, une bibliothèque supplémentaire est préparée localement :
 `77613e8`. Elle vérifie registre/checkpoint publics sans Django, avec contextes
 explicites ; elle ne fournit aucune autorité d'action ou remise de secret.
 30tests de source et30tests purs d'adaptateur passent séparément, sans exclusion.
-L'audit des13matériaux et la revue indépendante passent ; le wheel installé
-Linux et sa nouvelle CI restent obligatoires et non exécutés. Les contrôles
+L'audit des13matériaux et la revue indépendante passent ; les deux premières
+CI installées du `7083a96` rendent42 après démarrage, nettoyage confirmé,
+diagnostic interne perdu par le wrapper. Son correctif de diagnostic passe57
+tests purs et cinq contre-cas AppSec, sans succès installé encore reçu. La CI
+Linux détecte aussi1074identités supplémentaires déjà dans les fixtures publiques
+revues ; leurs seuls classements sont ajoutés, sans changement des filtres.
+Le wheel installé Linux et ses régressions restent des portes obligatoires. Les contrôles
 P0 et leurs appelants ne sont pas remplacés. [ADR-023](adr-023-public-pam-material-verifier.md)
 fixe cette limite ; P2 n'est pas déclaré terminé.
 

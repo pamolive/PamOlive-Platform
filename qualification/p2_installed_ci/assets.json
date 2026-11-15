@@ -10,8 +10,8 @@
       "sha256": "98233b610f2d53dfd698d0d91f61f3d3ebcb1693a847983f0472f89a885f414f"
     },
     "controller.py": {
-      "bytes": 36493,
-      "sha256": "54c80eaf0ffe1bf028e478b792feb7579afe3e9ca37ec89815faf4b4c1ef1fde"
+      "bytes": 38545,
+      "sha256": "db55e1ab31e0ef239d8dfa2e3cd8a95437536d172385563a52e569e7998b2040"
     },
     "entrypoint.py": {
       "bytes": 13129,

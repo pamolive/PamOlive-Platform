@@ -126,3 +126,5 @@ ruff check and ruff format --check; Python must use -B. Do not remove or ignore
 unexpected files as evidence and repair the producing step instead.
 
 Repository integration: package payload unchanged; qualifier inputs rebound via the independently reviewed Root style map. The helper differs only in standard-library import order; its concrete hash is pinned. Current pins accept one concrete set, never old-or-new. H1 is corrected before real execution. No installed result is claimed by integration.
+
+Failure diagnostic overlay: a reaped, drained start --attach exit42 can carry a strictly typed failure packet. It remains FAILED and is never accepted by the success validator. Malformed packets, raw-output fields, unknown errors, other IO failures or fake success with exit42 refuse. The first two 7083 CI runs failed with confirmed cleanup; their inner cause was not retained and remains unknown. The overlay has 57 pure tests; only a future CI run can observe its installed result.
