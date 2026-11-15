@@ -74,6 +74,17 @@ réussie. La qualification navigateur/JavaScript reste distincte et non exécut�
 
 ## P2 — architecture hybride et domaines sensibles
 
+Premier complément du15novembre :
+[R1b.1 matériaux publics PAM](p2-public-material-verifier.md), source locale
+`77613e8`, ajoute la bibliothèque pure selon [ADR-023](adr-023-public-pam-material-verifier.md).
+Les30tests de source et30tests purs d'adaptateur passent, avec13matériaux
+audités ; le test installé Linux et sa CI restent à effectuer avant réception.
+Cette préparation ne fournit aucun service, contexte commissionné, permission
+d'action, ledger ou remise. La correction du banc sur l'incertitude des clients
+est revue avant son premier lancement. Les prochains contrats devront lier
+les actions au transcript V2 puis traiter les compteurs et la consommation
+durable ; le registre public ne suffit pas à autoriser une session.
+
 Le monolithe modulaire conserve Identity/Governance/Observe/Connect/Audit métier/Machine/Cloud/Defense/Posture et les contrats d’organisation. Séparer progressivement Web/API, worker, broker PAM, Vault, PostgreSQL, gateway, témoin et gestion des clés. Ne pas créer onze microservices.
 
 1. ADR de frontières et contrats versionnés ; identités de service, authentification mutuelle, audiences, opérations autorisées, timeouts et comportements fail-closed. Aucun fallback silencieux vers un ancien chemin lorsque le nouveau composant est indisponible.

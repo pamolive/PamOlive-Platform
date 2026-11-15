@@ -1,0 +1,165 @@
+{
+  "IO_history_r2": {
+    "HOLD_reference": "91ea5465e14257e2b35cc5d6feb281f9d646d2599f80396151382f8892b25a3d",
+    "all_history_typed_reaped_drained_required": true,
+    "container_released_distinct_from_clients_and_resources": true,
+    "exact_total_required": true,
+    "failure_counterproof": "7553d4f50932aa1b80819f97f6e090ef971ea55b9a16fa7becaceb9cbe624533",
+    "max_records": 32,
+    "missing_malformed_pending_overflow_unknown": true,
+    "no_spawn_does_not_invent_child": true,
+    "pending_durable_before_run_capped": true,
+    "predecessor_FREEZE": "2eec9bd3e7c55aa2969adde7d2e057a58dd67067f939f6b15a05ba2f0e290d82",
+    "qualification_failures_never_reset_by_cleanup": true,
+    "timeout_overflow_nonzero_can_release_only_when_reap_and_drains_confirmed": true,
+    "uncertainty_monotone_across_phases_and_fresh_clients": true
+  },
+  "P0_Vault_authority": false,
+  "Root_style_map_metadata_r2_sha256": "b09218725717cab781b9c49f7e079e63f4ee5f97490311f0342540b25813a98a",
+  "assets_sha256": "ab1bb33419d13a6df1d1dd792ab212aaf4f85321e664da81bd71691d9b882497",
+  "attestation_verified": false,
+  "authority": false,
+  "build_verified": false,
+  "container_profile": {
+    "capabilities": [],
+    "core_limit": 0,
+    "cpu": 1,
+    "init": true,
+    "ipc": "private",
+    "memory_bytes": 536870912,
+    "memory_swap_bytes": 536870912,
+    "mounts": [
+      {
+        "destination": "/controller",
+        "public_closed": true,
+        "read_only": true
+      },
+      {
+        "destination": "/source",
+        "public_closed": true,
+        "read_only": true
+      },
+      {
+        "destination": "/materials",
+        "public_closed": true,
+        "read_only": true
+      }
+    ],
+    "network": "none",
+    "no_new_privileges": true,
+    "no_repository_or_socket_or_profile_mount": true,
+    "pids": 128,
+    "root_readonly": true,
+    "shm_bytes": 16777216,
+    "tmpfs": {
+      "/tmp": {
+        "bytes": 67108864,
+        "exec": false,
+        "mode": "1777"
+      },
+      "/work": {
+        "bytes": 268435456,
+        "exec": true,
+        "gid": 1000,
+        "mode": "0700",
+        "uid": 1000
+      }
+    },
+    "uid_gid": "1000:1000"
+  },
+  "execution_GO": false,
+  "future_sequence_not_executed": [
+    "checksum before Python/network",
+    "pure tests with external mocks",
+    "verify366 plus maintained acquisition gate bytes",
+    "host acquire13 public wheels",
+    "prepare3closedROdirectories",
+    "pull exact Source05a on host",
+    "run networknone installed30 tests",
+    "export bounded public packet before exit",
+    "reconcile own objects even on failure",
+    "upload bounded public-report only"
+  ],
+  "independent_mapping_review_pending": false,
+  "installed_qualification_observed": false,
+  "lifecycle": {
+    "CLI_observed_hash_is_not_authentication": true,
+    "backend": "classic store only; containerd/unknown refuses, no localEngine29 fallback",
+    "cleanup_seconds": 60,
+    "cli": "/usr/bin/docker",
+    "endpoint": "unix:///var/run/docker.sock",
+    "global_prune_reset_remove_image": false,
+    "image_cache_intentionally_retained": true,
+    "lost_create_reconciliation": "unique nonce/name/image/user/full-profile; absence remains UNKNOWN",
+    "name_suffix_inherited_only": "-stage0",
+    "only_owned_object_stop_remove": true,
+    "origin": "B0r2 reserve_create/owns/reconcile/remove unchanged pinned source",
+    "private_module_label": "pamolive.p2.installed.run",
+    "pull_seconds": 300,
+    "pull_timeout_does_not_prove_daemon_stopped": true,
+    "query_stdout_cap": 32768,
+    "stderr_cap": 16384,
+    "stdout_attach_cap": 524288,
+    "work_deadline_seconds": 900
+  },
+  "no_source_package_Django_P0_SQL_network_Docker_real_process_execution": true,
+  "pins": {
+    "adapter_plan_sha256": "b613d548ee872642dcc2bfe2880dce462a10361d47904934302d8c0b442f517a",
+    "authority": false,
+    "cleanup_seconds": 60,
+    "controller_files": 12,
+    "diff_ids": [
+      "sha256:dd57f90311a2567b55ff22eeacff1602fd04ad7566e315957731359eab173b90",
+      "sha256:3dc3efdf011007403514ffd3b699da9deef847535ae30a3639ef3fee93c1375e",
+      "sha256:96a69f98ae076bdff5264720ee922820291d658c6a2df97f7c4899864ceb7ea8",
+      "sha256:340931a1d98607a7f1319082179f82ba477f1a1de6e3ecf2ea11f4cc0fe454c3"
+    ],
+    "execution_GO": false,
+    "execution_file_bytes": 327680,
+    "identity_profile": "github-hosted-Linux-classic-store-configID/1",
+    "image": "docker.io/library/python@sha256:05a994d2344eb364cc186910f4fc8786a38215f39f00d0acc25bff33a08f4177",
+    "image_config": "sha256:78976a69c067520ef8be34cde307ef9f6fea6dcefa50edb57039773d241ca0db",
+    "material_bytes": 8939939,
+    "material_files": 13,
+    "materials_plan_sha256": "9984894027d99aa19b51625f1f73ee106272635120d832d7d1fede94243b9d74",
+    "packet_bytes": 491520,
+    "payload_manifest_sha256": "3628a50534a0bb37c142ffcee201ca3aaa232d926d13db65b552033627d1c340",
+    "public_report_bytes": 524288,
+    "pull_seconds": 300,
+    "qualifier_sha256": "60b917df3c13db5cea7e69d95e1862293c9a451e15e43c774108de12acf1226e",
+    "schema": "pamolive.p2-installed-ci-pins/1",
+    "selected_inputs_sha256": "86f19dfbfd96dfea841e4a53d2fb130d15cda3d4ffcf35c57fedb3f6877923fc",
+    "source_files": 354,
+    "source_index": "sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b",
+    "source_review_freeze": "a23412c48cc2e3c4d6f71c2aea143fa74e88f34c355e0736ac9e2374a324d919",
+    "work_seconds": 900
+  },
+  "public_export": {
+    "artifact_retention_days": 7,
+    "before_container_exit_while_tmpfs_exists": true,
+    "docker_cp": false,
+    "duplicate_JSON_nonfinite_depth_shape_and_incremental_encoding_limits": true,
+    "execution_file_bytes": 327680,
+    "host_public_report_bytes": 524288,
+    "qualifier_buffer_hashed_before_compile": true,
+    "qualifier_parent_stdout_bytes": 8192,
+    "qualifier_stderr_discard_cap": 8192,
+    "raw_logs_env_keys_wheels_exported": false,
+    "stdout_packet_bytes": 491520,
+    "upload_only": "public-report.json"
+  },
+  "pure_command": "python -I -B qualification/p2_installed_ci/run_pure.py",
+  "root_integration_map_pending": false,
+  "schema": "pamolive.p2-installed-linux-ci-candidate-plan/1",
+  "source_checksums_sha256": "5a817e7dab25ef15e428c063974c124b7ae9e5c743a10cb6873bfa203caa66c8",
+  "state": "CONCRETE_REPOSITORY_MAPPING_REVIEWED_PENDING_ROOT_GO",
+  "style": {
+    "Python_B": true,
+    "Ruff_check_no_cache": true,
+    "Ruff_format_check_no_cache": true,
+    "legacy_and_IO_copies_not_reformatted": true,
+    "owned_files": 4,
+    "profile": "Core line100"
+  },
+  "workflow_sha256": "1efc655b6830433f06fd45f862e6de3a989a4a8c24270b949a97bc2f548d92a9"
+}

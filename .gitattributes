@@ -10,3 +10,4 @@ platform_core/static/platform_core/vendor/* -text
 # Public historical oracle and reviewed materials plan are pinned as exact bytes.
 components/pam-trust-verifier/fixtures/reference-p0-child-report.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 qualification/pam_trust_verifier/materials-plan.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+qualification/p2_installed_ci/materials-plan.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

@@ -27,12 +27,41 @@ Aucun main ou image promue ; le parcours G complet reste à qualifier.
 P2 ne livre encore ni service Vault, ni vérificateur d'autorité, ni ledger,
 ni isolation opérationnelle. Les paragraphes B2/B3r2 ci-dessous sont historiques.
 
+Au15novembre, une bibliothèque supplémentaire est préparée localement :
+[P2-R1b.1 matériaux publics PAM](p2-public-material-verifier.md), commit local
+`77613e8`. Elle vérifie registre/checkpoint publics sans Django, avec contextes
+explicites ; elle ne fournit aucune autorité d'action ou remise de secret.
+30tests de source et30tests purs d'adaptateur passent séparément, sans exclusion.
+L'audit des13matériaux et la revue indépendante passent ; le wheel installé
+Linux et sa nouvelle CI restent obligatoires et non exécutés. Les contrôles
+P0 et leurs appelants ne sont pas remplacés. [ADR-023](adr-023-public-pam-material-verifier.md)
+fixe cette limite ; P2 n'est pas déclaré terminé.
+
 Un complément [HTTP PAM local](p1-g-pam-http-validation.md) prolonge `09b6fa43` :
 5/5 scénarios avec véritables cérémonies synthétiques, deux votes, ticket
 pending, arrêt et audit ; correction ciblée du rendu des dates bail/relais.
 La régression combinée compte 324 réussites et une exclusion SQLite attendue
-sur 325 tests, avec contrepartie PostgreSQL réussie. Ce complément attend
-encore son scan final et sa CI ; il n'exécute pas le JavaScript ni SSH/RDP.
+sur 325 tests, avec contrepartie PostgreSQL réussie. Les CI ultérieures du
+candidat8b passent1397réussites/1439tests généraux comptés avec42exclusions.
+La CI PR atteint les transports, HA même hôte et restauration puis refuse
+35groupes High ; la CI push échoue plus tôt sur un timeout TLS d'acquisition.
+Ces résultats restent liés à leurs sujets exacts. Le complément HTTP
+n'exécute pas le JavaScript ni SSH/RDP : ces derniers ont leurs portes distinctes.
+La [PR4](https://github.com/pamolive/PamOlive-Platform/pull/4) conserve les refus
+réels du stage0 navigateur, dont certutil absent ; aucun succès NSS/TLS/CDP
+n'est inféré de ses tests de lecteur public.
+
+Les deux CI du candidat PR4 `7237070` sont désormais collectées :
+[push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43668586779)
+et [PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43668590784).
+Chacune passe les jobs de sécurité et des deux anciennes bibliothèques P2,
+1 439 tests généraux comptés dont 42 exclusions, les transports, la qualification
+à deux nœuds sur le même hôte et la restauration synthétique. Chacune refuse au
+scan final : 35 groupes High non arbitrés, zéro Critical. Le run PR qualifie son
+commit de fusion temporaire ; les identités d'image sont distinctes du push.
+Ces résultats ne qualifient pas le nouveau vérificateur installé. L'inventaire
+public D0 de `7237070` refuse un nom d'entrée de répertoire ; l'entrée fautive
+reste inconnue et aucun inventaire OS/NSS complet n'est revendiqué.
 
 | Périmètre | État réel au démarrage du programme |
 | --- | --- |
