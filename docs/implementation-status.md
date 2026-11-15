@@ -8,7 +8,22 @@ La [roadmap réconciliée](implementation-roadmap.md) distingue désormais les l
 
 ### État courant du 15 novembre : bibliothèque reçue, réservation Vault limitée
 
-Le dernier candidat reçu est `6cbb4d0`, parent `80ccdb1`, dans la
+Le dernier candidat reçu est `edec99a`, parent `6cbb4d0`, dans la
+[PR7 en brouillon](https://github.com/pamolive/PamOlive-Platform/pull/7).
+Les [CI PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43736103902)
+et [push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43736048530)
+confirment réellement `SHOW server_version_num=170012` et passent leurs portes
+PostgreSQL/P0/migrations, SSH10/RDP9, HA même hôte, restauration et Compose.
+La suite annonce 1 457 tests avec 42 entrées Skip (40 méthodes et deux classes),
+plus les marqueurs séparés 1+1. Les 52 purs Vault/17 cas de wheel DATA restent
+distincts du [vérificateur installé30](https://github.com/pamolive/PamOlive-Platform/actions/runs/43736103912).
+Chaque Platform échoue uniquement au scan final : 35 groupes High non arbitrés,
+102 High sur 349 OS, zéro Critical/ignoré, compiled0. La contre-revue AppSec
+reçoit les preuves exactes (gel `a50643da…`), sans prétendre reconstituer les ZIP
+bruts non conservés. Voir [la réception PostgreSQL](postgresql-17-12-qualification.md).
+Aucun changement de main, d'image, du NAS ou de l'ancien PG local17.11.
+
+Le parent reçu `6cbb4d0`, après `80ccdb1`, reste dans la
 [PR #6 en brouillon](https://github.com/pamolive/PamOlive-Platform/pull/6).
 Les deux CI Platform exactes —
 [PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43730559794) et
@@ -40,10 +55,20 @@ L'installation Linux autonome, ses RECORD installés et son exécution restent
 à recevoir. Les reçus `67ee7c9` (`1352eef8…`) et `80ccdb1` (`7605f5fd…`)
 demeurent distincts ; aucun résultat de parent n'est transféré.
 
-La [maintenance PostgreSQL 17.12](postgresql-17-12-qualification.md) prépare
-maintenant un service CI épinglé par digest et une sonde de version en lecture
-seule avant les régressions. Sa CI reste à recevoir ; le PostgreSQL 17.11
-historique local et les installations existantes ne sont pas modifiés.
+La [maintenance PostgreSQL 17.12](postgresql-17-12-qualification.md) reçoit
+maintenant les régressions du service CI épinglé par digest, avec sa sonde de
+version en lecture seule. L'image auxiliaire locale et sa restauration restent
+une qualification distincte ; aucune mise à niveau d'installation existante.
+
+[ADR-026](adr-026-independent-usage-anchor.md) accepte l'implémentation d'un
+témoin synchrone indépendant des usages V2, après confrontation et arbitrage
+clientDataJSON signé. Le [contrat](p2-usage-anchor-contract.md) et son
+[plan de validation](p2-usage-anchor-validation.md) fixent la tranche réelle
+V réservé → W mTLS/SQL → preuves V2 → terminal positif/négatif → miroir V,
+sans remise. Le développement local dans `components/usage-anchor` est en revue,
+hors publication de ce lot ; aucun test SQL/TLS ni service W n'est encore reçu.
+Cette décision ne qualifie pas
+la durabilité, l'indépendance humaine/OS, le KMS ou un chemin de production.
 
 Le parent `6c17536` conserve ses résultats distincts : PR fonctionnelle puis
 scan High en échec, push arrêté au timeout TLS d'acquisition avant assertion

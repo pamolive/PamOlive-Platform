@@ -76,7 +76,21 @@ réussie. La qualification navigateur/JavaScript reste distincte et non exécut�
 
 ### État courant du 15 novembre
 
-La [PR #6](https://github.com/pamolive/PamOlive-Platform/pull/6), dernier head reçu `6cbb4d0`,
+Le candidat suivant `edec99a`, [PR7](https://github.com/pamolive/PamOlive-Platform/pull/7),
+reçoit les régressions sur PostgreSQL17.12 réellement observé par SHOW170012
+dans ses [CI PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43736103902)
+et [push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43736048530).
+Les portes fonctionnelles et de restauration passent ; les deux scans refusent
+toujours les 35 groupes High et la provenance de build reste incomplète.
+Le détail exact des exclusions et de la revue est dans
+[la réception](postgresql-17-12-qualification.md), sans transfert de succès anciens.
+Le runtime Vault installé reste à qualifier. [ADR-026](adr-026-independent-usage-anchor.md)
+accepte ensuite la tranche du témoin d'usage indépendant ; code en développement
+local, hors publication de ce lot,
+aucune réception W/mTLS/SQL ni remise de secret. Les P0 et anciens chemins restent
+préservés. Ni main, ni image nouvelle, ni NAS ne sont promus.
+
+La [PR #6](https://github.com/pamolive/PamOlive-Platform/pull/6), head historique reçu `6cbb4d0`,
 reste en brouillon. Les deux CI Platform exactes passent les portes exécutées,
 dont acquisition/build et exclusion post-build des credentials, 52 purs Vault,
 17 cas adverses du contrôle de wheel comme données,
