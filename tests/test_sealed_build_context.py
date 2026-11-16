@@ -701,6 +701,9 @@ class SealedContextTests(TestCase):
             output = io.StringIO()
             with (
                 patch.object(gate.sys, "argv", argv),
+                # argparse locale discovery uses the process-wide os.stat too.
+                # Keep the memory filesystem seam independent of host LANG.
+                patch.object(gate.argparse, "_", lambda message: message),
                 redirect_stdout(output),
                 patch.object(gate.subprocess, "run", side_effect=OSError("PRIVATE-NEVER-PUBLISH")),
             ):

@@ -333,8 +333,14 @@ class JanssonCiEvidenceTests(unittest.TestCase):
         name = "      - name: Exercise Jansson differential and receive exact-image absence DATA\n"
         self.assertEqual(ci.count(name), 1)
         step = ci.partition(name)[2].partition("      - name:")[0]
-        self.assertIn("--target json-reference-data", step)
-        self.assertIn('--output "type=local,dest=$oracles"', step)
+        self.assertIn("python -m deploy.build_context", step)
+        self.assertIn("--build-target json-reference-data", step)
+        self.assertIn('--oracle-output "$oracles"', step)
+        self.assertIn('--sealed-archive "$RUNNER_TEMP/pamolive-context-input/context.tar"', step)
+        self.assertIn('--sealed-receipt "$RUNNER_TEMP/pamolive-context-input/receipt.json"', step)
+        self.assertIn('--source-manifest "$RUNNER_TEMP/pamolive-committed-context.json"', step)
+        self.assertIn('--probe-receipt "$RUNNER_TEMP/pamolive-context-input/probe.json"', step)
+        self.assertNotIn("docker build", step)
         self.assertIn("python -m deploy.jansson_ci_evidence", step)
         # Once the product uses Jansson, its evidence is mandatory on every
         # Platform run, including the composed candidate and main.
@@ -342,7 +348,7 @@ class JanssonCiEvidenceTests(unittest.TestCase):
         self.assertNotIn("continue-on-error", step)
         self.assertNotIn("--push", step)
         self.assertNotIn("ghcr.io", step)
-        self.assertLess(ci.index("--target native-test"), ci.index(name))
+        self.assertLess(ci.index("--build-target native-test"), ci.index(name))
         self.assertLess(ci.index("python -m deploy.native_sbom"), ci.index(name))
         self.assertLess(ci.index(name), ci.index("run: bash deploy/check_image_scan_ci.sh"))
         self.assertIn("tests.test_jansson_ci_evidence", ci)
