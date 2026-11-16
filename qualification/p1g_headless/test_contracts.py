@@ -1,6 +1,7 @@
 """Preparation-only contracts. These do not execute a browser, Django or SQL."""
 
 import ast
+import hashlib
 import json
 import os
 import tempfile
@@ -28,6 +29,64 @@ def environment():
 
 
 class Contracts(unittest.TestCase):
+    def source_fixture(self, root):
+        pins, files = {}, {}
+        for index in range(24):
+            name = f"template-{index:02d}.txt"
+            (root / name).write_bytes(b"synthetic UI source")
+            pins[name] = files[name] = hashlib.sha256(b"synthetic UI source").hexdigest()
+        name = "qualification/p1g_headless/ui-input-pins.json"
+        manifest = root / name
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text(json.dumps(pins), encoding="utf-8")
+        files[name] = hashlib.sha256(manifest.read_bytes()).hexdigest()
+        receipt = root / "context.json"
+        receipt.write_text(
+            json.dumps(
+                {
+                    "schema": "pamolive.committed-build-context.v1",
+                    "revision": "a" * 40,
+                    "files": files,
+                }
+            ),
+            encoding="utf-8",
+        )
+        return pins, manifest, receipt
+
+    def test_pin_manifest_cannot_hide_mutated_or_omitted_input(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pins, manifest, receipt = self.source_fixture(root)
+            reader = SimpleNamespace(read_regular=lambda path, cap: path.read_bytes())
+            with mock.patch.object(lab, "bounded", return_value=reader):
+                self.assertEqual(
+                    len(lab.source_binding(root, receipt, "a" * 40)["reviewed_UI_inputs"]), 24
+                )
+                (root / "template-01.txt").write_bytes(b"mutated source")
+                del pins["template-01.txt"]
+                manifest.write_text(json.dumps(pins), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "UI_pin_manifest_drift"):
+                    lab.source_binding(root, receipt, "a" * 40)
+
+    def test_reviewed_input_count_cannot_shrink_with_a_matching_manifest_hash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pins, manifest, receipt = self.source_fixture(root)
+            pins.pop("template-01.txt")
+            manifest.write_text(json.dumps(pins), encoding="utf-8")
+            value = json.loads(receipt.read_text(encoding="utf-8"))
+            value["files"]["qualification/p1g_headless/ui-input-pins.json"] = hashlib.sha256(
+                manifest.read_bytes()
+            ).hexdigest()
+            receipt.write_text(json.dumps(value), encoding="utf-8")
+            with mock.patch.object(
+                lab,
+                "bounded",
+                return_value=SimpleNamespace(read_regular=lambda p, cap: p.read_bytes()),
+            ):
+                with self.assertRaisesRegex(ValueError, "UI_input_pin_budget"):
+                    lab.source_binding(root, receipt, "a" * 40)
+
     def test_exact_disposable_push_and_same_repository_PR(self):
         env = environment()
         lab.guard(env, platform="linux", uid=1001)

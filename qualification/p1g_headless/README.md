@@ -34,7 +34,8 @@ transport/closure receipts; neither is supplied by pure tests or seeded graphs.
 The fragment captures only committed `GITHUB_SHA` via existing
 `deploy/build_context.py`, then installs and runs from that capture. Twenty-four
 reviewed fixture/template/P0 inputs are checked against both source bytes and
-the context receipt; drift refuses. Repinning changed inputs requires review.
+the context receipt. The pin manifest itself is bound to that receipt before parsing,
+and the current set must contain exactly twenty-four entries; drift refuses. Repinning changed inputs requires review.
 The fixture lives in a new `test_pamolive_p1g_browser` database on a dedicated
 ephemeral PostgreSQL 17.12 service at the already pinned amd64 manifest. It
 requires the test database to be absent before Django's runner and absent after

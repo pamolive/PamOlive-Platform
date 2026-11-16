@@ -92,10 +92,14 @@ def source_binding(repo, receipt, revision):
         and isinstance(value.get("files"), dict),
         "source_revision",
     )
-    pins = json.loads(
-        reader.read_regular(repo / "qualification/p1g_headless/ui-input-pins.json", 32768)
+    pin_name = "qualification/p1g_headless/ui-input-pins.json"
+    pin_raw = reader.read_regular(repo / pin_name, 32768)
+    need(
+        hashlib.sha256(pin_raw).hexdigest() == value["files"].get(pin_name),
+        "UI_pin_manifest_drift",
     )
-    need(isinstance(pins, dict) and 1 <= len(pins) <= 32, "UI_input_pin_budget")
+    pins = json.loads(pin_raw)
+    need(isinstance(pins, dict) and len(pins) == 24, "UI_input_pin_budget")
     result = {}
     for name, expected in pins.items():
         path = Path(name)
