@@ -23,6 +23,8 @@ jobs:
           python -m pip check
       - name: Verify native inventory and SBOM qualification tools
         run: python -m unittest tests.test_native_inventory tests.test_native_sbom tests.test_native_dns tests.test_image_scan_policy tests.test_database_driver tests.test_ldap_fixture_permissions tests.test_krb5_inventory tests.test_krb5_acquisition tests.test_krb5_sbom tests.test_scan_scratch tests.test_build_recipe tests.test_build_context tests.test_runtime_environment tests.test_secret_baseline_metadata tests.test_python_materials tests.test_python_materials_resilience tests.test_ensurepip_bundle tests.test_expat_product tests.test_jansson_image_absence tests.test_jansson_input_binding tests.test_jansson_sbom tests.test_jansson_ci_evidence tests.test_jansson_oracle_identity tests.test_native_migration_composition
+      - name: Verify closed public restore report projection
+        run: python -m unittest tests.test_restore_public_report
       - name: Verify public metadata projections without Engine or network
         run: python -I -S -B qualification/public_engine_measurement/run_pure.py
       - name: Verify the confined public PostgreSQL identity owner without Docker
@@ -310,7 +312,9 @@ jobs:
           python -m deploy.prepare_active_active_environment /tmp/pamolive-ha-ci.env --image pamolive-platform:ci --network "$ha_network" --host postgres
           python -m deploy.check_active_active --env-file /tmp/pamolive-ha-ci.env --native-pam --native-rdp --database-partition
       - name: Restore a populated archive with restricted credentials and intact proofs
-        run: python -m deploy.check_restore_ci --postgres-container '${{ job.services.postgres.id }}' --ha-env-file /tmp/pamolive-ha-ci.env
+        run: |
+          mkdir -p -- "$RUNNER_TEMP/pamolive-image-security"
+          python -m deploy.check_restore_ci --postgres-container '${{ job.services.postgres.id }}' --ha-env-file /tmp/pamolive-ha-ci.env --public-report "$RUNNER_TEMP/pamolive-image-security/restore-qualification.json"
       - name: Verify controlled historical upgrade, rollback and exact old-column preservation
         run: python -m deploy.check_upgrade_ci --postgres-container '${{ job.services.postgres.id }}' --ha-env-file /tmp/pamolive-ha-ci.env
       - name: Verify the image-only Compose runtime is identical

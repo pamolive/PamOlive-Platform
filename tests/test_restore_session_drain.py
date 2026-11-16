@@ -252,7 +252,16 @@ class CiFailureTests(unittest.TestCase):
                 if primary:
                     raise primary
                 check.command(["pamolive-snapshot-backup"])
-                return {"result": "OK", "certificate_possession_proofs_checked": 1}
+                return {
+                    "result": "OK",
+                    "certificate_possession_proofs_checked": 1,
+                    "pam_trust_registries_verified": 1,
+                    "pam_personal_authorizations_verified": 2,
+                    "governance_exception_proofs_checked": 3,
+                    "legacy_events_checked": 1,
+                    "legacy_v7_evaluations_checked": 1,
+                    "provenance_receipts_checked": 3,
+                }
 
             def cleanup():
                 if copy_cleanup:
@@ -293,6 +302,21 @@ class CiFailureTests(unittest.TestCase):
             def command(args, **kwargs):
                 if "config" in args:
                     body = json.dumps(config).encode()
+                elif any("runpy.run_path('/qualification.py'" in arg for arg in args):
+                    organization = "00000000-0000-4000-8000-000000000483"
+                    body = json.dumps(
+                        {
+                            "PAM_TRUST_INSTALLATION_ID": "synthetic-isolated-installation",
+                            "PAM_TRUST_RP_ID": "pam.example.test",
+                            "PAM_TRUST_ORIGIN": "https://pam.example.test",
+                            "PAM_TRUST_COMMISSIONING_KEYS": json.dumps(
+                                {organization: {"commissioner": "A" * 43}}
+                            ),
+                            "PAM_TRUST_CHECKPOINT_KEYS": json.dumps(
+                                {organization: {"witness": "B" * 43}}
+                            ),
+                        }
+                    ).encode()
                 elif any("print('present')" in arg for arg in args):
                     body = b"present\n"
                 else:
@@ -304,6 +328,7 @@ class CiFailureTests(unittest.TestCase):
                 postgres_container="synthetic",
                 ha_env_file=root / "env",
                 compose_file=root / "compose",
+                public_report=None,
             )
 
             class Output(io.StringIO):
@@ -352,6 +377,7 @@ class CiFailureTests(unittest.TestCase):
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0]["result"], "OK")
         self.assertTrue(report["concurrent_source_write_isolated"])
+        self.assertTrue(report["synthetic_source_removed"])
         self.assertEqual(events, ["source-drop", "positive-print"])
 
     def test_source_cleanup_failure_cannot_leave_positive_terminal_report(self):

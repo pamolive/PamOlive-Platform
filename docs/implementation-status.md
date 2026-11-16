@@ -736,3 +736,19 @@ passent. La restauration PostgreSQL réelle reste à recevoir ; voir
 ## Qualification Jansson en cours
 
 Le backend natif est en qualification sur une branche indépendante ; les tests purs ne valent pas livraison. Voir [preuves et limites](p1-f-jansson-qualification.md) et [ADR-030](adr-030-jansson-native-json-backend.md). Aucune donnée ni migration métier modifiée.
+
+### Corpus restore V7 / Governance / confiance PAM en qualification
+
+Le candidat ajoute un corpus synthétique couvrant des chemins absents du reçu
+f66 : historique V7 migré sans reclassement, registre et autorisations personnelles
+PAM vérifiés avec ancrages publics hors sauvegarde, trois preuves Governance.
+Les compteurs proviennent des vérificateurs et ne réarment pas la confiance live.
+Le reçu public fermé n'est produit qu'après les nettoyages confirmés.
+
+Validation d'intégration :10 contrats du nouveau corpus,25 tests de drainage
+conservés et11 tests du rapport public passent, sans IO externe ni skip.
+Les doublures de trois anciens tests CI ont été mises à jour pour fournir les
+nouveaux ancrages/compteurs requis ; leurs assertions de refus sont conservées.
+La revue a détecté un guillemet manquant du workflow avant publication ; la R2
+le corrige et le teste. SQL, migration, crypto et restauration réelles sont
+encore à recevoir ; aucun succès antérieur ne leur est transféré.

@@ -1,5 +1,6 @@
 """Populated CI-only recovery corpus; no network target is contacted."""
 
+import json
 import os
 
 
@@ -808,6 +809,306 @@ def certificate_possession_corpus(actor, organization):
     assert possession.verify_restored_proofs() == 1
 
 
+def empty_source_precondition(database, models):
+    """Only this empty synthetic database; Django migration metadata is explicit."""
+    if (
+        os.environ.get("PAMOLIVE_RESTORE_FIXTURE") != "1"
+        or database.vendor != "postgresql"
+        or database.settings_dict["NAME"] != "test_pamolive_restore_source"
+        or database.in_atomic_block
+    ):
+        raise RuntimeError("A fresh isolated PostgreSQL restore source is required.")
+    tables = set(database.introspection.table_names())
+    managed = {
+        model._meta.db_table for model in models if model._meta.managed and not model._meta.proxy
+    }
+    technical = {"django_migrations", "django_content_type", "auth_permission"}
+    if tables - managed - technical:
+        raise RuntimeError("Unexpected tables in the synthetic restore source.")
+    with database.cursor() as cursor:
+        cursor.execute("SELECT current_database()")
+        if cursor.fetchone() != ("test_pamolive_restore_source",):
+            raise RuntimeError("Wrong synthetic database destination.")
+        for table in sorted(tables - technical):
+            cursor.execute("SELECT 1 FROM " + database.ops.quote_name(table) + " LIMIT 1")
+            if cursor.fetchone() is not None:
+                raise RuntimeError("Synthetic restore source already contains application data.")
+
+
+def prepare_historical_v7_source():
+    """Create V7 before V8, then upgrade; never disable a database guard."""
+    from datetime import timedelta
+
+    from django.apps import apps
+    from django.db import connection
+    from django.db.migrations.executor import MigrationExecutor
+    from django.utils import timezone
+
+    empty_source_precondition(connection, apps.get_models(include_auto_created=True))
+    target = [("access", "0014_accessintent_pam_trust")]
+    executor = MigrationExecutor(connection)
+    leaves = executor.loader.graph.leaf_nodes()
+    try:
+        executor.migrate(target)
+        old_apps = executor.loader.project_state(target).apps
+        OldOrganization = old_apps.get_model("platform_core", "Organization")
+        OldEvent = old_apps.get_model("access", "AccessEvent")
+        OldEvaluation = old_apps.get_model("access", "AccessEvaluation")
+        organization = OldOrganization.objects.create(
+            key="restore-legacy-v7", name="Synthetic pre-V8 archive"
+        )
+        event = OldEvent.objects.create(
+            organization=organization,
+            source="synthetic-pre-v8-restore",
+            external_id="historical-483",
+            occurred_at=timezone.now() - timedelta(days=2),
+            method="SSH",
+            action="session.start",
+        )
+        from platform_core.audit import record
+        from platform_core.models import Organization
+        from platform_core.tenancy import organization_context
+        from platform_modules.access.evidence import evaluation_body, evaluation_signature
+        from platform_modules.access.observations import EVENT_FACT_FIELDS, sign, source_snapshot
+
+        if {"provenance_channel", "facts_schema", "facts_digest"} & set(EVENT_FACT_FIELDS):
+            raise RuntimeError("The delivered source snapshot no longer matches the V7 format.")
+        context = {"semantic": {"source": source_snapshot(event), "origin": "historical_unknown"}}
+        evaluation = OldEvaluation(
+            organization=organization,
+            event=event,
+            rule_version="access-context/7",
+            verdict="unknown",
+            findings=[{"code": "historical_unknown", "state": "unknown"}],
+            context=context,
+            context_hash=sign(context["semantic"], "context"),
+            evaluated_at=timezone.now(),
+        )
+        current_org = Organization.objects.get(pk=organization.pk)
+        with organization_context(current_org):
+            audit = record(
+                action="access.event.evaluated.v1",
+                summary="Historical unknown source",
+                organization=current_org,
+                target=evaluation,
+                metadata={"body_hash": sign(evaluation_body(evaluation), "evaluation-body")},
+            )
+        evaluation.audit_id = audit.pk
+        evaluation.signature = evaluation_signature(evaluation)
+        evaluation.save()
+        preserved = (
+            event.pk,
+            source_snapshot(event),
+            evaluation.pk,
+            evaluation.context,
+            evaluation.context_hash,
+            evaluation.signature,
+            evaluation.audit_id,
+        )
+    finally:
+        # Required even after a refused fixture. Never downgrade a populated source.
+        MigrationExecutor(connection).migrate(leaves)
+    from platform_modules.access.evidence import verify_evaluation
+    from platform_modules.access.models import AccessEvaluation, AccessEvent
+    from platform_modules.access.provenance_status import verified_origin_status
+
+    current_event = AccessEvent.unscoped.get(pk=preserved[0])
+    current_evaluation = AccessEvaluation.unscoped.select_related("event", "audit").get(
+        pk=preserved[2]
+    )
+    if (
+        source_snapshot(current_event) != preserved[1]
+        or (
+            current_evaluation.context,
+            current_evaluation.context_hash,
+            current_evaluation.signature,
+            current_evaluation.audit_id,
+        )
+        != preserved[3:]
+        or verified_origin_status(current_event) != "legacy_unknown"
+        or not verify_evaluation(current_evaluation)
+    ):
+        raise RuntimeError("Historical V7 evidence changed during migration.")
+
+
+def independent_pam_corpus(fixture):
+    """Virtual people sign real synthetic request/vote evidence; no transport starts."""
+    import time
+    from contextlib import ExitStack
+    from datetime import timedelta
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    import asyncssh
+    from django.conf import settings
+    from django.core.exceptions import PermissionDenied
+    from django.test import override_settings
+    from django.utils import timezone
+
+    from platform_core.authorization import recent_authentication
+    from platform_core.tenancy import organization_context
+    from platform_modules.access.services import create_record
+    from platform_modules.approvals.services import decide
+    from platform_modules.identity.bindings import current_binding
+    from platform_modules.identity.models import ExternalAccount, Resource
+    from platform_modules.pam.sessions import configure_endpoint
+    from platform_modules.pam.trust import _historical_registry
+    from platform_modules.pam.trust_registry import recognized_registry, verify_history
+    from tests.pam_trust_fixtures import TrustFixture
+
+    with ExitStack() as cleanup, organization_context(fixture.org):
+        cleanup.enter_context(
+            override_settings(PAM_ALLOWED_HOSTS={"restore-ssh.example.invalid:22"})
+        )
+        account = ExternalAccount.objects.create(
+            organization=fixture.org,
+            identity=fixture.identity,
+            username="synthetic-independent-root",
+            system="Offline restore",
+            kind="privileged",
+        )
+        resource = Resource.objects.create(
+            organization=fixture.org, name="Offline independent authority target", kind="server"
+        )
+        with recent_authentication(fixture.admin, fixture.org, time.time()):
+            reviewer = current_binding(fixture.admin, organization=fixture.org).identity
+            endpoint = configure_endpoint(
+                actor=fixture.admin,
+                organization=fixture.org,
+                name="Offline independent target",
+                resource=resource,
+                account=account,
+                protocol="ssh",
+                hostname="restore-ssh.example.invalid",
+                port=22,
+                auth_method="password",
+                password="synthetic-offline-only",
+                host_key=asyncssh.generate_private_key("ssh-ed25519").export_public_key().decode(),
+            )
+        trust = TrustFixture(
+            SimpleNamespace(addCleanup=cleanup.callback),
+            fixture.org,
+            [endpoint],
+            [
+                (fixture.operator, fixture.identity, ["requester"]),
+                (fixture.admin, reviewer, ["reviewer", "sponsor"]),
+            ],
+        )
+        now = timezone.now()
+        with (
+            recent_authentication(fixture.operator, fixture.org, time.time()),
+            trust.personal_action(fixture.operator),
+        ):
+            intent = create_record(
+                "intent",
+                dict(
+                    identity=fixture.identity,
+                    account=account,
+                    resource=resource,
+                    fulfillment="pam",
+                    method="SSH",
+                    reason="Offline signed archive",
+                    reference="SYNTHETIC-RESTORE-P0",
+                    starts_at=now - timedelta(minutes=1),
+                    ends_at=now + timedelta(hours=1),
+                ),
+                actor=fixture.operator,
+                organization=fixture.org,
+            )
+        with (
+            recent_authentication(fixture.admin, fixture.org, time.time()),
+            trust.personal_action(fixture.admin),
+        ):
+            decide(
+                intent.pk,
+                actor=fixture.admin,
+                organization=fixture.org,
+                approved=True,
+                comment="Independent virtual reviewer; no real person claimed",
+            )
+        intent.refresh_from_db()
+        _historical_registry(intent)
+        verify_history(fixture.org)
+        # Public anchors captured before dump, outside DB/archive.
+        # No private keys or current checkpoint are returned.
+        anchors = {
+            name: getattr(settings, name)
+            for name in (
+                "PAM_TRUST_INSTALLATION_ID",
+                "PAM_TRUST_RP_ID",
+                "PAM_TRUST_ORIGIN",
+                "PAM_TRUST_COMMISSIONING_KEYS",
+                "PAM_TRUST_CHECKPOINT_KEYS",
+            )
+        }
+        (Path(trust.directory.name) / (str(fixture.org.pk) + ".json")).unlink()
+        try:
+            recognized_registry(fixture.org)
+        except PermissionDenied:
+            pass
+        else:
+            raise RuntimeError("An archive fixture must not retain current live authority.")
+        if endpoint.enabled:
+            raise RuntimeError("Offline fixture unexpectedly enabled a native target.")
+        return anchors
+
+
+def governance_exception_corpus(fixture):
+    """Three signed risk-tracking proofs; acceptance never grants an access right."""
+    import time
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from platform_core.authorization import recent_authentication
+    from platform_core.services import install_module
+    from platform_core.tenancy import organization_context
+    from platform_modules.governance.exceptions import (
+        case_state,
+        decide_exception,
+        request_exception,
+    )
+    from platform_modules.identity.models import Grant
+    from platform_modules.pam.models import RelayConnection
+
+    with organization_context(fixture.org):
+        before = (Grant.unscoped.count(), RelayConnection.unscoped.count())
+        with recent_authentication(fixture.admin, fixture.org, time.time()):
+            install_module("governance", actor=fixture.admin, organization=fixture.org)
+        with recent_authentication(fixture.operator, fixture.org, time.time()):
+            case = request_exception(
+                actor=fixture.operator,
+                organization=fixture.org,
+                identity_id=fixture.identity.pk,
+                resource_id=fixture.resource.pk,
+                entitlement="Synthetic tracked risk",
+                reason="Offline recovery corpus",
+                reference="SYNTHETIC-RISK-483",
+                compensating_controls="Synthetic review only",
+                expires_at=timezone.now() + timedelta(days=7),
+            )
+        with recent_authentication(fixture.admin, fixture.org, time.time()):
+            decide_exception(
+                case.pk,
+                actor=fixture.admin,
+                organization=fixture.org,
+                decision="accepted",
+                comment="Synthetic independent acceptance",
+            )
+        with recent_authentication(fixture.operator, fixture.org, time.time()):
+            decide_exception(
+                case.pk,
+                actor=fixture.operator,
+                organization=fixture.org,
+                decision="closed",
+                comment="Synthetic withdrawal with retained history",
+            )
+        if case_state(
+            case, list(case.decisions.all()), at=case.expires_at + timedelta(days=1)
+        ) != "closed" or before != (Grant.unscoped.count(), RelayConnection.unscoped.count()):
+            raise RuntimeError("A governance exception must remain non-authorizing.")
+
+
 def historical_pam_corpus():
     """Seed pre-independent-trust evidence for offline archival verification only."""
     import time
@@ -841,57 +1142,95 @@ def historical_pam_corpus():
             account=actor,
             encrypted_secret=cipher().encrypt(pyotp.random_base32().encode()).decode(),
         )
-    ModuleActivation.objects.bulk_create([
-        ModuleActivation(organization=organization, module_key=key, version="test", enabled=True)
-        for key in ("identity", "access", "approvals", "pam")
-    ])
+    ModuleActivation.objects.bulk_create(
+        [
+            ModuleActivation(
+                organization=organization, module_key=key, version="test", enabled=True
+            )
+            for key in ("identity", "access", "approvals", "pam")
+        ]
+    )
     with organization_context(organization):
         from platform_core.models import OrganizationMembership
 
         OrganizationMembership.objects.create(
-            organization=organization, account=operator, role="operator",
+            organization=organization,
+            account=operator,
+            role="operator",
         )
         OrganizationMembership.objects.create(
-            organization=organization, account=admin, role="admin",
+            organization=organization,
+            account=admin,
+            role="admin",
         )
         identity = Identity.objects.create(organization=organization, name="Person", kind="human")
         reviewer = Identity.objects.create(organization=organization, name="Reviewer", kind="human")
         resource = Resource.objects.create(organization=organization, name="Server", kind="server")
         account = ExternalAccount.objects.create(
-            organization=organization, identity=identity, username="synthetic-root",
-            system="Synthetic historical server", kind="privileged",
+            organization=organization,
+            identity=identity,
+            username="synthetic-root",
+            system="Synthetic historical server",
+            kind="privileged",
         )
         with recent_authentication(admin, organization, time.time()):
             requester_binding = create_binding(
-                login_account=operator, identity=identity, verification_reference="Historical HR-1",
-                actor=admin, organization=organization,
+                login_account=operator,
+                identity=identity,
+                verification_reference="Historical HR-1",
+                actor=admin,
+                organization=organization,
             )
             reviewer_binding = create_binding(
-                login_account=admin, identity=reviewer, verification_reference="Historical HR-2",
-                actor=admin, organization=organization,
+                login_account=admin,
+                identity=reviewer,
+                verification_reference="Historical HR-2",
+                actor=admin,
+                organization=organization,
             )
         now = timezone.now()
         endpoint = SessionEndpoint.objects.create(
-            organization=organization, resource=resource, account=account,
-            name="Historical synthetic endpoint", protocol="ssh", hostname="ssh.example.test",
-            port=22, auth_method="password",
-            encrypted_secret=cipher().encrypt(b'{"password":"synthetic-historical-secret"}').decode(),
+            organization=organization,
+            resource=resource,
+            account=account,
+            name="Historical synthetic endpoint",
+            protocol="ssh",
+            hostname="ssh.example.test",
+            port=22,
+            auth_method="password",
+            encrypted_secret=cipher()
+            .encrypt(b'{"password":"synthetic-historical-secret"}')
+            .decode(),
             ssh_host_key=asyncssh.generate_private_key("ssh-ed25519").export_public_key().decode(),
             enabled=False,
         )
         intent = AccessIntent.objects.create(
-            organization=organization, identity=identity, account=account, resource=resource,
-            requested_by=operator, requester_binding=requester_binding,
-            account_snapshot=account_snapshot(account), method="SSH",
+            organization=organization,
+            identity=identity,
+            account=account,
+            resource=resource,
+            requested_by=operator,
+            requester_binding=requester_binding,
+            account_snapshot=account_snapshot(account),
+            method="SSH",
             privilege="native_full_account",
-            fulfillment="pam", reason="Historical synthetic archive", reference="OFFLINE-ARCHIVE",
-            starts_at=now - timedelta(minutes=1), ends_at=now + timedelta(hours=1),
+            fulfillment="pam",
+            reason="Historical synthetic archive",
+            reference="OFFLINE-ARCHIVE",
+            starts_at=now - timedelta(minutes=1),
+            ends_at=now + timedelta(hours=1),
         )
         vote = ApprovalDecision(
-            organization=organization, intent=intent, reviewer=admin,
-            reviewer_binding=reviewer_binding, reviewer_identity=reviewer,
-            approved=True, comment="Historical synthetic approval", decided_at=now,
-            mfa_verified_at=now - timedelta(seconds=1), mfa_window_minutes=5,
+            organization=organization,
+            intent=intent,
+            reviewer=admin,
+            reviewer_binding=reviewer_binding,
+            reviewer_identity=reviewer,
+            approved=True,
+            comment="Historical synthetic approval",
+            decided_at=now,
+            mfa_verified_at=now - timedelta(seconds=1),
+            mfa_window_minutes=5,
             scope_hash=scope_hash(intent),
         )
         vote.signature = decision_signature(vote)
@@ -899,18 +1238,29 @@ def historical_pam_corpus():
         intent.status, intent.approved_at = "approved", now
         intent.save(update_fields=["status", "approved_at"])
         lease = SessionLease.objects.create(
-            organization=organization, intent=intent, opened_by=operator, expires_at=intent.ends_at,
+            organization=organization,
+            intent=intent,
+            opened_by=operator,
+            expires_at=intent.ends_at,
         )
         owner = uuid.uuid4()
         item = RelayConnection(
-            organization=organization, lease=lease, endpoint=endpoint, opened_by=operator,
+            organization=organization,
+            lease=lease,
+            endpoint=endpoint,
+            opened_by=operator,
             endpoint_revision=endpoint.revision,
             browser_session_hash="synthetic-historical-browser",
-            client_ip="127.0.0.1", ticket_expires_at=now + timedelta(seconds=30),
-            expires_at=intent.ends_at, owner_token=owner, status="active",
+            client_ip="127.0.0.1",
+            ticket_expires_at=now + timedelta(seconds=30),
+            expires_at=intent.ends_at,
+            owner_token=owner,
+            status="active",
             authority_snapshot={
-                "identity_id": str(identity.pk), "requester_binding_id": str(requester_binding.pk),
-                "intent_id": str(intent.pk), "mandate_scope_hash": scope_hash(intent),
+                "identity_id": str(identity.pk),
+                "requester_binding_id": str(requester_binding.pk),
+                "intent_id": str(intent.pk),
+                "mandate_scope_hash": scope_hash(intent),
                 "fixture_kind": "historical-pre-independent-trust",
             },
             target_snapshot={"hostname": endpoint.hostname, "port": 22, "protocol": "ssh"},
@@ -921,8 +1271,13 @@ def historical_pam_corpus():
         append_recording(item.pk, organization, owner, b"4.sync,1.2;", 20)
         finish_session(item.pk, organization, owner, reason="client_closed", complete=True)
     return SimpleNamespace(
-        admin=admin, operator=operator, org=organization, identity=identity,
-        resource=resource, account=account, intent=intent,
+        admin=admin,
+        operator=operator,
+        org=organization,
+        identity=identity,
+        resource=resource,
+        account=account,
+        intent=intent,
     )
 
 
@@ -949,7 +1304,10 @@ def main():
     from platform_core.tenancy import organization_context
     from platform_modules.connectors.models import ProvisioningConnector
 
+    prepare_historical_v7_source()
     fixture = historical_pam_corpus()
+    anchors = independent_pam_corpus(fixture)
+    governance_exception_corpus(fixture)
 
     with organization_context(fixture.org):
         from platform_core.events import publish_domain_event
@@ -985,12 +1343,17 @@ def main():
             topic="identity.identity.created.v1",
             payload={"identity_id": str(fixture.identity.pk), "kind": "human"},
         )
+    # Public-only configuration, captured by the host BEFORE dump and never read from DB.
     print(
-        "Synthetic restore corpus prepared: MFA, counter, recovery hash, M2M, "
-        "SCIM token, target secret, OIDC secret/link/draft/flow, signed mandate, "
-        "signed notification, TeamViewer token/report/run/sighting/mappings/session "
-        "certificate key possession, directory snapshots/mapping history and sealed capture."
+        json.dumps(
+            {
+                key: json.dumps(value) if isinstance(value, dict) else value
+                for key, value in anchors.items()
+            },
+            sort_keys=True,
+        )
     )
+    return anchors
 
 
 if __name__ == "__main__":

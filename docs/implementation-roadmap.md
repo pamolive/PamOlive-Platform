@@ -492,3 +492,12 @@ La garde de délais du témoin PostgreSQL conserve ses maxima stricts. Un contre
 ## Qualification Jansson en cours
 
 Le backend natif est en qualification sur une branche indépendante ; les tests purs ne valent pas livraison. Voir [preuves et limites](p1-f-jansson-qualification.md) et [ADR-030](adr-030-jansson-native-json-backend.md). Aucune donnée ni migration métier modifiée.
+
+### Porte de restauration synthétique élargie
+
+Exécuter les quatre tests PostgreSQL du corpus enrichi sans skip, puis une vraie
+sauvegarde/restauration avec V7, V8, Governance et confiance PAM historique.
+Recevoir le JSON public lié au source/image exacts et à l'étape réussie, tout
+en conservant les refus de clés, l'isolation concurrente et les nettoyages.
+La promotion reste aussi conditionnée au build natif et au scan strict ;
+la qualification du corpus n'autorise aucune reprise live ou écriture NAS.

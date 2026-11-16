@@ -114,3 +114,38 @@ obligatoires dans la CI ; les tests purs ne prouvent pas la fermeture réelle.
 Le run historique 43823595128 a retenu une copie pour session encore active,
 sans exposer l'identité ni la cause de cette session. Cette correction ne
 prétend pas avoir établi cette cause et attend une nouvelle restauration réelle.
+
+## Extension du corpus historique et reçu public CI
+
+Le run f66dc73 /43847896368 a réellement restauré une copie PostgreSQL :106
+modèles,15 valeurs chiffrées,75 preuves signées,3 reçus de provenance et une
+capture scellée. Il ne contenait toutefois aucun registre de confiance PAM ni
+preuve d'exception Governance vérifiés. Son succès limité reste historique ;
+il ne qualifie pas ces chemins absents.
+
+Le nouveau corpus utilise uniquement une base synthétique fraîche et vide. Il
+insère une observation et une évaluation V7 avec les modèles historiques avant
+les migrations de provenance, puis applique toutes les migrations et exige la
+conservation des octets/signatures. Il ne crée jamais legacy_unknown après V8,
+ne désactive aucun trigger et refuse une source déjà peuplée.
+
+Le corpus ajoute un registre PAM historique et au moins deux autorisations
+personnelles réellement vérifiées, ainsi que trois preuves d'exception
+Governance. Les ancrages publics sont capturés avant le dump, hors de la base
+restaurée ; aucun checkpoint courant ni clé privée n'est repris pour réarmer
+le PAM live. La restauration exige toujours un checkpoint actuel indépendant.
+Les nouvelles assertions SQL/cryptographiques exigent encore une exécution CI.
+
+Le mode CI exige des compteurs minimaux de preuves réellement vérifiées, et un
+retrait confirmé de la source synthétique. Le rapport public est écrit seulement
+après le nettoyage de la copie, du rôle, de la source et des deux fichiers env.
+Son schéma fermé ne contient que booléens, compteurs, temps et empreintes publiques.
+Le fichier est exclusif, borné à16Kio, mode0600 ; ni dump, ni compagnon de clés,
+ni environnement, ni sortie brute ne sont copiés vers les artefacts.
+
+Le fichier seul ne vaut jamais qualification : la réception doit le lier aux
+sources et à l'image exactes, ainsi qu'au succès de l'étape Restore. Un fsync ou
+une écriture échouée reste fatal mais peut laisser un fichier complet ou partiel ;
+aucune atomicité ou durabilité du stockage n'est revendiquée. Le job global peut
+encore échouer lors du scan strict suivant. safe_to_serve reste false, sans
+autorisation de reprise, de production, de NAS ou de session réelle.
