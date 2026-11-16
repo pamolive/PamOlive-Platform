@@ -128,7 +128,7 @@ CMD ["python", "deploy/runtime.py"]
 # Recheck active files after all product APT/Python installs, before the clean snapshot.
 RUN --network=none python -I -B -S /usr/local/libexec/pamolive-expat4/verify_runtime.py /usr/share/pamolive/expat4/runtime-product && find /usr/share/pamolive/expat4 -type d -exec chmod 0755 {} + && find /usr/share/pamolive/expat4 -type f -exec chmod 0444 {} +
 
-FROM scratch AS runtime
+FROM scratch AS runtime-copy
 # No --chown/--chmod: retain stage numeric ownership, modes and symlink nodes.
 COPY --from=runtime-build / /
 ENV PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin LANG=C.UTF-8 GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305 PYTHON_VERSION=3.12.16 PYTHON_SHA256=b5796915dc45ff745cfb4e990a7e7c93d6f546328a102ce31448d69ebc37575c
@@ -139,7 +139,13 @@ USER root
 EXPOSE 8000
 HEALTHCHECK --interval=20s --timeout=5s --start-period=20s CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/', timeout=4)"
 CMD ["python", "deploy/runtime.py"]
-RUN --network=none --mount=from=runtime-build,source=/,target=/__pamolive_previous,ro python -I -B -S /app/deploy/expat_snapshot.py /__pamolive_previous / /usr/share/pamolive/expat4/snapshot.json
+# Compare image roots without the verification worker's proc/sys mounts.
+FROM runtime-build AS snapshot-check
+RUN --network=none --mount=from=runtime-build,source=/,target=/__pamolive_previous,ro --mount=from=runtime-copy,source=/,target=/__pamolive_candidate,ro python -I -B -S /app/deploy/expat_snapshot.py /__pamolive_previous /__pamolive_candidate /usr/share/pamolive/expat4/snapshot.json
+
+# Inherit the clean COPY configuration; carry only the successful comparison receipt.
+FROM runtime-copy AS runtime
+COPY --from=snapshot-check /usr/share/pamolive/expat4/snapshot.json /usr/share/pamolive/expat4/snapshot.json
 
 FROM guacd-builder AS native-test-builder
 COPY tests/fixtures/rdp_fixture.c /tmp/rdp_fixture.c
