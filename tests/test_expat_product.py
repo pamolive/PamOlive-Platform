@@ -123,6 +123,90 @@ def fixture(extra_layers=(), mutate=None):
 
 
 class ExpatProductTests(unittest.TestCase):
+    def test_snapshot_diagnostic_numeric_changes_never_publish_paths_or_targets(self):
+        name = "/PRIVATE-PATH/PRIVATE-FILENAME"
+        row = {
+            "type": 0o120000,
+            "mode": 0o777,
+            "uid": 0,
+            "gid": 0,
+            "target": "PRIVATE-SYMLINK-TARGET",
+        }
+        after = {**row, "mode": 0o700, "uid": 1000, "target": "CHANGED-PRIVATE-TARGET"}
+        before_map, after_map = {name: row}, {name: after}
+        previous, following = copy.deepcopy(before_map), copy.deepcopy(after_map)
+        diagnostic = snapshot.difference_diagnostic(before_map, after_map)
+        encoded = json.dumps(diagnostic)
+        self.assertNotIn("PRIVATE", encoded)
+        self.assertEqual(before_map, previous)
+        self.assertEqual(after_map, following)
+        record = diagnostic["records"][0]
+        self.assertEqual(record["path_sha256"], hashlib.sha256(name.encode()).hexdigest())
+        self.assertEqual(record["path_label"], "other")
+        self.assertEqual(record["changed_fields"], ["mode", "target", "uid"])
+        self.assertEqual(record["before_numeric"]["uid"], 0)
+        self.assertEqual(record["after_numeric"]["uid"], 1000)
+        self.assertNotIn("target", record["before_numeric"])
+        self.assertFalse(diagnostic["operational_GO"])
+
+    def test_snapshot_main_emits_bounded_diagnostic_before_the_original_refusal(self):
+        original = {"/": {"type": 0o40000, "mode": 0o755, "uid": 0, "gid": 0}}
+        changed = {"/": {"type": 0o40000, "mode": 0o700, "uid": 0, "gid": 0}}
+        output = self.root / "must-not-exist.json"
+        public = io.StringIO()
+        with (
+            patch.object(snapshot, "metadata", side_effect=[original, changed]),
+            patch("sys.stdout", public),
+            self.assertRaisesRegex(ValueError, "snapshot_metadata_changed"),
+        ):
+            snapshot.main(["source", "target", str(output)])
+        raw = public.getvalue().encode()
+        self.assertLessEqual(len(raw), 16384 + 1)
+        diagnostic = json.loads(raw)
+        self.assertEqual(diagnostic["records"][0]["path_label"], "root")
+        self.assertEqual(diagnostic["records"][0]["changed_fields"], ["mode"])
+        self.assertFalse(output.exists())
+
+    def test_snapshot_diagnostic_caps_unknown_shape_and_added_removed_records(self):
+        row = {"type": 0o100000, "mode": 0o644, "uid": 0, "gid": 0, "bytes": 4}
+        before = {"/PRIVATE/removed-" + str(i): row for i in range(40)}
+        after = {"/PRIVATE/added": {**row, "uid": True}}
+        result = snapshot.difference_diagnostic(before, after)
+        self.assertEqual(result["changed_entries"], 41)
+        self.assertEqual(len(result["records"]), 24)
+        self.assertTrue(result["records_truncated"])
+        self.assertFalse(result["input_shape_ok"])
+        self.assertNotIn("PRIVATE", json.dumps(result))
+        self.assertLessEqual(len(json.dumps(result).encode()), 16384)
+        self.assertEqual(result["records"][0]["change"], "added")
+        self.assertIsNone(result["records"][0]["after_numeric"]["uid"])
+        for before, after in (
+            (None, {}),
+            ({"relative": row}, {}),
+            ({"/" + str(i): row for i in range(snapshot.LIMIT + 1)}, {}),
+        ):
+            self.assertFalse(snapshot.difference_diagnostic(before, after)["input_shape_ok"])
+
+    def test_snapshot_diagnostic_failure_never_heals_or_changes_the_original_guard(self):
+        first = {"/": {"type": 0o40000, "mode": 0o755, "uid": 0, "gid": 0}}
+        second = {"/": {"type": 0o40000, "mode": 0o700, "uid": 0, "gid": 0}}
+
+        def broken_sink(value):
+            raise RuntimeError("PRIVATE-DIAGNOSTIC-IO-FAILURE")
+
+        with (
+            patch.object(snapshot, "metadata", side_effect=[first, second]),
+            self.assertRaisesRegex(ValueError, "snapshot_metadata_changed"),
+        ):
+            snapshot.compare("source", "target", diagnostic_sink=broken_sink)
+        with (
+            patch.object(snapshot, "metadata", side_effect=[first, first]),
+            patch("sys.stdout", io.StringIO()) as stdout,
+        ):
+            value = snapshot.compare("source", "target", diagnostic_sink=broken_sink)
+        self.assertTrue(value["metadata_equal"])
+        self.assertEqual(stdout.getvalue(), "")
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

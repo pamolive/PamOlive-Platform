@@ -70,3 +70,21 @@ Le parcours UI P1-G reste dans PR #17. Son premier Chrome a été refusé avant
 TLS/SQL pour un binaire observé en mode0777 ; bootstrap authentifié et scénario
 SSH navigateur sont des travaux distincts. Il n'existe pas de démonstration
 complète P1-G reçue pour ce candidat.
+
+### Final-copy metadata comparison diagnostic
+
+The SDK C-header correction passed its install gate, and the runtime verifier
+completed, in both the 3ceb Expat and 21ea composed PR runs. The final clean COPY
+then refused snapshot_metadata_changed. No qualified image, native tests, SBOM
+or CVE disposition is inferred from those builds. The specific differing path
+or metadata field has not yet been received.
+
+The follow-up leaves metadata(), all exclusions, equality and the refusal code
+unchanged. On refusal only, it emits one bounded diagnostic line (24 records,
+16KiB), with closed path classes, path SHA256 values and numeric metadata. File
+contents, symlink targets, free paths and unknown fields are excluded. A failed
+diagnostic cannot replace or heal the original refusal. This does not prove
+content hashes, hardlink topology, source origin, image qualification or serving
+authority. Existing fourteen Expat pure methods and four added adversarial cases
+are preserved; the composed selection of127 pure tests passes without external
+attempts or skips. Full strict schema/native/build/scans still require Linux.
