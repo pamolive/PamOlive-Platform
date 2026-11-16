@@ -1,6 +1,40 @@
 # P1-F — qualification de sécurité de l’image
 
-Statut : **scan OS et bibliothèques du candidat initial terminé, seuil High/Critical non satisfait ; remédiation et scan final en attente**. Le candidat actuel ne reçoit pas de validation de sécurité pour une publication utilisable avec PAM/RDP. Les correspondances ci-dessous nécessitent correction ou analyse d’applicabilité explicite. Cette revue ne modifie ni Dockerfile, dépendances, workflow, NAS ou installation existante.
+## État courant et portée des anciens témoins — 16 novembre 2026
+
+La [CI du candidat 94064bc](https://github.com/pamolive/PamOlive-Platform/actions/runs/43899000242)
+a passé les tests fonctionnels/PostgreSQL, la restauration étendue, l’inventaire
+natif et le SBOM. Son scan strict compte 98 High dans 31 groupes source/CVE ;
+les seuils et l’absence d’exceptions restent inchangés. Les chiffres et images
+plus anciens ci-dessous restent historiques, sans qualification transférée.
+
+Le candidat courant prépare une mesure supplémentaire dans le même processus
+`deploy.native_inventory`, par l’argument optionnel `--gcc-provider-output`.
+L’inventaire normal et son schéma ne changent pas. Le nouveau JSON de données
+lie son SHA aux octets exacts de l’inventaire émis ; il capture le seul fournisseur
+libstdc++ canonique résolu, ses alias/identités FD, son SHA et en-tête ELF,
+ainsi que les stanzas de quatre paquets GCC. Aucun nouveau ldd, subprocess,
+conteneur ou graphe n’est ajouté.
+
+Les lectures sont plafonnées à 16 Mio pour le fournisseur et 4 Mio pour status,
+et la sortie séparée à 32 Kio, créée exclusivement après vérification complète.
+Les champs Package/Version/Architecture/Status exigent une seule forme canonique
+et refusent les continuations ou doublons de casse. Les valeurs des autres
+paquets et les descriptions ne sont pas publiées. Les erreurs restent fermées ;
+un inventaire normal éventuellement écrit ne répare pas un sidecar absent.
+
+Les 48 tests purs passent sans natif ni réseau ; les 25 anciens tests sont
+conservés. Une régression initialement liée au dossier de préparation utilise
+maintenant le corps exact du main historique, en fixture DATA bornée et hashée,
+pour comparer réellement les octets produits par les deux chemins sans option.
+Cette préparation reste distincte de la mesure Linux, encore requise. Le reçu
+ne prouve pas l’ABI, la configuration du DSO précompilé, l’absence de PBDS,
+l’intégrité du paquet fournisseur ou la fermeture des deux CVE GCC. L’appel
+Docker existant n’acquiert aucune garantie H172/PID/reap/drain supplémentaire.
+
+## Historique des candidats et des scans
+
+Statut : **scan OS et bibliothèques du candidat initial terminé, seuil High/Critical non satisfait ; remédiation et scan final en attente**. Ce candidat initial ne reçoit pas de validation de sécurité pour une publication utilisable avec PAM/RDP. Les correspondances ci-dessous nécessitent correction ou analyse d’applicabilité explicite. Cette revue ne modifie ni Dockerfile, dépendances, workflow, NAS ou installation existante.
 
 ## Candidat identifié
 

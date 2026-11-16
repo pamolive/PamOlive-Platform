@@ -4,10 +4,12 @@ import copy
 import io
 import json
 import os
+import stat
 import struct
 import tempfile
 from contextlib import redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -324,3 +326,502 @@ class NativeInventoryTests(TestCase):
                    "freerdp-jansson-compat.patch", "bad")
         with self.assertRaisesRegex(native.InventoryError, "json_patch_identity"):
             self.inventory()
+
+
+class GCCMemoryFS:
+    """Memory-only Linux metadata/FDs. Never opens a PC ELF or foreign FD."""
+
+    def __init__(self):
+        self.nodes, self.links, self.data = {}, {}, {}
+        self.fds, self.closed, self.opened = {}, [], []
+        self.on_read = None
+        self.bad_fd = False
+        self.growing = False
+        for path in (
+            "/",
+            "/usr",
+            "/usr/lib",
+            native.GCC_DIRS[1],
+            "/var",
+            "/var/lib",
+            "/var/lib/dpkg",
+        ):
+            self.add(path, stat.S_IFDIR | 0o755)
+        self.add("/lib", stat.S_IFLNK | 0o777)
+        self.links["/lib"] = "usr/lib"
+        self.target = native.GCC_DIRS[1] + "/libstdc++.so.6.0.33"
+        for directory in native.GCC_DIRS:
+            path = directory + "/libstdc++.so.6"
+            self.add(path, stat.S_IFLNK | 0o777)
+            self.links[path] = "libstdc++.so.6.0.33"
+        raw = bytearray(64)
+        raw[:7] = b"\x7fELF\x02\x01\x01"
+        struct.pack_into("<HH", raw, 16, 3, 62)
+        self.add(self.target, stat.S_IFREG | 0o644, bytes(raw))
+        self.status_path = "/var/lib/dpkg/status"
+        self.status = "\n\n".join(
+            "Package: "
+            + name
+            + "\nVersion: 14.2.0-19\nArchitecture: amd64\nStatus: install ok installed\n"
+            "Description: PRIVATE_CANARY_NOT_PROJECTED\n"
+            for name in native.GCC_PACKAGES
+        ).encode()
+        self.add(self.status_path, stat.S_IFREG | 0o644, self.status)
+
+    def key(self, path):
+        return str(path).replace("\\", "/")
+
+    def add(self, path, mode, data=b""):
+        self.nodes[path] = SimpleNamespace(
+            st_dev=1,
+            st_ino=len(self.nodes) + 1,
+            st_mode=mode,
+            st_uid=0,
+            st_gid=0,
+            st_nlink=1,
+            st_size=len(data),
+            st_mtime_ns=100,
+            st_ctime_ns=200,
+        )
+        self.data[path] = data
+
+    def lstat(self, path):
+        path = self.key(path)
+        if path not in self.nodes:
+            raise FileNotFoundError()
+        return self.nodes[path]
+
+    def readlink(self, path):
+        return self.links[self.key(path)]
+
+    def open(self, path, flags, *args):
+        path = self.key(path)
+        if (
+            flags
+            != self.api.O_RDONLY | self.api.O_NOFOLLOW | self.api.O_NONBLOCK | self.api.O_CLOEXEC
+        ):
+            raise AssertionError("unexpected_open_flags")
+        self.opened.append(path)
+        fd = 50 + len(self.opened)
+        self.fds[fd] = [path, 0]
+        return fd
+
+    def fstat(self, fd):
+        row = self.nodes[self.fds[fd][0]]
+        return SimpleNamespace(**(vars(row) | {"st_ino": 999})) if self.bad_fd else row
+
+    def read(self, fd, size):
+        path, offset = self.fds[fd]
+        raw = b"G" * size if self.growing else self.data[path][offset : offset + size]
+        self.fds[fd][1] += len(raw)
+        if self.on_read:
+            self.on_read(path, raw)
+        return raw
+
+    def close(self, fd):
+        if fd not in self.fds:
+            raise AssertionError("foreign_fd_close")
+        self.closed.append(fd)
+        del self.fds[fd]
+
+    def patch(self):
+        self.api = SimpleNamespace(
+            name="posix",
+            lstat=self.lstat,
+            readlink=self.readlink,
+            open=self.open,
+            fstat=self.fstat,
+            read=self.read,
+            close=self.close,
+            O_RDONLY=0,
+            O_NOFOLLOW=0x20000,
+            O_NONBLOCK=0x800,
+            O_CLOEXEC=0x80000,
+        )
+        return patch.object(native, "os", self.api)
+
+
+class GCCProviderDataTests(TestCase):
+    def report(self, paths=None):
+        paths = paths or [
+            native.GCC_DIRS[0] + "/libstdc++.so.6",
+            native.GCC_DIRS[1] + "/libstdc++.so.6",
+        ]
+        return {
+            "schema": native.SCHEMA,
+            "verified": True,
+            "live_link_probe": True,
+            "inventory": {
+                "files": [
+                    {
+                        "path": "/opt/pamolive-freerdp/lib/consumer" + str(i),
+                        "resolved": [{"soname": "libstdc++.so.6", "path": path}],
+                    }
+                    for i, path in enumerate(paths)
+                ]
+            },
+        }
+
+    def capture(self, fs, report=None):
+        report = self.report() if report is None else report
+        raw = (json.dumps(report, indent=2) + "\n").encode()
+        with (
+            fs.patch(),
+            patch.object(native, "probe") as probe,
+            patch.object(native, "runtime_versions") as versions,
+        ):
+            value = native.gcc_provider_data(report, raw)
+        probe.assert_not_called()
+        versions.assert_not_called()
+        self.assertFalse(fs.fds)
+        return value
+
+    def test_one_provider_many_existing_routes_and_no_additional_probes(self):
+        fs = GCCMemoryFS()
+        value = self.capture(fs)
+        self.assertEqual(len(value["routes"]), 2)
+        self.assertEqual(
+            value["provider"]["sha256"], native.hashlib.sha256(fs.data[fs.target]).hexdigest()
+        )
+        self.assertEqual(value["provider"]["machine"], 62)
+        self.assertEqual(value["provider"]["ELF_class"], 64)
+        self.assertEqual(fs.opened, [fs.target, fs.status_path])
+        self.assertNotIn("PRIVATE_CANARY", json.dumps(value))
+        for key in (
+            "ABI_proved",
+            "PBDS_instantiations_proved",
+            "precompiled_config_proved",
+            "CVE_closed",
+            "operational_GO",
+        ):
+            self.assertIs(value[key], False)
+
+    def test_missing_route_wrong_path_and_unverified_report_refuse_before_read(self):
+        for mutate in (
+            lambda r: r.update(verified=False),
+            lambda r: r.update(live_link_probe=False),
+            lambda r: r["inventory"]["files"][0]["resolved"][0].update(path="/private/CANARY"),
+            lambda r: [row.update(resolved=[]) for row in r["inventory"]["files"]],
+            lambda r: r["inventory"]["files"][0].update(path="/opt/pamolive-freerdp-foreign/x"),
+        ):
+            fs, report = GCCMemoryFS(), self.report()
+            mutate(report)
+            with self.assertRaises(native.InventoryError):
+                self.capture(fs, report)
+            self.assertEqual(fs.opened, [])
+
+    def test_native_report_buffer_must_be_the_exact_serialization(self):
+        fs = GCCMemoryFS()
+        with (
+            fs.patch(),
+            self.assertRaisesRegex(native.InventoryError, "gcc_verified_inventory_required"),
+        ):
+            native.gcc_provider_data(self.report(), b"other report")
+        self.assertEqual(fs.opened, [])
+
+    def test_unknown_usrmerge_leaf_escape_and_multiple_provider_refuse(self):
+        for mode in ("root", "leaf", "two"):
+            fs = GCCMemoryFS()
+            if mode == "root":
+                fs.links["/lib"] = "../PRIVATE_CANARY"
+            elif mode == "leaf":
+                fs.links[native.GCC_DIRS[0] + "/libstdc++.so.6"] = "../../PRIVATE_CANARY"
+            else:
+                fs.nodes["/lib"].st_mode = stat.S_IFDIR | 0o755
+                fs.add(native.GCC_DIRS[0], stat.S_IFDIR | 0o755)
+            with self.subTest(mode=mode), self.assertRaises(native.InventoryError):
+                self.capture(fs)
+            self.assertEqual(fs.opened, [])
+
+    def test_elf_class_machine_and_type_refuse(self):
+        for offset, byte in ((4, 1), (5, 2), (16, 2), (18, 3)):
+            fs = GCCMemoryFS()
+            raw = bytearray(fs.data[fs.target])
+            raw[offset] = byte
+            fs.data[fs.target] = bytes(raw)
+            with (
+                self.subTest(offset=offset),
+                self.assertRaisesRegex(native.InventoryError, "gcc_elf_platform"),
+            ):
+                self.capture(fs)
+            self.assertFalse(fs.fds)
+
+    def test_foreign_fd_identity_is_refused_and_owned_fd_closed(self):
+        fs = GCCMemoryFS()
+        fs.bad_fd = True
+        with self.assertRaisesRegex(native.InventoryError, "gcc_open_identity"):
+            self.capture(fs)
+        self.assertEqual(len(fs.closed), 1)
+
+    def test_same_fd_internal_growth_probe_is_bounded(self):
+        fs = GCCMemoryFS()
+        fs.growing = True
+        with fs.patch(), self.assertRaisesRegex(native.InventoryError, "gcc_read_budget"):
+            native._gcc_read(Path("/"), fs.target, 64, {})
+        self.assertFalse(fs.fds)
+
+    def test_short_read_and_alias_change_never_admit(self):
+        fs = GCCMemoryFS()
+        fs.data[fs.target] = b"\x7fELF"
+        with self.assertRaisesRegex(native.InventoryError, "gcc_read_size"):
+            self.capture(fs)
+        fs = GCCMemoryFS()
+
+        def mutate(path, raw):
+            if path == fs.target and not raw:
+                fs.links[native.GCC_DIRS[0] + "/libstdc++.so.6"] = "libstdc++.so.6.0.34"
+
+        fs.on_read = mutate
+        with self.assertRaisesRegex(native.InventoryError, "gcc_path_changed"):
+            self.capture(fs)
+        self.assertFalse(fs.fds)
+
+    def test_mode_nlink_boolean_parent_alias_and_size_refuse(self):
+        for key, value, path in [
+            ("st_mode", stat.S_IFREG | 0o666, "target"),
+            ("st_nlink", True, "target"),
+            ("st_uid", 1000, "target"),
+            ("st_size", 16 * 1024**2 + 1, "target"),
+            ("st_mode", stat.S_IFLNK | 0o777, "/usr"),
+        ]:
+            fs = GCCMemoryFS()
+            setattr(fs.nodes[fs.target if path == "target" else path], key, value)
+            if path == "/usr":
+                fs.links[path] = "/PRIVATE_CANARY"
+            with self.subTest(key=key, value=value), self.assertRaises(native.InventoryError):
+                self.capture(fs)
+
+    def test_four_status_rows_only_and_duplicates_state_framing_refuse(self):
+        raw = GCCMemoryFS().status
+        rows = native._gcc_status(raw + b"\n\nPackage: unrelated\nDescription: PRIVATE_CANARY\n")
+        self.assertEqual([row["Package"] for row in rows], list(native.GCC_PACKAGES))
+        self.assertNotIn("Description", json.dumps(rows))
+        for bad in (
+            raw + b"\n\n" + raw,
+            raw.replace(b"Architecture: amd64", b"Architecture: arm64"),
+            raw.replace(b"Status: install ok installed", b"Status: deinstall ok installed"),
+            raw.replace(b"Version: 14.2.0-19", b"Version: \nVersion: other"),
+            raw.replace(b"\n", b"\r\n"),
+            raw.split(b"\n\n", 1)[0],
+        ):
+            with self.assertRaises(native.InventoryError):
+                native._gcc_status(bad)
+
+    def test_without_option_old_main_and_candidate_emit_identical_bytes(self):
+        import ast
+        from contextlib import redirect_stdout
+
+        old_path = ROOT / "tests/fixtures/native_inventory_940_main.DATA.txt"
+        with old_path.open("rb") as handle:
+            old_raw = handle.read(8193)
+        self.assertLessEqual(len(old_raw), 8192)
+        self.assertEqual(
+            native.hashlib.sha256(old_raw).hexdigest(),
+            "d2a9cceb14e17d313a8ef22509c017661a4201039758398feebeef02b4376d4d",
+        )
+        nodes = ast.parse(old_raw).body
+        self.assertEqual(len(nodes), 1)
+        old_main = nodes[0]
+        self.assertIsInstance(old_main, ast.FunctionDef)
+        self.assertEqual(old_main.name, "main")
+        report = self.report()
+        scope = dict(vars(native)) | {"verify": lambda value: report}
+        exec(compile(ast.Module(body=[old_main], type_ignores=[]), "<old-main>", "exec"), scope)
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            manifest = directory / "manifest.json"
+            manifest.write_text("{}")
+            with (
+                patch.dict(os.environ, {"LD_LIBRARY_PATH": native.LIBRARY_PATH, "LD_PRELOAD": ""}),
+                patch.object(native, "verify", return_value=report),
+                patch.object(native, "gcc_provider_data") as extra,
+                redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(
+                    scope["main"](
+                        ["--manifest", str(manifest), "--output", str(directory / "old")]
+                    ),
+                    0,
+                )
+                self.assertEqual(
+                    native.main(["--manifest", str(manifest), "--output", str(directory / "new")]),
+                    0,
+                )
+            extra.assert_not_called()
+            self.assertEqual((directory / "old").read_bytes(), (directory / "new").read_bytes())
+
+    def test_capture_option_is_rejected_before_creating_outputs(self):
+        with patch.object(native.os, "open") as opened, redirect_stdout(io.StringIO()):
+            self.assertEqual(
+                native.main(
+                    ["--capture", "--output", "unused", "--gcc-provider-output", "unused2"]
+                ),
+                1,
+            )
+        opened.assert_not_called()
+
+    def test_optional_path_uses_one_verified_report_and_same_exact_buffer(self):
+        report = self.report()
+        captured = []
+        expected = (json.dumps(report, indent=2) + "\n").encode()
+
+        def capture(value, raw):
+            self.assertIs(value, report)
+            self.assertEqual(raw, expected)
+            captured.append(raw)
+            return {"native_report_sha256": native.hashlib.sha256(raw).hexdigest()}
+
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            manifest = directory / "manifest.json"
+            manifest.write_text("{}")
+            with (
+                patch.dict(os.environ, {"LD_LIBRARY_PATH": native.LIBRARY_PATH, "LD_PRELOAD": ""}),
+                patch.object(native, "verify", return_value=report) as verify,
+                patch.object(native, "gcc_provider_data", side_effect=capture),
+                patch.object(native, "write_gcc_provider") as write,
+                redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(
+                    native.main(
+                        [
+                            "--manifest",
+                            str(manifest),
+                            "--output",
+                            str(directory / "native"),
+                            "--gcc-provider-output",
+                            str(directory / "sidecar"),
+                        ]
+                    ),
+                    0,
+                )
+            verify.assert_called_once_with({})
+            self.assertEqual(len(captured), 1)
+            self.assertEqual((directory / "native").read_bytes(), expected)
+            self.assertEqual(
+                write.call_args.args[1]["native_report_sha256"],
+                native.hashlib.sha256(expected).hexdigest(),
+            )
+
+    def test_failed_sidecar_never_emits_verified_success_or_calls_writer(self):
+        report = self.report()
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            manifest = directory / "manifest.json"
+            manifest.write_text("{}")
+            public = io.StringIO()
+            with (
+                patch.dict(os.environ, {"LD_LIBRARY_PATH": native.LIBRARY_PATH, "LD_PRELOAD": ""}),
+                patch.object(native, "verify", return_value=report),
+                patch.object(
+                    native,
+                    "gcc_provider_data",
+                    side_effect=native.InventoryError("gcc_provider_path"),
+                ),
+                patch.object(native, "write_gcc_provider") as writer,
+                redirect_stdout(public),
+            ):
+                result = native.main(
+                    [
+                        "--manifest",
+                        str(manifest),
+                        "--output",
+                        str(directory / "native"),
+                        "--gcc-provider-output",
+                        str(directory / "sidecar"),
+                    ]
+                )
+            self.assertEqual(result, 1)
+            writer.assert_not_called()
+            self.assertEqual(
+                json.loads(public.getvalue()), {"verified": False, "error": "gcc_provider_path"}
+            )
+            self.assertEqual((directory / "native").read_bytes(), b"")
+            self.assertFalse((directory / "sidecar").exists())
+
+    def test_sidecar_output_budget_collision_and_shortwrite_are_closed(self):
+        with (
+            patch.object(native.os, "open") as opened,
+            self.assertRaisesRegex(native.InventoryError, "gcc_output_budget"),
+        ):
+            native.write_gcc_provider("unused", {"oversize": "X" * 32768})
+        opened.assert_not_called()
+
+        class Stream(io.BytesIO):
+            def fileno(self):
+                return 8
+
+            def write(self, value):
+                return len(value) - 1
+
+        api = SimpleNamespace(
+            open=lambda *args: 8,
+            fdopen=lambda *args: Stream(),
+            close=lambda fd: None,
+            O_WRONLY=1,
+            O_CREAT=2,
+            O_EXCL=4,
+            O_NOFOLLOW=8,
+        )
+        with (
+            patch.object(native, "os", api),
+            self.assertRaisesRegex(native.InventoryError, "gcc_output_short_write"),
+        ):
+            native.write_gcc_provider("unused", {"small": True})
+
+        def exists(*args):
+            raise FileExistsError()
+
+        api.open = exists
+        with patch.object(native, "os", api), self.assertRaises(FileExistsError):
+            native.write_gcc_provider("unused", {"small": True})
+
+
+class GCCStatusScalarFramingTests(TestCase):
+    def check_scalar(self, field, value, extra, kind):
+        raw = GCCMemoryFS().status
+        if kind == "continuation":
+            replacement = f"{field}: {value}\n {extra}"
+        else:
+            replacement = f"{field}: {value}\n{field.swapcase()}: {extra}"
+        changed = raw.replace(f"{field}: {value}".encode(), replacement.encode(), 1)
+        self.assertNotEqual(changed, raw)
+        with self.assertRaisesRegex(
+            native.InventoryError, "^gcc_package_(scalar_(continuation|alias)|duplicate)$"
+        ):
+            native._gcc_status(changed)
+        # Non-projected Description remains a legitimate folded field.
+        description = raw.replace(
+            b"Description: PRIVATE_CANARY_NOT_PROJECTED\n",
+            b"Description: PRIVATE_CANARY_NOT_PROJECTED\n extra_description_text\n",
+            1,
+        )
+        self.assertEqual(native._gcc_status(description), native._gcc_status(raw))
+
+    def test_package_continuation_refuses(self):
+        self.check_scalar("Package", "gcc-14-base", "foreign-package", "continuation")
+
+    def test_package_case_alias_refuses(self):
+        self.check_scalar("Package", "gcc-14-base", "foreign-package", "casefold_duplicate")
+
+    def test_version_continuation_refuses(self):
+        self.check_scalar("Version", "14.2.0-19", "99.0-1", "continuation")
+
+    def test_version_case_alias_refuses(self):
+        self.check_scalar("Version", "14.2.0-19", "99.0-1", "casefold_duplicate")
+
+    def test_architecture_continuation_refuses(self):
+        self.check_scalar("Architecture", "amd64", "arm64", "continuation")
+
+    def test_architecture_case_alias_refuses(self):
+        self.check_scalar("Architecture", "amd64", "arm64", "casefold_duplicate")
+
+    def test_status_continuation_refuses(self):
+        self.check_scalar(
+            "Status", "install ok installed", "deinstall ok installed", "continuation"
+        )
+
+    def test_status_case_alias_refuses(self):
+        self.check_scalar(
+            "Status", "install ok installed", "deinstall ok installed", "casefold_duplicate"
+        )

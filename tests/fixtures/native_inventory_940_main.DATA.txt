@@ -1,0 +1,31 @@
+# Exact main from commit 94064bcec46ef4eb7d29e443a871d158feb0c1ea.
+# Full source SHA256: 6bf53af621b176c2026461dd471550555dd8ae662a51351b0a3af84f09e1ce41
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--capture", action="store_true")
+    parser.add_argument("--manifest", default="/opt/pamolive-native-manifest.json")
+    parser.add_argument("--output", required=True)
+    args = parser.parse_args(argv)
+    fd = None
+    try:
+        fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                     0o444 if args.capture else 0o600)
+        require(os.environ.get("LD_LIBRARY_PATH") == LIBRARY_PATH, "runtime_library_path")
+        require(not os.environ.get("LD_PRELOAD"), "runtime_preload")
+        if args.capture:
+            report = inventory()
+        else:
+            raw = read_small(Path(args.manifest))
+            report = verify(json.loads(raw, object_pairs_hook=_pairs))
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            fd = None
+            json.dump(report, stream, indent=2)
+            stream.write("\n")
+    except (InventoryError, OSError, ValueError, subprocess.SubprocessError, RecursionError) as exc:
+        if fd is not None:
+            os.close(fd)
+        code = str(exc) if isinstance(exc, InventoryError) else "verification_failed"
+        print(json.dumps({"verified": False, "error": code}))
+        return 1
+    print(json.dumps({"captured" if args.capture else "verified": True}))
+    return 0

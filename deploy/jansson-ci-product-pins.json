@@ -2,7 +2,7 @@
   "deploy/build-freerdp.sh": "7db3b78dffd82dc22d71795630a42a1d63e0ddc3c58deb778195e0e40a30132e",
   "deploy/freerdp-jansson-compat.patch": "7a3694d19f3fda9ea248905e1adf3b2048e911510420240f5c71a6aec2842500",
   "deploy/jansson_image_absence.py": "cd2721ba1bfc0d5e70809d781507ef44879e29172e0c32b8b4390b77e9dab1c8",
-  "deploy/native_inventory.py": "6bf53af621b176c2026461dd471550555dd8ae662a51351b0a3af84f09e1ce41",
+  "deploy/native_inventory.py": "0ae411ff3971470b7d62aba8d27bf307e948258aac2853ed82fdddcf8edd20c1",
   "deploy/native_sbom.py": "9709546d72ceb734e80813453efef3a7391b311efc0c06ebd7b3674f65ab6bbf",
   "deploy/qualify_image_scan.py": "af7c376c12f4ab58a1436bd6d149cb9f89425355df3cec45899c1f47ecde79e5",
   "Dockerfile": "5e18bf6d40da11cfce7c9bee954ee1c8b278f7f7fc76fa14d88ff5a2bb8fdd54",
@@ -11,6 +11,6 @@
   "tests/test_jansson_image_absence.py": "cb0de8537f143d10a0067fce9cf9d6de9e4090f80c9d23a7bc5286361b261738",
   "tests/test_jansson_input_binding.py": "a664cfedb43d7ef4298d3abde8b550114d61aa941fdf19db82940f46085cde4b",
   "tests/test_jansson_sbom.py": "609930d57e570a89a10dd1aa5b92dc096d28f7134e48ddf6803f809dfa44f6bd",
-  "tests/test_native_inventory.py": "03925337a8fe3af6308befc313ed60c5368d874aadf755bd6667202b1d3e5fd4",
+  "tests/test_native_inventory.py": "a7edeadae96959e7990f6dfc757a38e4fba34899bb25187b1bafb168a6945722",
   "tests/test_native_sbom.py": "4f1e8a849bb5f0873760cd70b251b929189e8924bc41f7f65fccf0c931761ee2"
 }

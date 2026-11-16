@@ -2,18 +2,22 @@
 
 ## État courant du candidat commun — 16 novembre 2026
 
-Le [candidat assemblé P1-F](p1-f-runtime-composition.md) réunit Expat, Jansson,
-les observateurs ROOT3/PostgreSQL et la fermeture/drainage de restauration.
-Les tests purs de composition passent ; la nouvelle image et ses contrôles
-Linux complets restent à recevoir. Aucun résultat isolé ne vaut validation de
-la combinaison, aucune nouvelle image n'est promue et le NAS reste inchangé.
+La base 94064bc a passé sa CI PostgreSQL, les transports synthétiques, la
+restauration étendue, l’inventaire natif et le SBOM. Son scan strict reste
+bloquant : 98 correspondances High dans 31 groupes source/CVE, sans résultat
+ignoré ni admission automatique. Les preuves restent liées à ce commit.
 
-Les sections d'essais ci-dessous conservent leurs états historiques et leurs
-commits propres. Pour ROOT3, les observations reçues à043d5e6 mesurent bien
-containerd/v2.4.2 et passwd999/999 sans autorité opérationnelle ni propriété de
-PGDATA. Pour Jansson, les oracles reçus à2f772e7 passent mais le scan reste bloqué
-sur31groupesHigh. Ces résultats ne sont pas ceux de la nouvelle composition.
-Le diagnostic Chrome896 refuse avant navigateur ; P1-G demeure ouvert.
+Le présent candidat ajoute au même appel d’inventaire une capture bornée du
+fournisseur libstdc++ déjà résolu et des quatre paquets GCC concernés. Les
+48 tests purs passent, dont le refus des champs dpkg ambigus ; les 25 anciens
+contrats sont conservés. La mesure Linux de cette composition reste à recevoir.
+Ce reçu de données ne prouve ni ABI, configuration précompilée, présence de
+PBDS, applicabilité d’une CVE ou autorisation de servir.
+
+Les branches dédiées Expat, navigateur et Kerberos ont leurs propres commits
+et résultats. Leur assemblage doit être requalifié avant toute fusion ou
+publication. Les sections ci-dessous conservent les états historiques de leurs
+essais. Aucune nouvelle image n’est promue ; le NAS reste inchangé.
 
 Réconciliation mise à jour le 14 novembre 2026 avec *Architecture & Roadmap 2026–2029* (pages24–28) et la mission de développement autonome continu. Le programme avance par livraisons qualifiées sans confirmation humaine pour les opérations ordinaires autorisées. Cette autonomie ne permet ni contournement des protections GitHub ni utilisation de comptes ou de systèmes de production.
 
