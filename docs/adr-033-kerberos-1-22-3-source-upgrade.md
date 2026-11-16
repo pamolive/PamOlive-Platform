@@ -137,3 +137,15 @@ après, avec mutations, double application, namespace et modes invalides refusé
 Les commandes dpkg, flags, délais et limites, règles Debian, tests et le profil
 ABI-v2 non admis sont conservés. Le prochain build doit confirmer ce seul ajout,
 les exports complets et la compatibilité ; aucune CVE ni image n'est admise ici.
+
+### En-tête requis par l’oracle TLS
+
+Le candidat 31625be franchit dpkg puis échoue à la compilation de l’oracle TLS.
+Le plugin MIT inclut k5-utf8.h, qui définit KRB5_UPPER utilisé par ascii_tolower ;
+le préambule de l’oracle l’omettait. La correction ajoute uniquement cet include.
+Les corps de hostname, warnings stricts, commandes, racines source/build,
+délais 60 s / 10 s, authentification et profil ABI ne changent pas. La cause précise
+du processus compilateur reste non reçue ; le prochain build strict confirmera.
+La régression main utilise les vraies sources avec des doubles de processus
+et échoue sur l’ancien préambule. Les 52 tests purs ne prouvent pas les 12 cas C
+natifs ni une chaîne de certificats ; leur mesure Linux reste nécessaire.

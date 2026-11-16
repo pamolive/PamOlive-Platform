@@ -32,7 +32,7 @@ def main(source, work):
     old = read(HERE / "TLS-old-hostname-contract.DATA.inc", 32768)
     helpers = verify_contract(raw, old)
     preamble = (
-        b'#include "k5-int.h"\n#include <arpa/inet.h>\n'
+        b'#include "k5-int.h"\n#include "k5-utf8.h"\n#include <arpa/inet.h>\n'
         b"#include <openssl/x509.h>\n#include <openssl/x509v3.h>\n"
     )
     write_new(work / "hostname-helpers.inc", preamble + helpers)

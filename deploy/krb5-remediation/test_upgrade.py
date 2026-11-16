@@ -485,6 +485,83 @@ class UpgradeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "old_hostname_contract"):
             tls_oracle.verify_contract(changed, old)
 
+    def test_TLS_actual_main_includes_utf8_header_and_preserves_commands_and_receipt(self):
+        _, _, tree, _ = build.prepared_buffers(self.captured, self.plan, self.rebased)
+        raw = tree["src/plugins/tls/k5tls/openssl.c"]
+        old = (HERE / "TLS-old-hostname-contract.DATA.inc").read_bytes()
+        helpers = tls_oracle.verify_contract(raw, old)
+        outputs = {}
+        result = {"cases": 12, "passed": 12, "certificate_chain_verified": False}
+        with tempfile.TemporaryDirectory() as directory:
+            source, work = Path(directory) / "source", Path(directory) / "work"
+            inputs = {
+                source / "src/plugins/tls/k5tls/openssl.c": raw,
+                HERE / "TLS-old-hostname-contract.DATA.inc": old,
+            }
+
+            def reader(path, cap):
+                self.assertLessEqual(len(inputs[path]), cap)
+                return inputs[path]
+
+            with (
+                patch.object(tls_oracle, "read", side_effect=reader),
+                patch.object(
+                    tls_oracle, "write_new", side_effect=lambda p, v: outputs.setdefault(p, v)
+                ),
+                patch.object(
+                    tls_oracle, "command", side_effect=[b"", json.dumps(result).encode()]
+                ) as command,
+                patch.object(tls_oracle, "record") as record,
+            ):
+                tls_oracle.main(source, work)
+            preamble = (
+                b'#include "k5-int.h"\n#include "k5-utf8.h"\n#include <arpa/inet.h>\n'
+                b"#include <openssl/x509.h>\n#include <openssl/x509v3.h>\n"
+            )
+            self.assertEqual(outputs, {work / "hostname-helpers.inc": preamble + helpers})
+            self.assertEqual(command.call_count, 2)
+            self.assertEqual(
+                command.call_args_list[0].args,
+                (
+                    [
+                        "/usr/bin/cc",
+                        "-std=c99",
+                        "-O2",
+                        "-Wall",
+                        "-Wextra",
+                        "-Werror",
+                        "-I" + str(source / "src/include"),
+                        "-I" + str(source / "build/include"),
+                        "-I" + str(work),
+                        str(HERE / "tls_hostname_oracle.c"),
+                        "-lssl",
+                        "-lcrypto",
+                        "-o",
+                        str(work / "hostname-oracle"),
+                    ],
+                    work,
+                    work / "compile",
+                ),
+            )
+            self.assertEqual(command.call_args_list[0].kwargs, {"seconds": 60})
+            self.assertEqual(
+                command.call_args_list[1].args,
+                ([str(work / "hostname-oracle")], work, work / "run"),
+            )
+            self.assertEqual(command.call_args_list[1].kwargs, {"seconds": 10})
+            record.assert_called_once_with(
+                work / "TLS-HOSTNAME-DATA.json",
+                {
+                    "actual_source_sha256": model.sha(raw),
+                    "actual_helper_region_sha256": model.sha(helpers),
+                    "old_helper_region_sha256": model.sha(old),
+                    "matching": result,
+                    "certificate_chain_or_AD_interop": "NOT_EXECUTED",
+                    "partial_label_wildcards_admitted": False,
+                    "operational_GO": False,
+                },
+            )
+
     def test_old_product_ABI_anchor_is_not_stock_assumption(self):
         # Consistent SYNTHETIC contract; real old anchors are never rewritten by product code.
         value = abi_model()
