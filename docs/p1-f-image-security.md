@@ -1,6 +1,49 @@
 # P1-F — qualification de sécurité de l’image
 
-Statut : **scan OS et bibliothèques du candidat initial terminé, seuil High/Critical non satisfait ; remédiation et scan final en attente**. Le candidat actuel ne reçoit pas de validation de sécurité pour une publication utilisable avec PAM/RDP. Les correspondances ci-dessous nécessitent correction ou analyse d’applicabilité explicite. Cette revue ne modifie ni Dockerfile, dépendances, workflow, NAS ou installation existante.
+## État courant et portée des anciens témoins — 16 novembre 2026
+
+Ce candidat assemble par fusion normale Expat `d064d04` et la capture GCC
+`c66254c`, issus de la base commune `94064bc`. Les deux parents ont leurs
+propres preuves Linux ; ces preuves ne qualifient pas automatiquement l'assemblage.
+
+Le [laboratoire Expat](https://github.com/pamolive/PamOlive-Platform/actions/runs/43918797136)
+a validé les deux correctifs supplémentaires, les 5 340 cas C par largeur,
+l'ABI et les imports. La [CI produit de ce parent](https://github.com/pamolive/PamOlive-Platform/actions/runs/43918792528)
+a passé les tests PostgreSQL (1 574 tests, 42 ignorés), les transports
+synthétiques, la restauration, l'inventaire et le SBOM. Son scan reste bloquant :
+98 correspondances High dans 31 groupes source/CVE. Les deux nouveaux correctifs
+restent signalés Medium par le scanner ; aucune correspondance n'est masquée.
+
+La [CI du parent GCC](https://github.com/pamolive/PamOlive-Platform/actions/runs/43925640727)
+a réellement capturé le fournisseur libstdc++ et les quatre paquets GCC, avec
+liaison aux octets de l'inventaire. Les huit High des deux CVE GCC restent
+bloquants. Ce reçu ne prouve ni ABI, configuration précompilée, présence de PBDS,
+applicabilité d'une CVE ou autorisation de servir.
+
+Sur cet assemblage, 153 tests purs d'intégration et 103 tests de préparation
+Expat passent, sans test ignoré dans ces sélections. La validation de schéma
+SBOM et les contrôles natifs exclus de cette exécution Windows restent requis
+en CI Linux. Les 14 pins produit et les 37 sources Expat sont liés à l'index Git.
+La nouvelle mesure Linux de l'assemblage reste à obtenir.
+
+La chaîne complète des matériaux et de l'autorité de build ADR-021 reste à
+implémenter et vérifier : ni recette authentifiée ni attestation de build
+vérifiée ne sont revendiquées. Les branches navigateur et Kerberos conservent
+leurs qualifications séparées. Aucune nouvelle image n'est promue ; le NAS
+reste inchangé. Les sections suivantes conservent les états historiques.
+
+Le sidecar GCC réutilise le même appel `deploy.native_inventory`, avec
+`--gcc-provider-output`. Le JSON normal et son schéma restent identiques. Aucun
+nouveau ldd, subprocess, conteneur ou graphe n'est ajouté. Les lectures restent
+plafonnées à 16 Mio pour le fournisseur, 4 Mio pour status et 32 Kio pour la
+sortie séparée créée exclusivement. Les champs dpkg ambigus sont refusés.
+Les 48 tests dédiés sont inclus dans les 153 tests ci-dessus ; les 25 anciens
+contrats restent conservés, avec fixture historique bornée indépendante d'OUT.
+L'appel Docker existant n'acquiert aucune garantie H172/PID/reap/drain nouvelle.
+
+## Historique des candidats et des scans
+
+Statut : **scan OS et bibliothèques du candidat initial terminé, seuil High/Critical non satisfait ; remédiation et scan final en attente**. Ce candidat initial ne reçoit pas de validation de sécurité pour une publication utilisable avec PAM/RDP. Les correspondances ci-dessous nécessitent correction ou analyse d’applicabilité explicite. Cette revue ne modifie ni Dockerfile, dépendances, workflow, NAS ou installation existante.
 
 ## Candidat identifié
 

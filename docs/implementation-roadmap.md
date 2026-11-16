@@ -2,18 +2,35 @@
 
 ## État courant du candidat commun — 16 novembre 2026
 
-Le [candidat assemblé P1-F](p1-f-runtime-composition.md) réunit Expat, Jansson,
-les observateurs ROOT3/PostgreSQL et la fermeture/drainage de restauration.
-Les tests purs de composition passent ; la nouvelle image et ses contrôles
-Linux complets restent à recevoir. Aucun résultat isolé ne vaut validation de
-la combinaison, aucune nouvelle image n'est promue et le NAS reste inchangé.
+Ce candidat assemble par fusion normale Expat `d064d04` et la capture GCC
+`c66254c`, issus de la base commune `94064bc`. Les deux parents ont leurs
+propres preuves Linux ; ces preuves ne qualifient pas automatiquement l'assemblage.
 
-Les sections d'essais ci-dessous conservent leurs états historiques et leurs
-commits propres. Pour ROOT3, les observations reçues à043d5e6 mesurent bien
-containerd/v2.4.2 et passwd999/999 sans autorité opérationnelle ni propriété de
-PGDATA. Pour Jansson, les oracles reçus à2f772e7 passent mais le scan reste bloqué
-sur31groupesHigh. Ces résultats ne sont pas ceux de la nouvelle composition.
-Le diagnostic Chrome896 refuse avant navigateur ; P1-G demeure ouvert.
+Le [laboratoire Expat](https://github.com/pamolive/PamOlive-Platform/actions/runs/43918797136)
+a validé les deux correctifs supplémentaires, les 5 340 cas C par largeur,
+l'ABI et les imports. La [CI produit de ce parent](https://github.com/pamolive/PamOlive-Platform/actions/runs/43918792528)
+a passé les tests PostgreSQL (1 574 tests, 42 ignorés), les transports
+synthétiques, la restauration, l'inventaire et le SBOM. Son scan reste bloquant :
+98 correspondances High dans 31 groupes source/CVE. Les deux nouveaux correctifs
+restent signalés Medium par le scanner ; aucune correspondance n'est masquée.
+
+La [CI du parent GCC](https://github.com/pamolive/PamOlive-Platform/actions/runs/43925640727)
+a réellement capturé le fournisseur libstdc++ et les quatre paquets GCC, avec
+liaison aux octets de l'inventaire. Les huit High des deux CVE GCC restent
+bloquants. Ce reçu ne prouve ni ABI, configuration précompilée, présence de PBDS,
+applicabilité d'une CVE ou autorisation de servir.
+
+Sur cet assemblage, 153 tests purs d'intégration et 103 tests de préparation
+Expat passent, sans test ignoré dans ces sélections. La validation de schéma
+SBOM et les contrôles natifs exclus de cette exécution Windows restent requis
+en CI Linux. Les 14 pins produit et les 37 sources Expat sont liés à l'index Git.
+La nouvelle mesure Linux de l'assemblage reste à obtenir.
+
+La chaîne complète des matériaux et de l'autorité de build ADR-021 reste à
+implémenter et vérifier : ni recette authentifiée ni attestation de build
+vérifiée ne sont revendiquées. Les branches navigateur et Kerberos conservent
+leurs qualifications séparées. Aucune nouvelle image n'est promue ; le NAS
+reste inchangé. Les sections suivantes conservent les états historiques.
 
 Réconciliation mise à jour le 14 novembre 2026 avec *Architecture & Roadmap 2026–2029* (pages24–28) et la mission de développement autonome continu. Le programme avance par livraisons qualifiées sans confirmation humaine pour les opérations ordinaires autorisées. Cette autonomie ne permet ni contournement des protections GitHub ni utilisation de comptes ou de systèmes de production.
 

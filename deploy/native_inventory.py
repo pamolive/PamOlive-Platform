@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import struct
 import subprocess
 import sys
@@ -379,14 +380,222 @@ def _pairs(pairs):
     return result
 
 
+GCC_PACKAGES = ("gcc-14-base", "libatomic1", "libgcc-s1", "libstdc++6")
+GCC_DIRS = ("/lib/x86_64-linux-gnu", "/usr/lib/x86_64-linux-gnu")
+GCC_TARGET = r"libstdc\+\+\.so\.6\.0\.[0-9]{1,4}"
+
+
+def _gcc_identity(info):
+    fields = ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
+              "st_size", "st_mtime_ns", "st_ctime_ns")
+    result = {key.removeprefix("st_"): getattr(info, key) for key in fields}
+    require(all(type(value) is int for value in result.values()), "gcc_identity_type")
+    require(info.st_uid == 0 and info.st_nlink >= 1, "gcc_owner_or_links")
+    return result
+
+
+def _gcc_snapshot(root, logical, snapshots):
+    info = os.lstat(root / logical.lstrip("/"))
+    row = {"identity": _gcc_identity(info)}
+    if stat.S_ISLNK(info.st_mode):
+        row["target"] = os.readlink(root / logical.lstrip("/"))
+    else:
+        require(info.st_mode & 0o6022 == 0, "gcc_writable_or_special_mode")
+    require(logical not in snapshots or snapshots[logical] == row, "gcc_path_changed")
+    snapshots[logical] = row
+    return info, row
+
+
+def _gcc_read(root, logical, cap, snapshots):
+    info, _ = _gcc_snapshot(root, logical, snapshots)
+    require(stat.S_ISREG(info.st_mode) and 0 < info.st_size <= cap, "gcc_file_type_or_budget")
+    fd = os.open(root / logical.lstrip("/"),
+                 os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    try:
+        require(_gcc_identity(os.fstat(fd)) == _gcc_identity(info), "gcc_open_identity")
+        chunks, count = [], 0
+        while True:
+            request = min(65536, cap + 1 - count)
+            raw = os.read(fd, request)
+            require(type(raw) is bytes and len(raw) <= request, "gcc_read_contract")
+            count += len(raw)
+            require(count <= cap, "gcc_read_budget")
+            if not raw:
+                break
+            chunks.append(raw)
+        require(count == info.st_size, "gcc_read_size")
+        require(_gcc_identity(os.fstat(fd)) == _gcc_identity(info), "gcc_fd_changed")
+        _gcc_snapshot(root, logical, snapshots)
+        return b"".join(chunks), _gcc_identity(info)
+    finally:
+        os.close(fd)
+
+
+def _gcc_status(raw):
+    text = raw.decode("utf-8", "strict")
+    require("\r" not in text and "\0" not in text, "gcc_status_framing")
+    paragraphs = text.split("\n\n")
+    require(len(paragraphs) <= 8192, "gcc_status_count")
+    selected = {}
+    scalars = {key.lower(): key for key in ("Package", "Version", "Architecture", "Status")}
+    for paragraph in paragraphs:
+        lines = paragraph.splitlines()
+        packages = []
+        for line in lines:
+            if line.startswith((" ", "\t")):
+                continue
+            key, sep, value = line.partition(":")
+            if sep and key.lower() == "package":
+                packages.append(value.lstrip(" \t"))
+        if not any(package in GCC_PACKAGES for package in packages):
+            continue
+        require(len(packages) == 1 and packages[0] not in selected, "gcc_package_duplicate")
+        fields = {}
+        previous = None
+        for line in lines:
+            if not line:
+                continue
+            if line.startswith((" ", "\t")):
+                require(previous not in scalars.values(), "gcc_package_scalar_continuation")
+                continue
+            key, sep, value = line.partition(": ")
+            require(sep and re.fullmatch(r"[A-Za-z0-9-]+", key) and key not in fields,
+                    "gcc_package_field")
+            require(key.lower() not in scalars or key == scalars[key.lower()],
+                    "gcc_package_scalar_alias")
+            fields[key] = value
+            previous = key
+        require(fields.get("Package") == packages[0] and fields.get("Architecture") == "amd64"
+                and fields.get("Status") == "install ok installed"
+                and re.fullmatch(r"[0-9A-Za-z.+:~_-]{1,128}", fields.get("Version", "")),
+                "gcc_package_state")
+        selected[packages[0]] = {key: fields[key] for key in (
+            "Package", "Version", "Architecture", "Status")}
+    require(set(selected) == set(GCC_PACKAGES), "gcc_package_closure")
+    return [selected[name] for name in GCC_PACKAGES]
+
+
+def gcc_provider_data(report, native_bytes, *, root=Path("/")):
+    """Only extra file reads: no probe/process, ABI inference or image admission."""
+    require(os.name == "posix", "gcc_linux_only")
+    require(type(report) is dict and report.get("schema") == SCHEMA
+            and report.get("verified") is True and report.get("live_link_probe") is True
+            and type(native_bytes) is bytes
+            and native_bytes == (json.dumps(report, indent=2) + "\n").encode("utf-8"),
+            "gcc_verified_inventory_required")
+    require(type(report.get("inventory")) is dict, "gcc_inventory_type")
+    files = report.get("inventory", {}).get("files")
+    require(type(files) is list and 1 <= len(files) <= 256, "gcc_inventory_files")
+    routes = []
+    for item in files:
+        require(type(item) is dict, "gcc_inventory_item")
+        consumer = item.get("path", "")
+        require(type(consumer) is str and len(consumer) <= 512
+                and consumer.startswith(tuple(prefix + "/" for prefix in PREFIXES.values()))
+                and not any(part in {"", ".", ".."} for part in consumer[1:].split("/"))
+                and all(32 < ord(char) < 127 and char != "\\" for char in consumer),
+                "gcc_consumer_path")
+        links = item.get("resolved")
+        require(type(links) is list and len(links) <= 1024, "gcc_resolved_count")
+        for link in links:
+            require(type(link) is dict, "gcc_resolved_item")
+            if link.get("soname") != "libstdc++.so.6":
+                continue
+            path = link.get("path")
+            require(type(path) is str and any(
+                path == directory + "/libstdc++.so.6"
+                or re.fullmatch(re.escape(directory) + "/" + GCC_TARGET, path)
+                for directory in GCC_DIRS), "gcc_provider_path")
+            routes.append({"consumer": consumer, "reported_path": path})
+    require(1 <= len(routes) <= 256 and len({r["consumer"] for r in routes}) == len(routes),
+            "gcc_routes")
+    root, snapshots = Path(root), {}
+    for logical in ("/", "/usr", "/usr/lib", GCC_DIRS[1], "/var", "/var/lib", "/var/lib/dpkg"):
+        info, _ = _gcc_snapshot(root, logical, snapshots)
+        require(stat.S_ISDIR(info.st_mode), "gcc_parent_directory")
+    lib, lib_row = _gcc_snapshot(root, "/lib", snapshots)
+    merged = stat.S_ISLNK(lib.st_mode)
+    require((merged and lib_row["target"] == "usr/lib") or stat.S_ISDIR(lib.st_mode),
+            "gcc_lib_root")
+    if not merged:
+        info, _ = _gcc_snapshot(root, GCC_DIRS[0], snapshots)
+        require(stat.S_ISDIR(info.st_mode), "gcc_parent_directory")
+    aliases, targets = [], set()
+    for directory in GCC_DIRS:
+        logical = directory + "/libstdc++.so.6"
+        try:
+            info, row = _gcc_snapshot(root, logical, snapshots)
+        except FileNotFoundError:
+            require(not any(r["reported_path"].startswith(directory + "/") for r in routes),
+                    "gcc_reported_alias_missing")
+            aliases.append({"path": logical, "present": False})
+            continue
+        require(stat.S_ISLNK(info.st_mode) and re.fullmatch(GCC_TARGET, row["target"]),
+                "gcc_provider_alias")
+        canonical = (GCC_DIRS[1] if merged and directory == GCC_DIRS[0] else directory)
+        target = canonical + "/" + row["target"]
+        targets.add(target)
+        aliases.append({"path": logical, "present": True, **row, "canonical_target": target})
+    require(len(targets) == 1, "gcc_multiple_providers")
+    target = next(iter(targets))
+    for route in routes:
+        directory = route["reported_path"].rsplit("/", 1)[0]
+        alias = next(row for row in aliases if row["path"].startswith(directory + "/"))
+        require(alias["present"] and (route["reported_path"].endswith("/libstdc++.so.6")
+                or route["reported_path"].rsplit("/", 1)[1] == target.rsplit("/", 1)[1]),
+                "gcc_route_binding")
+    raw, identity = _gcc_read(root, target, 16 * 1024**2, snapshots)
+    require(len(raw) >= 64 and raw[:7] == b"\x7fELF\x02\x01\x01"
+            and struct.unpack_from("<HH", raw, 16) == (3, 62), "gcc_elf_platform")
+    status, status_identity = _gcc_read(root, "/var/lib/dpkg/status", 4 * 1024**2, snapshots)
+    packages = _gcc_status(status)
+    for logical in list(snapshots):
+        _gcc_snapshot(root, logical, snapshots)
+    for alias in aliases:
+        if not alias["present"]:
+            try:
+                os.lstat(root / alias["path"].lstrip("/"))
+            except FileNotFoundError:
+                pass
+            else:
+                raise InventoryError("gcc_absent_alias_changed")
+    return {"schema": "pamolive.gcc-provider-data/1",
+            "native_report_sha256": hashlib.sha256(native_bytes).hexdigest(),
+            "routes": sorted(routes, key=lambda row: row["consumer"]), "aliases": aliases,
+            "provider": {"path": target, "identity": identity, "bytes": len(raw),
+                         "sha256": hashlib.sha256(raw).hexdigest(), "ELF_class": 64,
+                         "endian": "little", "machine": 62, "type": 3},
+            "status": {"path": "/var/lib/dpkg/status", "identity": status_identity,
+                       "sha256": hashlib.sha256(status).hexdigest(), "packages": packages},
+            "ABI_proved": False, "PBDS_instantiations_proved": False,
+            "precompiled_config_proved": False, "CVE_closed": False, "operational_GO": False}
+
+
+def write_gcc_provider(path, value):
+    raw = (json.dumps(value, indent=2) + "\n").encode("utf-8")
+    require(len(raw) <= 32768, "gcc_output_budget")
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            fd = None
+            require(stream.write(raw) == len(raw), "gcc_output_short_write")
+            stream.flush()
+            os.fsync(stream.fileno())
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--capture", action="store_true")
     parser.add_argument("--manifest", default="/opt/pamolive-native-manifest.json")
     parser.add_argument("--output", required=True)
+    parser.add_argument("--gcc-provider-output")
     args = parser.parse_args(argv)
     fd = None
     try:
+        require(not (args.capture and args.gcc_provider_output), "gcc_capture_not_supported")
         fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL,
                      0o444 if args.capture else 0o600)
         require(os.environ.get("LD_LIBRARY_PATH") == LIBRARY_PATH, "runtime_library_path")
@@ -396,10 +605,18 @@ def main(argv=None):
         else:
             raw = read_small(Path(args.manifest))
             report = verify(json.loads(raw, object_pairs_hook=_pairs))
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            fd = None
-            json.dump(report, stream, indent=2)
-            stream.write("\n")
+        if args.gcc_provider_output:
+            native_bytes = (json.dumps(report, indent=2) + "\n").encode("utf-8")
+            extra = gcc_provider_data(report, native_bytes)
+            with os.fdopen(fd, "wb") as stream:
+                fd = None
+                require(stream.write(native_bytes) == len(native_bytes), "gcc_native_short_write")
+            write_gcc_provider(args.gcc_provider_output, extra)
+        else:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                fd = None
+                json.dump(report, stream, indent=2)
+                stream.write("\n")
     except (InventoryError, OSError, ValueError, subprocess.SubprocessError, RecursionError) as exc:
         if fd is not None:
             os.close(fd)
