@@ -93,7 +93,13 @@ ne deviennent jamais une reussite. Le run699 a valide acquisition,31purs,
 Le build natif a ensuite refuse read_regular sur /etc/os-release, avant
 extraction/compilation Debian. Le correctif lit /usr/lib/os-release sans
 resolution/fallback ni modification du lecteur ;33purs locaux passent avec
-2contre-cas supplementaires. Le nouveau build et ses oracles restent requis.
+2contre-cas supplementaires. Le run142 a franchi cette garde puis refuse
+le sous-processus dpkg-buildpackage apres environ79s ; ses journaux internes
+manquent dans la couche echouee. Le wrapper de cette seule commande publie
+sur echec des tails8KiB/flux et le recu4KiB en base64/JSON borne, puis relance
+l'erreur. Aucun retry, succes presume ni modification common/H1/auth ;36purs
+locaux couvrent aussi plafonds, sorties illisibles et console fermee.
+Le prochain build et ses oracles restent requis.
 
 La [PR13](https://github.com/pamolive/PamOlive-Platform/pull/13) a par ailleurs
 publie les diagnostics : f396 a refuse avant toute operation faute du dossier

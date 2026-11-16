@@ -1,5 +1,7 @@
 """Offline source rebuild on trixie, after maintained GPG verification."""
 
+import base64
+import json
 import sys
 from pathlib import Path
 
@@ -9,6 +11,65 @@ from authenticate import main as authenticate
 from common import ENV, command, material, need, read, record, sha, write_new
 
 VERSION = "2.10.0-1+pamolive1"
+
+
+def publish_build_failure(log):
+    """Only public Debian build logs: bounded encoded tails, never an admission."""
+    streams = {}
+    for name in ("stdout", "stderr"):
+        try:
+            data = read(log / name, 8 * 1024**2)
+        except (OSError, ValueError):
+            streams[name] = {"available": False}
+        else:
+            tail = data[-8192:]
+            streams[name] = {
+                "available": True,
+                "received_bytes": len(data),
+                "tail_bytes": len(tail),
+                "tail_base64": base64.b64encode(tail).decode("ascii"),
+            }
+    try:
+        receipt = read(log / "result.json", 4096)
+    except (OSError, ValueError):
+        process = {"available": False}
+    else:
+        process = {
+            "available": True,
+            "receipt_base64": base64.b64encode(receipt).decode("ascii"),
+        }
+    print(
+        json.dumps(
+            {
+                "schema": "pamolive.expat-public-build-failure/1",
+                "state": "FAILED_OR_UNKNOWN",
+                "stage": "dpkg-buildpackage",
+                "tail_cap_bytes": 8192,
+                "diagnostic_only": True,
+                "streams": streams,
+                "process_receipt": process,
+            },
+            sort_keys=True,
+        )
+    )
+
+
+def build_package(source, log):
+    try:
+        command(
+            ["/usr/bin/dpkg-buildpackage", "-us", "-uc", "-b", "-aamd64"],
+            source,
+            log,
+            seconds=900,
+            cap=8 * 1024**2,
+            env=ENV | {"DEB_BUILD_PROFILES": "noudeb"},
+        )
+    except BaseException as original:
+        try:
+            publish_build_failure(log)
+        except (OSError, ValueError):
+            raise original
+        raise
 
 
 def main(materials, output):
@@ -45,14 +106,7 @@ def main(materials, output):
         " -- PamOlive Build <build@example.invalid>  Mon, 16 Nov 2026 00:00:00 +0000\n\n"
     ).encode()
     changelog.write_bytes(prefix + old)
-    command(
-        ["/usr/bin/dpkg-buildpackage", "-us", "-uc", "-b", "-aamd64"],
-        source,
-        output / "build",
-        seconds=900,
-        cap=8 * 1024**2,
-        env=ENV | {"DEB_BUILD_PROFILES": "noudeb"},
-    )
+    build_package(source, output / "build")
     # Debian rules have no test target. Both configured trees must be exercised explicitly.
     for tree in ("build", "buildw"):
         command(
