@@ -149,3 +149,21 @@ du processus compilateur reste non reçue ; le prochain build strict confirmera.
 La régression main utilise les vraies sources avec des doubles de processus
 et échoue sur l’ancien préambule. Les 52 tests purs ne prouvent pas les 12 cas C
 natifs ni une chaîne de certificats ; leur mesure Linux reste nécessaire.
+
+
+### Diagnostic du compilateur TLS après le candidat 3217c75
+
+Le nouvel essai Linux reste refusé au même appel de compilation ; sa cause
+exacte est inconnue faute de stderr reçu. Le wrapper de diagnostic reprend
+le motif existant Expat, uniquement pour cet appel compilateur/linker sur les
+sources C publiques et l’environnement fini commun. Il publie les empreintes,
+les faits H1 typés et au plus 8 Kio de tails bruts encodés base64 au total,
+avec une enveloppe plafonnée à 16 Kio. Ce domaine n’inclut ni GPG, ni données
+DEB, ni environnement libre. Il ne constitue pas un mécanisme universel de
+masquage de secrets face à un compilateur ou superviseur malveillant.
+
+La commande, les warnings, -Werror, délais, caps, sources et 52 anciens tests
+restent conservés. Toute erreur de diagnostic est secondaire : l’exception
+initiale est toujours relancée. Un rc normal ne prouve pas la stabilité de
+l’outil ; le marqueur UNKNOWN est conservé. Aucun échec n’est admis comme
+succès et les 12 cas C ne sont pas annoncés validés.

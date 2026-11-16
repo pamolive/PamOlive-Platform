@@ -1286,5 +1286,193 @@ class PackagingSymbolsTests(unittest.TestCase):
         self.assertEqual(prepared["debian/rules"], self.original["debian/rules"])
 
 
+class TLSCompileDiagnosticTests(unittest.TestCase):
+    def capture(self, stdout=b"", stderr=b"public C: compiler or linker error\n", **delta):
+        facts = dict(
+            spawn_attempted=True,
+            pid=123,
+            returncode=1,
+            reason="nonzero_exit",
+            exception_type=None,
+            cleanup_exception_type=None,
+            killed_owned_child=False,
+            owned_child_reaped=True,
+            drains_complete=True,
+            stdout_bytes=len(stdout),
+            stderr_bytes=len(stderr),
+        )
+        facts.update(delta)
+        buffers = {"result.json": json.dumps(facts).encode(), "stdout": stdout, "stderr": stderr}
+        reads = []
+
+        def reader(path, cap):
+            reads.append((path.name, cap))
+            self.assertEqual(sum(name == path.name for name, _ in reads), 1)
+            return buffers[path.name]
+
+        with patch.object(tls_oracle, "read", side_effect=reader):
+            packet = tls_oracle.compile_failure_data(Path("/compile"))
+        return packet, reads, buffers
+
+    def test_public_compiler_tail_is_actual_same_buffer_and_H1_hash_once(self):
+        import base64
+
+        packet, reads, buffers = self.capture()
+        self.assertEqual(
+            reads, [("result.json", 4096), ("stdout", 2 * 1024**2), ("stderr", 2 * 1024**2)]
+        )
+        self.assertEqual(packet["classification"], "NORMAL_NONZERO")
+        self.assertEqual(packet["stderr"]["sha256"], model.sha(buffers["stderr"]))
+        self.assertEqual(base64.b64decode(packet["stderr"]["tail_base64"]), buffers["stderr"])
+        self.assertEqual(packet["result.json"]["sha256"], model.sha(buffers["result.json"]))
+        self.assertFalse(packet["tool_stability_proved"])
+        self.assertEqual(packet["root_cause"], "UNKNOWN")
+        self.assertFalse(packet["operational_GO"])
+
+    def test_process_nonzero_timeout_signal_rc0_nondrain_bool_and_tool_uncertainty(self):
+        for delta, expected in [
+            ({"returncode": 2}, "NORMAL_NONZERO"),
+            ({"returncode": True}, "H1_UNKNOWN"),
+            ({"reason": "timeout"}, "H1_UNKNOWN"),
+            ({"returncode": -9}, "SIGNALLED"),
+            ({"returncode": 0, "reason": None}, "RC0_CALLER_REFUSAL"),
+            ({"owned_child_reaped": False}, "H1_UNKNOWN"),
+            ({"drains_complete": False}, "H1_UNKNOWN"),
+            ({"killed_owned_child": True}, "H1_UNKNOWN"),
+            ({"exception_type": "PRIVATE"}, "H1_UNKNOWN"),
+            ({"pid": True}, "H1_UNKNOWN"),
+            ({"reason": "PRIVATE_REASON"}, "H1_UNKNOWN"),
+        ]:
+            with self.subTest(delta=delta):
+                packet, _, _ = self.capture(**delta)
+                self.assertEqual(packet["classification"], expected)
+                self.assertFalse(packet["tool_stability_proved"])
+                self.assertNotIn("PRIVATE", json.dumps(packet))
+
+    def test_receipt_unknown_fields_duplicate_nonfinite_or_count_drift_stay_unknown(self):
+        for delta in (
+            {"stderr_bytes": 0},
+            {"stderr_bytes": True},
+            {"stdout_bytes": -1},
+            {"argv": "PRIVATE_ENV"},
+            {"extra": "PRIVATE_ENV"},
+        ):
+            packet, _, _ = self.capture(**delta)
+            self.assertEqual(packet["classification"], "H1_UNKNOWN")
+            self.assertNotIn("PRIVATE", json.dumps(packet))
+        for raw in (b"PRIVATE_ENV", b'{"pid":1,"pid":2}', b'{"pid":NaN}'):
+            with patch.object(
+                tls_oracle,
+                "read",
+                side_effect=lambda path, cap: raw if path.name == "result.json" else b"",
+            ):
+                packet = tls_oracle.compile_failure_data(Path("/compile"))
+            self.assertEqual(packet["classification"], "H1_UNKNOWN")
+            self.assertIsNone(packet["facts"])
+            self.assertNotIn("PRIVATE", json.dumps(packet))
+
+    def test_both_public_streams_flood_binary_bytes_stderr_priority_and_16K_total(self):
+        import base64
+
+        stdout = b"public stdout" * (2 * 1024**2 // 13)
+        stderr = bytes(range(256)) * (2 * 1024**2 // 256)
+        packet, _, buffers = self.capture(stdout=stdout, stderr=stderr)
+        self.assertEqual(packet["classification"], "NORMAL_NONZERO")
+        self.assertEqual(packet["stderr"]["tail_bytes"], 8192)
+        self.assertEqual(packet["stdout"]["tail_bytes"], 0)
+        self.assertEqual(base64.b64decode(packet["stderr"]["tail_base64"]), stderr[-8192:])
+        self.assertEqual(packet["stderr"]["tail_offset"], len(stderr) - 8192)
+        self.assertEqual(packet["stderr"]["tail_sha256"], model.sha(stderr[-8192:]))
+        self.assertLessEqual(len(json.dumps(packet).encode()), 16384)
+        packet, _, _ = self.capture(stdout=b"x" * 8192, stderr=b"actual error")
+        self.assertEqual(packet["stdout"]["tail_bytes"] + packet["stderr"]["tail_bytes"], 8192)
+        packet, _, _ = self.capture(stderr=b"x" * (2 * 1024**2 + 1))
+        self.assertFalse(packet["stderr"]["available"])
+        self.assertEqual(packet["classification"], "H1_UNKNOWN")
+
+    def test_failed_compile_prints_one_typed_packet_and_reraises_original_exception(self):
+        packet, _, _ = self.capture()
+        original = ValueError("child_failed_or_unknown")
+        console = io.StringIO()
+        with (
+            patch.object(tls_oracle, "command", side_effect=original) as command,
+            patch.object(tls_oracle, "compile_failure_data", return_value=packet),
+            patch("sys.stdout", console),
+            self.assertRaises(ValueError) as caught,
+        ):
+            tls_oracle.compile_checked(["/usr/bin/cc"], Path("/work"), Path("/compile"), seconds=60)
+        self.assertIs(caught.exception, original)
+        self.assertEqual(json.loads(console.getvalue()), packet)
+        command.assert_called_once_with(
+            ["/usr/bin/cc"], Path("/work"), Path("/compile"), seconds=60
+        )
+
+    def test_missing_capture_read_or_console_failure_never_masks_original_refusal(self):
+        with patch.object(tls_oracle, "read", side_effect=OSError("PRIVATE_READ")):
+            packet = tls_oracle.compile_failure_data(Path("/compile"))
+        self.assertFalse(packet["stderr"]["available"])
+        self.assertEqual(packet["classification"], "H1_UNKNOWN")
+        for error in (OSError("PRIVATE"), ValueError("PRIVATE")):
+            original = ValueError("original_refusal")
+            with (
+                patch.object(tls_oracle, "command", side_effect=original),
+                patch.object(tls_oracle, "compile_failure_data", side_effect=error),
+                self.assertRaises(ValueError) as caught,
+            ):
+                tls_oracle.compile_checked(
+                    ["/usr/bin/cc"], Path("/work"), Path("/compile"), seconds=60
+                )
+            self.assertIs(caught.exception, original)
+        original = ValueError("original_refusal")
+        with (
+            patch.object(tls_oracle, "command", side_effect=original),
+            patch.object(tls_oracle, "compile_failure_data", return_value=packet),
+            patch("builtins.print", side_effect=OSError("PRIVATE_CONSOLE")),
+            self.assertRaises(ValueError) as caught,
+        ):
+            tls_oracle.compile_checked(["/usr/bin/cc"], Path("/work"), Path("/compile"), seconds=60)
+        self.assertIs(caught.exception, original)
+
+    def test_success_compile_wrapper_has_no_capture_IO_or_output_and_same_budget(self):
+        with (
+            patch.object(tls_oracle, "command", return_value=b"ok") as command,
+            patch.object(tls_oracle, "read") as read,
+            patch("builtins.print") as printed,
+        ):
+            self.assertEqual(
+                tls_oracle.compile_checked(
+                    ["/usr/bin/cc"], Path("/work"), Path("/compile"), seconds=60
+                ),
+                b"ok",
+            )
+        command.assert_called_once_with(
+            ["/usr/bin/cc"], Path("/work"), Path("/compile"), seconds=60
+        )
+        read.assert_not_called()
+        printed.assert_not_called()
+
+    def test_only_public_C_compile_is_wrapped_without_new_flags_or_GPG_DEB_scope(self):
+        tree = ast.parse((HERE / "tls_oracle.py").read_bytes())
+        main = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "main")
+        wrapped = [
+            n
+            for n in ast.walk(main)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Name)
+            and n.func.id == "compile_checked"
+        ]
+        self.assertEqual(len(wrapped), 1)
+        self.assertEqual(wrapped[0].args[0].elts[0].value, "/usr/bin/cc")
+        self.assertEqual([(k.arg, k.value.value) for k in wrapped[0].keywords], [("seconds", 60)])
+        self.assertNotIn("-fdiagnostics", ast.unparse(main))
+        calls = [
+            n
+            for n in ast.walk(main)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "command"
+        ]
+        self.assertEqual(len(calls), 1)
+        self.assertEqual([(k.arg, k.value.value) for k in calls[0].keywords], [("seconds", 10)])
+
+
 if __name__ == "__main__":
     unittest.main()
