@@ -209,3 +209,12 @@ préservation du graphe applicatif. La contre-revue confirme que les quatorze
 autres tests restent identiques en AST, avec trois modèles JSON adverses passés.
 Ces modèles ne simulent pas une validation de schéma réussie. Le nouveau passage
 Linux strict et la construction de l'image exacte restent obligatoires.
+
+Le build réel de la composition `ddf1ccd` refuse au stage SDK Expat : le paquet
+libexpat1-dev dépend de libc6-dev ou libc-dev, absent avant son installation
+offline. La recette installe désormais libc6-dev depuis les dépôts Trixie
+authentifiés dans le seul stage SDK, avant dpkg. Aucun force-depends ni SDK
+dans le runtime final n’est ajouté. Le runtime-base Expat avait passé son oracle
+avant ce refus ; ni ce succès partiel ni la correction de recette ne qualifient
+la nouvelle image. Les étapes natives, SBOM et scans du run échoué étaient
+ignorées ; leur absence ne réduit pas les groupes High à traiter.
