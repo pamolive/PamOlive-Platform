@@ -994,5 +994,146 @@ class DpkgFailureDiagnosticTests(unittest.TestCase):
             self.assertIs(packet["retained_counts_match"], None if missing else False)
 
 
+class DpkgMarkerTests(unittest.TestCase):
+    def test_finite_tools_codes_locations_and_statuses_without_messages(self):
+        raw = (
+            b"dpkg-checkbuilddeps: error: unmet build dependencies: PRIVATE_DEP\n"
+            b"PRIVATE_SOURCE.c:12:7: fatal error: PRIVATE_HEADER: No such file\n"
+            b"collect2: error: ld returned 1 exit status\n"
+            b"/usr/bin/ld: PRIVATE_OBJECT: undefined reference to PRIVATE_SYMBOL\n"
+            b"dh_auto_build: error: PRIVATE_CMD returned exit code 2\n"
+            b"dpkg-buildpackage: error: PRIVATE_RULE subprocess returned exit status 2\n"
+            b"make[1]: *** [PRIVATE_TARGET: all] Error 2\n"
+            b"dpkg-gensymbols: warning: some new symbols appeared in the symbols file: PRIVATE\n"
+        )
+        result = build.dpkg_failure_markers({"stdout": b"", "stderr": raw})
+        self.assertEqual(len(result["events"]), 8)
+        self.assertEqual(
+            {r["tool_marker"] for r in result["events"]},
+            {"checkbuilddeps", "compiler", "linker", "debhelper", "dpkg", "make", "gensymbols"},
+        )
+        self.assertEqual(result["root_cause"], "UNKNOWN")
+        self.assertFalse(result["operational_GO"])
+        self.assertNotIn("PRIVATE", json.dumps(result))
+        for event in result["events"]:
+            start, length = event["byte_offset"], event["line_bytes"]
+            self.assertEqual(model.sha(raw[start : start + length]), event["line_sha256"])
+        compiler = next(r for r in result["events"] if r["code"] == "COMPILER_ERROR")
+        self.assertEqual((compiler["source_line"], compiler["source_column"]), (12, 7))
+        self.assertEqual(compiler["source_path_sha256"], model.sha(b"PRIVATE_SOURCE.c"))
+        numbers = {
+            r["tool_marker"]: r["status_number"]
+            for r in result["events"]
+            if r["status_number"] is not None
+        }
+        self.assertEqual(numbers, {"linker": 1, "dpkg": 2, "make": 2})
+
+    def test_make_flood_and_distinct_code_truncation_never_hide_other_tool_families(self):
+        raw = b"make[1]: *** [private: all] Error 2\n" * 1000
+        raw += (
+            b"dpkg-checkbuilddeps: error: unmet build dependencies: private\n"
+            b"dpkg-checkbuilddeps: error: unmet build conflicts: private\n"
+            b"p.c:1:1: error: private\n"
+            b"gcc: error: private\n"
+            b"collect2: error: ld returned 1 exit status\n"
+            b"ld: private: undefined reference to private\n"
+            b"ld: cannot find private\n"
+            b"dh_makeshlibs: error: private\n"
+            b"dpkg-buildpackage: error: private\n"
+            b"dpkg-gensymbols: warning: some new symbols appeared private\n"
+            b"dpkg-gensymbols: error: some symbols or patterns disappeared private\n"
+            b"dpkg-gensymbols: warning: new libraries appeared private\n"
+            b"dpkg-gensymbols: error: some libraries disappeared private\n"
+            b"dpkg-gensymbols: warning: private doesn't match completely private\n"
+            b"dpkg-gensymbols: error: private\n"
+        )
+        value = build.dpkg_failure_markers({"stdout": raw, "stderr": b""})
+        self.assertEqual(value["counts"]["MAKE_ERROR"], 1000)
+        self.assertTrue(all(count > 0 for count in value["counts"].values()))
+        self.assertEqual(value["distinct_codes"], 16)
+        self.assertEqual(len(value["events"]), 8)
+        self.assertTrue(value["events_truncated"])
+        self.assertEqual(len({r["tool_marker"] for r in value["events"]}), 7)
+        self.assertLessEqual(len(json.dumps(value).encode()), 7000)
+        self.assertEqual(value["root_cause"], "UNKNOWN")
+        facts = DpkgFailureDiagnosticTests.facts(stdout_bytes=len(raw), stderr_bytes=0)
+        with patch.object(
+            build,
+            "read",
+            side_effect=lambda path, cap: json.dumps(facts).encode()
+            if path.name == "result.json"
+            else raw
+            if path.name == "stdout"
+            else b"",
+        ):
+            packet = build.dpkg_failure_data(Path("log"))
+        self.assertLessEqual(len(json.dumps(packet).encode()), 8192)
+        self.assertIs(packet["retained_counts_match"], True)
+        self.assertTrue(packet["failure_markers"]["events_truncated"])
+
+    def test_parser_gated_by_normal_rc2_same_captured_buffers_and_original_refusal(self):
+        buffers = {
+            "stdout": b"make: *** [private] Error 2\n",
+            "stderr": b"dpkg-gensymbols: error: some new symbols appeared private\n",
+        }
+        for delta, parsed in [
+            ({}, True),
+            ({"returncode": 1}, False),
+            ({"reason": "timeout"}, False),
+            ({"owned_child_reaped": False}, False),
+        ]:
+            calls = []
+            facts = DpkgFailureDiagnosticTests.facts(
+                **(
+                    dict(stdout_bytes=len(buffers["stdout"]), stderr_bytes=len(buffers["stderr"]))
+                    | delta
+                )
+            )
+
+            def reader(path, cap):
+                calls.append(path.name)
+                self.assertEqual(calls.count(path.name), 1)
+                return (
+                    json.dumps(facts).encode() if path.name == "result.json" else buffers[path.name]
+                )
+
+            original = ValueError("PRIVATE_ORIGINAL")
+            console = io.StringIO()
+            with (
+                self.subTest(delta=delta),
+                patch.object(build, "command", side_effect=original),
+                patch.object(build, "read", side_effect=reader),
+                patch("sys.stdout", console),
+            ):
+                with self.assertRaises(ValueError) as caught:
+                    build.dpkg_build(Path("source"), Path("log"))
+            self.assertIs(caught.exception, original)
+            value = json.loads(console.getvalue())
+            self.assertIs(value["failure_markers"]["parsed"], parsed)
+            self.assertEqual(value["failure_markers"]["root_cause"], "UNKNOWN")
+            self.assertEqual(calls, ["result.json", "stdout", "stderr"])
+            self.assertLessEqual(len(console.getvalue().encode()), 8192)
+            for name in buffers:
+                self.assertEqual(value[name]["sha256"], model.sha(buffers[name]))
+
+    def test_private_control_unknown_and_line_budgets_remain_non_authority(self):
+        raw = (
+            b"::error:: PRIVATE\n\x1bgcc: error: PRIVATE\nunknown: PRIVATE\n" + b"x" * 8193 + b"\n"
+        )
+        value = build.dpkg_failure_markers({"stdout": raw, "stderr": b""})
+        self.assertEqual(value["events"], [])
+        self.assertEqual(value["long_or_control_lines_skipped"], 2)
+        self.assertTrue(value["unrecognized_failure"])
+        self.assertNotIn("PRIVATE", json.dumps(value))
+        value = build.dpkg_failure_markers(
+            {"stdout": b"\n" * 100001, "stderr": b"gcc: error: private\n"}
+        )
+        self.assertTrue(value["line_budget_exhausted"])
+        self.assertEqual(value["counts"]["COMPILER_DRIVER_ERROR"], 1)
+        self.assertEqual(value["root_cause"], "UNKNOWN")
+        with self.assertRaises(ValueError):
+            build.dpkg_failure_markers({"stdout": b"x" * (8 * 1024**2 + 1), "stderr": b""})
+
+
 if __name__ == "__main__":
     unittest.main()

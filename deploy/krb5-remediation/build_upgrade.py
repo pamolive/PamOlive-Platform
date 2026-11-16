@@ -4,6 +4,7 @@ The output is ABI/package DATA. A separate Root v2 decision gates product use.
 """
 
 import email.utils
+import io
 import json
 import re
 import sys
@@ -53,6 +54,187 @@ DPKG_REASONS = {
     "nonzero_exit",
     "absolute_deadline_exceeded",
 }
+
+
+def dpkg_failure_markers(buffers):
+    """Finite textual hints, not attribution or a tool-execution/ABI receipt."""
+    rules = (
+        (
+            "checkbuilddeps",
+            "BUILD_DEPENDENCIES_UNMET",
+            rb"^dpkg-checkbuilddeps: error: unmet build dependencies:",
+        ),
+        (
+            "checkbuilddeps",
+            "BUILD_CONFLICTS",
+            rb"^dpkg-checkbuilddeps: error: unmet build conflicts:",
+        ),
+        (
+            "gensymbols",
+            "SYMBOLS_ADDED",
+            rb"^dpkg-gensymbols: (?:error|warning): some new symbols appeared",
+        ),
+        (
+            "gensymbols",
+            "SYMBOLS_REMOVED",
+            rb"^dpkg-gensymbols: (?:error|warning): some symbols or patterns disappeared",
+        ),
+        (
+            "gensymbols",
+            "LIBRARIES_ADDED",
+            rb"^dpkg-gensymbols: (?:error|warning): new libraries appeared",
+        ),
+        (
+            "gensymbols",
+            "LIBRARIES_REMOVED",
+            rb"^dpkg-gensymbols: (?:error|warning): some libraries disappeared",
+        ),
+        (
+            "gensymbols",
+            "SYMBOLS_TEMPLATE_MISMATCH",
+            rb"^dpkg-gensymbols: (?:error|warning): .{1,1024} doesn't match completely ",
+        ),
+        ("gensymbols", "GENSYMBOLS_ERROR", rb"^dpkg-gensymbols: error: "),
+        (
+            "compiler",
+            "COMPILER_ERROR",
+            rb"^[^:\r\n]{1,512}:[0-9]{1,8}(?::[0-9]{1,8})?: (?:fatal )?error: ",
+        ),
+        (
+            "compiler",
+            "COMPILER_DRIVER_ERROR",
+            rb"^(?:x86_64-linux-gnu-)?(?:gcc(?:-14)?|g\+\+(?:-14)?|cc|cc1|cc1plus): "
+            rb"(?:fatal )?error: ",
+        ),
+        ("linker", "LINKER_DRIVER_EXIT", rb"^collect2: error: ld returned [0-9]{1,3} exit status"),
+        (
+            "linker",
+            "LINKER_UNDEFINED",
+            rb"^(?:/usr/bin/)?(?:x86_64-linux-gnu-)?ld(?:\.bfd)?: .{0,1024}undefined reference to ",
+        ),
+        (
+            "linker",
+            "LINKER_CANNOT_FIND",
+            rb"^(?:/usr/bin/)?(?:x86_64-linux-gnu-)?ld(?:\.bfd)?: cannot find ",
+        ),
+        (
+            "debhelper",
+            "DEBHELPER_ERROR",
+            rb"^(?:dh|dh_auto_configure|dh_auto_build|dh_auto_test|dh_auto_install|dh_install|"
+            rb"dh_missing|dh_makeshlibs|dh_shlibdeps|dh_strip|dh_gencontrol|dh_builddeb): error: ",
+        ),
+        ("dpkg", "DPKG_ERROR", rb"^dpkg-(?:buildpackage|source): error: "),
+        (
+            "make",
+            "MAKE_ERROR",
+            rb"^make(?:\[[0-9]{1,3}\])?: \*\*\* .{0,2048}Error [0-9]{1,3}(?: |$)",
+        ),
+    )
+    need(
+        set(buffers) == {"stdout", "stderr"}
+        and all(type(raw) is bytes and len(raw) <= 8 * 1024**2 for raw in buffers.values()),
+        "dpkg_diagnostic_buffers",
+    )
+    counts = {code: 0 for _, code, _ in rules}
+    first, skipped, scanned, budget_exhausted = {}, 0, 0, False
+    for stream in ("stdout", "stderr"):
+        offset = 0
+        for line_number, raw in enumerate(io.BytesIO(buffers[stream]), 1):
+            if line_number > 100000:
+                budget_exhausted = True
+                break
+            start = offset
+            offset += len(raw)
+            scanned += 1
+            line = raw.removesuffix(b"\n").removesuffix(b"\r")
+            if len(raw) > 8192 or any(byte < 32 and byte != 9 or byte == 127 for byte in line):
+                skipped += 1
+                continue
+            if not line:
+                continue
+            for tool, code, pattern in rules:
+                if re.match(pattern, line) is None:
+                    continue
+                counts[code] += 1
+                if code not in first:
+                    event = {
+                        "tool_marker": tool,
+                        "code": code,
+                        "stream": stream,
+                        "byte_offset": start,
+                        "line_number": line_number,
+                        "line_bytes": len(raw),
+                        "line_sha256": sha(raw),
+                        "severity_marker": "WARNING"
+                        if line.startswith(b"dpkg-gensymbols: warning: ")
+                        or tool == "linker"
+                        and b": warning: undefined reference to " in line
+                        else "ERROR",
+                        "status_number": None,
+                        "source_line": None,
+                        "source_column": None,
+                        "source_path_sha256": None,
+                    }
+                    status = (
+                        re.search(rb" Error ([0-9]{1,3})(?: \([^)]{0,32}\))?$", line)
+                        if code == "MAKE_ERROR"
+                        else re.match(
+                            rb"^collect2: error: ld returned ([0-9]{1,3}) exit status$", line
+                        )
+                        if code == "LINKER_DRIVER_EXIT"
+                        else re.search(rb" subprocess returned exit status ([0-9]{1,3})$", line)
+                        if code == "DPKG_ERROR"
+                        else None
+                    )
+                    if status is not None and int(status[1]) <= 255:
+                        event["status_number"] = int(status[1])
+                    location = (
+                        re.match(rb"([^:\r\n]{1,512}):([0-9]{1,8})(?::([0-9]{1,8}))?: ", line)
+                        if code == "COMPILER_ERROR"
+                        else None
+                    )
+                    if location is not None:
+                        event.update(
+                            source_path_sha256=sha(location[1]),
+                            source_line=int(location[2]),
+                            source_column=int(location[3]) if location[3] else None,
+                        )
+                    first[code] = event
+                break
+    # First preserve one event for every observed tool family. Thousands of
+    # generic make errors cannot hide compiler or gensymbols markers.
+    ordered = sorted(
+        first.values(),
+        key=lambda event: next(i for i, (_, code, _) in enumerate(rules) if code == event["code"]),
+    )
+    events, tools = [], set()
+    for event in ordered:
+        if event["tool_marker"] not in tools:
+            events.append(event)
+            tools.add(event["tool_marker"])
+    for event in ordered:
+        if len(events) == 8:
+            break
+        if event not in events:
+            events.append(event)
+    return {
+        "schema": "pamolive.krb5-dpkg-text-markers/1",
+        "parsed": True,
+        "root_cause": "UNKNOWN",
+        "text_markers_only": True,
+        "counts": counts,
+        "events": events,
+        "event_limit": 8,
+        "distinct_codes": len(first),
+        "events_truncated": len(first) > len(events),
+        "lines_scanned": scanned,
+        "long_or_control_lines_skipped": skipped,
+        "line_limit_per_stream": 100000,
+        "line_budget_exhausted": budget_exhausted,
+        "unrecognized_failure": not first,
+        "tools_or_versions_authenticated_by_text": False,
+        "operational_GO": False,
+    }
 
 
 def dpkg_failure_data(log):
@@ -136,10 +318,12 @@ def dpkg_failure_data(log):
             result["classification"] = "RC0_CALLER_REFUSAL"
     except (OSError, ValueError, TypeError):
         pass
+    captured = {}
     for name in ("stdout", "stderr"):
         projected = {"available": False, "bytes": None, "sha256": None}
         try:
             raw = read(log / name, 8 * 1024**2)
+            captured[name] = raw
             projected.update(available=True, bytes=len(raw), sha256=sha(raw))
         except (OSError, ValueError, TypeError):
             pass
@@ -160,6 +344,16 @@ def dpkg_failure_data(log):
         "RC0_CALLER_REFUSAL",
     }:
         result["classification"] = "H1_UNKNOWN"
+    result["failure_markers"] = (
+        dpkg_failure_markers(captured)
+        if result["classification"] == "NORMAL_NONZERO" and result["facts"]["returncode"] == 2
+        else {
+            "parsed": False,
+            "root_cause": "UNKNOWN",
+            "reason": "NORMAL_RC2_H1_NOT_RECEIVED",
+            "operational_GO": False,
+        }
+    )
     return result
 
 

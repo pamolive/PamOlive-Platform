@@ -100,3 +100,18 @@ logs bruts, arguments, erreurs libres, environnement, clés et données KDC sont
 exclus. La même exception est toujours relancée, même si le diagnostic échoue.
 Succès : aucune lecture/sortie ajoutée. Commande, env, budget3000s, caps8MiB et
 helpers communs restent exacts ; le nouveau reçu réel reste à collecter.
+
+### Mesure native du refus normal et marqueurs bornés
+
+Le [runae83891](https://github.com/pamolive/PamOlive-Platform/actions/runs/43890087890)
+a reçu un vrai refus normal dpkg :rc2, enfant reapé, drains complets, pas de kill
+ni exception, sorties1385754/78672octets concordantes. Ce ne sont donc ni un
+dépassement de cap ni un délai. La cause de compilation/packaging reste inconnue.
+
+Le diagnostic ajoute des marqueurs textuels fermés seulement pour NORMAL_RC2
+et les mêmes buffers déjà capturés. Sept familles, seize codes, huit événements
+max, compteurs et troncatures explicites ; un flot make ne masque pas les autres
+familles. Aucun chemin, symbole, message brut ou erreur libre n'est publié.
+Les marqueurs ne prouvent ni outil/version ni cause ; root_cause resteUNKNOWN.
+Le JSON8Kio, les budgets et tous les contrôles source/GPG/ABI restent exacts.
+Une nouvelle mesure Linux reste nécessaire avant toute correction de packaging.
