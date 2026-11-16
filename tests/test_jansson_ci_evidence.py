@@ -67,6 +67,53 @@ def identity_buffers(buffers, provider):
 
 
 class JanssonCiEvidenceTests(unittest.TestCase):
+    def test_settings_null_oracle_establishes_ownership_safe_premise_before_serializing(self):
+        root = Path(__file__).resolve().parents[1]
+        body = (root / "tests/fixtures/winpr_jansson_regression.c").read_text(encoding="utf-8")
+        created = body.index("rdpSettings* settings = freerdp_settings_new(0);")
+        serialized = body.index("encoded = freerdp_settings_serialize(settings, FALSE, &length);")
+        setup = body[created:serialized]
+        self.assertEqual(setup.count("const FreeRDP_Settings_Keys_Pointer keys[]"), 1)
+        for key in (
+            "FreeRDP_RedirectionTargetCertificate",
+            "FreeRDP_RdpServerCertificate",
+            "FreeRDP_RdpServerRsaKey",
+        ):
+            self.assertEqual(setup.count(key), 1)
+        self.assertIn("CHECK(freerdp_settings_set_pointer_len(settings, keys[i], NULL, 0));", setup)
+        self.assertIn("CHECK(!freerdp_settings_get_pointer(settings, keys[i]));", setup)
+        for unsafe in (
+            "freerdp_settings_set_pointer(",
+            "freerdp_certificate_free(",
+            "freerdp_key_free(",
+            "freerdp_certificate_new(",
+            "freerdp_key_new(",
+        ):
+            self.assertNotIn(unsafe, setup)
+
+    def test_settings_null_oracle_keeps_post_serialize_assertions_and_native_guards(self):
+        root = Path(__file__).resolve().parents[1]
+        body = (root / "tests/fixtures/winpr_jansson_regression.c").read_text(encoding="utf-8")
+        serialized = body.index("encoded = freerdp_settings_serialize(settings, FALSE, &length);")
+        result = body[serialized:]
+        self.assertIn("CHECK(!freerdp_settings_get_pointer(settings, keys[i]));", result)
+        self.assertIn(
+            "CHECK(WINPR_JSON_IsArray(array) && WINPR_JSON_GetArraySize(array) == 0);", result
+        )
+        self.assertLess(result.index("WINPR_JSON_Delete(obj);"), result.index("free(encoded);"))
+        self.assertLess(
+            result.index("free(encoded);"), result.index("freerdp_settings_free(settings);")
+        )
+        for retained in (
+            "CHECK(setrlimit(RLIMIT_CPU, &cpu) == 0);",
+            "CHECK(setrlimit(RLIMIT_AS, &memory) == 0);",
+            "alarm(5);",
+            "CHECK(!WINPR_JSON_Parse(deep));",
+            "CHECK(!WINPR_JSON_CreateNumber(NAN));",
+            'CHECK(!WINPR_JSON_Parse("{\\"k\\":1,\\"k\\":2}"));',
+        ):
+            self.assertIn(retained, body)
+
     def test_finite_oracles_refuse_extra_missing_wrongguard_and_boolean_alias(self):
         buffers = oracle_buffers()
         self.assertEqual(set(receive.validate_oracles(buffers)), receive.ORACLES)

@@ -122,10 +122,19 @@ int main(void)
     deep[8193] = 0;
     CHECK(!WINPR_JSON_Parse(deep));
 
-    /* This is real settings serialization, including the early null-pointer path.
-     * No fabricated certificate/key is allocated and no network setup is called. */
+    /* Establish real NULL settings through the ownership-aware API before testing
+     * the serializer's early null-pointer path. Defaults may own an empty certificate;
+     * len=0 frees it without replacement. No test key/certificate or network is created. */
     rdpSettings* settings = freerdp_settings_new(0);
     CHECK(settings);
+    const FreeRDP_Settings_Keys_Pointer keys[] = {
+        FreeRDP_RedirectionTargetCertificate, FreeRDP_RdpServerCertificate, FreeRDP_RdpServerRsaKey
+    };
+    for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++)
+    {
+        CHECK(freerdp_settings_set_pointer_len(settings, keys[i], NULL, 0));
+        CHECK(!freerdp_settings_get_pointer(settings, keys[i]));
+    }
     size_t length = 0;
     encoded = freerdp_settings_serialize(settings, FALSE, &length);
     CHECK(encoded && length > 0 && length < 512 * 1024 && strlen(encoded) == length);
@@ -134,9 +143,6 @@ int main(void)
     WINPR_JSON* pointers = WINPR_JSON_GetObjectItemCaseSensitive(obj,
         freerdp_settings_get_type_name_for_type(RDP_SETTINGS_TYPE_POINTER));
     CHECK(WINPR_JSON_IsObject(pointers));
-    const FreeRDP_Settings_Keys_Pointer keys[] = {
-        FreeRDP_RedirectionTargetCertificate, FreeRDP_RdpServerCertificate, FreeRDP_RdpServerRsaKey
-    };
     for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++)
     {
         CHECK(!freerdp_settings_get_pointer(settings, keys[i]));

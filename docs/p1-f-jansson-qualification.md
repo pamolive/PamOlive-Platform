@@ -9,8 +9,8 @@ modifications préexistantes du checkout Core sont conservées.
 
 ## Vérifications locales
 
-101 tests synthétiques passent : 83 pour inventaire/SBOM ciblé, archives et scan,
-9 pour la réception CI et 9 pour la capture des identités. Zéro échec, erreur ou
+103 tests synthétiques passent : 83 pour inventaire/SBOM ciblé, archives et scan,
+11 pour la réception CI et 9 pour la capture des identités. Zéro échec, erreur ou
 skip ; l'audit d'exécution n'a détecté aucune tentative réseau, sous-processus,
 SQLite, chargement ctypes ou import de parseur XML.
 
@@ -43,3 +43,5 @@ restent ouverts jusqu'à réception des nouvelles preuves. La qualification
 amd64 n'implique aucune compatibilité ARM ou Synology.
 
 Décision : [ADR-030](adr-030-jansson-native-json-backend.md).
+
+La première image produit `7123f3f` se construit réellement. L'oracle C compile puis refuse JANSSON_CASE_142 avant sa capture d'identité : son hypothèse sur les pointeurs initiaux était fausse. FreeRDP initialise un certificat vide. Le banc configure désormais les trois pointeurs NULL avec le setter officiel ownership-aware et une longueur nulle, avant la sérialisation ; toutes les assertions antérieures et limites natives sont conservées. Deux gardes source supplémentaires portent les tests purs à 103. Aucun changement du wrapper ou du produit, et aucune validation native de ce nouveau banc n'est déduite du correctif source.

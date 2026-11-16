@@ -7,7 +7,7 @@
   "deploy/qualify_image_scan.py": "02f787ea1186ac764416420336b7fd80fbdc5d1685eee901bd5e4788d3611522",
   "Dockerfile": "f4b8380563ec90ef0f2df5fbadb0600cdcc6dda2d7f7ff48a435ac83c535e717",
   "tests/fixtures/json_backend_reference.c": "20219f982f64dee9338fc86b141fe77bc19db5692f7abf687963031f9790bb6f",
-  "tests/fixtures/winpr_jansson_regression.c": "1b5a18f13100fb3a66459387c887f5ff5d5851e723a7cbfa17e00d6374a1c264",
+  "tests/fixtures/winpr_jansson_regression.c": "94c6ed39e585ab8014904d0fc297da0873a2823450f82cb0c38e141af96f0482",
   "tests/test_jansson_image_absence.py": "cb0de8537f143d10a0067fce9cf9d6de9e4090f80c9d23a7bc5286361b261738",
   "tests/test_jansson_input_binding.py": "a664cfedb43d7ef4298d3abde8b550114d61aa941fdf19db82940f46085cde4b",
   "tests/test_jansson_sbom.py": "609930d57e570a89a10dd1aa5b92dc096d28f7134e48ddf6803f809dfa44f6bd",
