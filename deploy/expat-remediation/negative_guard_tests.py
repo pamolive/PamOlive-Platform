@@ -9,6 +9,7 @@ from wide_test_port import BUNDLE
 
 HEADER = "test_character_support.h"
 CAP = 16384
+EVIDENCE_FILES = ("intent.json", "pid.json", "result.json", "unknown.json", "stdout", "stderr")
 FACT_KEYS = {
     "spawn_attempted",
     "pid",
@@ -164,7 +165,18 @@ def positive_prerequisite(output):
     )
 
 
-def expected_refusal(args, source, log, case, header):
+def expected_refusal(args, source, log, case, header, *, evidence=None):
+    need(case in GUARDS, "negative_case")
+    if evidence is not None:
+        evidence = Path(evidence)
+        need(
+            evidence.name == case
+            and evidence.parent.name == "negative-guard-evidence"
+            and evidence.parent.is_dir()
+            and not evidence.parent.is_symlink(),
+            "negative_evidence_path",
+        )
+        need(not evidence.exists() and not evidence.is_symlink(), "negative_evidence_exists")
     before = compiler_pin(args[0])
     try:
         command(args, source, log, seconds=20, cap=CAP)
@@ -174,12 +186,15 @@ def expected_refusal(args, source, log, case, header):
         raise ValueError("negative_unexpected_success")
     after = compiler_pin(args[0])
     need(after == before, "negative_compiler_changed")
-    out, err = read(log / "stdout", CAP), read(log / "stderr", CAP)
-    facts = json_value(read(log / "result.json", CAP))
+    # Capture each whitelisted file once. Validation, hashes and exported DATA
+    # all consume these same buffers, never a second pathname read.
+    buffers = {name: read(log / name, CAP) for name in EVIDENCE_FILES}
+    out, err = buffers["stdout"], buffers["stderr"]
+    facts = json_value(buffers["result.json"])
     lifecycle(facts, out, err)
     need(not out, "negative_stdout")
-    need(json_value(read(log / "pid.json", CAP)) == {"pid": facts["pid"]}, "negative_pid")
-    intent = json_value(read(log / "intent.json", CAP))
+    need(json_value(buffers["pid.json"]) == {"pid": facts["pid"]}, "negative_pid")
+    intent = json_value(buffers["intent.json"])
     need(
         intent
         == {
@@ -190,10 +205,10 @@ def expected_refusal(args, source, log, case, header):
         },
         "negative_intent",
     )
-    unknown = read(log / "unknown.json", CAP)
+    unknown = buffers["unknown.json"]
     need(json_value(unknown) == {"state": "UNKNOWN"}, "negative_unknown_journal")
     count = diagnostics(err, case, header)
-    return {
+    result = {
         "case": case,
         "expected_guard": True,
         "diagnostic_count": count,
@@ -204,6 +219,18 @@ def expected_refusal(args, source, log, case, header):
         "common_unknown_retained_sha256": sha(unknown),
         "compiler_command_succeeded": False,
     }
+    if evidence is not None:
+        evidence.mkdir(mode=0o700)
+        for name, body in buffers.items():
+            write_new(evidence / name, body)
+        result["evidence"] = {
+            "schema": "pamolive.expat-negative-evidence/1",
+            "path": "negative-guard-evidence/" + case,
+            "files": {
+                name: {"bytes": len(body), "sha256": sha(body)} for name, body in buffers.items()
+            },
+        }
+    return result
 
 
 def check_negative_guards(source, output):
@@ -215,6 +242,8 @@ def check_negative_guards(source, output):
     positive_prerequisite(output)
     private = output / "work/negative-guards"
     private.mkdir(mode=0o700)
+    evidence = output / "negative-guard-evidence"
+    evidence.mkdir(mode=0o700)
     cases = []
     for case in GUARDS:
         directory = private / case
@@ -244,7 +273,11 @@ def check_negative_guards(source, output):
             "-I" + str(source / "srcw/lib"),
             str(probe),
         ]
-        cases.append(expected_refusal(args, source, directory / "command", case, copy))
+        cases.append(
+            expected_refusal(
+                args, source, directory / "command", case, copy, evidence=evidence / case
+            )
+        )
         need(read(copy, CAP) == header and read(probe, CAP) == PROBE, "negative_probe_changed")
         if case == "xmlchar":
             need(read(directory / "expat.h", CAP) == FAKE, "negative_fake_changed")

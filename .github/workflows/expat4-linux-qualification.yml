@@ -18,7 +18,7 @@ jobs:
         shell: bash
     env:
       DOCKER_BUILDKIT: '1'
-      SOURCE_LIST_SHA256: b494588a4c2497f9b64cb511d0bff4ae66d7a4e54aa1999f3bcdefa50f020ce3
+      SOURCE_LIST_SHA256: 72e17417e298cb3efc762d6706b50f89ee5f516dd051de99ed313e2322a67a6a
       PREPARED_IMAGE: pamolive-expat4-prepared:${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
       LAB_BASE_IMAGE: pamolive-expat4-lab:${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:

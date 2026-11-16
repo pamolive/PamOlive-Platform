@@ -422,3 +422,7 @@ Branche → modifications/tests/revue → commit/push/PR → CI vérifiée → f
 ## Relation avec l’ancien ordre d’implémentation
 
 L’ancien document décrivait contrats → noyau → IAM → gouvernance → PAM. Ce sont des dépendances historiques déjà partiellement ou largement implémentées, pas de nouveaux lots à réécrire. Les ADR encore proposés restent visibles dans leur index ; l’autonomie technique ne les rend pas rétroactivement qualifiés. Le worker/outbox PostgreSQL actuel est réutilisé ; Redis n’est pas ajouté sans besoin démontré et ADR.
+
+## Expat : succès du laboratoire, produit encore en qualification
+
+Le run [43823586567](https://github.com/pamolive/PamOlive-Platform/actions/runs/43823586567) du `549b0cd` réussit : C narrow/wide, UBSan, ABI et extensions Python. La suite stdlib rapporte 490 tests et 12 skips sans leurs raisons exportées. Le candidat de visibilité conserve tous les plafonds et porte les tests purs à 96 ; la preuve native suivante reste attendue. [Détails et limites](../deploy/expat-remediation/README.md). L'image produit reste distincte, sans fermeture des groupes High ni promotion induite.

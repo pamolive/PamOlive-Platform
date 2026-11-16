@@ -1,5 +1,6 @@
 """Fake processes only; exercise the actual refusal consumer and closed argv."""
 
+import ast
 import copy
 import json
 import tempfile
@@ -88,7 +89,7 @@ class NegativeGuards(unittest.TestCase):
             raise self.exception
         return b""
 
-    def run_case(self, pins=None):
+    def run_case(self, pins=None, *, evidence=None):
         with (
             patch.object(guard, "command", self.command),
             patch.object(
@@ -101,6 +102,7 @@ class NegativeGuards(unittest.TestCase):
                 self.root / "command",
                 self.case,
                 self.header,
+                evidence=evidence,
             )
 
     def test_expected_nonzero_preserves_unknown(self):
@@ -251,8 +253,9 @@ class NegativeGuards(unittest.TestCase):
         }
         sequence = []
 
-        def expected(args, cwd, log, case, header):
+        def expected(args, cwd, log, case, header, *, evidence):
             sequence.append(case)
+            self.assertEqual(evidence, output / "negative-guard-evidence" / case)
             self.assertEqual(header.read_bytes(), b"approved header")
             self.assertEqual((header.parent / "probe.c").read_bytes(), guard.PROBE)
             self.assertEqual(args[0], "/usr/bin/g++" if case == "cxx" else "/usr/bin/gcc")
@@ -329,3 +332,164 @@ class NegativeGuards(unittest.TestCase):
         record(output / "helper-run/unknown.json", {"state": "UNKNOWN"})
         with self.assertRaisesRegex(ValueError, "negative_positive_unknown"):
             guard.positive_prerequisite(output)
+
+    def public_case(self, case="c99"):
+        parent = self.root / "negative-guard-evidence"
+        parent.mkdir()
+        return parent / case
+
+    def test_public_evidence_is_exact_six_buffers_and_hashes(self):
+        evidence = self.public_case()
+        original = self.command
+
+        def extra_files(*args, **kwargs):
+            try:
+                return original(*args, **kwargs)
+            finally:
+                log = args[2]
+                write_new(log / "foreign.so", b"synthetic DATA, never execute")
+                (log / "gpg-home").mkdir()
+                write_new(log / "gpg-home/private", b"not exported")
+
+        self.command = extra_files
+        result = self.run_case(evidence=evidence)
+        self.assertEqual(set(result["evidence"]["files"]), set(guard.EVIDENCE_FILES))
+        self.assertEqual({path.name for path in evidence.iterdir()}, set(guard.EVIDENCE_FILES))
+        self.assertEqual(result["evidence"]["path"], "negative-guard-evidence/c99")
+        for name, row in result["evidence"]["files"].items():
+            body = (evidence / name).read_bytes()
+            self.assertEqual(body, (self.root / "command" / name).read_bytes())
+            self.assertEqual(row, {"bytes": len(body), "sha256": sha(body)})
+        self.assertEqual(json.loads((evidence / "unknown.json").read_bytes()), {"state": "UNKNOWN"})
+        self.assertFalse(result["compiler_command_succeeded"])
+
+    def test_single_capture_survives_origin_mutation_without_hash_reread(self):
+        evidence = self.public_case()
+        reads, captured = [], {}
+        original_read, original_diagnostics = guard.read, guard.diagnostics
+
+        def capture(path, cap):
+            reads.append(Path(path).name)
+            body = original_read(path, cap)
+            captured[Path(path).name] = body
+            return body
+
+        def change_origin(body, case, header):
+            for name in guard.EVIDENCE_FILES:
+                (self.root / "command" / name).write_bytes(b"late synthetic mutation")
+            return original_diagnostics(body, case, header)
+
+        with (
+            patch.object(guard, "read", capture),
+            patch.object(guard, "diagnostics", change_origin),
+        ):
+            result = self.run_case(evidence=evidence)
+        self.assertEqual(reads, list(guard.EVIDENCE_FILES))
+        for name, body in captured.items():
+            self.assertEqual((evidence / name).read_bytes(), body)
+            self.assertEqual(result["evidence"]["files"][name]["sha256"], sha(body))
+        self.assertEqual(result["common_unknown_retained_sha256"], sha(captured["unknown.json"]))
+
+    def test_captured_pid_mutation_refuses_without_export(self):
+        evidence = self.public_case()
+        original_read = guard.read
+
+        def altered(path, cap):
+            if Path(path).name == "pid.json":
+                return b'{"pid":999}'
+            return original_read(path, cap)
+
+        with patch.object(guard, "read", altered):
+            with self.assertRaisesRegex(ValueError, "negative_pid"):
+                self.run_case(evidence=evidence)
+        self.assertFalse(evidence.exists())
+
+    def test_preexisting_public_case_refuses_before_command(self):
+        evidence = self.public_case()
+        evidence.mkdir()
+        write_new(evidence / "sentinel", b"keep")
+        with self.assertRaisesRegex(ValueError, "negative_evidence_exists"):
+            self.run_case(evidence=evidence)
+        self.assertEqual(self.calls, [])
+        self.assertEqual((evidence / "sentinel").read_bytes(), b"keep")
+
+    def test_late_export_file_collision_propagates_without_overwrite(self):
+        evidence = self.public_case()
+        original_write = guard.write_new
+
+        def collision(path, body, mode=0o600):
+            if path.parent == evidence and path.name == "result.json":
+                original_write(path, b"concurrent synthetic file")
+            return original_write(path, body, mode)
+
+        with patch.object(guard, "write_new", collision):
+            with self.assertRaises(FileExistsError):
+                self.run_case(evidence=evidence)
+        self.assertEqual((evidence / "result.json").read_bytes(), b"concurrent synthetic file")
+        self.assertEqual(
+            json.loads((self.root / "command/unknown.json").read_bytes()), {"state": "UNKNOWN"}
+        )
+
+    def test_other_two_cases_publish_same_closed_evidence_contract(self):
+        for case in ("cxx", "xmlchar"):
+            fixture = NegativeGuards()
+            fixture.setUp()
+            self.addCleanup(fixture.doCleanups)
+            fixture.case = case
+            fixture.rows = [diagnostic(case, fixture.header)]
+            if case == "xmlchar":
+                fixture.rows.append(diagnostic(case, fixture.header, True))
+            evidence = fixture.public_case(case)
+            with self.subTest(case=case):
+                result = fixture.run_case(evidence=evidence)
+                self.assertEqual(result["case"], case)
+                self.assertEqual(result["evidence"]["path"], "negative-guard-evidence/" + case)
+                self.assertEqual(set(result["evidence"]["files"]), set(guard.EVIDENCE_FILES))
+                self.assertEqual(result["diagnostic_count"], 2 if case == "xmlchar" else 1)
+                self.assertEqual(
+                    json.loads((evidence / "unknown.json").read_bytes()), {"state": "UNKNOWN"}
+                )
+
+    def test_invalid_export_path_or_unknown_case_refuses_before_command(self):
+        evidence = self.public_case("other")
+        with self.assertRaisesRegex(ValueError, "negative_evidence_path"):
+            self.run_case(evidence=evidence)
+        self.case = "other"
+        with self.assertRaisesRegex(ValueError, "negative_case"):
+            self.run_case()
+        self.assertEqual(self.calls, [])
+
+    def test_invalid_unknown_never_exports_a_positive_receipt(self):
+        evidence = self.public_case()
+        self.unknown_change = True
+        with self.assertRaisesRegex(ValueError, "negative_unknown_journal"):
+            self.run_case(evidence=evidence)
+        self.assertFalse(evidence.exists())
+
+    def test_verbose_only_in_same_bounded_stdlib_command(self):
+        tree = ast.parse((Path(__file__).parent / "qualify_linux.py").read_text(encoding="utf-8"))
+        calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "command"
+            and node.args
+            and isinstance(node.args[0], ast.List)
+            and any(
+                isinstance(item, ast.Constant) and item.value == "test_pyexpat"
+                for item in node.args[0].elts
+            )
+        ]
+        self.assertEqual(len(calls), 1)
+        expected = (
+            ast.parse(
+                'command(["/usr/local/bin/python3.12", "-I", "-B", "-S", str(launcher), '
+                '"--timeout", "60", "--verbose", "test_pyexpat", "test_xml_etree", '
+                '"test_xml_etree_c"], output, output / "cpython-tests", '
+                'seconds=240, cap=4 * 1024**2)'
+            )
+            .body[0]
+            .value
+        )
+        self.assertEqual(ast.dump(calls[0]), ast.dump(expected))

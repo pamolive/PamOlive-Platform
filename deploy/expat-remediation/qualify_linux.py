@@ -143,6 +143,7 @@ def main(materials, output):
             str(launcher),
             "--timeout",
             "60",
+            "--verbose",
             "test_pyexpat",
             "test_xml_etree",
             "test_xml_etree_c",

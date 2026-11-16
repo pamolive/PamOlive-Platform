@@ -659,3 +659,7 @@ Les expirations du budget de base du relais sont distinguées des révocations :
 - Reprise après sinistre, charge et actif-actif sur deux VM réelles : la restauration isolée, la qualification HTTP et SSH sur deux conteneurs du même hôte et le contrôle de cohérence de deux VM ne prouvent ni une bascule PostgreSQL ni une reprise métier sûre. Une session SSH/RDP ne migre pas à chaud.
 
 Une révocation interne n’est jamais présentée comme la preuve d’une révocation exécutée sur un système externe. Une confirmation SCIM cite une relecture datée ; elle ne garantit pas l’absence d’une modification ultérieure faite hors plateforme. Une absence d’intention dans les données collectées n’est pas présentée comme la preuve que l’accès est illégitime.
+
+## Expat : succès du laboratoire, produit encore en qualification
+
+Le run [43823586567](https://github.com/pamolive/PamOlive-Platform/actions/runs/43823586567) du `549b0cd` réussit : C narrow/wide, UBSan, ABI et extensions Python. La suite stdlib rapporte 490 tests et 12 skips sans leurs raisons exportées. Le candidat de visibilité conserve tous les plafonds et porte les tests purs à 96 ; la preuve native suivante reste attendue. [Détails et limites](../deploy/expat-remediation/README.md). L'image produit reste distincte, sans fermeture des groupes High ni promotion induite.
