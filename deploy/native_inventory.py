@@ -26,7 +26,11 @@ SIGNER = "7703B333420E0AEF995EB4B3A49454A3FC909FD5"
 PATCH_SHA = "e907f097d83aeefc891b851cd48248e63cde20383922ecf691c4f1341b15fe5c"
 COMPAT_PATCH_SHA = "22abebc3df34da38a96bd476b7387754c97eefc51477112a7ad812dd08a3cb05"
 COMPAT_UPSTREAM_COMMIT = "ab36756b596520ae2a94cd4d25e406e0b5aa820b"
-OPTIONS = {"WITH_OPENSSL": "ON", "WITH_CAIRO": "ON", "WITH_KRB5": "ON", **dict.fromkeys((
+JSON_PATCH_SHA = "7a3694d19f3fda9ea248905e1adf3b2048e911510420240f5c71a6aec2842500"
+JANSSON_VERSION = "2.14-2+b3"
+OPTIONS = {"WITH_JSONC_REQUIRED": "OFF", "WITH_CJSON_REQUIRED": "OFF",
+           "WITH_JANSSON_REQUIRED": "ON", "WITH_JSON_DISABLED": "OFF",
+           "WITH_OPENSSL": "ON", "WITH_CAIRO": "ON", "WITH_KRB5": "ON", **dict.fromkeys((
     "WITH_MBEDTLS", "WITH_FFMPEG", "WITH_SWSCALE", "WITH_OPENH264", "WITH_X11",
     "WITH_WAYLAND", "WITH_SERVER", "WITH_CLIENT_SDL", "WITH_ALSA", "WITH_PULSE",
     "WITH_CUPS", "WITH_PCSC", "WITH_DEBUG_ALL", "WITH_DEBUG_NLA",
@@ -35,7 +39,7 @@ OPTIONS = {"WITH_OPENSSL": "ON", "WITH_CAIRO": "ON", "WITH_KRB5": "ON", **dict.f
 RUNTIME_OPTIONS = {key: value for key, value in OPTIONS.items() if key.startswith("WITH_")}
 # CMakeDependentOption changes this cache entry to INTERNAL when WITH_CLIENT=OFF.
 # It is also checked against the effective variable compiled into the library.
-INTERNAL_OPTIONS = {"WITH_CLIENT_SDL"}
+INTERNAL_OPTIONS = {"WITH_CLIENT_SDL", "WITH_CJSON_REQUIRED", "WITH_JSONC_REQUIRED"}
 CONFIGURATION_PROBES = ["build/CMakeFiles/_CMakeLTOTest-C",
                         "build/CMakeFiles/_CMakeLTOTest-CXX"]
 GUAC_FLAGS = ("--with-rdp", "--with-ssh", *(
@@ -81,6 +85,11 @@ def components(root):
         options = read_small(local(root, folder + "/build-options.txt"))
         item = {"name": name, "prefix": prefix, "version": version, "source_sha256": digest}
         if name == "freerdp":
+            patch = local(root, folder + "/freerdp-jansson-compat.patch")
+            require(patch.stat().st_size <= 65536, "json_patch_budget")
+            require(hashlib.sha256(patch.read_bytes()).hexdigest() == JSON_PATCH_SHA,
+                    "json_patch_identity")
+            item["json_backend_patch_sha256"] = JSON_PATCH_SHA
             fingerprint = read_small(local(root, folder + "/signer-fingerprint.txt"))
             require(fingerprint == SIGNER, "source_signer")
             status = read_small(local(root, folder + "/signature.status"))
@@ -309,15 +318,26 @@ def inventory(*, root=Path("/"), link_probe=probe, version_probe=runtime_version
                     path.startswith(PREFIXES["freerdp"] + "/lib/") for path in aliases),
                 "required_library_missing")
     status = read_small(local(root, "/var/lib/dpkg/status"), 4 * 1024 * 1024)
+    json_package = False
     for paragraph in status.split("\n\n"):
         if "Status: install ok installed" not in paragraph.splitlines():
             continue
         package = next((line[9:] for line in paragraph.splitlines()
                         if line.startswith("Package: ")), "")
         require(not package.startswith(("libfreerdp", "libwinpr", "freerdp3")), "legacy_package")
+        require(not package.startswith(("libcjson", "cjson")), "cjson_package")
+        if package == "libjansson4":
+            require("Version: " + JANSSON_VERSION in paragraph.splitlines(), "jansson_version")
+            json_package = True
+    require(json_package, "jansson_package_missing")
     for path, item in sorted(files.items()):
+        require(not any(name.lower().startswith("libcjson") for name in item["needed"]),
+                "cjson_needed")
+        if Path(path).name.startswith("libwinpr3.so"):
+            require("libjansson.so.4" in item["needed"], "jansson_needed")
         links = link_probe(local(root, path))
         for link in links:
+            require(not link["soname"].lower().startswith("libcjson"), "cjson_resolved")
             canonical = relative(root, local(root, link["path"]))
             native = link["soname"].startswith(("libfreerdp", "libwinpr", "libguac"))
             if native:

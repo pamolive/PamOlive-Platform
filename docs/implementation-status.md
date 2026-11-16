@@ -1,5 +1,20 @@
 # État réel de l’implémentation
 
+## État courant du candidat commun — 16 novembre 2026
+
+Le [candidat assemblé P1-F](p1-f-runtime-composition.md) réunit Expat, Jansson,
+les observateurs ROOT3/PostgreSQL et la fermeture/drainage de restauration.
+Les tests purs de composition passent ; la nouvelle image et ses contrôles
+Linux complets restent à recevoir. Aucun résultat isolé ne vaut validation de
+la combinaison, aucune nouvelle image n'est promue et le NAS reste inchangé.
+
+Les sections d'essais ci-dessous conservent leurs états historiques et leurs
+commits propres. Pour ROOT3, les observations reçues à043d5e6 mesurent bien
+containerd/v2.4.2 et passwd999/999 sans autorité opérationnelle ni propriété de
+PGDATA. Pour Jansson, les oracles reçus à2f772e7 passent mais le scan reste bloqué
+sur31groupesHigh. Ces résultats ne sont pas ceux de la nouvelle composition.
+Le diagnostic Chrome896 refuse avant navigateur ; P1-G demeure ouvert.
+
 Le document de vision décrit la cible complète. Cette branche construit progressivement cette cible ; elle ne constitue pas encore une version de production.
 
 ## Programme autonome : référence et travail courant
@@ -72,6 +87,39 @@ la mesure env_tool_before refuse NOT_REGULAR. Aucun root-read, pull ou PG ne
 suit ce refus. Le target exact du chemin env n'est pas deduit de ce predicat.
 Main dcaa116, image produit et NAS restent inchanges ;35High/provenance
 bloquent toujours la promotion. Aucun systeme ou secret reel utilise.
+
+### Ubuntu public observer: source correction under review
+
+The bounded diagnostic on 5c16 refused `env_tool_before/NOT_REGULAR` before
+any privileged reader, pull or PG action. The independent branch
+`agent/public-env-root-helper` measures the explicit Cargo env executable,
+including its hardlink count. Multiple links are permitted only for that env
+role; root ownership, regular-file type, safe parents, hash/FD/path stability
+and all other tool guards remain required. Current receipts use ROOT/2;
+historical ROOT/1 evidence is preserved without current admission.
+
+Integration passes 54 metadata, 39 PG and 14 short pure tests plus Ruff.
+The two Docker queries, H1 process tracking and PG owner lifecycle remain
+unchanged. The typed version-format diagnostic requires complete inner H1,
+a stable valid CTR tool and no post-version operations or authority flags.
+Package/suffix strings and raw output stay redacted. The exact admission
+grammar and allowlists are unchanged; no unknown version is normalized.
+Independent composed-parent fake-process cases cover the initial ambiguous
+publication path and its corrected refusal. These tests execute no
+Docker, sudo, ctr or SQL. The actual ce29 trial confirms regular root-owned
+env with 116 stable hardlinks, then a normal ctr-version process whose output
+is refused by the reviewed grammar. Its exact CLI version remains unknown;
+no plugin/storage/PG step is admitted.
+
+The PG expected profile now uses core0 then nofile64, matching the explicit
+[Docker CLI name sort](https://raw.githubusercontent.com/docker/cli/v29.4.2/opts/ulimit.go).
+Only those two constant entries change order; values, exact START checks,
+create arguments, ownership and cleanup stay unchanged. 39 PG and 14 short
+pure tests pass; independent adverse cases preserve closed refusals. This
+does not reconstruct the redacted e256 limit names or qualify a real PG identity.
+
+The exact new branch has its own bounded DATA run; no product image or NAS
+change and no A1/W commissioning follows from these source checks.
 
 ### Reception ecfe : refus des observateurs et correction ciblee
 
@@ -669,3 +717,28 @@ Le run [43823586567](https://github.com/pamolive/PamOlive-Platform/actions/runs/
 Un [banc Chromium de CI](../qualification/p1g_headless/README.md) exerce les formulaires de connexion/MFA, WebAuthn, demande Identity360 et deux votes, sans contrôle du navigateur du PC. Les dix contrats purs passent ; le navigateur, PostgreSQL et les sélecteurs restent à qualifier réellement. Le job est limité à sa branche et audite ses outils supplémentaires. Les observations PC-483/PC-991 restent des fixtures historiques distinctes ; le retrait cliqué concerne un nouveau droit local, sans preuve fournisseur. Le [raccord SSH/RDP](../qualification/p1g_headless/NEXT-NATIVE.md) doit encore confirmer transport, expiration, révocation et capture avant de qualifier P1-G complet. Aucun changement des modèles ou contrôles P0.
 
 La garde de délais du témoin PostgreSQL conserve ses maxima stricts. Un contre-exemple flottant reproductible pouvait produire une réserve légèrement supérieure à trente secondes ; le constructeur arrondit maintenant vers le début et reste plafonné par les anciennes échéances. Aucun seuil ni comportement UNKNOWN n'est élargi. La reproduction et les parcours CLI sous horloge contrôlée sont conservés ; ce correctif arithmétique ne prouve pas la valeur d'horloge du run historique en échec.
+
+## Expat — première intégration dans l'image produit
+
+Le laboratoire exact `3d960926` réussit avec les raisons des douze skips stdlib exportées. Le nouveau Dockerfile produit reprend ces mêmes helpers, runtime/SDK et deux extensions ; le snapshot final et ses limites sont décrits dans [ADR-031](adr-031-expat-product-snapshot.md). Les contrôles de l'archive exacte et le SBOM enrichi restent soumis aux scans exhaustifs, sans modification des seuils ni disposition automatique de CVE.
+
+Validation source : 14 tests produit ciblés et 39 tests PostgreSQL purs passent sans skip ni IO externe ; la revue indépendante ajoute six contre-cas. Le test de merge/schema SBOM complet et la suite native-SBOM complète ne sont pas exécutés sous Windows (import ctypes refusé sous audit) : ils restent obligatoires dans la CI Linux. Construction réelle de cette nouvelle image, snapshot, consommateurs, P0, restauration et scans sont encore attendus. Les succès du laboratoire ne les remplacent pas.
+
+## Public Engine : identité CLI ROOT3 en qualification
+
+Les observations réelles du candidat `1e66df2` n'identifient que le format et la version numérique 2.4.2 ; le package masqué reste inconnu. [ADR-029](adr-029-public-containerd-cli-identity.md) retient huit couples package/version exacts documentés, avec un schéma typé ROOT3 ; aucune normalisation de marque ni apprentissage depuis une observation refusée. Les anciens schémas restent historiques.
+
+La revue contradictoire a refusé une première version pour sa projection d'identité diagnostique insuffisamment liée au contexte du processus. R2 exige le même contexte strict avant toute publication de format ou d'identité : processus terminé normalement, flux complets, outil stable et aucune autorité ni requête suivante. Les 65 tests métadonnées, 39 PostgreSQL purs et 14 tests courts passent sans skip ni IO externe. Les 19 fichiers PostgreSQL et les douze lignes de son payload restent inchangés. La nouvelle mesure Linux demeure requise ; ces tests ne constituent ni une mesure UID PostgreSQL ni une autorisation opérationnelle.
+
+La garde de délais du témoin PostgreSQL conserve ses maxima stricts. Un contre-exemple flottant reproductible pouvait produire une réserve légèrement supérieure à trente secondes ; le constructeur arrondit maintenant vers le début et reste plafonné par les anciennes échéances. Aucun seuil ni comportement UNKNOWN n'est élargi. La reproduction et les parcours CLI sous horloge contrôlée sont conservés ; ce correctif arithmétique ne prouve pas la valeur d'horloge du run historique en échec.
+
+La qualification de restauration ferme désormais les connexions Django avant
+succès et attend une fermeture normale, bornée, des seules sessions de la copie
+scellée. Les identités et l'absence de sessions sont revérifiées avant suppression ;
+un zéro tardif conserve la copie. Les 25 tests purs et dix contre-tests indépendants
+passent. La restauration PostgreSQL réelle reste à recevoir ; voir
+[les garanties et limites du drainage](backup-restore.md).
+
+## Qualification Jansson en cours
+
+Le backend natif est en qualification sur une branche indépendante ; les tests purs ne valent pas livraison. Voir [preuves et limites](p1-f-jansson-qualification.md) et [ADR-030](adr-030-jansson-native-json-backend.md). Aucune donnée ni migration métier modifiée.

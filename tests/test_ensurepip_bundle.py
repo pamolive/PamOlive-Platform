@@ -408,7 +408,7 @@ class EnsurepipReviewedPinsTests(unittest.TestCase):
 
     def test_docker_change_is_runtime_only_and_offline_before_pip_install(self):
         docker = (ROOT / "Dockerfile").read_text()
-        before, runtime = docker.split("FROM krb5-runtime AS runtime", 1)
+        before, runtime = docker.split("FROM expat-runtime AS runtime-build", 1)
         self.assertNotIn("ensurepip_bundle", before)
         self.assertIn("FROM " + overlay.BASE_REFERENCE + " AS krb5-builder", before)
         runtime = runtime.split("COPY manage.py", 1)[0]

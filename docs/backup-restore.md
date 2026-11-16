@@ -86,3 +86,31 @@ Pour P0-3, conserver les enveloppes publiques successives du registre et les anc
 Une reprise réelle exige encore un protocole validé : fencing des anciens nœuds et de l'ancienne base, traitement des sessions/tickets et preuves anti-rejeu, revalidation des connecteurs et cibles, réconciliation des effets externes, contrôle des clés, puis remise en service autorisée. Ne pas exposer directement la copie, relancer des workers ou effectuer une rotation destructive des clés pour « faire marcher » la lecture. La qualification de restauration ne remplace pas les tests de charge, de failover PostgreSQL, de deux VM ou de reprise métier.
 
 Pour P0-4, rapprocher aussi les générations de justificatifs de collecteurs, les derniers reçus V8 et les conflits avec un point de contrôle extérieur à la sauvegarde avant de reprendre l'ingestion. Une archive peut restaurer un ancien jeton encore chiffré ou un état de révocation périmé ; la validité cryptographique d'un reçu historique ne réactive pas ce jeton. Les identifiants d'événements source ne doivent pas être rejoués vers un autre collecteur. Le qualificateur local ne remplace pas ce contrôle externe.
+
+## Fermeture des connexions et drainage de la copie synthétique
+
+Le contrôle applicatif ferme explicitement toutes ses connexions Django avant
+de publier un succès. Le protocole de snapshot et les vérifications de données,
+preuves historiques, clés, ACL et protections P0 restent conservés.
+
+La suppression reste limitée à la base et au rôle temporaires créés par le
+contrôle. Le rôle est scellé NOLOGIN/PASSWORD NULL ; les OID, le propriétaire et
+l'état scellé sont revérifiés pendant le drainage. Vingt observations au maximum
+et un budget de trois secondes permettent une fermeture normale des sessions.
+Deux observations nulles séparées par une vérification d'identité sont requises.
+Une observation, même nulle, reçue après l'échéance refuse la suppression et
+conserve la copie. Il n'y a ni terminaison forcée, ni élargissement du périmètre.
+Un appel SQL déjà engagé n'est pas interrompu par ce budget : le refus est
+appliqué à son retour. Ce contrôle n'est pas un superviseur absolu du transport.
+
+Le résultat positif CI n'est écrit qu'après nettoyage réussi de la copie et
+de la source synthétique. Un échec de nettoyage reste fatal sans masquer
+l'échec principal. Une copie conservée est un résultat refusé, jamais un succès.
+
+La revue indépendante de la révision R2 a passé 25 tests auteur et dix cas
+adverses sur doublures, sans IO externe ni skip. Elle a reproduit puis fermé
+le défaut R1 qui acceptait un zéro tardif. Les tests PostgreSQL complets restent
+obligatoires dans la CI ; les tests purs ne prouvent pas la fermeture réelle.
+Le run historique 43823595128 a retenu une copie pour session encore active,
+sans exposer l'identité ni la cause de cette session. Cette correction ne
+prétend pas avoir établi cette cause et attend une nouvelle restauration réelle.

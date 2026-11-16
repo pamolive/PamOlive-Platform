@@ -19,10 +19,14 @@ gpg --homedir "$work/gnupg" --batch --import signer.asc
 gpg --homedir "$work/gnupg" --batch --status-fd 1 --verify source.asc source.tar.gz > signature.status
 awk -v signer="$signer" '$1 == "[GNUPG:]" && $2 == "VALIDSIG" && ($3 == signer || $NF == signer) { valid=1 } END { exit !valid }' signature.status
 tar --no-same-owner --no-same-permissions -xzf source.tar.gz
+printf '%s  %s\n' '7a3694d19f3fda9ea248905e1adf3b2048e911510420240f5c71a6aec2842500' /freerdp-jansson-compat.patch | sha256sum -c -
+printf '%s  %s\n' '7405d890c6a108bca379021f7f81672a122f33ed4e754bbebc39652c050aacbb' "freerdp-$version/winpr/libwinpr/utils/json/jansson.c" | sha256sum -c -
+patch --batch --forward --fuzz=0 -d "freerdp-$version" -p1 < /freerdp-jansson-compat.patch
 cmake -S "freerdp-$version" -B build \
   -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_INSTALL_PREFIX="$prefix" -DCMAKE_INSTALL_LIBDIR=lib \
   -DCMAKE_INSTALL_RPATH="$prefix/lib" -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_INTERPROCEDURAL_OPTIMIZATION:BOOL=OFF \
   -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF -DWITH_MANPAGES=OFF -DWITH_SAMPLE=OFF \
+  -DWITH_JSONC_REQUIRED=OFF -DWITH_CJSON_REQUIRED=OFF -DWITH_JANSSON_REQUIRED=ON -DWITH_JSON_DISABLED=OFF \
   -DWITH_CLIENT=OFF -DWITH_CLIENT_COMMON=ON -DWITH_SERVER=OFF -DWITH_SERVER_INTERFACE=OFF \
   -DWITH_CHANNELS=ON -DWITH_CLIENT_CHANNELS=ON -DWITH_SERVER_CHANNELS=OFF -DCHANNEL_URBDRC=OFF \
   -DWITH_X11=OFF -DWITH_WAYLAND=OFF -DWITH_CLIENT_SDL=OFF -DWITH_SIMD=OFF \
@@ -43,6 +47,12 @@ commands = json.loads(raw)
 if not commands:
     raise SystemExit("Missing generated compilation commands")
 lines = [(entry.get("arguments") or shlex.split(entry["command"]), entry["file"]) for entry in commands]
+# Refuse a successful CMake invocation which selected a different JSON backend.
+json_sources = [Path(entry['file']).as_posix() for entry in commands
+                if '/utils/json/' in Path(entry['file']).as_posix()]
+if not any(path.endswith('/jansson.c') for path in json_sources) or any(
+        path.endswith(('/c-json.c', '/json-c.c', '/json-stub.c')) for path in json_sources):
+    raise SystemExit('Unexpected JSON backend compilation')
 # CheckIPOSupported builds throwaway capability probes even when IPO is OFF.
 # They are never installed or linked into a PamOlive target.
 probe_roots = (Path("build/CMakeFiles/_CMakeLTOTest-C"),
@@ -88,3 +98,4 @@ cp "freerdp-$version/LICENSE" "$prefix/share/pamolive-freerdp/LICENSE"
 if test -f "freerdp-$version/NOTICE"; then
   cp "freerdp-$version/NOTICE" "$prefix/share/pamolive-freerdp/NOTICE"
 fi
+cp /freerdp-jansson-compat.patch "$prefix/share/pamolive-freerdp/"

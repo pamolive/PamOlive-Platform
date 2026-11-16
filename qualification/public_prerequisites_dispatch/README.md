@@ -1,6 +1,6 @@
 # Qualification publique des prérequis Docker
 
-Ce workflow de développement s’exécute sur une VM GitHub-hosted jetable Ubuntu 26.04. Il ne construit ni ne publie PamOlive. Le push et le lancement manuel sont limités à `agent/ci-public-observer-diagnostics-ecfe`, dans le dépôt canonique. Il ne s’exécute pas sur une PR, un fork ou `main`. Les contrôles complets Platform restent obligatoires et inchangés.
+Ce workflow de développement s’exécute sur une VM GitHub-hosted jetable Ubuntu 26.04. Il ne construit ni ne publie PamOlive. Le push et le lancement manuel sont limités à `agent/public-env-root-helper`, dans le dépôt canonique. Il ne s’exécute pas sur une PR, un fork ou `main`. Les contrôles complets Platform restent obligatoires et inchangés.
 
 Les trois étapes sont séquentielles :
 
@@ -16,10 +16,32 @@ L’horizon est de 235 secondes, préparation comprise ; il faut conserver 190 s
 
 Les observations restent des données de qualification : `operational_GO` et `profile_accepted` restent faux. Elles ne donnent aucune autorité de service, ne commissionnent aucun profil A1/W et ne qualifient pas une image de production. Les 35 groupes High et la provenance de build restent des portes indépendantes.
 
-Les treize tests purs du dossier utilisent des doubles de processus et n’exécutent ni Docker, sudo, ctr, pull, SQL ou getent :
+Les quatorze tests purs du dossier utilisent des doubles de processus et n’exécutent ni Docker, sudo, ctr, pull, SQL ou getent :
 
 ```sh
 python -I -S -B qualification/public_prerequisites_dispatch/run_pure.py /chemin/vers/un/nouveau-dossier
 ```
 
 Le test du workflow lit le fichier réellement déployé dans `.github/workflows/public-prerequisites.yml`. Son absence fait échouer le test, même si une copie préparatoire existe. Les tests purs réussis ne remplacent pas la réception des artifacts du run exact.
+
+## ENV V2 source increment
+
+The new exact bootstrap branch is `agent/public-env-root-helper`, based on
+5c16fa8973b56a188a039f71d8fc797a622a1935. Push and manual dispatch remain closed
+to that branch, repository and job; full Platform gates remain required.
+The derived collector uses the same new helper bytes as the standalone
+collector, accepts only `public-containerd-roots/3`, and measures
+`/usr/lib/cargo/bin/coreutils/env`. Only env permits multiple stable hardlinks.
+All eight tool fields, including `nlink`, are compared across the process.
+The earlier V1 source is historical evidence, not current admission.
+
+The two metadata queries, ctr queries, H1/permissions/time budgets, one fixed
+PG pull, PG owner and 12 PG payload buffers remain unchanged. The new branch
+does not commission a profile or authorize application/P0 operations. No real
+root read or VM file attributes are inferred from source or pure test success.
+
+ROOT3 now carries the exact package/version cli_identity from ADR029, with no
+cli_version alias or historical ROOT1/ROOT2 fallback. Only the two engine rows
+of payload.json change; all twelve PG rows, sorted Ulimits and START/cleanup
+controls remain exact. Actual1e66 package is still redacted/unknown. No profile
+or operational authority follows from this source/pure integration.

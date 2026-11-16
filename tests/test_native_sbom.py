@@ -34,6 +34,7 @@ class NativeSbomTests(TestCase):
                                     for item in self.manifest["files"]}
         self.manifest["aliases"]["/opt/pamolive-freerdp/lib/library.so"] = (
             "/opt/pamolive-freerdp/lib/library.so.3.0")
+        self.manifest["components"][0]["json_backend_patch_sha256"] = sbom.JSON_PATCH_SHA
         guacd = self.manifest["components"][1]
         guacd["compat_patch_sha256"] = sbom.COMPAT_PATCH_SHA
         guacd["compat_upstream_commit"] = sbom.COMPAT_UPSTREAM_COMMIT

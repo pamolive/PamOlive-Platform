@@ -13,7 +13,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 CLI = Path("/usr/bin/docker")
 BOUNDED_SHA = "98233b610f2d53dfd698d0d91f61f3d3ebcb1693a847983f0472f89a885f414f"
-PUBLIC_SHA = "556c24b9265b291a155ea15212f74853727f768795b6ffffc99f5a07e23e1e21"
+PUBLIC_SHA = "fb6b6723a073443ea6465800452cad906d5f064cce676029ffc5417670c30247"
 PG = (
     "docker.io/library/postgres@sha256:"
     "6f7593c161689b6b02c78668b314af7da8811b592c5519108c57a49d0b6ad788"
@@ -576,7 +576,7 @@ def _collect_prerequisites(work, report, runner, bounded_raw, *, ready, measure=
         row["tools"] = tools
         for name, path in (
             ("sudo", "/usr/lib/cargo/bin/sudo"),
-            ("env", "/usr/bin/env"),
+            ("env", "/usr/lib/cargo/bin/coreutils/env"),
             ("python", python),
         ):
             stage = name + "_tool_before"
@@ -588,7 +588,7 @@ def _collect_prerequisites(work, report, runner, bounded_raw, *, ready, measure=
             "/usr/lib/cargo/bin/sudo",
             "-n",
             "--",
-            "/usr/bin/env",
+            "/usr/lib/cargo/bin/coreutils/env",
             "-i",
             "PATH=/usr/bin:/bin",
             "HOME=/nonexistent",
@@ -638,7 +638,7 @@ def _collect_prerequisites(work, report, runner, bounded_raw, *, ready, measure=
         after = {}
         for name, path in (
             ("sudo", "/usr/lib/cargo/bin/sudo"),
-            ("env", "/usr/bin/env"),
+            ("env", "/usr/lib/cargo/bin/coreutils/env"),
             ("python", python),
         ):
             stage = name + "_tool_after"

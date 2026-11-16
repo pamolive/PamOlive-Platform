@@ -22,7 +22,7 @@ jobs:
           python -m pip install -r requirements-security.lock
           python -m pip check
       - name: Verify native inventory and SBOM qualification tools
-        run: python -m unittest tests.test_native_inventory tests.test_native_sbom tests.test_native_dns tests.test_image_scan_policy tests.test_database_driver tests.test_ldap_fixture_permissions tests.test_krb5_inventory tests.test_krb5_acquisition tests.test_krb5_sbom tests.test_scan_scratch tests.test_build_recipe tests.test_build_context tests.test_runtime_environment tests.test_secret_baseline_metadata tests.test_python_materials tests.test_python_materials_resilience tests.test_ensurepip_bundle
+        run: python -m unittest tests.test_native_inventory tests.test_native_sbom tests.test_native_dns tests.test_image_scan_policy tests.test_database_driver tests.test_ldap_fixture_permissions tests.test_krb5_inventory tests.test_krb5_acquisition tests.test_krb5_sbom tests.test_scan_scratch tests.test_build_recipe tests.test_build_context tests.test_runtime_environment tests.test_secret_baseline_metadata tests.test_python_materials tests.test_python_materials_resilience tests.test_ensurepip_bundle tests.test_expat_product tests.test_jansson_image_absence tests.test_jansson_input_binding tests.test_jansson_sbom tests.test_jansson_ci_evidence tests.test_jansson_oracle_identity tests.test_native_migration_composition
       - name: Verify public metadata projections without Engine or network
         run: python -I -S -B qualification/public_engine_measurement/run_pure.py
       - name: Verify the confined public PostgreSQL identity owner without Docker
@@ -210,7 +210,7 @@ jobs:
           tests.test_governance_exception_restore tests.test_module_activation_authority
           tests.test_observe_story tests.test_observe_concurrency tests.test_synology_preparation
           tests.test_jobs_database_recovery tests.test_jobs_security_recovery
-          tests.test_restore_diagnostics
+          tests.test_restore_diagnostics tests.test_restore tests.test_restore_session_drain
           --noinput
       - name: Verify real P0 trust ceremonies in the synthetic HA fixture
         env:
@@ -370,7 +370,26 @@ jobs:
           PY
           python -m deploy.krb5_sbom --manifest "$proof/krb5-manifest.json" --report "$proof/krb5-report.json" --image-digest-kind image_config --image-digest "$config_id" --output "$proof/krb5-backport.cdx.json"
           python -m pip_audit --strict --no-deps --disable-pip -r requirements.lock -f cyclonedx-json -o "$proof/application.cdx.json"
-          python -m deploy.native_sbom --app-sbom "$proof/application.cdx.json" --native-manifest "$proof/native-manifest.json" --native-report "$proof/native-report.json" --image-digest-kind image_config --image-digest "$config_id" --output "$proof/combined.cdx.json"
+          # Same qualified archive/image; Expat evidence never suppresses the existing scans.
+          python -m deploy.expat_image --archive "$RUNNER_TEMP/pamolive-qualified-image/pamolive-linux-amd64.tar" --image-id "$config_id" --output "$proof/expat-image.json"
+          timeout --signal=TERM --kill-after=15s 120s docker run --rm --pull never --no-healthcheck --user "$(id -u):$(id -g)" --network none --cpus 1 --memory 512m --memory-swap 512m --pids-limit 64 --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -I -B -S /usr/local/libexec/pamolive-expat4/verify_runtime.py /proof/expat-runtime
+          python -m deploy.native_sbom --app-sbom "$proof/application.cdx.json" --native-manifest "$proof/native-manifest.json" --native-report "$proof/native-report.json" --expat-report "$proof/expat-image.json" --image-digest-kind image_config --image-digest "$config_id" --output "$proof/combined.cdx.json"
+      - name: Exercise Jansson differential and receive exact-image absence DATA
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          set -euo pipefail
+          context="$RUNNER_TEMP/pamolive-committed-context"
+          oracles="$RUNNER_TEMP/pamolive-jansson-reference-data"
+          proof="$RUNNER_TEMP/pamolive-image-security"
+          test ! -e "$oracles"
+          timeout --signal=TERM --kill-after=15s 540s docker build \
+            --target json-reference-data --provenance=false --sbom=false \
+            --output "type=local,dest=$oracles" "$context"
+          timeout --signal=TERM --kill-after=15s 240s python -m deploy.jansson_ci_evidence \
+            --context "$context" --context-receipt "$RUNNER_TEMP/pamolive-committed-context.json" \
+            --bundle "$RUNNER_TEMP/pamolive-qualified-image" --oracles "$oracles" \
+            --output "$proof/jansson" --revision "$GITHUB_SHA"
       - name: Verify a fresh Compose installation of the loaded image without building
         run: |
           export PAMOLIVE_TEST_DATABASE_NETWORK
@@ -395,7 +414,7 @@ jobs:
             RUNNER_TEMP="$RUNNER_TEMP" GITHUB_RUN_ID='${{ github.run_id }}' \
             GITHUB_RUN_ATTEMPT='${{ github.run_attempt }}' \
             /usr/bin/python3 -I -S -B "$source/owner.py" run \
-            --assets-sha 44f70509317652dd1d042aedab0f4281cbd15037a707691e84de64f027f9a81f --work "$work"
+            --assets-sha faaed14a1015f2cf3fba7959ffcf48f50d4a29d4f1089236d73fb5719e63eb9d --work "$work"
       - name: Retain only the closed public PG identity DATA report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -412,7 +431,7 @@ jobs:
           set -euo pipefail
           umask 077
           source="$GITHUB_WORKSPACE/qualification/public_engine_measurement"
-          printf '%s  %s\n' b07d0bc3b2f110f5ef0ba584fa5589cf2ae970dce918dcd97420f050fa2a3e90 "$source/collector.py" | sha256sum --check --status
+          printf '%s  %s\n' 98a8c2438f969468b949a6529a8ff526dc377f853b1cbd41c53692ab746533d8 "$source/collector.py" | sha256sum --check --status
           work="$RUNNER_TEMP/public-engine-${{ github.run_id }}-${{ github.run_attempt }}"
           test ! -e "$work"
           env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C \
@@ -438,6 +457,12 @@ jobs:
             ${{ runner.temp }}/pamolive-image-security/
             ${{ runner.temp }}/pamolive-qualified-image/qualified-image.json
             ${{ runner.temp }}/pamolive-committed-context.json
+            ${{ runner.temp }}/pamolive-jansson-reference-data/json-reference.jsonl
+            ${{ runner.temp }}/pamolive-jansson-reference-data/winpr-jansson-build.json
+            ${{ runner.temp }}/pamolive-jansson-reference-data/winpr-jansson-runtime.json
+            ${{ runner.temp }}/pamolive-jansson-reference-data/build-identity.json
+            ${{ runner.temp }}/pamolive-jansson-reference-data/runtime-identity.json
+            ${{ runner.temp }}/pamolive-jansson-reference-data/reference-identity.json
           if-no-files-found: warn
           retention-days: 7
       - name: Retain the qualified image for main publication

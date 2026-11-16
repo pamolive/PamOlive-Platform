@@ -340,16 +340,68 @@ class RestoreQualification:
                 raise RuntimeError(
                     "Restore database identity or owner changed; no deletion attempted."
                 )
-            sessions = int(
-                self.sql(f"SELECT count(*) FROM pg_stat_activity WHERE datname='{self.database}';")
-            )
-            if sessions:
+            def sealed_identity():
+                value = self.sql(
+                    "SELECT r.oid || ':' || d.oid || ':' || d.datdba || ':' || "
+                    "r.rolcanlogin::int FROM pg_roles r, pg_database d "
+                    f"WHERE r.rolname='{self.role}' AND d.datname='{self.database}';"
+                )
+                if value != f"{self.role_oid}:{self.database_oid}:{self.role_oid}:0":
+                    raise RuntimeError(
+                        "Restore database identity, owner or sealed role changed; "
+                        "no deletion attempted."
+                    )
+
+            def sessions():
+                value = int(self.sql(
+                    f"SELECT count(*) FROM pg_stat_activity WHERE datname='{self.database}';"
+                ))
+                if value < 0:
+                    raise RuntimeError(
+                        "Restore session observation is unknown; sealed copy retained."
+                    )
+                return value
+
+            deadline = time.monotonic() + 3.0
+
+            def drain_budget():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise RuntimeError(
+                        "Restore session drain budget exceeded; sealed copy retained."
+                    )
+                return remaining
+
+            for attempt in range(20):
+                drain_budget()
+                sealed_identity()
+                drain_budget()
+                current_sessions = sessions()
+                remaining = drain_budget()
+                if current_sessions == 0:
+                    break
+                if attempt == 19:
+                    raise RuntimeError(
+                        "A restore session is still active; sealed copy retained for inspection."
+                    )
+                time.sleep(min(0.1, remaining))
+            # A zero observation does not authorize a later changed object or
+            # reopened role. Recheck the exact sealed scope immediately before DROP.
+            drain_budget()
+            sealed_identity()
+            drain_budget()
+            if sessions() != 0:
                 raise RuntimeError(
                     "A restore session is still active; sealed copy retained for inspection."
                 )
+            drain_budget()
             self.sql(f"DROP DATABASE {database};")
             self.database_oid = None
             self.database_created = False
+        if self.sql(
+            f"SELECT oid || ':' || rolcanlogin::int FROM pg_roles WHERE rolname='{self.role}';"
+        ) != f"{self.role_oid}:0":
+            raise RuntimeError("Restore role identity or sealed state changed; role retained.")
         self.sql(f"DROP ROLE {role};")
         self.role_oid = None
         self.role_created = False
@@ -433,23 +485,8 @@ class RestoreQualification:
         return result
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--docker", default="docker")
-    parser.add_argument("--postgres-container", required=True)
-    parser.add_argument("--database-network", required=True)
-    parser.add_argument("--application-image", required=True)
-    parser.add_argument("--application-env", type=Path, required=True)
-    parser.add_argument("--archive", type=Path, required=True)
-    source = parser.add_mutually_exclusive_group()
-    source.add_argument("--expected-manifest", type=Path)
-    source.add_argument(
-        "--source-database", help="Create a NEW archive and manifest from one exported snapshot"
-    )
-    parser.add_argument("--report-directory", type=Path, required=True)
-    parser.add_argument("--require-populated", action="store_true")
-    args = parser.parse_args()
-    check = RestoreQualification(args)
+def qualify_and_cleanup(check, *, record_report=True):
+    """Keep the existing safe primary failure and never promote failed cleanup."""
     result, failure = None, None
     started = time.monotonic()
     try:
@@ -470,8 +507,6 @@ def main():
         try:
             check.cleanup()
         except Exception:
-            # Cleanup must remain fatal without replacing the primary failure
-            # or exposing subprocess output and exception messages.
             if failure is None:
                 failure = {
                     "result": "failed",
@@ -485,10 +520,31 @@ def main():
         isolated_copy_removed=not check.database_created,
         temporary_role_removed=not check.role_created,
     )
-    if check.directory_created:
+    if check.directory_created and (record_report or failure is not None):
         check.json_file("report.json", report)
+    return report, failure is not None
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--docker", default="docker")
+    parser.add_argument("--postgres-container", required=True)
+    parser.add_argument("--database-network", required=True)
+    parser.add_argument("--application-image", required=True)
+    parser.add_argument("--application-env", type=Path, required=True)
+    parser.add_argument("--archive", type=Path, required=True)
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--expected-manifest", type=Path)
+    source.add_argument(
+        "--source-database", help="Create a NEW archive and manifest from one exported snapshot"
+    )
+    parser.add_argument("--report-directory", type=Path, required=True)
+    parser.add_argument("--require-populated", action="store_true")
+    args = parser.parse_args()
+    check = RestoreQualification(args)
+    report, failed = qualify_and_cleanup(check)
     print(json.dumps(report, sort_keys=True))
-    if failure:
+    if failed:
         raise SystemExit(1)
 
 
