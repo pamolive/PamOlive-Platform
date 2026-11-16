@@ -53,6 +53,7 @@ RUN --network=none python -I -B -S /usr/local/libexec/pamolive-expat4/verify_run
 RUN --network=none find /usr/share/pamolive/expat4 -type d -exec chmod 0755 {} + && find /usr/share/pamolive/expat4 -type f -exec chmod 0444 {} +
 
 FROM expat-runtime AS expat-sdk
+RUN apt-get update && apt-get install -y --no-install-recommends libc6-dev && rm -rf /var/lib/apt/lists/*
 COPY --from=expat-source-builder /expat-packages/sdk/ /tmp/expat-sdk/
 RUN --network=none dpkg --install /tmp/expat-sdk/*.deb && rm -r /tmp/expat-sdk
 
