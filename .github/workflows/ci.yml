@@ -40,6 +40,11 @@ jobs:
           -r qualification/pam_trust_verifier/requirements-build.lock
           -r qualification/pam_trust_verifier/requirements-runtime.lock
           -f json -o "$RUNNER_TEMP/pamolive-public-verifier-materials-audit.json"
+      - name: Reject known vulnerabilities in the isolated browser test tools
+        run: >-
+          python -m pip_audit --strict --no-deps --disable-pip
+          -r qualification/p1g_headless/requirements-headless-linux-cp312.lock
+          -f json -o "$RUNNER_TEMP/pamolive-headless-tools-audit.json"
       - name: Produce the application CycloneDX SBOM
         if: always()
         run: python -m pip_audit --strict --no-deps --disable-pip -r requirements.lock -f cyclonedx-json -o "$RUNNER_TEMP/pamolive-sbom.cdx.json"
@@ -78,6 +83,7 @@ jobs:
             ${{ runner.temp }}/pamolive-dependency-audit.json
             ${{ runner.temp }}/pamolive-p2-materials-audit.json
             ${{ runner.temp }}/pamolive-public-verifier-materials-audit.json
+            ${{ runner.temp }}/pamolive-headless-tools-audit.json
             ${{ runner.temp }}/pamolive-sbom.cdx.json
             ${{ runner.temp }}/pamolive-bandit-application.json
             ${{ runner.temp }}/pamolive-bandit-deploy-all.json
@@ -704,5 +710,72 @@ jobs:
         with:
           name: pamolive-p2-installed-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pamolive-p2-work/report.json
+          if-no-files-found: warn
+          retention-days: 7
+# Insert this job under jobs: in existing ci.yml. No separate/unregistered workflow.
+  p1g-headless:
+    if: >-
+      github.repository == 'pamolive/PamOlive-Platform' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/agent/p1-g-headless') ||
+       (github.event_name == 'pull_request' && github.head_ref == 'agent/p1-g-headless' &&
+        github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: docker.io/library/postgres@sha256:6f7593c161689b6b02c78668b314af7da8811b592c5519108c57a49d0b6ad788
+        env:
+          POSTGRES_USER: p1g
+          POSTGRES_PASSWORD: p1g-synthetic-disposable-only
+          POSTGRES_DB: pamolive_p1g
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U p1g -d pamolive_p1g"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12.16'
+      - name: Capture only the committed public source used by this lab
+        run: >-
+          python -I -B deploy/build_context.py --revision "$GITHUB_SHA"
+          --destination "$RUNNER_TEMP/p1g-source" --output "$RUNNER_TEMP/p1g-source.json"
+      - name: Install only public disposable Linux test prerequisites
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -x /opt/google/chrome/chrome
+          timeout --kill-after=15s 120s sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin DEBIAN_FRONTEND=noninteractive /usr/bin/apt-get update
+          timeout --kill-after=15s 240s sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin DEBIAN_FRONTEND=noninteractive /usr/bin/apt-get install -y --no-install-recommends libnss3-tools build-essential libldap2-dev libsasl2-dev libssl-dev libpq-dev
+          python -m venv "$RUNNER_TEMP/p1g-venv"
+          "$RUNNER_TEMP/p1g-venv/bin/python" -m pip --disable-pip-version-check install -r "$RUNNER_TEMP/p1g-source/requirements-dev.lock"
+          "$RUNNER_TEMP/p1g-venv/bin/python" -m pip --disable-pip-version-check install --only-binary=:all: --no-deps --require-hashes -r "$RUNNER_TEMP/p1g-source/qualification/p1g_headless/requirements-headless-linux-cp312.lock"
+          "$RUNNER_TEMP/p1g-venv/bin/python" -m pip check
+      - name: Check only source contracts without opening a browser or database
+        run: 'python -I -B -S "$RUNNER_TEMP/p1g-source/qualification/p1g_headless/run_pure.py"'
+      - name: Exercise the synthetic P1-G JavaScript increment
+        timeout-minutes: 12
+        env:
+          DATABASE_URL: postgresql://p1g:p1g-synthetic-disposable-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/pamolive_p1g
+          PAMOLIVE_TEST_DATABASE_NAME: test_pamolive_p1g_browser
+          PAMOLIVE_P1G_DISPOSABLE: '1'
+          P1G_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+        run: '"$RUNNER_TEMP/p1g-venv/bin/python" -I -B "$RUNNER_TEMP/p1g-source/qualification/p1g_headless/run_lab.py"'
+      - name: Retain only typed synthetic public evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: p1g-headless-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/p1g-headless-${{ github.run_id }}-${{ github.run_attempt }}/*.json
+            ${{ runner.temp }}/p1g-source.json
           if-no-files-found: warn
           retention-days: 7

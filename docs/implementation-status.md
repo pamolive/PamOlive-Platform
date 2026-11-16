@@ -663,3 +663,7 @@ Une révocation interne n’est jamais présentée comme la preuve d’une révo
 ## Expat : succès du laboratoire, produit encore en qualification
 
 Le run [43823586567](https://github.com/pamolive/PamOlive-Platform/actions/runs/43823586567) du `549b0cd` réussit : C narrow/wide, UBSan, ABI et extensions Python. La suite stdlib rapporte 490 tests et 12 skips sans leurs raisons exportées. Le candidat de visibilité conserve tous les plafonds et porte les tests purs à 96 ; la preuve native suivante reste attendue. [Détails et limites](../deploy/expat-remediation/README.md). L'image produit reste distincte, sans fermeture des groupes High ni promotion induite.
+
+## P1-G — premier parcours JavaScript préparé
+
+Un [banc Chromium de CI](../qualification/p1g_headless/README.md) exerce les formulaires de connexion/MFA, WebAuthn, demande Identity360 et deux votes, sans contrôle du navigateur du PC. Les huit contrats purs passent ; le navigateur, PostgreSQL et les sélecteurs restent à qualifier réellement. Le job est limité à sa branche et audite ses outils supplémentaires. Les observations PC-483/PC-991 restent des fixtures historiques distinctes ; le retrait cliqué concerne un nouveau droit local, sans preuve fournisseur. Le [raccord SSH/RDP](../qualification/p1g_headless/NEXT-NATIVE.md) doit encore confirmer transport, expiration, révocation et capture avant de qualifier P1-G complet. Aucun changement des modèles ou contrôles P0.
