@@ -102,3 +102,21 @@ Pure contracts cover context refusal, closed origins, atime-safe tool identity,
 actual command supervision under doubles, WebAuthn/TLS source guards, diagnostic
 capture before refusal and fresh database requirements. They do not prove that
 any UI selector, browser, TLS chain, database or native session has run.
+
+## First execution and bounded diagnostic
+
+The first actual PR run at a4e47f1 (43841987751, job 133212654142) refused
+before TLS, database setup or Chrome launch. The ten source contracts passed;
+the worker returned 42 with a normal reaped/drained receipt and zero UI tests.
+Its original report identified a ValueError at the Chrome tool preflight but
+did not export the precise predicate. No cause or browser success is inferred.
+
+This follow-up retains the exact Chrome admission and source-manifest checks.
+It records a separate chrome_tool_preflight phase and only six closed error
+codes, plus bounded numeric/type metadata for the fixed Chrome leaf. It never
+publishes exception text, resolved targets, file content, environment or keys.
+The metadata is observed after refusal and cannot attest the original failed
+stat or admit a tool. Four new pure tests bring the suite to 14, all passing
+with no external attempts. Independent review passed those 14 and three
+additional adversarial tests. Actual Chrome metadata and all UI assertions
+remain pending a new Linux run; this diagnostic grants no qualification.

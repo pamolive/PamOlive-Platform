@@ -205,6 +205,76 @@ def tool_pin(path, *, root_owner=True, cap=512 * 1024**2):
     }
 
 
+def chrome_tool_diagnostic(error, *, phase):
+    """Last fixed-path metadata only; neither admission nor the failed stat itself."""
+    if phase != "chrome_tool_preflight":
+        return None
+    codes = {
+        "tool_alias_refused",
+        "tool_type_owner_mode",
+        "tool_parent_writable_or_alias",
+        "tool_fd_identity",
+        "tool_byte_budget",
+        "tool_changed_or_not_ELF",
+    }
+    code = "unknown"
+    if (
+        type(error) is ValueError
+        and len(error.args) == 1
+        and type(error.args[0]) is str
+        and error.args[0] in codes
+    ):
+        code = error.args[0]
+    leaf = {
+        "state": "unknown",
+        "type": "unknown",
+        "uid": None,
+        "gid": None,
+        "mode": None,
+        "nlink": None,
+        "size_bytes": None,
+        "alias": None,
+    }
+    path = Path("/opt/google/chrome/chrome")
+    try:
+        info = path.lstat()
+        fields = (
+            (info.st_mode, 0o177777),
+            (info.st_uid, 2**32 - 1),
+            (info.st_gid, 2**32 - 1),
+            (info.st_nlink, 2**32 - 1),
+            (info.st_size, 2**63 - 1),
+        )
+        if all(type(value) is int and 0 <= value <= bound for value, bound in fields):
+            kind = (
+                "regular"
+                if stat.S_ISREG(info.st_mode)
+                else "directory"
+                if stat.S_ISDIR(info.st_mode)
+                else "symlink"
+                if stat.S_ISLNK(info.st_mode)
+                else "other"
+            )
+            leaf.update(
+                state="observed",
+                type=kind,
+                uid=info.st_uid,
+                gid=info.st_gid,
+                mode=stat.S_IMODE(info.st_mode),
+                nlink=info.st_nlink,
+                size_bytes=info.st_size,
+            )
+            try:
+                leaf["alias"] = path.resolve(strict=True) != path
+            except (OSError, RuntimeError, ValueError):
+                pass
+    except FileNotFoundError:
+        leaf.update(state="absent", type="absent")
+    except (OSError, RuntimeError, ValueError, AttributeError):
+        pass
+    return {"schema": "pamolive.p1g-chrome-tool-diagnostic/1", "code": code, "leaf": leaf}
+
+
 def bounded(repo):
     path = repo / "deploy/expat-remediation/bounded_io.py"
     raw = path.read_bytes()

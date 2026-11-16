@@ -51,6 +51,7 @@ def worker(private):
         )
         value["phase"] = "resource_preflight"
         value["resources_before_browser"] = support.resources(private)
+        value["phase"] = "chrome_tool_preflight"
         chrome_preflight = support.tool_pin(Path("/opt/google/chrome/chrome"))
         value["phase"] = "TLS_setup"
         tls = support.prepare_tls(private, REPO)
@@ -134,6 +135,9 @@ def worker(private):
         value["state"] = "OBSERVED_SYNTHETIC_INCREMENT_ONLY"
     except BaseException as error:
         value["error_class"] = type(error).__name__
+        diagnostic = support.chrome_tool_diagnostic(error, phase=value["phase"])
+        if diagnostic is not None:
+            value["chrome_tool_diagnostic"] = diagnostic
         # No exception text/DOM/traceback/password/TOTP/private key or signed proof is public.
         existing = sys.modules.get("qualification.p1g_headless.browser_case")
         if existing is not None and existing.FACTS["phase"] != "not_started":

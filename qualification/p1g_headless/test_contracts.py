@@ -29,6 +29,184 @@ def environment():
 
 
 class Contracts(unittest.TestCase):
+    def test_chrome_refusal_codes_are_exact_closed_and_phase_exclusive(self):
+        class PrivateValueError(ValueError):
+            def __str__(self):
+                raise AssertionError("no_exception_stringification")
+
+        codes = {
+            "tool_alias_refused",
+            "tool_type_owner_mode",
+            "tool_parent_writable_or_alias",
+            "tool_fd_identity",
+            "tool_byte_budget",
+            "tool_changed_or_not_ELF",
+        }
+        with mock.patch.object(Path, "lstat", side_effect=OSError) as read:
+            for code in codes:
+                packet = lab.chrome_tool_diagnostic(ValueError(code), phase="chrome_tool_preflight")
+                self.assertEqual(packet["code"], code)
+                self.assertEqual(packet["leaf"]["state"], "unknown")
+            for error in (
+                ValueError("tool_alias_refused\n::error::SYNTHETIC_PRIVATE"),
+                ValueError("SYNTHETIC_PRIVATE"),
+                ValueError(True),
+                ValueError({"secret": "SYNTHETIC_PRIVATE"}),
+                ValueError("tool_alias_refused", "SYNTHETIC_PRIVATE"),
+                RuntimeError("tool_alias_refused"),
+                PrivateValueError("tool_alias_refused"),
+            ):
+                packet = lab.chrome_tool_diagnostic(error, phase="chrome_tool_preflight")
+                self.assertEqual(packet["code"], "unknown")
+                self.assertNotIn("SYNTHETIC_PRIVATE", json.dumps(packet))
+            read.reset_mock()
+            for phase in ("source_binding", "resource_preflight", "TLS_setup", "browser_increment"):
+                self.assertIsNone(
+                    lab.chrome_tool_diagnostic(ValueError(next(iter(codes))), phase=phase)
+                )
+            read.assert_not_called()
+
+    def test_chrome_leaf_projection_has_fixed_path_closed_types_and_no_target(self):
+        row = SimpleNamespace(st_mode=0o100755, st_uid=0, st_gid=1, st_nlink=2, st_size=1234)
+        fixed = Path("/opt/google/chrome/chrome")
+        with (
+            mock.patch.object(Path, "lstat", return_value=row) as read,
+            mock.patch.object(Path, "resolve", return_value=Path("/synthetic/target")),
+            mock.patch.object(Path, "open", side_effect=AssertionError("no_content_read")),
+        ):
+            packet = lab.chrome_tool_diagnostic(
+                ValueError("tool_type_owner_mode"), phase="chrome_tool_preflight"
+            )
+        read.assert_called_once_with()
+        self.assertEqual(
+            packet["leaf"],
+            {
+                "state": "observed",
+                "type": "regular",
+                "uid": 0,
+                "gid": 1,
+                "mode": 0o755,
+                "nlink": 2,
+                "size_bytes": 1234,
+                "alias": True,
+            },
+        )
+        self.assertNotIn("/synthetic/target", json.dumps(packet))
+        for mode, kind in ((0o120777, "symlink"), (0o40755, "directory"), (0o10600, "other")):
+            row.st_mode = mode
+            with (
+                mock.patch.object(Path, "lstat", return_value=row),
+                mock.patch.object(Path, "resolve", return_value=fixed),
+            ):
+                leaf = lab.chrome_tool_diagnostic(ValueError(), phase="chrome_tool_preflight")[
+                    "leaf"
+                ]
+                self.assertEqual(leaf["type"], kind)
+                self.assertIs(leaf["alias"], False)
+        # The metadata path is a source literal, never an exception argument.
+        body = (Path(__file__).parent / "lab_support.py").read_text(encoding="utf-8")
+        tree = ast.parse(body)
+        function = next(
+            n
+            for n in tree.body
+            if isinstance(n, ast.FunctionDef) and n.name == "chrome_tool_diagnostic"
+        )
+        paths = [
+            n
+            for n in ast.walk(function)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "Path"
+        ]
+        self.assertEqual(
+            [ast.literal_eval(n.args[0]) for n in paths], [str(fixed).replace("\\", "/")]
+        )
+
+    def test_chrome_leaf_absent_or_bad_numeric_metadata_remains_unknown(self):
+        original = dict(st_mode=0o100755, st_uid=0, st_gid=0, st_nlink=1, st_size=8)
+        for key, bad in (
+            ("st_mode", True),
+            ("st_mode", 0o200000),
+            ("st_uid", "0"),
+            ("st_gid", -1),
+            ("st_uid", 2**32),
+            ("st_nlink", 2**32),
+            ("st_nlink", False),
+            ("st_size", 2**63),
+            ("st_size", -1),
+        ):
+            with (
+                self.subTest(key=key, bad=bad),
+                mock.patch.object(
+                    Path, "lstat", return_value=SimpleNamespace(**(original | {key: bad}))
+                ),
+                mock.patch.object(Path, "resolve", side_effect=AssertionError("not_validated")),
+            ):
+                packet = lab.chrome_tool_diagnostic(ValueError(), phase="chrome_tool_preflight")
+                self.assertEqual(packet["leaf"]["state"], "unknown")
+                self.assertTrue(
+                    all(
+                        packet["leaf"][k] is None
+                        for k in ("uid", "gid", "mode", "nlink", "size_bytes", "alias")
+                    )
+                )
+        for error, state in ((FileNotFoundError(), "absent"), (PermissionError(), "unknown")):
+            with mock.patch.object(Path, "lstat", side_effect=error):
+                self.assertEqual(
+                    lab.chrome_tool_diagnostic(ValueError(), phase="chrome_tool_preflight")["leaf"][
+                        "state"
+                    ],
+                    state,
+                )
+        with (
+            mock.patch.object(Path, "lstat", return_value=SimpleNamespace(**original)),
+            mock.patch.object(Path, "resolve", side_effect=OSError),
+        ):
+            leaf = lab.chrome_tool_diagnostic(ValueError(), phase="chrome_tool_preflight")["leaf"]
+            self.assertEqual(leaf["state"], "observed")
+            self.assertIsNone(leaf["alias"])
+
+    def test_actual_worker_only_chrome_phase_publishes_the_enum(self):
+        from qualification.p1g_headless import run_lab as controller
+
+        for fail_at in ("source_binding", "resources", "tool_pin"):
+            with self.subTest(fail_at=fail_at), tempfile.TemporaryDirectory() as tmp:
+                private = Path(tmp)
+                written = {}
+                info = SimpleNamespace(st_mode=0o40700, st_uid=1001)
+
+                def lstat(path):
+                    if path == private:
+                        return info
+                    raise PermissionError
+
+                with (
+                    mock.patch.object(Path, "lstat", lstat),
+                    mock.patch.object(Path, "resolve", lambda path, strict=False: path),
+                    mock.patch.object(os, "getuid", return_value=1001, create=True),
+                    mock.patch.dict(os.environ, {"RUNNER_TEMP": tmp, "GITHUB_SHA": "a" * 40}),
+                    mock.patch.object(lab, "source_binding", return_value={}),
+                    mock.patch.object(lab, "resources", return_value={}),
+                    mock.patch.object(lab, "tool_pin", return_value={}),
+                    mock.patch.object(lab, fail_at, side_effect=ValueError("tool_alias_refused")),
+                    mock.patch.object(
+                        lab, "prepare_tls", side_effect=AssertionError("not_reached")
+                    ),
+                    mock.patch.object(
+                        lab,
+                        "fresh_write",
+                        side_effect=lambda path, raw: written.update({path.name: json.loads(raw)}),
+                    ),
+                ):
+                    self.assertEqual(controller.worker(private), 42)
+                packet = written["worker-report.json"]
+                self.assertEqual(packet["state"], "FAILED_OR_UNKNOWN")
+                self.assertEqual(packet["tests"], 0)
+                self.assertFalse(packet["full_P1G_qualified"])
+                if fail_at == "tool_pin":
+                    self.assertEqual(packet["phase"], "chrome_tool_preflight")
+                    self.assertEqual(packet["chrome_tool_diagnostic"]["code"], "tool_alias_refused")
+                else:
+                    self.assertNotIn("chrome_tool_diagnostic", packet)
+
     def source_fixture(self, root):
         pins, files = {}, {}
         for index in range(24):
