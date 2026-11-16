@@ -19,7 +19,7 @@ from policy import HERE, MATERIALS, copy_materials
 from source_model import need, sha
 
 BASE = "https://deb.debian.org/debian/dists/unstable/"
-KEYRING = Path("/usr/share/keyrings/debian-archive-keyring.gpg")
+KEYRING = Path("/usr/share/keyrings/debian-archive-keyring.pgp")
 
 
 def fields(text):

@@ -68,3 +68,20 @@ s'agit du source MIT inchangé, pas d'un dump, secret, ELF ou résultat génér�
 Le copyright et les licences amont sont conservés dans cette distribution.
 Sa présence dans Git ne constitue pas une signature vérifiée. Aucun TAR n'est
 extrait vers le poste Windows, aucun payload natif n'y est exécuté.
+
+## Chemin canonique du keyring Debian
+
+Le premier job dcda refuse la lecture du keyring dans acquire avant GPGV :
+le garde lstat/type/nlink/taille n'accepte pas le leaf .gpg. Le log ne donne
+pas sa stat réelle et ne permet pas d'attribuer précisément ce refus.
+Le Makefile officiel du paquet debian-archive-keyring2025.1 construit et
+installe .pgp comme fichier ordinaire et .gpg comme lien symbolique.
+Le chemin d'entrée est donc fixé directement à la feuille canonique .pgp.
+Il n'y a ni resolve/fallback, ni alias générique accepté, ni garde relâché.
+Les mêmes buffers capturés et les mêmes contrôles GPGV/MIT/H1 restent requis.
+Quarante modèles purs passent, dont les37 anciens inchangés et trois refus
+stricts/capture ; cela ne prouve pas encore la lecture ou signature en CI.
+
+Références de disposition, sans signature du paquet revendiquée ici :
+[Makefile2025.1](https://sources.debian.org/data/main/d/debian-archive-keyring/2025.1/Makefile)
+et [liste Trixie](https://packages.debian.org/trixie/all/debian-archive-keyring/filelist).

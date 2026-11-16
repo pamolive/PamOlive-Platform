@@ -775,5 +775,72 @@ class UpgradeTests(unittest.TestCase):
                     check_data_export.main(path)
 
 
+class CanonicalArchiveKeyringTests(unittest.TestCase):
+    def test_fixed_canonical_path_and_synthetic_regular_capture(self):
+        self.assertEqual(
+            acquire.KEYRING.as_posix(),
+            "/usr/share/keyrings/debian-archive-keyring.pgp",
+        )
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "synthetic-keyring.pgp"
+            raw = b"synthetic-public-keyring-model-only"
+            path.write_bytes(raw)
+            self.assertEqual(bounded_io.read_regular(path, 8 * 1024**2), raw)
+            with self.assertRaisesRegex(ValueError, "regular file type/size budget"):
+                bounded_io.read_regular(path, len(raw) - 1)
+
+    def test_alias_hardlink_type_reparse_and_budget_refused_before_open(self):
+        base = dict(st_mode=0o100444, st_nlink=1, st_size=12, st_dev=1, st_ino=2)
+        cases = [
+            ({"st_mode": 0o120777}, True),
+            ({"st_mode": 0o040755}, False),
+            ({"st_nlink": 2}, False),
+            ({"st_file_attributes": 1024}, False),
+            ({"st_size": 8 * 1024**2 + 1}, False),
+            ({"st_size": -1}, False),
+            ({}, True),
+        ]
+        for delta, alias in cases:
+            leaf = SimpleNamespace(
+                lstat=lambda d=delta: SimpleNamespace(**(base | d)),
+                is_symlink=lambda a=alias: a,
+            )
+            with self.subTest(delta=delta, alias=alias):
+                with patch.object(bounded_io, "Path", return_value=leaf):
+                    with self.assertRaisesRegex(ValueError, "regular file type/size budget"):
+                        bounded_io.read_regular(acquire.KEYRING, 8 * 1024**2)
+
+    def test_fd_swap_refused_before_read_and_capture_closed(self):
+        class Capture(io.BytesIO):
+            reads = 0
+
+            def fileno(self):
+                return 123
+
+            def read(self, maximum=-1):
+                self.reads += 1
+                return super().read(maximum)
+
+        base = dict(st_mode=0o100444, st_nlink=1, st_size=3, st_dev=1, st_ino=2)
+        for delta in ({"st_ino": 3}, {"st_dev": 2}, {"st_nlink": 2}):
+            capture = Capture(b"toy")
+            leaf = SimpleNamespace(
+                lstat=lambda: SimpleNamespace(**base),
+                is_symlink=lambda: False,
+                open=lambda mode: capture,
+            )
+            with self.subTest(delta=delta):
+                with (
+                    patch.object(bounded_io, "Path", return_value=leaf),
+                    patch.object(
+                        bounded_io.os, "fstat", return_value=SimpleNamespace(**(base | delta))
+                    ),
+                ):
+                    with self.assertRaisesRegex(ValueError, "file identity/type/size changed"):
+                        bounded_io.read_regular(acquire.KEYRING, 8 * 1024**2)
+                self.assertEqual(capture.reads, 0)
+                self.assertTrue(capture.closed)
+
+
 if __name__ == "__main__":
     unittest.main()
