@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from authenticate import main as authenticate
 from common import ENV, command, material, need, read, record, sha, write_new
+from negative_guard_tests import check_negative_guards
 from wide_test_port import apply_wide_port, check_helpers, package_pins, suite_counts
 
 VERSION = "2.10.0-1+pamolive1"
@@ -160,6 +161,7 @@ def main(materials, output):
     built_packages = package_pins(work, VERSION)
     apply_wide_port(source / "srcw", output / "wide-test-port", publish_build_failure)
     check_helpers(source, output, publish_build_failure)
+    check_negative_guards(source, output)
     for tree in ("build", "buildw"):
         check_tree(source, output, tree)
     counts = suite_counts(source, output / "upstream-tests")

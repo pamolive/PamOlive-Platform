@@ -73,3 +73,7 @@ La comparaison ABI/SONAME/exports, les deux modules Python, les tests Python,
 UBSan existant, l’image exacte et ses nouveaux scans restent obligatoires.
 Le très gros déclencheur118370 n’est pas exécuté ; ce port ne crée aucune
 équivalence de couverture ni admission des quatre High à lui seul.
+
+## Raccordement des contrôles négatifs
+
+Après le self-test positif, les trois compilations C99, C++ et XML_Char signed-short sont exécutées dans un dossier privé de tests. Le SDK public et le header testé restent inchangés. Un refus attendu exige exit non nul normal, H1 complet, outil identique avant/après et diagnostics GCC JSON pointant exactement le garde du header pinné. Le journal UNKNOWN de common est conservé avec son empreinte ; un reçu distinct atteste seulement le refus attendu. Les 22 modèles purs et sept contre-cas indépendants passent ; compilations natives et format réel des diagnostics restent à recevoir.

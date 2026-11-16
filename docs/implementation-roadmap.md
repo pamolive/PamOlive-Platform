@@ -121,7 +121,10 @@ le builder Debian et source_audit puis échoue à make -j1 UBSan ; la cause et
 les faits du compilateur restent inconnus faute de journaux internes. Un
 wrapper de diagnostic fermé couvre les trois commandes UBSan sans changer
 leurs conditions ; 61 tests purs passent localement. La réception complète
-des journaux/paquets et les autres oracles restent nécessaires, sans admission CVE. Les deux CI
+des journaux/paquets et les autres oracles restent nécessaires, sans admission CVE. Les contrôles négatifs C99/C++/type
+incompatible sont maintenant raccordés après le self-test positif ; leur
+reçu exige un refus attendu avec H1 et diagnostic exacts, sans modifier UNKNOWN.
+La préparation compte 83 tests, sans exécution de compilateur local. Les deux CI
 Platform e256 sont terminees en echec au scan et aux deux observations, avec
 les jobs securite et bibliotheques installees reussis.
 
