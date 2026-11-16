@@ -13,7 +13,7 @@ VERSION = "2.10.0-1+pamolive1"
 
 def main(materials, output):
     materials, output = Path(materials).resolve(), Path(output).resolve()
-    need(read("/etc/os-release", 32768).find(b"VERSION_CODENAME=trixie\n") >= 0, "trixie_only")
+    need(read("/usr/lib/os-release", 32768).find(b"VERSION_CODENAME=trixie\n") >= 0, "trixie_only")
     output.mkdir(mode=0o700)
     authenticate(materials, output / "authentication")
     work = output / "work"

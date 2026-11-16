@@ -20,7 +20,12 @@ GHCR. Il acquiert10materiaux publics epingles, lance GPG hors reseau, puis
 rebuild/tests amont/UBSan/ABI/oracles XML. Les extractions et compilations sont
 precedees de verifications de signature dans chaque builder. Les empreintes
 source et le contexte Git sont verifies avant emploi ; echec ou preuve absente
-ne deviennent jamais une reussite. La nouvelle CI reste a recevoir.
+ne deviennent jamais une reussite. Le run699 a valide acquisition,31purs,
+3signaturesGPGhorsreseau (9enfants rc0/reap/drain) et nettoyage du conteneur.
+Le build natif a ensuite refuse read_regular sur /etc/os-release, avant
+extraction/compilation Debian. Le correctif lit /usr/lib/os-release sans
+resolution/fallback ni modification du lecteur ;33purs locaux passent avec
+2contre-cas supplementaires. Le nouveau build et ses oracles restent requis.
 
 La [PR13](https://github.com/pamolive/PamOlive-Platform/pull/13) a par ailleurs
 publie les diagnostics : f396 a refuse avant toute operation faute du dossier

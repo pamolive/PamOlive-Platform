@@ -30,10 +30,16 @@ def audit(event, args):
 
 sys.addaudithook(audit)
 import test_models  # noqa: E402 -- audit must be installed before importing tests
+import test_os_release  # noqa: E402 -- same audit protects the two fake-IO guards
 
 if len(sys.argv) == 3:
     test_models.MATERIALS = Path(sys.argv[2]).resolve()
-suite = unittest.defaultTestLoader.loadTestsFromModule(test_models)
+suite = unittest.TestSuite(
+    [
+        unittest.defaultTestLoader.loadTestsFromModule(test_models),
+        unittest.defaultTestLoader.loadTestsFromModule(test_os_release),
+    ]
+)
 log = io.StringIO()
 result = unittest.TextTestRunner(stream=log, verbosity=2).run(suite)
 value = {

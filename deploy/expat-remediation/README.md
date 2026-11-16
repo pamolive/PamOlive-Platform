@@ -9,7 +9,7 @@ La liste `source-checksums.sha256`, elle-même épinglée dans le workflow, lie 
 Le parcours du laboratoire est séquentiel :
 
 1. Installer les outils trixie et acquérir dix matériaux publics par taille et SHA-256.
-2. Exécuter les 31 tests purs et vérifier réellement les signatures GPG, hors réseau et sans privilèges. Les tests purs peuvent lire les archives comme données en mémoire ; ils n’exécutent pas leur contenu.
+2. Exécuter les 33 tests purs et vérifier réellement les signatures GPG, hors réseau et sans privilèges. Les tests purs peuvent lire les archives comme données en mémoire ; ils n’exécutent pas leur contenu.
 3. Reconstruire les bibliothèques et modules, hors réseau après installation des outils. Chaque builder revérifie lui-même les signatures avant extraction et compilation.
 4. Vérifier les tests amont narrow/wide, UBSan sur le corpus borné, les ABI, les cas C/Python et les suites XML de la version exacte de CPython.
 5. Exporter uniquement les preuves et journaux publics des étapes de cette VM.
@@ -20,6 +20,8 @@ Les processus de compilation et d’oracles conservent leurs délais et sorties 
 
 Les artifacts excluent les homes GPG, les copies de matériaux, les arbres de travail, les paquets et l’image produit. En cas d’échec d’une couche BuildKit, ses journaux internes peuvent manquer : le log de build et le préflight disponibles ne permettent pas de déclarer cette étape réussie. Un export manquant reste inconnu.
 
-Validation préparatoire : 31 tests purs sans échec ni exclusion, revue cryptographique et contre-tests indépendants, vérification statique du YAML et des commandes shell. L’intégration adapte uniquement les imports, les longues lignes et une chaîne de test aux règles Ruff du dépôt ; les arbres syntaxiques hors imports et chaîne littérale restent équivalents. La liste des empreintes est recalculée explicitement après ces changements.
+Validation préparatoire : 33 tests purs sans échec ni exclusion, revue cryptographique et contre-tests indépendants, vérification statique du YAML et des commandes shell. L’intégration adapte uniquement les imports, les longues lignes et une chaîne de test aux règles Ruff du dépôt ; les arbres syntaxiques hors imports et chaîne littérale restent équivalents. La liste des empreintes est recalculée explicitement après ces changements.
+
+Le run Linux `6997322` a réellement validé l’acquisition, les 31 tests alors présents et les trois signatures GPG hors réseau, avec neuf enfants terminés et drainés, puis le nettoyage du conteneur d’authentification. La construction a refusé la lecture stricte de `/etc/os-release` avant extraction/compilation Debian. Le correctif suivant lit le chemin fournisseur explicite `/usr/lib/os-release`, en conservant le lecteur régulier, le plafond et la garde trixie. Deux nouveaux tests refusent les liens, répertoires et autres distributions avant authentification ; les 33 tests passent localement. Sa nouvelle exécution native reste requise.
 
 Les quatre groupes High concernés ne seront pas déclarés corrigés par ces seuls tests préparatoires. Après succès du laboratoire, une livraison distincte devra intégrer le runtime produit, relancer les scans/SBOM et les consommateurs, puis toutes les régressions P0/PostgreSQL/SSH/RDP/restauration/Compose. Les 35 groupes High et la provenance de build restent des portes de promotion indépendantes.
