@@ -88,11 +88,68 @@ def check_package(raw):
         matches.append(fields)
     gate.require(
         len(matches) == 1
-        and matches[0].get("Version") == "2.10.0-1+pamolive1"
+        and matches[0].get("Version") == "2.10.0-1+pamolive2"
         and matches[0].get("Status") == "install ok installed"
         and matches[0].get("Architecture") == "amd64",
         "expat_dpkg_identity",
     )
+
+
+LOCAL_BACKPORT_PROOF = {
+    "schema": "pamolive.expat-local-backports/1",
+    "policy": "expat-2.10.0-local-two-advisory-v1",
+    "local_package_version": "2.10.0-1+pamolive2",
+    "patches": {
+        "CVE-2026-124317.patch": "453f41710ea2394887a8fa5f4b3121ebce36ffb5eadcc4404de2e0dbdf204d1a",
+        "CVE-2026-128241.patch": "78203c87cb0d854e3a7a6d36840e90c9370070cb2e49e36cb4ce5e01c8a974f1",
+    },
+    "files": {
+        "expat/lib/xmltok.c": {
+            "base_sha256": "44baab2a4970749f6f29992bbbc1b3c62239ef9ec2a20de96332ef4659b9e32d",
+            "post_sha256": "07dda873d9d75643f9e4a1b83878ba0230f7782966375449928387c85a62caf8",
+        },
+        "expat/tests/misc_tests.c": {
+            "base_sha256": "a2e4bd074fbd83a87ab298e79a13599e5a4afe65f542d6026a314b98a4ddfd9b",
+            "post_sha256": "828923bf773317386dff577ccf26c0e2b04d3b6762fdd633bbe6324214a13dcf",
+        },
+        "expat/xmlwf/xmltchar.h": {
+            "base_sha256": "3ca28b7ff0f149de1e022ce4031aed1092a8981cc86e62e45131fa1b04964755",
+            "post_sha256": "c92e56aec7e5803b2213e9bcd276515b554041d6474ecabaa7def8a4876d29d5",
+        },
+        "expat/xmlwf/xmlwf.c": {
+            "base_sha256": "12b11917c336ab01e580c17f02018986838482a51f7c61708a50e55cc5e83afc",
+            "post_sha256": "94d0aeeb889b06f9cb6e3865427510804216797a5ece71fe60653976e7bc5c37",
+        },
+    },
+    "base_authentication_required_before_extraction": True,
+    "upstream_signature_covers_local_changes": False,
+    "fixed4_admitted": False,
+    "new_advisories_admitted": False,
+    "product_qualified": False,
+    "operational_go": False,
+}
+
+
+def check_source_rebuild(value):
+    # Receipt DATA, never crypto/Root admission. Exact current policy; no V1 fallback.
+    gate.require(
+        type(value) is dict and value.get("schema") == "pamolive.expat-source-rebuild/2",
+        "expat_local_rebuild_schema",
+    )
+    gate.require(
+        json.dumps(value.get("local_backports"), sort_keys=True)
+        == json.dumps(LOCAL_BACKPORT_PROOF, sort_keys=True),
+        "expat_local_backport_proof",
+    )
+    rows = value.get("packages")
+    gate.require(
+        type(rows) is list
+        and len(rows) == 2
+        and {r.get("package") for r in rows} == {"libexpat1", "libexpat1-dev"}
+        and all(r.get("version") == "2.10.0-1+pamolive2" for r in rows),
+        "expat_local_rebuild_packages",
+    )
+    gate.require(value.get("fixed4_admitted") is False, "expat_local_rebuild_authority")
 
 
 def identity(info):
@@ -177,10 +234,12 @@ def examine(archive, expected_image_id):
                 gate.require(name in allowed, "expat_other_physical_provider")
         runtime = data[PATHS[5]]
         gate.require(
-            runtime["package_version"] == "2.10.0-1+pamolive1"
+            runtime.get("schema") == "pamolive.expat-runtime/2"
+            and runtime["package_version"] == "2.10.0-1+pamolive2"
             and runtime["fixed4_admitted"] is False,
             "expat_runtime_receipt",
         )
+        check_source_rebuild(data[PATHS[3]])
         snapshot = data[PATHS[4]]
         gate.require(
             snapshot["metadata_equal"] is True and snapshot["base_origin_attested"] is False,
@@ -203,7 +262,7 @@ def examine(archive, expected_image_id):
             "expat_archive_changed",
         )
     return {
-        "schema": "pamolive.expat-product-image/1",
+        "schema": "pamolive.expat-product-image/2",
         "image_id": expected_image_id,
         "archive_sha256": archive_sha,
         "active": active,

@@ -64,15 +64,18 @@ def fixture(extra_layers=(), mutate=None):
         }
         before[key] = {"sha256": digest(elf(b"old-" + key.encode()))}
     source = {
+        "schema": "pamolive.expat-source-rebuild/2",
+        "local_backports": copy.deepcopy(expat.LOCAL_BACKPORT_PROOF),
+        "fixed4_admitted": False,
         "packages": [
             {
                 "package": name,
-                "version": "2.10.0-1+pamolive1",
+                "version": "2.10.0-1+pamolive2",
                 "sha256": ("a" if name == "libexpat1" else "b") * 64,
                 "bytes": 100,
             }
             for name in ("libexpat1", "libexpat1-dev")
-        ]
+        ],
     }
     proof = {
         expat.PATHS[0]: before,
@@ -80,7 +83,11 @@ def fixture(extra_layers=(), mutate=None):
         expat.PATHS[2]: {"optimization": {"policy": "xml-local-no-pgo-v1"}},
         expat.PATHS[3]: source,
         expat.PATHS[4]: {"metadata_equal": True, "base_origin_attested": False},
-        expat.PATHS[5]: {"package_version": "2.10.0-1+pamolive1", "fixed4_admitted": False},
+        expat.PATHS[5]: {
+            "schema": "pamolive.expat-runtime/2",
+            "package_version": "2.10.0-1+pamolive2",
+            "fixed4_admitted": False,
+        },
     }
     if mutate:
         mutate(proof, files)
@@ -88,7 +95,7 @@ def fixture(extra_layers=(), mutate=None):
         files[name] = json.dumps(value).encode()
     files[expat.PATHS[-1]] = (
         b"Package: libexpat1\nStatus: install ok installed\n"
-        b"Architecture: amd64\nVersion: 2.10.0-1+pamolive1\n\n"
+        b"Architecture: amd64\nVersion: 2.10.0-1+pamolive2\n\n"
     )
     layers = [*extra_layers, tar_bytes(files)]
     config = {
@@ -263,6 +270,39 @@ class ExpatProductTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.examine(raw, image_id)
 
+    def test_current_reader_refuses_historical_v1_and_mutated_local_proof(self):
+        changes = (
+            lambda proof, _: proof[expat.PATHS[3]].pop("schema"),
+            lambda proof, _: proof[expat.PATHS[3]]["local_backports"].update(
+                upstream_signature_covers_local_changes=True
+            ),
+            lambda proof, _: proof[expat.PATHS[3]]["local_backports"].update(fixed4_admitted=0),
+            lambda proof, _: proof[expat.PATHS[3]]["local_backports"]["patches"].update(
+                {"CVE-2026-124317.patch": "0" * 64}
+            ),
+            lambda proof, _: proof[expat.PATHS[5]].update(schema="pamolive.expat-runtime/1"),
+            lambda proof, _: proof[expat.PATHS[3]]["packages"][0].update(
+                version="2.10.0-1+pamolive1"
+            ),
+        )
+        for mutate in changes:
+            with self.subTest(mutate=mutate), self.assertRaises(ValueError):
+                raw, image_id = fixture(mutate=mutate)
+                self.examine(raw, image_id)
+
+    def test_sbom_rejects_historical_v1_and_does_not_invent_upstream_version(self):
+        raw, image_id = fixture()
+        report = self.examine(raw, image_id)
+        with self.assertRaises(ValueError):
+            sbom.expat_components(
+                report | {"schema": "pamolive.expat-product-image/1"}, image_id, "image_config"
+            )
+        components, _, _ = sbom.expat_components(report, image_id, "image_config")
+        self.assertEqual(components[0]["purl"], "pkg:generic/expat@2.10.0")
+        source = json.loads(components[0]["properties"][0]["value"])
+        self.assertEqual(source["local_backports"]["local_package_version"], "2.10.0-1+pamolive2")
+        self.assertFalse(source["local_backports"]["upstream_signature_covers_local_changes"])
+
     def test_archive_rewrite_between_passes_refuses(self):
         raw, image_id = fixture()
         path = self.root / "image.tar"
@@ -323,7 +363,7 @@ class ExpatProductTests(unittest.TestCase):
     def test_dpkg_types_duplicates_and_old_version_refuse(self):
         good = (
             b"Package: libexpat1\nStatus: install ok installed\n"
-            b"Architecture: amd64\nVersion: 2.10.0-1+pamolive1\n\n"
+            b"Architecture: amd64\nVersion: 2.10.0-1+pamolive2\n\n"
         )
         expat.check_package(good)
         for bad in (

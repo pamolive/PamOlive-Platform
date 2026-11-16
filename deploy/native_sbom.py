@@ -267,11 +267,14 @@ def native_components(manifest, report):
 def expat_components(report, image_digest, image_digest_kind):
     """Actual-image file identities; not vendor binary-origin attestation."""
     require(image_digest_kind == "image_config" and isinstance(report, dict)
-            and report.get("schema") == "pamolive.expat-product-image/1"
+            and report.get("schema") == "pamolive.expat-product-image/2"
             and report.get("image_id") == image_digest, "expat_image_binding")
     require(all(report.get(key) is False for key in (
         "fixed4_admitted", "product_qualified", "operational_GO",
         "native_report_metadata_attested")), "expat_authority")
+    from deploy.expat_image import check_source_rebuild
+
+    check_source_rebuild(report.get("source_rebuild"))
     active = report.get("active")
     keys = {"libexpat.so.1", "libexpatw.so.1", "pyexpat", "_elementtree"}
     require(isinstance(active, dict) and set(active) == keys, "expat_active_closure")

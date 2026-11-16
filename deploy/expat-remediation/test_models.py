@@ -467,13 +467,13 @@ class AbiTests(unittest.TestCase):
 class DataTests(unittest.TestCase):
     def test_package_state_and_duplicates(self):
         valid = (
-            "Package: libexpat1\nVersion: 2.10.0-1+pamolive1\nArchitecture: amd64\n"
+            "Package: libexpat1\nVersion: 2.10.0-1+pamolive2\nArchitecture: amd64\n"
             "Status: install ok installed\n"
         )
-        self.assertEqual(verify_runtime.package_version(valid), "2.10.0-1+pamolive1")
+        self.assertEqual(verify_runtime.package_version(valid), "2.10.0-1+pamolive2")
         for raw in (
-            valid.replace("2.10.0-1+pamolive1", "2.9.0-1~deb13u1"),
-            valid + "Version: 2.10.0-1+pamolive1\n",
+            valid.replace("2.10.0-1+pamolive2", "2.9.0-1~deb13u1"),
+            valid + "Version: 2.10.0-1+pamolive2\n",
             valid + "\n" + valid,
             valid.replace("install ok installed", "deinstall ok config-files"),
         ):

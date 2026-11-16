@@ -25,7 +25,7 @@ def package_version(text):
     need(len(found) == 1, "package_count")
     row = found[0]
     need(
-        row.get("Version") == "2.10.0-1+pamolive1"
+        row.get("Version") == "2.10.0-1+pamolive2"
         and row.get("Architecture") == "amd64"
         and row.get("Status") == "install ok installed",
         "package_version_or_state",
@@ -57,6 +57,7 @@ def main(output):
     record(
         output / "RUNTIME.json",
         {
+            "schema": "pamolive.expat-runtime/2",
             "package_version": version,
             "cases": list(CASES),
             "fixed4_admitted": False,

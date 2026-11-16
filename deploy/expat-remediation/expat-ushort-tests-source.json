@@ -111,8 +111,8 @@
       "changed": false
     },
     "tests/misc_tests.c": {
-      "before": "a2e4bd074fbd83a87ab298e79a13599e5a4afe65f542d6026a314b98a4ddfd9b",
-      "after": "a78298d49096445b05f3579e294b5d19c939a5e6769322e824e7ca3285a93b49",
+      "before": "828923bf773317386dff577ccf26c0e2b04d3b6762fdd633bbe6324214a13dcf",
+      "after": "24ec2e41514602e8ea5a8eebcde433511aa8fef6ecea4f209d191b72c4f9bc1d",
       "changed": true
     },
     "tests/misc_tests.h": {
@@ -185,11 +185,12 @@
     "tests/runtests.c",
     "tests/structdata.c"
   ],
-  "START_TEST_count": 444,
-  "case_names_sha256": "bd69aab4a2e91762071cd4807a51ccfc5885f6d8b4011989e6a638076fdd9736",
-  "registration_lines_sha256": "36006c72ec3808ba840c98da6901931dca9f5da75a0d5c592f948895fdbefa51",
+  "START_TEST_count": 445,
+  "case_names_sha256": "8ecbece4b0d3f7884c265df2a03e793c14238a7968b48e10ed22db9d5d3a98d7",
+  "registration_lines_sha256": "39f18c1d145c98eacc8b920babafa407afcb36bcf127c6e05f1576847c4ec98c",
   "runtime_library_sources_changed": false,
   "new_heap_allocations": false,
   "new_skips": false,
-  "full_CXX_suite_claimed": false
+  "full_CXX_suite_claimed": false,
+  "local_security_backports_before_test_port": "expat-2.10.0-local-two-advisory-v1"
 }

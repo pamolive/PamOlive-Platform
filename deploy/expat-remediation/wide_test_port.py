@@ -15,7 +15,7 @@ from common import HERE, command, need, read, record, sha, write_new
 BUNDLE = {
     "expat-ushort-tests.patch": "f1aff33cc4ae4387f3c2e330241b012199b81f54afcb0fb1e665509e230b2a1b",
     "expat-ushort-tests-source.json": (
-        "b1b8a410ca2c0dc6179fe0e5eb39a1467e4e79be290de6d9c94a364618f23900"
+        "628343faccbe899d95583d53dba9c0462a4cf32386e466a243928c0f809fd3d6"
     ),
     "test_character_support.h": "73a2e4e682c2c07e1452bc7181574476887634eb956c545bff8be55f375b68bd",
     "test_character_support_selftest.c": (

@@ -65,7 +65,7 @@ COPY --from=krb5-builder /packages/runtime /tmp/pamolive-krb5-runtime
 COPY --from=krb5-builder /packages/sdk /tmp/pamolive-krb5-sdk
 RUN apt-get install -y --no-install-recommends /tmp/pamolive-krb5-runtime/*.deb /tmp/pamolive-krb5-sdk/*.deb && rm -r /tmp/pamolive-krb5-runtime /tmp/pamolive-krb5-sdk && rm -rf /var/lib/apt/lists/*
 COPY deploy/build-freerdp.sh /build-freerdp.sh
-RUN --network=none test "$(dpkg-query --show --showformat='${Version}' libexpat1)" = '2.10.0-1+pamolive1' && test "$(dpkg-query --show --showformat='${Version}' libexpat1-dev)" = '2.10.0-1+pamolive1'
+RUN --network=none test "$(dpkg-query --show --showformat='${Version}' libexpat1)" = '2.10.0-1+pamolive2' && test "$(dpkg-query --show --showformat='${Version}' libexpat1-dev)" = '2.10.0-1+pamolive2'
 COPY deploy/freerdp-jansson-compat.patch /freerdp-jansson-compat.patch
 RUN sh /build-freerdp.sh
 
@@ -75,13 +75,13 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 COPY deploy/build-guacd.sh /build-guacd.sh
 COPY deploy/guacd-deny-rdp-redirection.patch /guacd-deny-rdp-redirection.patch
 COPY deploy/guacd-freerdp3-gdi-lifecycle.patch /guacd-freerdp3-gdi-lifecycle.patch
-RUN --network=none test "$(dpkg-query --show --showformat='${Version}' libexpat1)" = '2.10.0-1+pamolive1' && test "$(dpkg-query --show --showformat='${Version}' libexpat1-dev)" = '2.10.0-1+pamolive1'
+RUN --network=none test "$(dpkg-query --show --showformat='${Version}' libexpat1)" = '2.10.0-1+pamolive2' && test "$(dpkg-query --show --showformat='${Version}' libexpat1-dev)" = '2.10.0-1+pamolive2'
 RUN sh /build-guacd.sh
 
 FROM expat-sdk AS directory-builder
 ARG LIBPQ_DEBIAN_VERSION
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends build-essential libldap2-dev libsasl2-dev libpq-dev=${LIBPQ_DEBIAN_VERSION} libpq5=${LIBPQ_DEBIAN_VERSION} && rm -rf /var/lib/apt/lists/*
-RUN --network=none test "$(dpkg-query --show --showformat='${Version}' libexpat1)" = '2.10.0-1+pamolive1' && test "$(dpkg-query --show --showformat='${Version}' libexpat1-dev)" = '2.10.0-1+pamolive1'
+RUN --network=none test "$(dpkg-query --show --showformat='${Version}' libexpat1)" = '2.10.0-1+pamolive2' && test "$(dpkg-query --show --showformat='${Version}' libexpat1-dev)" = '2.10.0-1+pamolive2'
 COPY requirements-bootstrap.lock requirements-python-runtime-linux.lock requirements-python-build-tools-linux.lock requirements-python-native-sources-linux.lock requirements-python-native-test-linux.lock /tmp/
 COPY deploy/python_materials.py deploy/python-materials.linux-amd64.json /tmp/
 RUN python /tmp/python_materials.py acquire --manifest /tmp/python-materials.linux-amd64.json --locks /tmp --output /opt/python-inputs

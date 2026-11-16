@@ -36,3 +36,7 @@ deploy/expat-remediation/Dockerfile.diff -text whitespace=-blank-at-eol,cr-at-eo
 
 # A pinned unified-diff DATA file retains mandatory blank context lines.
 deploy/expat-remediation/expat-ushort-tests.patch -text whitespace=-blank-at-eol,cr-at-eol
+
+# Unified-diff DATA keeps mandatory blank context lines byte-for-byte.
+deploy/expat-remediation/CVE-2026-124317.patch -text whitespace=-blank-at-eol,cr-at-eol
+deploy/expat-remediation/CVE-2026-128241.patch -text whitespace=-blank-at-eol,cr-at-eol

@@ -116,3 +116,9 @@ ne démontrent pas que cette nouvelle recette s'exécute : un nouveau build et
 tous les tests/scans réels restent requis. Les SDK et les autres étapes sont
 conservés. Le pin Dockerfile est recalculé depuis Git ; les13 autres pins produit
 et les35 sources Expat restent inchangés.
+
+
+The historical pamolive1/SOURCE-REBUILD V1 counts above remain scoped to their
+original image. The proposed local pamolive2 two-advisory reconstruction and
+current V2 receipt requirements are recorded in ADR035; no old native receipt
+is transferred to that candidate. The snapshot comparison policy is unchanged.

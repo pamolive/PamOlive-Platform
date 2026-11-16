@@ -534,3 +534,19 @@ du scan, les vérificateurs, les helpers restore et leurs plafonds restent exact
 La reproduction réelle et un test du cycle des deux répertoires sont conservés.
 Ce succès restore ne vaut pas succès SBOM/scan ou qualification globale ; leur
 rejeu du candidat corrigé reste requis. Aucun accès NAS ni reprise de production.
+
+
+### Qualification Expat locale — étape du 16 novembre 2026
+
+Intégrer ADR-035 sur la base de restauration 94064bc : deux patches amont
+appliqués après authentification, version locale pamolive2 et preuves V2
+cohérentes entre reconstruction, image et SBOM. La validation locale compte
+103 contrats de préparation et 21 contrats produit réussis. Le test de schéma
+SBOM strict est réservé à Linux et n’est pas compté comme réussi ici.
+
+Avant toute admission : mesurer sur le même SHA les témoins avant/après
+du convertisseur et de xmlwf, le corpus C complet pour les deux largeurs,
+UBSan, les contrôles ABI et Python, puis Platform/PostgreSQL/P0/restauration
+et un nouveau scan d’image. Préserver les anciens reçus comme preuves liées
+à leurs versions ; ne pas les transférer aux nouvelles sources. Le scan
+bloquant et les autres remédiations natives restent des travaux distincts.

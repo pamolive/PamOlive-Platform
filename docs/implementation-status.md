@@ -785,3 +785,27 @@ du scan, les vérificateurs, les helpers restore et leurs plafonds restent exact
 La reproduction réelle et un test du cycle des deux répertoires sont conservés.
 Ce succès restore ne vaut pas succès SBOM/scan ou qualification globale ; leur
 rejeu du candidat corrigé reste requis. Aucun accès NAS ni reprise de production.
+
+
+### Expat — deux correctifs locaux supplémentaires, 16 novembre 2026
+
+ADR-035 applique après authentification des sources les corrections amont de
+CVE-2026-124317 (convertisseur d’encodage tronqué) et CVE-2026-128241 (lien
+symbolique terminal de sortie xmlwf). La reconstruction locale devient
+2.10.0-1+pamolive2, avec une preuve V2 explicite des patches locaux ; ce nom
+ne désigne pas une nouvelle publication Debian ou upstream. Les signatures
+d’origine attestent les sources de base et ne couvrent pas ces modifications.
+
+La composition part du candidat de restauration 94064bc et conserve son
+workflow Platform, ses preuves historiques et le comparateur de snapshot.
+Les 37 entrées de source et les 14 pins produit sont vérifiés depuis les blobs
+Git. Les 103 tests purs de préparation et 21 tests produit sélectionnés passent,
+sans exécution native ni réseau. Le test de schéma SBOM strict n’est pas exécuté
+sous Windows ; il reste obligatoire sous Linux.
+
+Les témoins avant/après, le refus réel xmlwf, les deux suites C complètes,
+UBSan, les signatures, l’ABI, les consommateurs Python, PostgreSQL/P0 et le
+scan strict de la nouvelle image restent à recevoir. Le chiffre de 5 340 vérifications
+par largeur est une prévision, pas un résultat mesuré. Les reçus V1 restent
+historiques et ne qualifient pas un paquet V2. Aucun avis CVE n’est fermé,
+aucune image promue et aucune modification NAS effectuée par cette étape.

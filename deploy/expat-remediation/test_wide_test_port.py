@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import source_audit
 import test_models
 import wide_test_port as wide
 
@@ -16,14 +17,21 @@ class WideTestPortTests(unittest.TestCase):
     def source(self):
         with tarfile.open(test_models.MATERIALS / "expat_2.10.0.orig.tar.gz") as archive:
             pins = wide.validate_capture(self.buffers())
-            return {
+            buffers = {
                 name: archive.extractfile("libexpat-R_2_10_0/expat/" + name).read()
                 for name in pins["files"]
             }
+            original = {
+                name: archive.extractfile("libexpat-R_2_10_0/" + name).read()
+                for name in source_audit.FILE_PINS
+            }
+            made = source_audit.transform(original, source_audit.capture_patches())
+            buffers["tests/misc_tests.c"] = made["expat/tests/misc_tests.c"]
+            return buffers
 
     def test_exact_closed_bundle_and_original_35_sources_are_accepted(self):
         pins = wide.validate_capture(self.buffers())
-        self.assertEqual(pins["START_TEST_count"], 444)
+        self.assertEqual(pins["START_TEST_count"], 445)
         self.assertEqual(len(pins["changed"]), 7)
         wide.validate_tree(self.source(), pins["files"], "before")
 

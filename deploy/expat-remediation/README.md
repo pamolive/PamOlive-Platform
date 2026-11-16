@@ -45,3 +45,20 @@ Le run `549b0cd`, [43823586567](https://github.com/pamolive/PamOlive-Platform/ac
 Le candidat suivant ajoute seulement `--verbose` au même appel stdlib borné pour rendre les skips visibles et exporte les six buffers publics exacts de chacun des trois refus natifs : intention, PID, résultat, UNKNOWN, stdout et stderr. Validation, empreintes et copies consomment les mêmes octets capturés une seule fois. Aucune exploration des répertoires de travail ni export de paquet, ELF ou home GPG. Les erreurs de copie et collisions interrompent la qualification ; des DATA partielles ne constituent pas un succès. Le contrôle anti-symlink du parent est préalable et ne fournit pas une atomicité contre un remplacement par root ; les diagnostics GCC reposent sur le compilateur et le builder de confiance. Les délais, ressources et contrôles H1 restent inchangés. Les neuf nouveaux tests portent la préparation à 96 ; leur exécution native reste à recevoir.
 
 Une intégration produit distincte est maintenant préparée selon [ADR-031](../../docs/adr-031-expat-product-snapshot.md). Elle reprend les helpers exacts du `3d960926` reçu, installe runtime/SDK et les deux extensions puis construit un snapshot final. Le laboratoire et les nouvelles mesures produit demeurent distincts. Les 12 skips stdlib sont désormais nommés : huit sous-cas C14N non pris en charge, un cas de générateur non réentrant, un cas spécifique à la version Python, une API absente de la version C et un cas bigmem exigeant 2 Gio. Ce dernier et le déclencheur d'attribut géant complet ne sont pas exécutés ; aucun décompte de tests exécutés n'est déduit d'une soustraction aux 490 tests rapportés.
+
+
+## Local two-advisory SOURCE candidate (not the historical native receipts)
+
+The candidate revision `2.10.0-1+pamolive2` reconstructs the same authenticated
+2.10.0 material with two exact local backports for CVE-2026-124317 and
+CVE-2026-128241. Original signatures cover the original archives, not these
+local patches. Both Debian and upstream UBSan paths apply identical pinned
+pre/post images. Current V2 readers refuse historical V1 receipts and packages.
+The historical run counts above remain scoped to their old sources.
+
+Native before/after guarded custom-encoding and private xmlwf leaf-symlink
+oracles are prepared, not executed here. The old wide port stays unchanged;
+445 cases/5,340 checks per width is an unmeasured prediction. SDK/ABI/public
+headers, old four-fix cases, H1 limits, snapshot and strict scan gates stay.
+See ADR035 for local-version lineage, UNKNOWN handling, Linux-only CLI scope,
+cooperative-build TCB and required future qualification. No advisory is closed.

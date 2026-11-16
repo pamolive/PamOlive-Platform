@@ -10,9 +10,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from authenticate import main as authenticate
 from common import ENV, command, material, need, read, record, sha, write_new
 from negative_guard_tests import check_negative_guards
+from source_audit import LOCAL_VERSION, apply_backports
 from wide_test_port import apply_wide_port, check_helpers, package_pins, suite_counts
 
-VERSION = "2.10.0-1+pamolive1"
+VERSION = LOCAL_VERSION
 
 
 def publish_build_failure(log, *, stage="dpkg-buildpackage"):
@@ -147,11 +148,12 @@ def main(materials, output):
         output / "builddeps",
         env=ENV | {"DEB_BUILD_PROFILES": "noudeb"},
     )
+    backports = apply_backports(source, output / "LOCAL-BACKPORTS.json", debian=True)
     changelog = source / "debian/changelog"
     old = read(changelog, 1024**2)
     prefix = (
         f"expat ({VERSION}) trixie; urgency=high\n\n"
-        "  * Local source rebuild of complete upstream 2.10.0, not a Debian binary publication.\n\n"
+        "  * Local reconstruction of authenticated 2.10.0 plus two explicit security backports.\n\n"
         " -- PamOlive Build <build@example.invalid>  Mon, 16 Nov 2026 00:00:00 +0000\n\n"
     ).encode()
     changelog.write_bytes(prefix + old)
@@ -191,6 +193,8 @@ def main(materials, output):
     record(
         output / "SOURCE-REBUILD.json",
         {
+            "schema": "pamolive.expat-source-rebuild/2",
+            "local_backports": backports,
             "packages": published,
             "tests": ["build/check", "buildw/tests/check"],
             "upstream_C_counts": counts,
