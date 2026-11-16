@@ -4,6 +4,7 @@ The output is ABI/package DATA. A separate Root v2 decision gates product use.
 """
 
 import email.utils
+import json
 import re
 import sys
 from pathlib import Path
@@ -32,6 +33,154 @@ BUILD_ENV = ENV | {
     "QUILT_PATCHES": "debian/patches",
     "QUILT_PATCH_OPTS": "--fuzz=0",
 }
+
+DPKG_REASONS = {
+    "deadline_before_spawn",
+    "stdout_overflow",
+    "stderr_overflow",
+    "combined_overflow",
+    "stdout_read_contract",
+    "stderr_read_contract",
+    "stdout_drain_error",
+    "stderr_drain_error",
+    "timeout",
+    "spawn_error",
+    "controller_error",
+    "reap_error",
+    "group_cleanup_error",
+    "drain_incomplete",
+    "pipe_close_error",
+    "nonzero_exit",
+    "absolute_deadline_exceeded",
+}
+
+
+def dpkg_failure_data(log):
+    """Fixed-leaf DATA projection; no raw output, argv, exception or environment."""
+    result = {
+        "schema": "pamolive.krb5-dpkg-failure-diagnostic/1",
+        "stage": "dpkg-buildpackage",
+        "diagnostic_only": True,
+        "classification": "H1_UNKNOWN",
+        "facts_available": False,
+        "facts": None,
+        "tool_stability_proved": False,
+        "operational_GO": False,
+    }
+    try:
+        facts = json_value(read(log / "result.json", 16384))
+        flags = (
+            "spawn_attempted",
+            "killed_owned_child",
+            "owned_child_reaped",
+            "drains_complete",
+        )
+        need(
+            type(facts) is dict
+            and set(facts)
+            == {
+                *flags,
+                "pid",
+                "returncode",
+                "reason",
+                "exception_type",
+                "cleanup_exception_type",
+                "stdout_bytes",
+                "stderr_bytes",
+            }
+            and all(type(facts[name]) is bool for name in flags)
+            and (facts["pid"] is None or type(facts["pid"]) is int and 0 < facts["pid"] < 2**31)
+            and (
+                facts["returncode"] is None
+                or type(facts["returncode"]) is int
+                and -(2**31) <= facts["returncode"] < 2**31
+            )
+            and all(
+                type(facts[name]) is int and 0 <= facts[name] <= 8 * 1024**2
+                for name in ("stdout_bytes", "stderr_bytes")
+            ),
+            "dpkg_diagnostic_shape",
+        )
+        reason = facts["reason"]
+        need(
+            reason is None or type(reason) is str and reason in DPKG_REASONS,
+            "dpkg_diagnostic_shape",
+        )
+        projected = {
+            name: facts[name]
+            for name in (*flags, "pid", "returncode", "stdout_bytes", "stderr_bytes")
+        }
+        projected.update(
+            reason=reason,
+            exception_present=facts["exception_type"] is not None,
+            cleanup_exception_present=facts["cleanup_exception_type"] is not None,
+        )
+        result.update(facts_available=True, facts=projected)
+        normal = (
+            facts["spawn_attempted"] is True
+            and facts["pid"] is not None
+            and type(facts["returncode"]) is int
+            and facts["owned_child_reaped"] is facts["drains_complete"] is True
+            and facts["killed_owned_child"] is False
+            and facts["exception_type"] is facts["cleanup_exception_type"] is None
+        )
+        if reason in {"stdout_overflow", "stderr_overflow", "combined_overflow"}:
+            result["classification"] = "OUTPUT_CAP_REFUSED"
+        elif reason in {"timeout", "deadline_before_spawn", "absolute_deadline_exceeded"}:
+            result["classification"] = "TIME_BUDGET_REFUSED"
+        elif normal and reason == "nonzero_exit" and facts["returncode"] > 0:
+            result["classification"] = "NORMAL_NONZERO"
+        elif normal and reason == "nonzero_exit" and facts["returncode"] < 0:
+            result["classification"] = "SIGNALLED"
+        elif normal and reason is None and facts["returncode"] == 0:
+            result["classification"] = "RC0_CALLER_REFUSAL"
+    except (OSError, ValueError, TypeError):
+        pass
+    for name in ("stdout", "stderr"):
+        projected = {"available": False, "bytes": None, "sha256": None}
+        try:
+            raw = read(log / name, 8 * 1024**2)
+            projected.update(available=True, bytes=len(raw), sha256=sha(raw))
+        except (OSError, ValueError, TypeError):
+            pass
+        result[name] = projected
+    counts_match = (
+        all(
+            result[name]["bytes"] == result["facts"][name + "_bytes"]
+            for name in ("stdout", "stderr")
+        )
+        if result["facts_available"]
+        and all(result[name]["available"] for name in ("stdout", "stderr"))
+        else None
+    )
+    result["retained_counts_match"] = counts_match
+    if counts_match is not True and result["classification"] in {
+        "NORMAL_NONZERO",
+        "SIGNALLED",
+        "RC0_CALLER_REFUSAL",
+    }:
+        result["classification"] = "H1_UNKNOWN"
+    return result
+
+
+def dpkg_build(source, log):
+    try:
+        command(
+            ["/usr/bin/dpkg-buildpackage", "-B", "-us", "-uc", "-j1"],
+            source,
+            log,
+            seconds=3000,
+            cap=8 * 1024**2,
+            env=BUILD_ENV,
+        )
+    except BaseException:
+        try:
+            diagnostic = json.dumps(dpkg_failure_data(log), sort_keys=True)
+            need(len(diagnostic.encode()) <= 8192, "dpkg_diagnostic_budget")
+            print(diagnostic, flush=True)
+        except BaseException:
+            pass  # Diagnostics must never replace the original refusal.
+        raise
 
 
 def prepared_buffers(captured, plan, rebased):
@@ -215,14 +364,7 @@ def main(materials, output):
     for name in plan["original_upstream_source_pins"]:
         need(read(source / name, 16 * 1024**2) == expected_tree[name], "applied_source_bytes")
     capability = keyring_probe(work)
-    command(
-        ["/usr/bin/dpkg-buildpackage", "-B", "-us", "-uc", "-j1"],
-        source,
-        work / "dpkg-buildpackage",
-        seconds=3000,
-        cap=8 * 1024**2,
-        env=BUILD_ENV,
-    )
+    dpkg_build(source, work / "dpkg-buildpackage")
     tls_oracle(source, work / "TLS-hostname")
     regression = output / "ASN1-six-cases.json"
     command(

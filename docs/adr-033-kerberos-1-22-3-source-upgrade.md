@@ -85,3 +85,18 @@ stricts/capture ; cela ne prouve pas encore la lecture ou signature en CI.
 Références de disposition, sans signature du paquet revendiquée ici :
 [Makefile2025.1](https://sources.debian.org/data/main/d/debian-archive-keyring/2025.1/Makefile)
 et [liste Trixie](https://packages.debian.org/trixie/all/debian-archive-keyring/filelist).
+
+## Diagnostic du refus du build natif
+
+Le run59b termine l'acquisition puis atteint dpkg-buildpackage, après retour
+des contrôles d'authentification, de source, de baseline et de patches. La trace
+ne contient pas les reçus AUTH/ABI ni les faits H1 du processus échoué ; elle
+ne prouve pas sa cause. Le temps de stage175.8s ne distingue pas cap, signal,
+erreur normale ou UNKNOWN. Aucun plafond ni erreur de compilation n'est inféré.
+
+Le seul caller dpkg émet désormais, en cas de refus, un JSON fermé de8Kio max :
+flags H1, raison enum, nombres, tailles et empreintes des buffers capturés. Les
+logs bruts, arguments, erreurs libres, environnement, clés et données KDC sont
+exclus. La même exception est toujours relancée, même si le diagnostic échoue.
+Succès : aucune lecture/sortie ajoutée. Commande, env, budget3000s, caps8MiB et
+helpers communs restent exacts ; le nouveau reçu réel reste à collecter.

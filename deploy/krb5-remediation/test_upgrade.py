@@ -842,5 +842,157 @@ class CanonicalArchiveKeyringTests(unittest.TestCase):
                 self.assertTrue(capture.closed)
 
 
+class DpkgFailureDiagnosticTests(unittest.TestCase):
+    @staticmethod
+    def facts(**changes):
+        value = dict(
+            spawn_attempted=True,
+            pid=123,
+            returncode=2,
+            reason="nonzero_exit",
+            killed_owned_child=False,
+            owned_child_reaped=True,
+            drains_complete=True,
+            exception_type=None,
+            cleanup_exception_type=None,
+            stdout_bytes=3,
+            stderr_bytes=4,
+        )
+        return value | changes
+
+    def test_success_preserves_exact_command_without_diagnostic_reads_or_output(self):
+        source, log = Path("source"), Path("log")
+        with (
+            patch.object(build, "command") as command,
+            patch.object(build, "read", side_effect=AssertionError("success must not read")),
+            patch("builtins.print") as printed,
+        ):
+            build.dpkg_build(source, log)
+        command.assert_called_once_with(
+            ["/usr/bin/dpkg-buildpackage", "-B", "-us", "-uc", "-j1"],
+            source,
+            log,
+            seconds=3000,
+            cap=8 * 1024**2,
+            env=build.BUILD_ENV,
+        )
+        printed.assert_not_called()
+
+    def test_failure_typed_H1_hashes_caps_and_original_refusal_without_raw_output(self):
+        cases = [
+            ({}, "NORMAL_NONZERO"),
+            ({"returncode": -9}, "SIGNALLED"),
+            ({"reason": "stdout_overflow", "stdout_bytes": 8 * 1024**2}, "OUTPUT_CAP_REFUSED"),
+            ({"reason": "timeout", "killed_owned_child": True}, "TIME_BUDGET_REFUSED"),
+            ({"owned_child_reaped": False}, "H1_UNKNOWN"),
+            ({"drains_complete": False}, "H1_UNKNOWN"),
+            ({"exception_type": "PRIVATE_EXCEPTION"}, "H1_UNKNOWN"),
+            ({"returncode": 0, "reason": None}, "RC0_CALLER_REFUSAL"),
+        ]
+        for delta, expected in cases:
+            original = ValueError("PRIVATE_ORIGINAL_REFUSAL")
+            reads = []
+            buffers = {"stdout": b"::error::PRIVATE_KEY_PASSWORD_ENV", "stderr": b"PRIVATE_KDC_RAW"}
+
+            def reader(path, cap):
+                reads.append((path.name, cap))
+                return (
+                    json.dumps(
+                        self.facts(
+                            **(
+                                dict(
+                                    stdout_bytes=len(buffers["stdout"]),
+                                    stderr_bytes=len(buffers["stderr"]),
+                                )
+                                | delta
+                            )
+                        )
+                    ).encode()
+                    if path.name == "result.json"
+                    else buffers[path.name]
+                )
+
+            console = io.StringIO()
+            with (
+                self.subTest(expected=expected),
+                patch.object(build, "command", side_effect=original) as command,
+                patch.object(build, "read", side_effect=reader),
+                patch("sys.stdout", console),
+            ):
+                with self.assertRaises(ValueError) as caught:
+                    build.dpkg_build(Path("source"), Path("log"))
+            self.assertIs(caught.exception, original)
+            command.assert_called_once()
+            text = console.getvalue()
+            self.assertLessEqual(len(text.encode()), 8192)
+            self.assertNotIn("PRIVATE", text)
+            self.assertNotIn("::error::", text)
+            result = json.loads(text)
+            self.assertEqual(result["classification"], expected)
+            self.assertIs(result["operational_GO"], False)
+            self.assertIs(result["tool_stability_proved"], False)
+            for name, raw in buffers.items():
+                self.assertEqual(
+                    result[name], {"available": True, "bytes": len(raw), "sha256": model.sha(raw)}
+                )
+            self.assertEqual(
+                reads, [("result.json", 16384), ("stdout", 8 * 1024**2), ("stderr", 8 * 1024**2)]
+            )
+
+    def test_injected_missing_malformed_receipts_or_console_failure_never_mask_primary(self):
+        variants = [
+            self.facts(reason="PRIVATE_UNKNOWN_REASON"),
+            self.facts(returncode=True),
+            self.facts(pid=True),
+            self.facts(stdout_bytes=8 * 1024**2 + 1),
+            self.facts(extra="PRIVATE_FREE_FIELD"),
+            {"not": "PRIVATE_DATA"},
+        ]
+        for facts in variants:
+            with (
+                self.subTest(facts=list(facts)),
+                patch.object(
+                    build,
+                    "read",
+                    side_effect=lambda path, cap: json.dumps(facts).encode()
+                    if path.name == "result.json"
+                    else (_ for _ in ()).throw(ValueError("PRIVATE_READ_REFUSAL")),
+                ),
+            ):
+                packet = build.dpkg_failure_data(Path("log"))
+                self.assertFalse(packet["facts_available"])
+                self.assertEqual(packet["classification"], "H1_UNKNOWN")
+                self.assertFalse(packet["stdout"]["available"])
+                self.assertFalse(packet["stderr"]["available"])
+                self.assertNotIn("PRIVATE", json.dumps(packet))
+        for error in [OSError("PRIVATE"), ValueError("PRIVATE")]:
+            original = ValueError("PRIMARY")
+            console = io.StringIO()
+            console.close()
+            with (
+                patch.object(build, "command", side_effect=original) as command,
+                patch.object(build, "read", side_effect=error),
+                patch("sys.stdout", console),
+            ):
+                with self.assertRaises(ValueError) as caught:
+                    build.dpkg_build(Path("source"), Path("log"))
+            self.assertIs(caught.exception, original)
+            command.assert_called_once()
+        for missing in [True, False]:
+
+            def reader(path, cap):
+                if path.name == "result.json":
+                    return json.dumps(self.facts()).encode()
+                if missing:
+                    raise OSError("PRIVATE_MISSING_LOG")
+                return b"retained bytes disagree with receipt"
+
+            with self.subTest(missing=missing), patch.object(build, "read", side_effect=reader):
+                packet = build.dpkg_failure_data(Path("log"))
+            self.assertTrue(packet["facts_available"])
+            self.assertEqual(packet["classification"], "H1_UNKNOWN")
+            self.assertIs(packet["retained_counts_match"], None if missing else False)
+
+
 if __name__ == "__main__":
     unittest.main()

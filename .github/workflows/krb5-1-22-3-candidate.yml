@@ -30,7 +30,7 @@ jobs:
         env:
           CONTEXT: ${{ runner.temp }}/krb5-candidate-context
           EVIDENCE: ${{ runner.temp }}/krb5-candidate-evidence
-          SOURCE_LIST_SHA256: 65232aa858345f628123d2c8cd083deef070425c570714e68f9e341ee978fdff
+          SOURCE_LIST_SHA256: ddc399f8b2031274b445cd74c75475e9a1ec3a6c0fb0f35477af120d5a7fc564
           SOURCE_FILE_COUNT: 45
         run: |
           set -euo pipefail
