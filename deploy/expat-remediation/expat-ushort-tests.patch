@@ -1,0 +1,147 @@
+--- a/tests/basic_tests.c
++++ b/tests/basic_tests.c
+@@ -949,10 +949,13 @@
+         || xcscmp(XCS("refs"), attrname) == 0) {
+       if (! is_whitespace_normalized(value, 0)) {
+         char buffer[256];
++        XML_CHAR_DIAG_BUFFER(name_diagnostic);
++        XML_CHAR_DIAG_BUFFER(value_diagnostic);
+         snprintf(buffer, sizeof(buffer),
+                  "attribute value not normalized: %" XML_FMT_STR
+                  "='%" XML_FMT_STR "'",
+-                 attrname, value);
++                 XML_CHAR_DIAG(attrname, name_diagnostic),
++                 XML_CHAR_DIAG(value, value_diagnostic));
+         fail(buffer);
+       }
+     }
+@@ -2328,7 +2331,7 @@
+       char message[1024];
+ 
+       snprintf(message, sizeof(message),
+-               "Expected error %d (%" XML_FMT_STR "), got %d (%" XML_FMT_STR
++               "Expected error %d (%" XML_FMT_LSTR "), got %d (%" XML_FMT_LSTR
+                ") for case %lu\n",
+                cases[i].expected_error,
+                XML_ErrorString(cases[i].expected_error), actual_error,
+--- a/tests/common.c
++++ b/tests/common.c
+@@ -189,7 +189,7 @@
+   char buffer[1024];
+   enum XML_Error err = XML_GetErrorCode(parser);
+   snprintf(buffer, sizeof(buffer),
+-           "    %d: %" XML_FMT_STR " (line %" PRIu64 ", offset %" PRIu64
++           "    %d: %" XML_FMT_LSTR " (line %" PRIu64 ", offset %" PRIu64
+            ")\n    reported from %s, line %d\n",
+            err, XML_ErrorString(err), XML_GetCurrentLineNumber64(parser),
+            XML_GetCurrentColumnNumber64(parser), file, line);
+--- a/tests/common.h
++++ b/tests/common.h
+@@ -56,19 +56,7 @@
+ #  define XML_FMT_INT_MOD "l"
+ #endif
+ 
+-#ifdef XML_UNICODE_WCHAR_T
+-#  define XML_FMT_STR "ls"
+-#  include <wchar.h>
+-#  define XCS(s) _XCS(s)
+-#  define _XCS(s) L##s
+-#else
+-#  ifdef XML_UNICODE
+-#    error "No support for UTF-16 character without wchar_t in tests"
+-#  else
+-#    define XML_FMT_STR "s"
+-#    define XCS(s) s
+-#  endif /* XML_UNICODE */
+-#endif   /* XML_UNICODE_WCHAR_T */
++#include "test_character_support.h"
+ 
+ extern XML_Parser g_parser;
+ 
+--- a/tests/handlers.c
++++ b/tests/handlers.c
+@@ -197,14 +197,18 @@
+                       const XML_Char **atts) {
+   XML_Char **elemstr = (XML_Char **)userData;
+   char buffer[1024];
++  XML_CHAR_DIAG_BUFFER(name_diagnostic);
++  XML_CHAR_DIAG_BUFFER(attribute_diagnostic);
+   if (xcscmp(elemstr[0], name) != 0) {
+     snprintf(buffer, sizeof(buffer),
+-             "unexpected start string: '%" XML_FMT_STR "'", name);
++             "unexpected start string: '%" XML_FMT_STR "'",
++             XML_CHAR_DIAG(name, name_diagnostic));
+     fail(buffer);
+   }
+   if (xcscmp(elemstr[1], atts[0]) != 0) {
+     snprintf(buffer, sizeof(buffer),
+-             "unexpected attribute string: '%" XML_FMT_STR "'", atts[0]);
++             "unexpected attribute string: '%" XML_FMT_STR "'",
++             XML_CHAR_DIAG(atts[0], attribute_diagnostic));
+     fail(buffer);
+   }
+   g_triplet_start_flag = XML_TRUE;
+@@ -219,8 +223,10 @@
+   XML_Char **elemstr = (XML_Char **)userData;
+   if (xcscmp(elemstr[0], name) != 0) {
+     char buffer[1024];
++    XML_CHAR_DIAG_BUFFER(name_diagnostic);
+     snprintf(buffer, sizeof(buffer),
+-             "unexpected end string: '%" XML_FMT_STR "'", name);
++             "unexpected end string: '%" XML_FMT_STR "'",
++             XML_CHAR_DIAG(name, name_diagnostic));
+     fail(buffer);
+   }
+   g_triplet_end_flag = XML_TRUE;
+--- a/tests/misc_tests.c
++++ b/tests/misc_tests.c
+@@ -224,7 +224,7 @@
+   if (! versions_equal(&read_version, &parsed_version))
+     fail("Version mismatch");
+ 
+-  if (xcscmp(version_text, XCS("expat_2.10.0"))
++  if (test_lcscmp(version_text, XCLS("expat_2.10.0"))
+       != 0) /* needs bump on releases */
+     fail("XML_*_VERSION in expat.h out of sync?\n");
+ }
+--- a/tests/runtests.c
++++ b/tests/runtests.c
+@@ -106,7 +106,7 @@
+     }
+   }
+   if (verbosity != CK_SILENT)
+-    printf("Expat version: %" XML_FMT_STR "\n", XML_ExpatVersion());
++    printf("Expat version: %" XML_FMT_LSTR "\n", XML_ExpatVersion());
+ 
+   for (g_chunkSize = 0; g_chunkSize <= 5; g_chunkSize++) {
+     for (int enabled = 0; enabled <= 1; ++enabled) {
+--- a/tests/structdata.c
++++ b/tests/structdata.c
+@@ -51,12 +51,7 @@
+ 
+ #define STRUCT_EXTENSION_COUNT 8
+ 
+-#ifdef XML_UNICODE_WCHAR_T
+-#  include <wchar.h>
+-#  define XML_FMT_STR "ls"
+-#else
+-#  define XML_FMT_STR "s"
+-#endif
++#include "test_character_support.h"
+ 
+ static XML_Char *
+ xmlstrdup(const XML_Char *s) {
+@@ -131,10 +126,12 @@
+       } else {
+         if (got->data0 != want->data0 || got->data1 != want->data1
+             || got->data2 != want->data2) {
++          XML_CHAR_DIAG_BUFFER(string_diagnostic);
+           snprintf(buffer, sizeof(buffer),
+                    "struct '%" XML_FMT_STR
+                    "' expected (%d,%d,%d), got (%d,%d,%d)",
+-                   got->str, want->data0, want->data1, want->data2, got->data0,
++                   XML_CHAR_DIAG(got->str, string_diagnostic),
++                   want->data0, want->data1, want->data2, got->data0,
+                    got->data1, got->data2);
+           StructData_Dispose(storage);
+           fail(buffer);

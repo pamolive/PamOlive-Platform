@@ -1,6 +1,6 @@
 ARG LIBPQ_DEBIAN_VERSION=17.12-0+deb13u1
 FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS expat-prepared
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential binutils gpg=2.4.7-21+deb13u1+b5 dpkg-dev debhelper autoconf automake libtool pkg-config docbook-to-man docbook2x libexpat1-dev=2.9.0-1~deb13u1 ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential binutils patch gpg=2.4.7-21+deb13u1+b5 dpkg-dev debhelper autoconf automake libtool pkg-config docbook-to-man docbook2x libexpat1-dev=2.9.0-1~deb13u1 ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY deploy/expat-remediation/ /opt/expat4/
 RUN python -I -B -S /opt/expat4/download.py /expat-materials
 # Only these pinned public inputs become traversable by the non-root GPG preflight.
@@ -11,9 +11,9 @@ RUN --network=none python -I -B -S /opt/expat4/abi_gate.py capture /expat-before
 RUN --network=none python -I -B -S /opt/expat4/build_debian.py /expat-materials /expat-packages
 RUN --network=none python -I -B -S /opt/expat4/source_audit.py /expat-materials /expat-source-audit.json
 RUN --network=none python -I -B -S /opt/expat4/check_sanitizer.py /expat-materials /expat-sanitizer
-# Evidence packaging only; source/runtime modules above remain byte-exact R3.
+# Proof DATA only; test executables stay out of the evidence archive.
 RUN --network=none mkdir /expat-proof && \
-    timeout -k 5s 30s tar --exclude='./work' --exclude='./runtime' --exclude='./sdk' --exclude='./authentication/inputs' --exclude='./authentication/*-home' -cf /expat-proof/debian.tar -C /expat-packages . && \
+    timeout -k 5s 30s tar --exclude='./work' --exclude='./runtime' --exclude='./sdk' --exclude='./wide-helper-selftest' --exclude='./authentication/inputs' --exclude='./authentication/*-home' -cf /expat-proof/debian.tar -C /expat-packages . && \
     timeout -k 5s 30s tar --exclude='./source' --exclude='./authentication/inputs' --exclude='./authentication/*-home' -cf /expat-proof/sanitizer.tar -C /expat-sanitizer .
 
 FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS expat-runtime
@@ -33,7 +33,7 @@ RUN --network=none python -I -B -S /opt/expat4/abi_gate.py capture /usr/share/pa
 RUN --network=none python -I -B -S /opt/expat4/abi_gate.py compare /expat-before.json /usr/share/pamolive/expat4/after/ABI.json
 RUN --network=none python -I -B -S /opt/expat4/qualify_linux.py /expat-materials /expat-tests
 RUN --network=none timeout -k 5s 30s tar --exclude='./authentication/inputs' --exclude='./authentication/*-home' --exclude='./clinic' --exclude='./*.c' --exclude='./*.so' -cf /expat-xml-proof.tar -C /python-xml-build . && \
-    timeout -k 5s 30s tar --exclude='./stdlib' --exclude='./expat-regression' -cf /expat-native-proof.tar -C /expat-tests .
+    timeout -k 5s 30s tar --exclude='./stdlib' --exclude='./expat-regression' --exclude='./expat-wide-regression' --exclude='./expat-wide-cpp-smoke' -cf /expat-native-proof.tar -C /expat-tests .
 
 FROM expat-runtime AS expat-patched-base
 COPY --from=python-xml-builder /usr/local/lib/python3.12/lib-dynload/pyexpat.cpython-312-x86_64-linux-gnu.so /usr/local/lib/python3.12/lib-dynload/

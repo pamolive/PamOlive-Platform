@@ -6,8 +6,10 @@ import tarfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from build_debian import publish_build_failure
 from common import HERE, check_materials, command, material, need, record, write_new
 from python_cases import CASES
+from wide_test_port import public_test_command
 
 
 def main(materials, output):
@@ -34,6 +36,67 @@ def main(materials, output):
         seconds=60,
     )
     command([str(output / "expat-regression")], output, output / "native-c", seconds=5)
+    public_test_command(
+        [
+            "/usr/bin/gcc",
+            "-std=c11",
+            "-O1",
+            "-g",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-DXML_UNICODE",
+            "-I/usr/include/x86_64-linux-gnu",
+            str(HERE / "expat_regression.c"),
+            "-o",
+            str(output / "expat-wide-regression"),
+            "-lexpatw",
+        ],
+        output,
+        output / "compile-c-wide",
+        "wide-exported-c-compile",
+        publish_build_failure,
+        seconds=60,
+    )
+    public_test_command(
+        [str(output / "expat-wide-regression")],
+        output,
+        output / "native-c-wide",
+        "wide-exported-c-run",
+        publish_build_failure,
+        seconds=5,
+    )
+    public_test_command(
+        [
+            "/usr/bin/g++",
+            "-std=c++11",
+            "-O1",
+            "-g",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-pedantic",
+            "-DXML_UNICODE",
+            "-I/usr/include/x86_64-linux-gnu",
+            str(HERE / "expat_wide_abi_smoke.cpp"),
+            "-o",
+            str(output / "expat-wide-cpp-smoke"),
+            "-lexpatw",
+        ],
+        output,
+        output / "compile-cpp-wide",
+        "wide-exported-cpp-compile",
+        publish_build_failure,
+        seconds=60,
+    )
+    public_test_command(
+        [str(output / "expat-wide-cpp-smoke")],
+        output,
+        output / "native-cpp-wide",
+        "wide-exported-cpp-run",
+        publish_build_failure,
+        seconds=5,
+    )
     for case in CASES:
         command(
             ["/usr/local/bin/python3.12", "-I", "-B", "-S", str(HERE / "run_python_case.py"), case],
@@ -93,6 +156,9 @@ def main(materials, output):
         output / "QUALIFICATION.json",
         {
             "native_fixture": True,
+            "wide_exported_C_regression": True,
+            "wide_CXX_exported_ABI_smoke": True,
+            "full_CXX_suite_claimed": False,
             "python_cases": list(CASES),
             "cpython_stdlib": ["test_pyexpat", "test_xml_etree", "test_xml_etree_c"],
             "fixed4_admitted": False,

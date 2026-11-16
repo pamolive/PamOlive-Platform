@@ -9,13 +9,29 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from authenticate import main as authenticate
 from common import ENV, command, material, need, read, record, sha, write_new
+from wide_test_port import apply_wide_port, check_helpers, package_pins, suite_counts
 
 VERSION = "2.10.0-1+pamolive1"
 
 
 def publish_build_failure(log, *, stage="dpkg-buildpackage"):
     """Only public Debian build logs: bounded encoded tails, never an admission."""
-    need(stage in {"dpkg-buildpackage", "make-build-check", "make-buildw-check"}, "build_stage")
+    need(
+        stage
+        in {
+            "dpkg-buildpackage",
+            "make-build-check",
+            "make-buildw-check",
+            "wide-port-patch",
+            "wide-helper-compile",
+            "wide-helper-run",
+            "wide-exported-c-compile",
+            "wide-exported-c-run",
+            "wide-exported-cpp-compile",
+            "wide-exported-cpp-run",
+        },
+        "build_stage",
+    )
     streams = {}
     for name in ("stdout", "stderr"):
         try:
@@ -76,9 +92,18 @@ def build_package(source, log):
 def check_tree(source, output, tree):
     need(tree in {"build", "buildw"}, "build_test_tree")
     log = output / (tree + "-check")
+    tests = source / tree / "tests"
+    need(
+        not (tests / "runtests.log").exists() and not (tests / "runtests.trs").exists(),
+        "test_outputs_not_fresh",
+    )
+    target = tree + "/tests" if tree == "buildw" else tree
+    args = ["/usr/bin/make", "-j1", "-C", target, "check"]
+    if tree == "buildw":
+        args.append("CC=/usr/bin/gcc -std=c11 -Werror=incompatible-pointer-types -Werror=format")
     try:
         command(
-            ["/usr/bin/make", "-j1", "-C", tree, "check"],
+            args,
             source,
             log,
             seconds=300,
@@ -127,9 +152,15 @@ def main(materials, output):
     ).encode()
     changelog.write_bytes(prefix + old)
     build_package(source, output / "build")
-    # Debian rules have no test target. Both configured trees must be exercised explicitly.
+    # Packages are already built; only srcw/tests is ported. No library ABI,
+    # allocator, case registration or installed artifact is changed by this step.
+    built_packages = package_pins(work, VERSION)
+    apply_wide_port(source / "srcw", output / "wide-test-port", publish_build_failure)
+    check_helpers(source, output, publish_build_failure)
     for tree in ("build", "buildw"):
         check_tree(source, output, tree)
+    counts = suite_counts(source, output / "upstream-tests")
+    need(package_pins(work, VERSION) == built_packages, "test_port_changed_packages")
     published = []
     for package, folder in (("libexpat1", "runtime"), ("libexpat1-dev", "sdk")):
         files = list(work.glob(f"{package}_{VERSION}_amd64.deb"))
@@ -156,7 +187,11 @@ def main(materials, output):
         output / "SOURCE-REBUILD.json",
         {
             "packages": published,
-            "tests": ["build/check", "buildw/check"],
+            "tests": ["build/check", "buildw/tests/check"],
+            "upstream_C_counts": counts,
+            "wide_test_port_only": True,
+            "packages_unchanged_across_tests": built_packages,
+            "full_CXX_suite_claimed": False,
             "platform": "trixie/amd64",
             "local_build_attestation": False,
             "fixed4_admitted": False,

@@ -43,7 +43,12 @@ XML ; LTO, options restantes et controles ABI/capsule sont conserves. Les
 48purs passent sans exclusion ni execution externe ; Ruff et Bandit deploy
 High passent. Le scan de secrets sur1272fichiers ne trouve aucun nouveau
 secret. Aucun profil importe, equivalence de performance ou succes natif
-n'est revendique ; wide, SDK et oracles restent a qualifier. Les deux CI
+n'est revendique ; wide, SDK et oracles restent a qualifier. Le port test-only
+[ADR-028](adr-028-expat-utf16-test-harness.md) conserve444cas C et ABI ushort,
+sans nouvelle allocation diagnostic ;58purs preparatoires passent. Paquets
+SDK/runtime doivent rester byteexacts, logs/TRS complets narrow/wide et
+smoke C++ exporte restent a recevoir. Les compilations negatives C99/C++/type
+incompatible restent requises avant qualification finale. Les deux CI
 Platform e256 sont terminees en echec au scan et aux deux observations, avec
 les jobs securite et bibliotheques installees reussis.
 

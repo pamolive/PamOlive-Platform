@@ -36,7 +36,17 @@ class BuildDiagnosticTests(unittest.TestCase):
                         else:
                             build_debian.check_tree(Path("/source"), Path("/output"), tree)
                     command.assert_called_once_with(
-                        ["/usr/bin/make", "-j1", "-C", tree, "check"],
+                        [
+                            "/usr/bin/make",
+                            "-j1",
+                            "-C",
+                            "buildw/tests",
+                            "check",
+                            "CC=/usr/bin/gcc -std=c11 "
+                            "-Werror=incompatible-pointer-types -Werror=format",
+                        ]
+                        if tree == "buildw"
+                        else ["/usr/bin/make", "-j1", "-C", tree, "check"],
                         Path("/source"),
                         Path("/output") / (tree + "-check"),
                         seconds=300,

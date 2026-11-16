@@ -31,3 +31,6 @@ qualification/public_prerequisites_dispatch/** -text whitespace=cr-at-eol
 deploy/expat-remediation/** -text whitespace=cr-at-eol
 # Historical patch DATA preserves its blank context lines byte-for-byte.
 deploy/expat-remediation/Dockerfile.diff -text whitespace=-blank-at-eol,cr-at-eol
+
+# A pinned unified-diff DATA file retains mandatory blank context lines.
+deploy/expat-remediation/expat-ushort-tests.patch -text whitespace=-blank-at-eol,cr-at-eol
