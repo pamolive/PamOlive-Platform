@@ -45,6 +45,7 @@ import test_models  # noqa: E402 -- audit must be installed before importing tes
 import test_negative_guard_tests  # noqa: E402 -- fake commands, same strict audit
 import test_os_release  # noqa: E402 -- same audit protects the two fake-IO guards
 import test_python_pgo  # noqa: E402 -- same audit covers pure optimization-policy models
+import test_sanitizer_release  # noqa: E402 -- pinned release DATA and fake build commands
 import test_wide_test_port  # noqa: E402 -- test-only ushort port boundaries
 
 if len(sys.argv) == 3:
@@ -56,6 +57,7 @@ suite = unittest.TestSuite(
         unittest.defaultTestLoader.loadTestsFromModule(test_negative_guard_tests),
         unittest.defaultTestLoader.loadTestsFromModule(test_os_release),
         unittest.defaultTestLoader.loadTestsFromModule(test_python_pgo),
+        unittest.defaultTestLoader.loadTestsFromModule(test_sanitizer_release),
         unittest.defaultTestLoader.loadTestsFromModule(test_wide_test_port),
     ]
 )

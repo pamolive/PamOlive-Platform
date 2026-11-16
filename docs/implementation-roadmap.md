@@ -124,7 +124,11 @@ leurs conditions ; 61 tests purs passent localement. La réception complète
 des journaux/paquets et les autres oracles restent nécessaires, sans admission CVE. Les contrôles négatifs C99/C++/type
 incompatible sont maintenant raccordés après le self-test positif ; leur
 reçu exige un refus attendu avec H1 et diagnostic exacts, sans modifier UNKNOWN.
-La préparation compte 83 tests, sans exécution de compilateur local. Les deux CI
+La préparation compte 83 tests, sans exécution de compilateur local. Le diagnostic
+fa17614 confirme make rc2/H1 complet et aclocal-1.19 absent. La voie release
+explicitement prévue désactive seulement le mode de régénération mainteneur ;
+UBSan et make check restent obligatoires. 87 tests préparatoires passent ;
+le résultat Linux de cette correction reste à recevoir. Les deux CI
 Platform e256 sont terminees en echec au scan et aux deux observations, avec
 les jobs securite et bibliotheques installees reussis.
 

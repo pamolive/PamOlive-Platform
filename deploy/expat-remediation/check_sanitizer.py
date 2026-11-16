@@ -86,7 +86,12 @@ def main(materials, output):
         "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=0",
     }
     build_step(
-        [str(source / "configure"), "--disable-shared", "--enable-static"],
+        [
+            str(source / "configure"),
+            "--disable-shared",
+            "--enable-static",
+            "--disable-maintainer-mode",
+        ],
         source,
         output / "configure",
         stage="ubsan-configure",
