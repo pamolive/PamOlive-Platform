@@ -1,0 +1,44 @@
+--- a/src/build-tools/krb5-config.in
++++ b/src/build-tools/krb5-config.in
+@@ -26,11 +26,18 @@
+ 
+ # Configurable parameters set by autoconf
+ version_string="Kerberos 5 release @KRB5_VERSION@"
++CC=${CC-cc}
++tripple=`$CC -print-multiarch 2>/dev/null|| ( $CC -dumpmachine | sed 's/-pc//' )`
++if [ x$tripple = x ]; then
++    echo >&2 Failed to find installation architecture
++    exit 2
++fi
++
+ 
+ prefix=@prefix@
+ exec_prefix=@exec_prefix@
+-includedir=@includedir@
+-libdir=@libdir@
++includedir=@prefix@/include/mit-krb5
++libdir=@prefix@/lib/${tripple}/mit-krb5
+ CC_LINK='@CC_LINK@'
+ KDB5_DB_LIB=@KDB5_DB_LIB@
+ RPATH_FLAG='@RPATH_FLAG@'
+@@ -135,6 +142,7 @@
+     echo "        [--defktname]     Show built-in default keytab name"
+     echo "        [--defcktname]    Show built-in default client keytab name"
+     echo "        [--cflags]        Compile time CFLAGS"
++    echo "        [--deps]          Include dependent libraries"
+     echo "        [--libs]          List libraries required to link [LIBRARIES]"
+     echo "Libraries:"
+     echo "        krb5              Kerberos 5 application"
+@@ -205,12 +213,7 @@
+ 
+ 
+ if test -n "$do_libs"; then
+-    # Assumes /usr/lib is the standard library directory everywhere...
+-    if test "$libdir" = /usr/lib; then
+-	libdirarg=
+-    else
+ 	libdirarg="-L$libdir"
+-    fi
+     # Ugly gross hack for our build tree
+     lib_flags=`echo $CC_LINK | sed -e 's/\$(CC)//' \
+ 	    -e 's/\$(PURE)//' \

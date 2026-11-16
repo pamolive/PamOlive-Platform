@@ -1,0 +1,94 @@
+name: Kerberos 1.22.3 candidate DATA
+on:
+  push:
+    branches: [agent/krb5-1-22-3-qualification]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  krb5-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - name: Refuse foreign repository, branch, event or job before source IO
+        run: |
+          python -I -B -S - <<'PY'
+          import os,re
+          assert os.environ['GITHUB_REPOSITORY']=='pamolive/PamOlive-Platform'
+          assert os.environ['GITHUB_REF']=='refs/heads/agent/krb5-1-22-3-qualification'
+          assert os.environ['GITHUB_EVENT_NAME'] in {'push','workflow_dispatch'}
+          assert os.environ['GITHUB_JOB']=='krb5-candidate'
+          assert re.fullmatch('[0-9a-f]{40}',os.environ['GITHUB_SHA'])
+          PY
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Capture finite pinned source before any candidate imports
+        env:
+          CONTEXT: ${{ runner.temp }}/krb5-candidate-context
+          EVIDENCE: ${{ runner.temp }}/krb5-candidate-evidence
+          SOURCE_LIST_SHA256: 9f1d04df5fd0d979f98cfa1c6a1e93a4aa7061c784b14628c1d299925f0ffaf1
+          SOURCE_FILE_COUNT: 45
+        run: |
+          set -euo pipefail
+          mkdir -m 700 "$EVIDENCE"
+          printf 'CONTEXT=%s\nEVIDENCE=%s\n' "$CONTEXT" "$EVIDENCE" >> "$GITHUB_ENV"
+          python -I -B -S - <<'PY'
+          import hashlib,json,os,stat,subprocess
+          from pathlib import Path
+          root=Path.cwd().resolve()
+          listing=root/'deploy/krb5-remediation/source-checksums.sha256'
+          with listing.open('rb') as stream:raw=stream.read(65537)
+          assert len(raw)<=65536 and hashlib.sha256(raw).hexdigest()==os.environ['SOURCE_LIST_SHA256']
+          context=Path(os.environ['CONTEXT']);context.mkdir(mode=0o700)
+          records=[];seen=set();total=0
+          for row in raw.decode('ascii').splitlines():
+              digest,name=row.split('  ')
+              assert len(digest)==64 and all(c in '0123456789abcdef' for c in digest)
+              assert name.startswith('deploy/krb5-remediation/') and all(p not in {'','..','.'} for p in name.split('/'))
+              assert '\\' not in name and ':' not in name
+              assert name not in seen;seen.add(name)
+              p=root/name;before=p.lstat()
+              assert stat.S_ISREG(before.st_mode) and not p.is_symlink() and before.st_nlink==1
+              with p.open('rb') as stream:
+                  opened=os.fstat(stream.fileno());data=stream.read(32*1024**2+1)
+              after=p.lstat();identity=lambda s:(s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+              assert identity(before)==identity(opened)==identity(after)
+              assert len(data)==before.st_size<=32*1024**2 and hashlib.sha256(data).hexdigest()==digest
+              total+=len(data);assert total<=128*1024**2
+              target=context/name;target.parent.mkdir(parents=True,exist_ok=True)
+              with target.open('xb') as stream:assert stream.write(data)==len(data)
+              records.append({'path':name,'sha256':digest,'bytes':len(data)})
+          assert len(records)==int(os.environ['SOURCE_FILE_COUNT'])
+          sha=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          tree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip()
+          assert sha==os.environ['GITHUB_SHA']
+          receipt={'head':sha,'tree':tree,'source_list_sha256':hashlib.sha256(raw).hexdigest(),
+                   'files':records,'event':os.environ['GITHUB_EVENT_NAME'],'ref':os.environ['GITHUB_REF'],
+                   'product_admission':False,'operational_GO':False}
+          with (Path(os.environ['EVIDENCE'])/'source-bindings.json').open('x') as f:json.dump(receipt,f,indent=2)
+          PY
+      - name: Audited N0 source models
+        run: python -I -B -S "$CONTEXT/deploy/krb5-remediation/run_pure.py" "$EVIDENCE/N0.json"
+      - name: Authenticate two source chains and measure native ABI and GSS consumer
+        timeout-minutes: 63
+        run: |
+          set -euo pipefail
+          docker build --platform linux/amd64 --progress plain --no-cache --target krb5-candidate-DATA --file "$CONTEXT/deploy/krb5-remediation/Dockerfile.lab" --output "type=tar,dest=$EVIDENCE/krb5-candidate-DATA.tar" "$CONTEXT"
+          test "$(stat -c '%s' "$EVIDENCE/krb5-candidate-DATA.tar")" -le 268435456
+          sha256sum "$EVIDENCE/krb5-candidate-DATA.tar" > "$EVIDENCE/krb5-candidate-DATA.tar.sha256"
+          python -I -B -S "$CONTEXT/deploy/krb5-remediation/check_data_export.py" "$EVIDENCE/krb5-candidate-DATA.tar"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: krb5-candidate-DATA-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/krb5-candidate-evidence/source-bindings.json
+            ${{ runner.temp }}/krb5-candidate-evidence/N0.json
+            ${{ runner.temp }}/krb5-candidate-evidence/krb5-candidate-DATA.tar
+            ${{ runner.temp }}/krb5-candidate-evidence/krb5-candidate-DATA.tar.sha256

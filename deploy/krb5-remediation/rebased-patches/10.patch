@@ -1,0 +1,14 @@
+--- a/src/kprop/kpropd.c
++++ b/src/kprop/kpropd.c
+@@ -381,6 +381,11 @@
+     if (error == 0)
+         return 0;
+     hints.ai_family = AF_INET;
++    error =  getaddrinfo(NULL, port, &hints, res);
++    if (error == 0)
++        return 0;
++    /* We may only have loopback addresses configured. Especially for the test framework, this is a valid configuration.*/
++    hints.ai_flags = AI_PASSIVE;
+     return getaddrinfo(NULL, port, &hints, res);
+ }
+ 

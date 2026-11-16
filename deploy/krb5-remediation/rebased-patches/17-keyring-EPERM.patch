@@ -1,0 +1,12 @@
+--- a/src/util/k5test.py
++++ b/src/util/k5test.py
+@@ -1241,7 +1241,8 @@
+         try: subprocess.check_output(['keyctl', 'add', 'user', 'some_key', 'data', '@p'], stderr=subprocess.STDOUT)
+         except subprocess.CalledProcessError as e:
+             out = str(e.output, 'utf-8')
+-            if 'Function not implemented' in out and e.returncode == 1:
++            if e.returncode == 1 and out.strip() in ('add_key: Function not implemented',
++                                      'add_key: Operation not permitted'):
+                 return False # masked by seccomp
+             fail('Unexpected output from keyctl: '+e.output)
+             raise

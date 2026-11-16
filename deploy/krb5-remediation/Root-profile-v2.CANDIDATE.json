@@ -1,0 +1,11 @@
+{
+  "schema": "pamolive.Root.krb5-runtime-profile/2",
+  "version": "1.22.3-0+pamolive1",
+  "purpose": "krb5-upstream-1.22.3-debian-packaging-1.22.1-3-v1",
+  "admitted": false,
+  "source_sha256": "fe90af8441ad9fa9b064b8e53077cefb782a96f8a68276b031dc54af1789ff0b",
+  "packaging_sha256": "519ad7537260ebc450a678b38f00c8deaf0e05d848d0e5cfeef1ddb154663ba8",
+  "patch_plan_sha256": "209cb75a6f42cbbb0e750bf0f0c1c7a8bc446e65d582736c25e80c00dcdcc33c",
+  "libraries": {},
+  "operational_GO": false
+}

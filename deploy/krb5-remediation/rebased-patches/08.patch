@@ -1,0 +1,68 @@
+--- a/src/build-tools/gssrpc.pc.in
++++ b/src/build-tools/gssrpc.pc.in
+@@ -7,6 +7,6 @@
+ Name: gssrpc
+ Description: GSSAPI RPC implementation
+ Version: @KRB5_VERSION@
+-Cflags: -I${includedir}
++Cflags: -isystem ${includedir}
+ Libs: -L${libdir} -lgssrpc
+ Requires.private: mit-krb5-gssapi
+--- a/src/build-tools/kadm-client.pc.in
++++ b/src/build-tools/kadm-client.pc.in
+@@ -7,5 +7,5 @@
+ Description: Kerberos administration client library
+ Version: @KRB5_VERSION@
+ Requires.private: mit-krb5-gssapi gssrpc
+-Cflags: -I${includedir}
++Cflags: -isystem ${includedir}
+ Libs: -L${libdir} -lkadm5clnt_mit
+--- a/src/build-tools/kadm-server.pc.in
++++ b/src/build-tools/kadm-server.pc.in
+@@ -7,5 +7,5 @@
+ Description: Kerberos administration server library
+ Version: @KRB5_VERSION@
+ Requires.private: kdb mit-krb5-gssapi
+-Cflags: -I${includedir}
++Cflags: -isystem ${includedir}
+ Libs: -L${libdir} -lkadm5srv_mit
+--- a/src/build-tools/kdb.pc.in
++++ b/src/build-tools/kdb.pc.in
+@@ -9,6 +9,6 @@
+ Description: Kerberos database access libraries
+ Version: @KRB5_VERSION@
+ Requires.private: mit-krb5-gssapi mit-krb5 gssrpc
+-Cflags: -I${includedir}
++Cflags: -isystem ${includedir}
+ Libs: -L${libdir} -lkdb5
+ Libs.private: ${KDB5_DB_LIB}
+--- a/src/build-tools/krb5-config.in
++++ b/src/build-tools/krb5-config.in
+@@ -205,7 +205,7 @@
+ 
+ if test -n "$do_cflags"; then
+     if test x"$includedir" != x"/usr/include" ; then
+-        echo "-I${includedir}"
++        echo "-isystem ${includedir}"
+     else
+         echo ''
+     fi
+--- a/src/build-tools/mit-krb5-gssapi.pc.in
++++ b/src/build-tools/mit-krb5-gssapi.pc.in
+@@ -7,5 +7,5 @@
+ Description: Kerberos implementation of the GSSAPI
+ Version: @KRB5_VERSION@
+ Requires.private: mit-krb5
+-Cflags: -I${includedir}
++Cflags: -isystem ${includedir}
+ Libs: -L${libdir} -lgssapi_krb5
+--- a/src/build-tools/mit-krb5.pc.in
++++ b/src/build-tools/mit-krb5.pc.in
+@@ -10,6 +10,6 @@
+ Name: mit-krb5
+ Description: An implementation of Kerberos network authentication
+ Version: @KRB5_VERSION@
+-Cflags: -I${includedir}
++Cflags: -isystem ${includedir}
+ Libs: -L${libdir} -lkrb5 -lk5crypto @COM_ERR_LIB@
+ Libs.private: -lkrb5support
