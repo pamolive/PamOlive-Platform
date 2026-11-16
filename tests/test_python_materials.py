@@ -539,7 +539,7 @@ class PythonMaterialsTests(unittest.TestCase):
         )
         docker = (ROOT / "Dockerfile").read_text()
         directory = docker.split(" AS directory-builder\n", 1)[1].split(
-            "FROM krb5-runtime AS runtime", 1
+            "FROM expat-runtime AS runtime-build", 1
         )[0]
         self.assertLess(
             directory.index("libpq-dev=${LIBPQ_DEBIAN_VERSION}"),
@@ -550,7 +550,7 @@ class PythonMaterialsTests(unittest.TestCase):
             "--no-build-isolation --check-build-dependencies --no-deps --require-hashes", directory
         )
         self.assertIn("--find-links=/opt/python-inputs/sources --no-binary=:all:", directory)
-        runtime = docker.split("FROM krb5-runtime AS runtime", 1)[1].split(
+        runtime = docker.split("FROM expat-runtime AS runtime-build", 1)[1].split(
             "FROM guacd-builder AS native-test-builder", 1
         )[0]
         self.assertNotIn("COPY --from=directory-builder /opt/python-inputs/build-tools", runtime)

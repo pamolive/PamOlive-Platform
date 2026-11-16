@@ -65,7 +65,16 @@ def read_json(path, limit):
     return json.loads(data)
 
 
-def archive_hash(path):
+def archive_hash(path, *, archive_stream=None):
+    if archive_stream is not None:
+        archive_stream.seek(0)
+        total, digest = 0, hashlib.sha256()
+        while block := archive_stream.read(min(1024**2, MAX_ARCHIVE_SIZE + 1 - total)):
+            total += len(block)
+            require(total <= MAX_ARCHIVE_SIZE, "Unsupported image archive size.")
+            digest.update(block)
+        require(total > 0, "Unsupported image archive size.")
+        return digest.hexdigest()
     require(path.is_file() and not path.is_symlink(), "Missing or nonregular image archive.")
     require(0 < path.stat().st_size <= MAX_ARCHIVE_SIZE, "Unsupported image archive size.")
     digest = hashlib.sha256()

@@ -1,4 +1,4 @@
-"""Closed36 pure suite; stdout only, never rewrites a frozen result."""
+"""Closed39 pure suite; stdout only, never rewrites a frozen result."""
 
 import hashlib
 import json
@@ -27,6 +27,7 @@ def main():
     for name, row in binding["files"].items():
         raw = (HERE / name).read_bytes()
         assert len(raw) == row["bytes"] and hashlib.sha256(raw).hexdigest() == row["sha256"]
+    import test_deadline_rounding
     import test_owner
     import test_probe
     import test_r4
@@ -36,9 +37,12 @@ def main():
             unittest.defaultTestLoader.loadTestsFromTestCase(test_probe.ProbeTests),
             unittest.defaultTestLoader.loadTestsFromTestCase(test_owner.OwnerTests),
             unittest.defaultTestLoader.loadTestsFromTestCase(test_r4.R4Tests),
+            unittest.defaultTestLoader.loadTestsFromTestCase(
+                test_deadline_rounding.DeadlineRoundingTests
+            ),
         )
     )
-    assert suite.countTestCases() == 36
+    assert suite.countTestCases() == 39
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     print(
         json.dumps(
@@ -54,7 +58,7 @@ def main():
     )
     return (
         0
-        if result.wasSuccessful() and result.testsRun == 36 and not result.skipped and not ATTEMPTS
+        if result.wasSuccessful() and result.testsRun == 39 and not result.skipped and not ATTEMPTS
         else 1
     )
 

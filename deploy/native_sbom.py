@@ -258,19 +258,77 @@ def native_components(manifest, report):
     return result, deps, list(by_name.values())
 
 
-def merge(app, manifest, report, *, image_digest, input_hashes, image_digest_kind="oci_manifest"):
+def expat_components(report, image_digest, image_digest_kind):
+    """Actual-image file identities; not vendor binary-origin attestation."""
+    require(image_digest_kind == "image_config" and isinstance(report, dict)
+            and report.get("schema") == "pamolive.expat-product-image/1"
+            and report.get("image_id") == image_digest, "expat_image_binding")
+    require(all(report.get(key) is False for key in (
+        "fixed4_admitted", "product_qualified", "operational_GO",
+        "native_report_metadata_attested")), "expat_authority")
+    active = report.get("active")
+    keys = {"libexpat.so.1", "libexpatw.so.1", "pyexpat", "_elementtree"}
+    require(isinstance(active, dict) and set(active) == keys, "expat_active_closure")
+    source_ref = PREFIX + "expat:2.10.0"
+    components = [{"type": "library", "name": "expat", "version": "2.10.0",
+        "bom-ref": source_ref, "purl": "pkg:generic/expat@2.10.0",
+        "externalReferences": [{"type": "distribution",
+            "url": "https://deb.debian.org/debian/pool/main/e/expat/expat_2.10.0.orig.tar.gz",
+            "hashes": [{"alg": "SHA-256", "content":
+                "b3644a12f62d7762b62c444f69d169ba0234f13138d0240244bca64cbe35286f"}]}],
+        "properties": [{"name": "pamolive:expat:source-rebuild",
+                        "value": canonical(report["source_rebuild"])},
+                       {"name": "pamolive:expat:origin-attested", "value": "false"}]}]
+    refs = {}
+    for key in sorted(keys):
+        row = active[key]
+        module = key in {"pyexpat", "_elementtree"}
+        alias = ("/usr/local/lib/python3.12/lib-dynload/" + key
+                 + ".cpython-312-x86_64-linux-gnu.so") if module else (
+                     "/usr/lib/x86_64-linux-gnu/" + key)
+        require(row.get("alias") == alias and isinstance(row.get("target"), str)
+                and row["target"].startswith(alias.rsplit("/", 1)[0] + "/")
+                and ".." not in row["target"].split("/")
+                and re.fullmatch(r"[0-9a-f]{64}", str(row.get("sha256"))), "expat_file_identity")
+        ref = PREFIX + "expat-file:" + digest({"path": row["target"], "sha256": row["sha256"]})
+        refs[key] = ref
+        properties = [{"name": "pamolive:native:path", "value": row["target"]},
+                      {"name": "pamolive:native:alias", "value": alias}]
+        if module:
+            properties.extend([
+                {"name": "pamolive:expat:cpython-source", "value": "3.12.16"},
+                {"name": "pamolive:expat:optimization-policy", "value": "xml-local-no-pgo-v1"}])
+        components.append({"type": "file", "name": row["target"].rsplit("/", 1)[-1],
+            "bom-ref": ref, "hashes": [{"alg": "SHA-256", "content": row["sha256"]}],
+            "properties": properties})
+    deps = [{"ref": source_ref, "dependsOn": [refs["libexpat.so.1"], refs["libexpatw.so.1"]]},
+            {"ref": refs["pyexpat"], "dependsOn": [refs["libexpat.so.1"]]},
+            {"ref": refs["_elementtree"], "dependsOn": [refs["pyexpat"]]},
+            {"ref": refs["libexpat.so.1"]}, {"ref": refs["libexpatw.so.1"]}]
+    return components, deps, [source_ref, refs["pyexpat"], refs["_elementtree"]]
+
+
+def merge(app, manifest, report, *, image_digest, input_hashes,
+          image_digest_kind="oci_manifest", expat_report=None):
     for value in (app, manifest, report):
         bounded(value)
     require(isinstance(image_digest, str) and
             re.fullmatch(r"sha256:[0-9a-f]{64}", image_digest) is not None, "image_digest")
     require(image_digest_kind in ("oci_manifest", "image_config"), "image_digest_kind")
-    require(isinstance(input_hashes, dict) and set(input_hashes) == {"app", "manifest", "report"}
+    require(isinstance(input_hashes, dict) and set(input_hashes) == ({"app", "manifest", "report"}
+                | ({"expat"} if expat_report is not None else set()))
             and all(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
                     for value in input_hashes.values()),
             "input_hashes")
     validate_schema(app)
     references(app)
     components, deps, roots = native_components(manifest, report)
+    if expat_report is not None:
+        bounded(expat_report)
+        extra, edges, extra_roots = expat_components(expat_report, image_digest, image_digest_kind)
+        components.extend(extra)
+        deps.extend(edges)
+        roots.extend(extra_roots)
     result = copy.deepcopy(app)
     original = result.setdefault("components", [])
     require(len(original) <= 2000, "component_budget")
@@ -326,6 +384,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("app-sbom", "native-manifest", "native-report", "image-digest", "output"):
         parser.add_argument("--" + name, required=True)
+    parser.add_argument("--expat-report")
     parser.add_argument("--image-digest-kind", choices=("oci_manifest", "image_config"),
                         default="oci_manifest")
     args = parser.parse_args(argv)
@@ -335,10 +394,15 @@ def main(argv=None):
         app, app_sha = load(args.app_sbom)
         manifest, manifest_sha = load(args.native_manifest)
         report, report_sha = load(args.native_report)
+        extra_hashes = {}
+        expat_report = None
+        if args.expat_report:
+            expat_report, expat_sha = load(args.expat_report)
+            extra_hashes["expat"] = expat_sha
         result = merge(app, manifest, report, image_digest=args.image_digest,
-                       image_digest_kind=args.image_digest_kind,
+                       image_digest_kind=args.image_digest_kind, expat_report=expat_report,
                        input_hashes={"app": app_sha, "manifest": manifest_sha,
-                                     "report": report_sha})
+                                     "report": report_sha, **extra_hashes})
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             fd = None
             stream.write(canonical(result) + "\n")

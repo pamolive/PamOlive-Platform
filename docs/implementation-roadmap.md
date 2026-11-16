@@ -426,3 +426,9 @@ L’ancien document décrivait contrats → noyau → IAM → gouvernance → PA
 ## Expat : succès du laboratoire, produit encore en qualification
 
 Le run [43823586567](https://github.com/pamolive/PamOlive-Platform/actions/runs/43823586567) du `549b0cd` réussit : C narrow/wide, UBSan, ABI et extensions Python. La suite stdlib rapporte 490 tests et 12 skips sans leurs raisons exportées. Le candidat de visibilité conserve tous les plafonds et porte les tests purs à 96 ; la preuve native suivante reste attendue. [Détails et limites](../deploy/expat-remediation/README.md). L'image produit reste distincte, sans fermeture des groupes High ni promotion induite.
+
+## Expat — première intégration dans l'image produit
+
+Le laboratoire exact `3d960926` réussit avec les raisons des douze skips stdlib exportées. Le nouveau Dockerfile produit reprend ces mêmes helpers, runtime/SDK et deux extensions ; le snapshot final et ses limites sont décrits dans [ADR-031](adr-031-expat-product-snapshot.md). Les contrôles de l'archive exacte et le SBOM enrichi restent soumis aux scans exhaustifs, sans modification des seuils ni disposition automatique de CVE.
+
+Validation source : 14 tests produit ciblés et 39 tests PostgreSQL purs passent sans skip ni IO externe ; la revue indépendante ajoute six contre-cas. Le test de merge/schema SBOM complet et la suite native-SBOM complète ne sont pas exécutés sous Windows (import ctypes refusé sous audit) : ils restent obligatoires dans la CI Linux. Construction réelle de cette nouvelle image, snapshot, consommateurs, P0, restauration et scans sont encore attendus. Les succès du laboratoire ne les remplacent pas.
