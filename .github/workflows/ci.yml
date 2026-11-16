@@ -22,7 +22,7 @@ jobs:
           python -m pip install -r requirements-security.lock
           python -m pip check
       - name: Verify native inventory and SBOM qualification tools
-        run: python -m unittest tests.test_native_inventory tests.test_native_sbom tests.test_native_dns tests.test_image_scan_policy tests.test_database_driver tests.test_ldap_fixture_permissions tests.test_krb5_inventory tests.test_krb5_acquisition tests.test_krb5_sbom tests.test_scan_scratch tests.test_build_recipe tests.test_build_context tests.test_runtime_environment tests.test_secret_baseline_metadata tests.test_python_materials tests.test_python_materials_resilience tests.test_ensurepip_bundle tests.test_expat_product tests.test_jansson_image_absence tests.test_jansson_input_binding tests.test_jansson_sbom tests.test_jansson_ci_evidence tests.test_jansson_oracle_identity tests.test_native_migration_composition
+        run: python -m unittest tests.test_native_inventory tests.test_native_sbom tests.test_native_dns tests.test_image_scan_policy tests.test_database_driver tests.test_ldap_fixture_permissions tests.test_krb5_inventory tests.test_krb5_acquisition tests.test_krb5_sbom tests.test_scan_scratch tests.test_build_recipe tests.test_build_context tests.test_sealed_build_context tests.test_runtime_environment tests.test_secret_baseline_metadata tests.test_python_materials tests.test_python_materials_resilience tests.test_ensurepip_bundle tests.test_expat_product tests.test_jansson_image_absence tests.test_jansson_input_binding tests.test_jansson_sbom tests.test_jansson_ci_evidence tests.test_jansson_oracle_identity tests.test_native_migration_composition
       - name: Verify closed public restore report projection
         run: python -m unittest tests.test_restore_public_report
       - name: Verify public metadata projections without Engine or network
@@ -238,26 +238,31 @@ jobs:
       - name: Verify the signed V3 periodic signals with a separately installed wheel
         run: python -m deploy.check_extensions --postgres --periodic
       - name: Prepare the committed Docker context without local or generated files
-        run: >-
-          python -m deploy.build_context --revision "$GITHUB_SHA"
-          --destination "$RUNNER_TEMP/pamolive-committed-context"
-          --output "$RUNNER_TEMP/pamolive-committed-context.json"
+        run: |
+          umask 022
+          mkdir -m 700 "$RUNNER_TEMP/pamolive-context-input"
+          python -m deploy.build_context --revision "$GITHUB_SHA" \
+            --destination "$RUNNER_TEMP/pamolive-committed-context" \
+            --output "$RUNNER_TEMP/pamolive-committed-context.json" \
+            --sealed-archive "$RUNNER_TEMP/pamolive-context-input/context.tar" \
+            --sealed-receipt "$RUNNER_TEMP/pamolive-context-input/receipt.json"
+      - name: Verify the finite context selection against Docker before product builds
+        shell: bash
+        run: |
+          timeout --signal=TERM --kill-after=15s 60s python -m deploy.build_context \
+            --revision "$GITHUB_SHA" --probe \
+            --sealed-archive "$RUNNER_TEMP/pamolive-context-input/context.tar" \
+            --sealed-receipt "$RUNNER_TEMP/pamolive-context-input/receipt.json" \
+            --source-manifest "$RUNNER_TEMP/pamolive-committed-context.json" \
+            --probe-receipt "$RUNNER_TEMP/pamolive-context-input/probe.json"
       - name: Build production image and verify local credential exclusion
         run: |
-          cd "$RUNNER_TEMP/pamolive-committed-context"
-          printf 'must-not-enter-the-image' > .bootstrap-admin
-          cp .bootstrap-admin .image-private-check.dump
-          mkdir .image-private-context config/.nas-access
-          cp .bootstrap-admin .image-private-context/undesignated.txt
-          cp .bootstrap-admin config/.nas-access/key-without-extension
-          cp .bootstrap-admin config/qualification.pem
-          cp .bootstrap-admin tests/.env.qualification
-          cp .bootstrap-admin tests/qualification.tar
-          docker build --target production --provenance=false --sbom=false \
-            --label "org.opencontainers.image.source=https://github.com/pamolive/PamOlive-Platform" \
-            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
-            --label "io.pamolive.source.license=AGPL-3.0-or-later" \
-            -t pamolive-platform:ci .
+          python -m deploy.build_context --revision "$GITHUB_SHA" \
+            --sealed-archive "$RUNNER_TEMP/pamolive-context-input/context.tar" \
+            --sealed-receipt "$RUNNER_TEMP/pamolive-context-input/receipt.json" \
+            --source-manifest "$RUNNER_TEMP/pamolive-committed-context.json" \
+            --probe-receipt "$RUNNER_TEMP/pamolive-context-input/probe.json" \
+            --build-target production
           docker run --rm -i --network none --entrypoint python pamolive-platform:ci - <<'PY'
           from importlib.util import find_spec
           from pathlib import Path
@@ -286,7 +291,13 @@ jobs:
       - name: Verify native SSH pinning and keyboard round-trip on a disposable fixture
         run: docker run --rm --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:ci -m deploy.check_native_ssh
       - name: Build test-only headless RDP peer
-        run: docker build --target native-test -t pamolive-platform:native-test "$RUNNER_TEMP/pamolive-committed-context"
+        run: >-
+          python -m deploy.build_context --revision "$GITHUB_SHA"
+          --sealed-archive "$RUNNER_TEMP/pamolive-context-input/context.tar"
+          --sealed-receipt "$RUNNER_TEMP/pamolive-context-input/receipt.json"
+          --source-manifest "$RUNNER_TEMP/pamolive-committed-context.json"
+          --probe-receipt "$RUNNER_TEMP/pamolive-context-input/probe.json"
+          --build-target native-test
       - name: Verify native RDP NLA, certificate pin and keyboard round-trip
         run: docker run --rm --user 1000:1000 --network none --dns 127.0.0.1 --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:native-test -m deploy.check_native_rdp
       - name: Verify synthetic NLA behavior under negative and silent loopback DNS
@@ -381,9 +392,13 @@ jobs:
           oracles="$RUNNER_TEMP/pamolive-jansson-reference-data"
           proof="$RUNNER_TEMP/pamolive-image-security"
           test ! -e "$oracles"
-          timeout --signal=TERM --kill-after=15s 540s docker build \
-            --target json-reference-data --provenance=false --sbom=false \
-            --output "type=local,dest=$oracles" "$context"
+          timeout --signal=TERM --kill-after=15s 540s python -m deploy.build_context \
+            --revision "$GITHUB_SHA" --build-target json-reference-data \
+            --sealed-archive "$RUNNER_TEMP/pamolive-context-input/context.tar" \
+            --sealed-receipt "$RUNNER_TEMP/pamolive-context-input/receipt.json" \
+            --source-manifest "$RUNNER_TEMP/pamolive-committed-context.json" \
+            --probe-receipt "$RUNNER_TEMP/pamolive-context-input/probe.json" \
+            --oracle-output "$oracles"
           timeout --signal=TERM --kill-after=15s 240s python -m deploy.jansson_ci_evidence \
             --context "$context" --context-receipt "$RUNNER_TEMP/pamolive-committed-context.json" \
             --bundle "$RUNNER_TEMP/pamolive-qualified-image" --oracles "$oracles" \
@@ -456,6 +471,8 @@ jobs:
             ${{ runner.temp }}/pamolive-restore-public/restore-qualification.json
             ${{ runner.temp }}/pamolive-qualified-image/qualified-image.json
             ${{ runner.temp }}/pamolive-committed-context.json
+            ${{ runner.temp }}/pamolive-context-input/receipt.json
+            ${{ runner.temp }}/pamolive-context-input/probe.json
             ${{ runner.temp }}/pamolive-jansson-reference-data/json-reference.jsonl
             ${{ runner.temp }}/pamolive-jansson-reference-data/winpr-jansson-build.json
             ${{ runner.temp }}/pamolive-jansson-reference-data/winpr-jansson-runtime.json

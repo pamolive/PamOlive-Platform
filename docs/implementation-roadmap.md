@@ -1,36 +1,51 @@
 # Roadmap d’implémentation et qualification
 
-## État courant du candidat commun — 16 novembre 2026
+## État courant — contexte scellé en qualification, 16 novembre 2026
 
-Ce candidat assemble par fusion normale Expat `d064d04` et la capture GCC
-`c66254c`, issus de la base commune `94064bc`. Les deux parents ont leurs
-propres preuves Linux ; ces preuves ne qualifient pas automatiquement l'assemblage.
+Le parent assemblé `5d8f814` a terminé sa
+[CI Linux](https://github.com/pamolive/PamOlive-Platform/actions/runs/43937390888).
+Les tests PostgreSQL (1 597 exécutés, 42 ignorés), les 130 tests Directory,
+les transports synthétiques, la HA sur un seul hôte, la restauration et le
+SBOM passent. Le seul échec est le scan strict : 98 High dans 31 groupes,
+349 correspondances OS, zéro compiled, contrôle positif 222 et zéro ignore.
+La restauration synthétique compare 106 modèles et 82 preuves signées,
+conserve legacy/V7 et termine son nettoyage ; safe_to_serve reste false.
+Ces résultats restent liés au parent, sans qualification transférée au nouveau code.
 
-Le [laboratoire Expat](https://github.com/pamolive/PamOlive-Platform/actions/runs/43918797136)
-a validé les deux correctifs supplémentaires, les 5 340 cas C par largeur,
-l'ABI et les imports. La [CI produit de ce parent](https://github.com/pamolive/PamOlive-Platform/actions/runs/43918792528)
-a passé les tests PostgreSQL (1 574 tests, 42 ignorés), les transports
-synthétiques, la restauration, l'inventaire et le SBOM. Son scan reste bloquant :
-98 correspondances High dans 31 groupes source/CVE. Les deux nouveaux correctifs
-restent signalés Medium par le scanner ; aucune correspondance n'est masquée.
+L'incrément A lie maintenant le contexte réellement envoyé aux trois builds
+production, native-test et json-reference-data. Un TAR exclusif 0400 est
+construit à partir des seuls buffers Git validés. Un profil fini de sélection
+est lié aux octets exacts Dockerfile/Dockerignore ; le TAR sur stdin ne suppose
+aucun filtrage Dockerignore implicite. Avant les builds, un oracle distinct
+répertoire/scratch à marqueurs publics compare la sélection au moteur Docker.
+Le test d'absence des canaries dans l'image finale reste inchangé.
 
-La [CI du parent GCC](https://github.com/pamolive/PamOlive-Platform/actions/runs/43925640727)
-a réellement capturé le fournisseur libstdc++ et les quatre paquets GCC, avec
-liaison aux octets de l'inventaire. Les huit High des deux CVE GCC restent
-bloquants. Ce reçu ne prouve ni ABI, configuration précompilée, présence de PBDS,
-applicabilité d'une CVE ou autorisation de servir.
+Chaque consommateur relit le manifeste v1 via FD stable, vérifie les hashes,
+la révision et la carte des sources, exige le reçu de parité du même sujet,
+puis transmet à Docker le FD TAR déjà validé. Le même TAR sert aux trois
+constructions. Le nouveau probe est borné à 60 s +15 s ; le témoin JSON garde
+540 s +15 s et son validateur 240 s. Les autres budgets et gates sont inchangés.
+Seules deux métadonnées bornées s'ajoutent aux diagnostics publics ; aucun
+TAR de contexte ni nouvelle image non qualifiée n'est publié par ce raccord.
 
-Sur cet assemblage, 153 tests purs d'intégration et 103 tests de préparation
-Expat passent, sans test ignoré dans ces sélections. La validation de schéma
-SBOM et les contrôles natifs exclus de cette exécution Windows restent requis
-en CI Linux. Les 14 pins produit et les 37 sources Expat sont liés à l'index Git.
-La nouvelle mesure Linux de l'assemblage reste à obtenir.
+Sur le checkout intégré, 43 tests purs passent sans exclusion ni tentative
+externe ; la contre-revue indépendante rejoue ces cas et six adverses en plus.
+Ruff du dépôt passe. Deux anciens cas créant réellement un dépôt Git ne sont
+pas exécutés sous Windows et restent obligatoires en CI, avec la parité et
+les trois vrais builds. Aucun succès Docker n'est déduit de ces modèles.
 
-La chaîne complète des matériaux et de l'autorité de build ADR-021 reste à
-implémenter et vérifier : ni recette authentifiée ni attestation de build
-vérifiée ne sont revendiquées. Les branches navigateur et Kerberos conservent
-leurs qualifications séparées. Aucune nouvelle image n'est promue ; le NAS
-reste inchangé. Les sections suivantes conservent les états historiques.
+Les contrôles ne sont pas atomiques contre un acteur hostile de même UID/root.
+Un refus après un build n'est pas son rollback ; les délais ne prouvent pas le
+nettoyage global du daemon. Recette authentifiée, conservation et matériaux de
+toutes les frontières, attestations et autorité complète ADR-021 restent ouverts.
+Les flags recipe_bound/build_verified/attestation/authority restent false.
+
+La branche navigateur distincte `cd9b2fc` a reçu le générateur GPG et huit
+observations sudo/stat, puis refuse avant le superviseur d'installation sur
+sa garde d'interpréteur ; aucune installation ou session navigateur n'est admise.
+Ses preuves ne se transfèrent pas à cette branche. P1-F/G, P2 et P3 restent
+incomplets. Aucune fusion main, promotion d'image ni modification NAS.
+Les sections suivantes conservent les témoins historiques et leur portée.
 
 Réconciliation mise à jour le 14 novembre 2026 avec *Architecture & Roadmap 2026–2029* (pages24–28) et la mission de développement autonome continu. Le programme avance par livraisons qualifiées sans confirmation humaine pour les opérations ordinaires autorisées. Cette autonomie ne permet ni contournement des protections GitHub ni utilisation de comptes ou de systèmes de production.
 

@@ -126,3 +126,83 @@ Si les jobs sont découpés, la condition de succès doit être exprimée pour l
 6. Vérifier la promotion de ce même artefact et la correspondance du digest OCI publié. Prévoir conservation durable des pièces publiques approuvées au-delà des sept jours d’artefacts CI actuels ; supprimer tout secret des pièces avant publication, sans tronquer les findings.
 
 Validation de cet ADR : lecture des chemins réels de politique/build/promotion, examen des preuves R3 et reproduction Python pure d’un changement de hash de journal. Aucun nouveau build, scan, accès GitHub en écriture, modification de gate/politique/CI ou contact NAS effectué. Les modèles ci-dessus sont des propositions à implémenter et tester ; aucun succès de publication n’est annoncé.
+
+
+## Incrément A — contexte source scellé consommé par trois builds (proposition)
+
+Base : commit `5d8f814258a0768e70bac8832a4d1068bbc9f154`, arbre
+`4a494c9472f014cb0e3198344e363e11e605e1af`. Cette tranche ferme une liaison
+locale entre la sortie Git vérifiée et les entrées de trois builds. Elle ne
+constitue pas une authentification de provenance ni une admission ADR-021.
+
+`deploy.build_context` conserve son CLI historique et son manifeste v1. L'option
+scellée construit un TAR borné à partir des buffers de `git archive` déjà
+validés, avec métadonnées canoniques et modes source. Le répertoire privé est
+contrôlé par ensemble, types, modes, propriétaires, liens, identités FD et
+métadonnées avant toute lecture de contenu inconnu. Les sept canaries publics
+existants sont écrits séparément ; aucun octet local inconnu n'alimente le TAR.
+Les sorties sont exclusives, sans écrasement, et le TAR est ensuite mode 0400.
+
+Le mode TAR sur stdin n'est pas assimilé à un contexte répertoire : la sélection
+est un profil fini lié exactement aux SHA256 `.dockerignore`
+`5ae994f8624c68308c7b6070364db7371c63a719fd1efe818f891624ae387d87` et Dockerfile
+`618bad8a36158bfecff7df0f1a5039d89904e18881c41cd12553b9b45aa2c01c`.
+Aucun parseur général de règles futures n'est introduit. Les deux fichiers de
+contrôle restent transmis dans le TAR ; `.dockerignore` est pourtant exclu de
+la sélection COPY du profil. Le Dockerfile courant utilise des COPY explicites
+qui ne copient pas ce fichier de contrôle. Tout changement d'un contrôle ou
+ajout de `Dockerfile.dockerignore` exige une nouvelle revue du profil.
+
+Avant les builds coûteux, un oracle Docker distinct teste réellement cette
+sélection : contexte privé composé seulement de marqueurs publics constants aux
+chemins Git, sept canaries et contre-exemples finis, `.dockerignore` exact et
+Dockerfile contrôlé `FROM scratch` / `COPY . /proof`. Le build à contexte
+répertoire utilise `--network=none` et un export local privé. Ensemble complet,
+types, permissions, propriétaires, alias et bornes de sortie sont vérifiés
+avant lecture des seuls marqueurs attendus, puis leurs octets exacts sont
+comparés. L'ensemble attendu est calculé avant Docker : aucun apprentissage de
+l'observation. Une différence, absence, collision, erreur ou délai dépassé
+refuse sans reçu PASS. Borne nouvelle explicite 60 s +15 s de grâce sous le budget
+job existant ; aucune preuve H1 ou de cleanup global des descendants du daemon
+n'en est déduite. La création 0700/remappage UID/GID du client est documentée par
+BuildKit `syncTargetDiffCopy` ; la compatibilité du moteur CI reste à mesurer.
+
+Le reçu de contexte effectif `pamolive.sealed-build-context/1` (16KiB maximum)
+lie le TAR, le profil, la révision, le manifeste v1 exact et l'archive Git. Le
+consommateur relit explicitement le v1 publié via FD régulier/stable (2MiB
+maximum), refuse JSON dupliqué/alias et vérifie SHA brut, schéma, révision,
+archive Git, nombre et carte complète des fichiers. Il vérifie aussi la carte
+sélectionnée et les hashes des buffers du TAR sur son FD tenu. Un reçu de
+parité distinct (16KiB maximum) est requis et lié aux mêmes identités.
+
+Production, native-test et json-reference-data consomment chacun ce même TAR
+par identité/hash vérifiés avant et après, via le FD déjà validé transmis à
+stdin de `docker build --file Dockerfile -`. Aucun reconditionnement entre les
+trois. La troisième invocation conserve 540 s +15 s de grâce et le validateur
+Jansson conserve 240 s ; options/targets/chemins de sortie sont fermés. L'oracle
+d'absence des canaries dans l'image finale reste inchangé. Le contexte
+extension-ci est synthétique et distinct, hors portée de cette tranche.
+
+Les contrôles FD/hash/métadonnées détectent les mutations et substitutions
+ordinaires. Ils ne revendiquent pas l'atomicité contre root ou un processus
+hostile de même UID ; runner, Git, workflow, Python et Docker font partie de la
+TCB. Un refus après le premier build ne l'annule pas. Les sorties privées
+partielles peuvent demeurer jusqu'au nettoyage du job ; aucun
+`resources_released` ni cleanup global n'est inféré. Aucun TAR de contexte ni
+nouvel artefact image n'est publié par ce raccord ; seules les deux métadonnées
+finies s'ajoutent aux diagnostics publics existants.
+
+`recipe_bound`, `build_verified`, `cryptographic_build_attestation_verified` et
+`authority` restent false. `recipe_build_authority_unavailable`, politique de
+scan, seuils, contrôles H1, Dockerfile et compilations restent inchangés.
+Conservation durable, authentification indépendante source/workflow/run/artefact,
+matériaux de toutes les frontières builders et autorité A–F restent ouverts.
+Les tests locaux sont des doubles I/O/processus sous audit ; parité et trois
+builds natifs, tests Git historiques et qualification complète doivent être
+reçus sur une CI fraîche après revue indépendante. Aucun succès précédent
+n'est transféré à ce nouveau contexte.
+
+Sources primaires : [mode TAR stdin](https://docs.docker.com/build/concepts/context/#local-tarballs),
+[Docker CLI v29.4.2, sélection de contexte](https://github.com/docker/cli/blob/v29.4.2/cli/command/image/build.go),
+[BuildKit v0.28.0, MainContext et DockerIgnorePatterns](https://github.com/moby/buildkit/blob/v0.28.0/frontend/dockerui/config.go),
+[BuildKit, création/export local 0700 et UID/GID client](https://github.com/moby/buildkit/blob/v0.28.0/session/filesync/diffcopy.go).
