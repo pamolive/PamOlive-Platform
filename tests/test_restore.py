@@ -61,12 +61,15 @@ class RestoreGuardTests(TestCase):
             replies = {
                 "different_role": ["11"],
                 "different_owner": ["10", "", "20:99"],
-                "active_session": ["10", "", "20:10", "1"],
+                "active_session": ["10", "", "20:10", "10:20:10:0", "1"],
                 "unconfirmed": [],
             }
             if state == "unconfirmed":
                 check.role_oid = None
-            with patch.object(check, "sql", side_effect=replies[state]) as sql:
+            with (
+                patch.object(check, "sql", side_effect=replies[state]) as sql,
+                patch("deploy.check_restore.time.monotonic", side_effect=[0, 3]),
+            ):
                 with self.subTest(state=state), self.assertRaises(RuntimeError):
                     check.cleanup()
                 self.assertFalse(any("DROP " in call.args[0] for call in sql.call_args_list))
@@ -76,7 +79,8 @@ class RestoreGuardTests(TestCase):
         check = RestoreQualification(SimpleNamespace())
         check.role_created = check.database_created = True
         check.role_oid, check.database_oid = 10, 20
-        with patch.object(check, "sql", side_effect=["10", "", "20:10", "0", "", ""]) as sql:
+        replies = ["10", "", "20:10", "10:20:10:0", "0", "10:20:10:0", "0", "", "10:0", ""]
+        with patch.object(check, "sql", side_effect=replies) as sql:
             check.cleanup()
         commands = [call.args[0] for call in sql.call_args_list]
         self.assertIn("DROP DATABASE " + identifier(check.database) + ";", commands)

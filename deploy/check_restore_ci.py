@@ -5,13 +5,19 @@ import json
 import os
 import secrets
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import unquote, urlsplit, urlunsplit
 
 from deploy.check_active_active import validate_configuration
-from deploy.check_restore import RestoreQualification, compose_client, identifier
+from deploy.check_restore import (
+    RestoreQualification,
+    compose_client,
+    identifier,
+    qualify_and_cleanup,
+)
 
 
 def write_private(path, content):
@@ -157,10 +163,10 @@ def main():
             return original_command(arguments, **kwargs)
 
         check.command = concurrent_write
-        try:
-            report = check.execute()
-        finally:
-            check.cleanup()
+        report, failed = qualify_and_cleanup(check, record_report=False)
+        if failed:
+            print(json.dumps(report, sort_keys=True))
+            raise SystemExit(1)
         if report.get("certificate_possession_proofs_checked") != 1:
             raise RuntimeError("Missing or invalid restored certificate possession proof.")
         if not injected:
@@ -181,24 +187,40 @@ def main():
             isolated_copy_removed=True,
             temporary_role_removed=True,
         )
-        write_private(directory / "result" / "report.json", json.dumps(report, sort_keys=True))
+    except Exception as error:
+        report = {
+            "result": "failed", "phase": "populated restore qualification",
+            "error": type(error).__name__,
+        }
         print(json.dumps(report, sort_keys=True))
+        raise SystemExit(1) from None
     finally:
         # No termination/force or broad cleanup. Refuse a reused source or changed owner.
-        if created:
-            identity = admin.sql(
-                f"SELECT oid || ':' || datdba FROM pg_database WHERE datname='{source_name}';"
-            )
-            sessions = int(
-                admin.sql(f"SELECT count(*) FROM pg_stat_activity WHERE datname='{source_name}';")
-            )
-            if source_oid is None or identity != f"{source_oid}:{owner_oid}" or sessions:
-                raise RuntimeError(
-                    "Synthetic source is still active or changed; retained for inspection."
+        primary_pending = sys.exc_info()[0] is not None
+        try:
+            if created:
+                identity = admin.sql(
+                    f"SELECT oid || ':' || datdba FROM pg_database WHERE datname='{source_name}';"
                 )
-            admin.sql(f"DROP DATABASE {identifier(source_name)};")
-        if environment_file.exists():
-            environment_file.unlink()
+                sessions = int(
+                    admin.sql(
+                        f"SELECT count(*) FROM pg_stat_activity WHERE datname='{source_name}';"
+                    )
+                )
+                if source_oid is None or identity != f"{source_oid}:{owner_oid}" or sessions:
+                    raise RuntimeError("Synthetic source retained for inspection.")
+                admin.sql(f"DROP DATABASE {identifier(source_name)};")
+            if environment_file.exists():
+                environment_file.unlink()
+        except Exception:
+            print(json.dumps({
+                "result": "failed", "phase": "synthetic source cleanup",
+                "error": "RestoreCleanupFailure", "cleanup_code": "source_cleanup_failed",
+            }, sort_keys=True))
+            if not primary_pending:
+                raise SystemExit(1) from None
+    write_private(directory / "result" / "report.json", json.dumps(report, sort_keys=True))
+    print(json.dumps(report, sort_keys=True))
 
 
 if __name__ == "__main__":
