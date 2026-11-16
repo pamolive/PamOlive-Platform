@@ -1,24 +1,43 @@
 # État réel de l’implémentation
 
-## État courant du candidat commun — 16 novembre 2026
+## État courant du candidat navigateur — 16 novembre 2026
 
-La base 94064bc a passé PostgreSQL, les transports synthétiques, la restauration
-étendue, l’inventaire et le SBOM ; son scan strict reste bloqué à 98 High dans
-31 groupes source/CVE. Les preuves restent liées à ce commit.
+Le [candidat R4 `095d0eb`](https://github.com/pamolive/PamOlive-Platform/actions/runs/43929358076)
+a reçu un refus errno 13 lors de la lecture de `/proc/<PID possédé>/exe`, puis
+au précontrôle du nettoyage. Le processus TEST a été repris et drainé, mais le
+reçu demeure INCOMPLETE et le nettoyage non validé. Ce diagnostic ne démontre
+pas quelle règle du noyau a refusé la lecture. Aucun navigateur n'a été qualifié.
 
-Sur cette branche, le candidat navigateur 38ba300 a exécuté ses 86 contrats,
-puis a refusé le préflight de l’agent TEST avec fixture_unknown. Le processus
-possédé a atteint son timeout ; il est repris et ses sorties sont drainées,
-mais le nettoyage est incomplet et la cause initiale n’est pas encore reçue.
-La nouvelle source R4 conserve deux diagnostics fermés, primaire et cleanup,
-avant l’attente. Les 92 contrats purs passent ; aucune permission, commande,
-limite, garde cryptographique ou décision de cleanup n’est changée.
+La correction R5 conserve l'observation répétée de l'exécutable. Sur ce seul
+errno 13, un observateur fixe `sudo -n -u#0 -- /usr/bin/stat` lit ses métadonnées ;
+le générateur, les clés TEST et GPG restent non privilégiés. Les outils de
+l'observateur ont leurs propres gardes, sans exception SUID pour GPG ou Python.
+PID, parent, session et starttime encadrent chaque lecture. Un résultat incertain
+interdit tout nouvel observateur privilégié, y compris pendant le nettoyage.
+Le reçu propriétaire et son préflight changent de version et sont exigés par
+le consommateur ; les anciens reçus R4 ne sont pas requalifiés.
 
-La nouvelle mesure Linux reste requise. P1-G demeure ouvert ; aucune signature,
-installation ou session navigateur n’est admise depuis les seuls modèles.
-Les autres branches ont leurs propres preuves, à requalifier après assemblage.
-Les sections historiques ci-dessous restent liées à leurs anciens candidats.
-Aucune nouvelle image n’est promue et le NAS reste inchangé.
+Les bornes restent 40 frontends, 180/150/30 secondes et 15 secondes de readiness.
+Le majorant structurel de 34 compte les frontends ; il ne compte pas l'agent ni
+tous les descendants de sudo. Le succès normal repose sur le sudo foreground
+de la VM de test ; une fin incertaine reste UNKNOWN/resources_released:false.
+Les observations ne rendent pas les transitions d'exécutable atomiques.
+
+Dans le checkout intégré, 110 tests purs passent sans exclusion ni tentative
+externe ; la revue indépendante rejoue ces tests et six adverses supplémentaires.
+Ruff sur le dépôt passe. Ces modèles ne prouvent ni la nouvelle voie sudo réelle,
+ni les signatures GPG, l'installation ou une session navigateur. Une nouvelle
+CI Linux du nouveau commit demeure obligatoire avant toute réception native.
+
+La branche runtime distincte `5d8f814` a terminé sa
+[CI](https://github.com/pamolive/PamOlive-Platform/actions/runs/43937390888) :
+1 597 tests PostgreSQL (42 ignorés), 130 Directory, transports synthétiques,
+restauration et SBOM passent ; seul le scan d'image refuse les 98 High dans
+31 groupes. Cette preuve ne se transfère pas à la branche navigateur.
+Les matériaux et l'autorité de build ADR-021 restent incomplets. P1-G et les
+autres qualifications restent ouverts ; aucune nouvelle image n'est promue,
+aucune fusion main ni modification NAS n'est réalisée par ce correctif.
+Les sections suivantes conservent les états historiques des candidats.
 
 Le document de vision décrit la cible complète. Cette branche construit progressivement cette cible ; elle ne constitue pas encore une version de production.
 

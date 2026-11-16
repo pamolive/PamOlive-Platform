@@ -755,7 +755,11 @@ class ConsumerR2Tests(unittest.TestCase):
         owner.tools = {"/usr/bin/" + name: ("a" * 64, ()) for name in c.TOOLS}
         owner.tools[c.PYTHON] = ("b" * 64, ())
         owner.version, owner.python_version = "2.4.4", "Python 3.12.3"
-        owner.records = [t.result().facts()]
+        owner.records = [t.result().facts()]  # Modelled agent, no native frontends.
+        owner.agent = SimpleNamespace(pid=123)
+        owner.root = Path("/tmp/pamolive-fixture-" + "a" * 32)
+        owner.client_ordinal = owner.observer_count = owner.readiness_observer_count = 0
+        owner.observer_tools, owner.observations, owner.observer_unknown = {}, [], False
         buffers, facts = owner.run()
         support = SimpleNamespace(tool_pin=lambda path: {"sha256": "a" * 64})
         return t, buffers, facts, support
@@ -959,3 +963,83 @@ class ConsumerR2Tests(unittest.TestCase):
             native.control_evidence(
                 scope, gpg, status(), listed, full_listing(), captured, projected(), NOW
             )
+
+    def test_R5_owner_contract_and_observer_proof_are_mandatory_closed_and_not_OS_counts(self):
+        import copy
+
+        _, buffers, facts, support = self.setup_fixture()
+        self.assertEqual(facts["owner_contract"], "pamolive.gpg-fixture-owner/2")
+        proof = facts["executable_observer"]
+        self.assertIsNone(proof["os_process_count"])
+        self.assertEqual(proof["count_scope"], "FRONTENDS_ONLY")
+        native.producer_inputs(buffers, facts, scope, support, {"head": "a" * 40})
+        for key in ("owner_contract", "executable_observer"):
+            bad = copy.deepcopy(facts)
+            del bad[key]
+            with self.subTest(missing=key), self.assertRaises(ValueError):
+                native.producer_inputs(buffers, bad, scope, support, {"head": "a" * 40})
+        for key, value in (
+            ("schema", "old-proof/1"),
+            ("privileged_unknown", True),
+            ("tools_stable", False),
+            ("target_uid", True),
+            ("target_uid", 1001),
+            ("frontend_count", True),
+            ("frontend_count", 1),
+            ("os_process_count", 34),
+            ("root_observation_count", 12),
+            ("readiness_root_count", 5),
+            ("owner_nonce", "foreign"),
+            ("context", {}),
+            ("source_manifest_sha256", "0" * 64),
+            ("normal_completion_TCB", "all_OS_reaped"),
+        ):
+            bad = copy.deepcopy(facts)
+            bad["executable_observer"][key] = value
+            with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                native.producer_inputs(buffers, bad, scope, support, {"head": "a" * 40})
+
+    def test_R5_privileged_observation_links_exact_normal_H1_and_closed_tool_roles(self):
+        import copy
+
+        t, buffers, facts, support = self.setup_fixture()
+        proof = facts["executable_observer"]
+        facts["h1"].insert(0, t.result().facts())
+        proof.update(
+            frontend_count=1,
+            root_observation_count=1,
+            tools={
+                name: {"sha256": "c" * 64, "identity": [1, ino, mode, 0, 0, 1, 10, 1, 1]}
+                for name, ino, mode in (("sudo", 4, 0o104755), ("stat", 5, 0o100755))
+            },
+            observations=[
+                {
+                    "ordinal": 1,
+                    "phase": "cleanup",
+                    "pid": 123,
+                    "starttime": "77",
+                    "metadata": [1, 2, 0o100755, 0, 0, 1, 10],
+                    "image": "gpg-agent",
+                    "h1_index": 0,
+                }
+            ],
+        )
+        native.producer_inputs(buffers, facts, scope, support, {"head": "a" * 40})
+        for key, value in (
+            ("pid", 999),
+            ("h1_index", 1),
+            ("ordinal", True),
+            ("phase", "unknown"),
+            ("image", "python_bootstrap"),
+            ("starttime", "00"),
+            ("metadata", [1, 2, 0o104755, 0, 0, 1, 10]),
+        ):
+            bad = copy.deepcopy(facts)
+            bad["executable_observer"]["observations"][0][key] = value
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                native.producer_inputs(buffers, bad, scope, support, {"head": "a" * 40})
+        for path, index, value in (("stat", 2, 0o104755), ("sudo", 2, 0o100755), ("sudo", 5, 2)):
+            bad = copy.deepcopy(facts)
+            bad["executable_observer"]["tools"][path]["identity"][index] = value
+            with self.subTest(tool=path, index=index), self.assertRaises(ValueError):
+                native.producer_inputs(buffers, bad, scope, support, {"head": "a" * 40})

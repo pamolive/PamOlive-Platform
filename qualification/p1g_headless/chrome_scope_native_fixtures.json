@@ -28,7 +28,7 @@
     },
     "signer_revoked": {
       "producer_purpose": "pamolive.gpg-selected-signer-revoked-fixture/2",
-      "source_pin": "6b9c794145c7db8957a59202d0f98165b55791b62040d385a009f72fdee166ad"
+      "source_pin": "90d74d4bfdf2ffb76b4bb93157339906cc07d2594de2715972b88a3f9b75ef04"
     }
   }
 }

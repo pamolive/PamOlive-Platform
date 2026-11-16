@@ -15,7 +15,7 @@ REQUIRED = {
     "primary_revoked",
     "signer_revoked",
 }
-RECEIPT_SCHEMA = "pamolive.chrome-scope-native-preflight/2"
+RECEIPT_SCHEMA = "pamolive.chrome-scope-native-preflight/3"
 VENDOR_PURPOSE = "google-release-selected-signer-certificate-v1"
 LIFECYCLE = {
     "historical_expired_signer": ("signer", "e"),
@@ -50,7 +50,9 @@ CASE_POLICY = {
 SOURCE_MATRIX_IMPLEMENTED = MATRIX_REQUIRED
 PRODUCER_CONTRACT = {
     "purpose": "pamolive.gpg-selected-signer-revoked-fixture/2",
-    "source_pin": "6b9c794145c7db8957a59202d0f98165b55791b62040d385a009f72fdee166ad",
+    "owner_contract": "pamolive.gpg-fixture-owner/2",
+    "observer_schema": "pamolive.gpg-fixture-exe-observer/1",
+    "source_pin": "90d74d4bfdf2ffb76b4bb93157339906cc07d2594de2715972b88a3f9b75ef04",
     "call": "produce() -> (immutable_public_buffers, typed_TEST_facts)",
     "public_names": (
         "certificate-before.pgp",
@@ -409,6 +411,135 @@ def verify_refusal(
     }
 
 
+def producer_observer(facts):
+    """Require the versioned ownership proof; frontend counts are not OS counts."""
+    row = facts["executable_observer"]
+    need(
+        facts["owner_contract"] == PRODUCER_CONTRACT["owner_contract"]
+        and type(row) is dict
+        and set(row)
+        == {
+            "schema",
+            "context",
+            "source_manifest_sha256",
+            "owner_nonce",
+            "strategy",
+            "target_uid",
+            "privileged_unknown",
+            "tools_stable",
+            "count_scope",
+            "os_process_count",
+            "frontend_count",
+            "frontend_limit",
+            "root_observation_count",
+            "readiness_root_count",
+            "owned_agent_pid",
+            "normal_completion_TCB",
+            "tools",
+            "observations",
+        }
+        and row["schema"] == PRODUCER_CONTRACT["observer_schema"]
+        and row["context"] == facts["context"]
+        and row["source_manifest_sha256"] == PRODUCER_CONTRACT["source_pin"]
+        and type(row["owner_nonce"]) is str
+        and re.fullmatch("[0-9a-f]{32}", row["owner_nonce"])
+        and row["strategy"] == "repeated-dev-ino-direct-or-errno13-sudo-stat"
+        and type(row["target_uid"]) is int
+        and row["target_uid"] == 0
+        and row["privileged_unknown"] is False
+        and row["tools_stable"] is True
+        and row["count_scope"] == "FRONTENDS_ONLY"
+        and row["os_process_count"] is None
+        and type(row["frontend_count"]) is int
+        and 0 <= row["frontend_count"] <= 40
+        and type(row["frontend_limit"]) is int
+        and row["frontend_limit"] == 40
+        and len(facts["h1"]) == row["frontend_count"] + 1
+        and type(row["owned_agent_pid"]) is int
+        and row["owned_agent_pid"] == facts["h1"][-1]["pid"]
+        and type(row["root_observation_count"]) is int
+        and 0 <= row["root_observation_count"] <= 11
+        and type(row["readiness_root_count"]) is int
+        and 0 <= row["readiness_root_count"] <= 4
+        and row["normal_completion_TCB"]
+        == "trusted-foreground-sudo-not-exhaustive-OS-descendant-proof",
+        "producer_public_fields",
+    )
+    tools, observations = row["tools"], row["observations"]
+    need(
+        type(tools) is dict
+        and set(tools) == ({"sudo", "stat"} if row["root_observation_count"] else set())
+        and type(observations) is list
+        and len(observations) == row["root_observation_count"],
+        "producer_public_fields",
+    )
+    for name, tool in tools.items():
+        need(
+            type(tool) is dict
+            and set(tool) == {"sha256", "identity"}
+            and type(tool["sha256"]) is str
+            and re.fullmatch("[0-9a-f]{64}", tool["sha256"])
+            and type(tool["identity"]) is list
+            and len(tool["identity"]) == 9
+            and all(type(value) is int and 0 <= value < 2**64 for value in tool["identity"])
+            and tool["identity"][2] == (0o100000 | (0o4755 if name == "sudo" else 0o755))
+            and tool["identity"][3] == 0
+            and tool["identity"][5] == 1
+            and 0 < tool["identity"][6] <= 64 * 1024**2,
+            "producer_public_fields",
+        )
+    previous, starts, readiness, cleanup_count, phase_rank = 0, set(), 0, 0, 0
+    for observation in observations:
+        need(
+            type(observation) is dict
+            and set(observation)
+            == {"ordinal", "phase", "pid", "starttime", "metadata", "image", "h1_index"}
+            and type(observation["ordinal"]) is int
+            and previous < observation["ordinal"] <= row["frontend_count"]
+            and observation["phase"] in {"readiness", "work", "cleanup"}
+            and type(observation["pid"]) is int
+            and observation["pid"] == row["owned_agent_pid"]
+            and type(observation["starttime"]) is str
+            and re.fullmatch("0|[1-9][0-9]{0,19}", observation["starttime"])
+            and int(observation["starttime"]) < 2**64
+            and type(observation["h1_index"]) is int
+            and observation["h1_index"] == observation["ordinal"] - 1
+            and 0 <= observation["h1_index"] < len(facts["h1"]) - 1
+            and observation["image"] in {"gpg-agent", "python_bootstrap"}
+            and (observation["image"] == "gpg-agent" or observation["phase"] == "readiness"),
+            "producer_public_fields",
+        )
+        metadata = observation["metadata"]
+        need(
+            type(metadata) is list
+            and len(metadata) == 7
+            and all(type(value) is int and 0 <= value < 2**64 for value in metadata)
+            and metadata[1] > 0
+            and metadata[2] & 0o170000 == 0o100000
+            and not metadata[2] & 0o6022
+            and metadata[2] & 0o111
+            and metadata[3] == 0
+            and metadata[5] == 1
+            and 0 < metadata[6] <= 64 * 1024**2
+            and facts["h1"][observation["h1_index"]]["stdout_bytes"] <= 256
+            and facts["h1"][observation["h1_index"]]["stderr_bytes"] == 0,
+            "producer_public_fields",
+        )
+        previous = observation["ordinal"]
+        starts.add(observation["starttime"])
+        readiness += observation["phase"] == "readiness"
+        rank = {"readiness": 0, "work": 1, "cleanup": 2}[observation["phase"]]
+        cleanup_count += rank == 2
+        need(
+            rank >= phase_rank
+            and cleanup_count <= 1
+            and (rank != 2 or previous == row["frontend_count"]),
+            "producer_public_fields",
+        )
+        phase_rank = rank
+    need(len(starts) <= 1 and readiness == row["readiness_root_count"], "producer_public_fields")
+
+
 def producer_inputs(buffers, facts, scope, support, context):
     """A label/time request is never crypto evidence; bind exact immutable public buffers."""
     need(
@@ -445,6 +576,8 @@ def producer_inputs(buffers, facts, scope, support, context):
             "tools",
             "python_bootstrap",
             "h1",
+            "owner_contract",
+            "executable_observer",
         }
         and facts.get("schema") == PRODUCER_CONTRACT["purpose"]
         and facts.get("purpose") == "TEST_ONLY"
@@ -563,6 +696,7 @@ def producer_inputs(buffers, facts, scope, support, context):
             ),
             "producer_H1_bytes",
         )
+    producer_observer(facts)
     # Compare packet content/order/multiplicity; GPG below proves selfsig/revocation validity.
     a, prefix_a, subs_a = scope.blocks(buffers["certificate-before.pgp"])
     b, prefix_b, subs_b = scope.blocks(buffers["certificate-revoked.pgp"])

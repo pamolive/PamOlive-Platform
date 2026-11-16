@@ -4,6 +4,7 @@ import ast
 import hashlib
 import io
 import json
+import stat
 import struct
 import tempfile
 import time
@@ -392,7 +393,7 @@ class Contracts(unittest.TestCase):
         owner.c, owner.uid, owner.gid, owner.work_end, owner.end = c, 1001, 1001, 100, 130
         owner.agent = SimpleNamespace(pid=123, poll=lambda: None)
         owner.socket_path, owner.socket_fact = "PRIVATE_TEST", (1,)
-        owner.process_identity = lambda: None
+        owner.process_identity = lambda **_kw: None
         owner.socket_identity = lambda: (1,)
 
         class SlowSocket:
@@ -863,11 +864,15 @@ class Contracts(unittest.TestCase):
         owner.c, owner.home, owner.root = c, HOME, Path("unused")
         owner.end, owner.work_end, owner.started = 280, 250, 100
         owner.source_fd, owner.socket_path = 99, "OWNED"
-        owner.tools = {"/usr/bin/gpg-agent": ("a" * 64, (1, 2))}
+        owner.tools = {
+            "/usr/bin/gpg-agent": ("a" * 64, (1, 2)),
+            c.PYTHON: ("b" * 64, (3, 4)),
+        }
         owner.spawned = SimpleNamespace(wait=lambda _: True)
         owner.time_left = lambda: 50
         owner.h1_journal = lambda *_args, **_kw: None
         owner.socket_identity = lambda: (1,)
+        owner.process_snapshot = lambda: (123, 45, 123, 123, "77")
         seen = []
         owner.assuan = lambda command: seen.append(command)
 
@@ -897,7 +902,7 @@ class Contracts(unittest.TestCase):
             owner.c, owner.uid, owner.gid, owner.work_end, owner.end = c, 1001, 1001, 100, 130
             owner.agent = SimpleNamespace(pid=123, poll=lambda: None)
             owner.socket_path, owner.socket_fact = "PRIVATE_TEST", (1,)
-            owner.process_identity = lambda: None
+            owner.process_identity = lambda **_kw: None
             owner.socket_identity = lambda: (1,)
             data = iter(bytes([byte]) for byte in b"OK greeting\nD 123\n" + response)
 
@@ -1046,9 +1051,15 @@ class Contracts(unittest.TestCase):
         owner.started, owner.phase = 100, "prepare"
         owner.source_manifest_sha256 = "f" * 64
         owner.records = []
+        owner.client_ordinal = owner.observer_count = owner.readiness_observer_count = 0
+        owner.observer_tools, owner.observations, owner.observer_unknown = {}, [], False
+        owner.process_snapshot = lambda: (3896, 100, 3896, 3896, "77")
         owner.agent, owner.agent_result, owner.thread = None, None, None
         owner.source_fd, owner.socket_path, owner.socket_fact = 99, "OWNED", None
-        owner.tools = {"/usr/bin/gpg-agent": ("a" * 64, (1, 2))}
+        owner.tools = {"/usr/bin/gpg-agent": ("a" * 64, (1, 2)), c.PYTHON: ("b" * 64, (3, 4))}
+        owner.stable_observer_tools = lambda: (_ for _ in ()).throw(
+            PermissionError(13, "synthetic observer tool unavailable")
+        )
         owner.spawned = SimpleNamespace(wait=lambda _: True)
         owner.time_left = lambda: 50
         owner.h1_journal = lambda *_args, **_kw: None
@@ -1177,6 +1188,8 @@ class Contracts(unittest.TestCase):
         owner.start_agent = owner.shutdown = lambda: None
         owner.fixture = lambda: (buffers, P, S)
         owner.source_fd = None
+        owner.agent = SimpleNamespace(pid=123)
+        owner.records = [result().facts()]  # Modelled agent result; no client frontends.
         owner.signature_requests = c.creation_times(NOW)
         owner.version, owner.python_version = "2.4.7", "Python 3.12.16"
         owner.tools[c.PYTHON] = ("b" * 64, ())
@@ -1198,6 +1211,361 @@ class Contracts(unittest.TestCase):
         self.assertEqual(new[1]["schema"], c.PURPOSE)
         self.assertEqual(new[1]["purpose"], "TEST_ONLY")
         diagnostic.assert_not_called()
+
+
+class ObserverR5(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(patch.object(o.time, "monotonic", return_value=100))
+
+    def owner(self):
+        owner = Contracts.diagnostic_owner(self)
+        owner.pending, owner.agent_start = False, b"77"
+        owner.agent = SimpleNamespace(pid=123, poll=lambda: None)
+        owner.agent_spawn_monotonic = 100
+        owner.process_snapshot = lambda: (123, 45, 123, 123, "77")
+        owner.tools = {
+            "/usr/bin/gpg-agent": ("a" * 64, (1, 2, 0o100755, 0, 0, 1, 10, 1, 1)),
+            c.PYTHON: ("b" * 64, (1, 3, 0o100755, 0, 0, 1, 11, 1, 1)),
+        }
+        owner.observer_tools = {
+            "/usr/bin/sudo": ("c" * 64, (1, 4, 0o104755, 0, 0, 1, 12, 1, 1)),
+            "/usr/bin/stat": ("d" * 64, (1, 5, 0o100755, 0, 0, 1, 13, 1, 1)),
+        }
+        owner.stable_observer_tools = lambda: None
+        owner.seen, owner.journals = [], []
+        owner.h1_journal = lambda prefix, state, **kw: owner.journals.append((prefix, state, kw))
+
+        def runner(argv, **kwargs):
+            owner.seen.append((argv, kwargs))
+            kwargs["on_spawn"](900)
+            raw = b"1 2 81ed 0 0 1 10\n"
+            return h1.Result(
+                spawn_attempted=True,
+                pid=900,
+                returncode=0,
+                owned_child_reaped=True,
+                drains_complete=True,
+                stdout=raw,
+                stderr=b"",
+                stdout_bytes=len(raw),
+                stderr_bytes=0,
+            )
+
+        owner.h1 = SimpleNamespace(run_capped=runner)
+        return owner
+
+    def test_47_errno13_only_fixed_UID0_argv_and_bracketed_identity(self):
+        owner = self.owner()
+        with patch.object(o.os, "stat", side_effect=PermissionError(13, "PRIVATE_CANARY")):
+            self.assertEqual(owner.executable_identity(), (1, 2))
+        argv, options = owner.seen[0]
+        self.assertEqual(
+            argv,
+            [
+                "/usr/bin/sudo",
+                "-n",
+                "-u#0",
+                "--",
+                "/usr/bin/stat",
+                "--dereference",
+                "--printf=%d %i %f %u %g %h %s\\n",
+                "--",
+                "/proc/123/exe",
+            ],
+        )
+        self.assertEqual(
+            options["env"],
+            {
+                "PATH": "/usr/bin:/bin",
+                "LANG": "C",
+                "LC_ALL": "C",
+                "HOME": "/nonexistent",
+            },
+        )
+        self.assertEqual((options["timeout"], options["work_timeout"]), (7, 2))
+        self.assertEqual(
+            (options["stdout_cap"], options["stderr_cap"], options["total_cap"]), (256, 4096, 4352)
+        )
+        self.assertEqual([row[1] for row in owner.journals], ["intent", "pid", "result"])
+        self.assertEqual((owner.client_ordinal, owner.observer_count), (1, 1))
+        self.assertEqual(owner.observations[0]["pid"], 123)
+        self.assertEqual(owner.observations[0]["h1_index"], 0)
+        self.assertNotIn("PRIVATE_CANARY", json.dumps(owner.observations))
+
+    def test_48_other_errors_and_direct_mismatch_never_open_privileged_path(self):
+        for error in (PermissionError(1, "X"), FileNotFoundError(2, "X"), OSError(5, "X")):
+            owner = self.owner()
+            with patch.object(o.os, "stat", side_effect=error), self.assertRaises(OSError):
+                owner.executable_identity()
+            self.assertEqual(owner.seen, [])
+        owner = self.owner()
+        with patch.object(o.os, "stat", return_value=SimpleNamespace(st_dev=9, st_ino=9)):
+            with self.assertRaisesRegex(ValueError, "agent_not_execed"):
+                owner.executable_identity()
+        self.assertEqual(owner.seen, [])
+
+    def test_49_readiness_only_knows_captured_python_or_agent(self):
+        owner = self.owner()
+        with patch.object(o.os, "stat", return_value=SimpleNamespace(st_dev=1, st_ino=3)):
+            self.assertEqual(owner.executable_identity(readiness=True), (1, 3))
+            with self.assertRaisesRegex(ValueError, "agent_not_execed"):
+                owner.executable_identity()
+        self.assertEqual(owner.seen, [])
+
+    def test_50_stat_parser_rejects_noncanonical_and_free_output(self):
+        self.assertEqual(o.observer_metadata(b"1 2 81ed 0 0 1 10\n"), (1, 2, 0o100755, 0, 0, 1, 10))
+        for raw in (
+            b"1 2 081ed 0 0 1 10\n",
+            b"1 2 81ED 0 0 1 10\n",
+            b"01 2 81ed 0 0 1 10\n",
+            b"1 2 81ed 0 0 1 10\r\n",
+            b"1 2 81ed 0 0 1 10\nX",
+            b"1 2 81ed 0 0 1 10",
+            b"1 2 81ed 0 0 1 18446744073709551616\n",
+            b"1 2 81ed 0 0 1 10\0\n",
+            b"PRIVATE_PATH_CANARY",
+            b"x" * 257,
+        ):
+            with self.subTest(raw=raw), self.assertRaisesRegex(ValueError, "observer_output"):
+                o.observer_metadata(raw)
+
+    def test_51_root_unknown_is_sticky_even_during_cleanup(self):
+        for change in (
+            {"reason": "timeout", "returncode": -9, "killed_owned_child": True},
+            {"drains_complete": False},
+            {"owned_child_reaped": False},
+            {"returncode": 1, "reason": "nonzero_exit"},
+            {"stderr": b"PRIVATE", "stderr_bytes": 7},
+        ):
+            owner = self.owner()
+            runner = owner.h1.run_capped
+
+            def fail(argv, **kw):
+                answer = runner(argv, **kw)
+                for key, value in change.items():
+                    setattr(answer, key, value)
+                return answer
+
+            owner.h1.run_capped = fail
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                owner.sudo_metadata(owner.process_snapshot())
+            self.assertTrue(owner.unknown)
+            self.assertTrue(owner.observer_unknown)
+            with self.assertRaisesRegex(ValueError, "observer_sticky_unknown"):
+                owner.sudo_metadata(owner.process_snapshot(), cleanup=True)
+            self.assertEqual(len(owner.seen), 1)
+            packets = []
+            with patch.object(o, "exclusive", lambda path, raw: packets.append(json.loads(raw))):
+                owner.journal("UNKNOWN")
+            self.assertFalse(packets[0]["resources_released"])
+            self.assertFalse(packets[0]["cleanup_complete"])
+
+    def test_52_missing_sudo_and_tool_drift_are_not_healed(self):
+        for error in (FileNotFoundError(2, "PRIVATE"), ValueError("observer_tool_changed")):
+            owner = self.owner()
+            owner.stable_observer_tools = unittest.mock.Mock(side_effect=error)
+            with self.assertRaises(type(error)):
+                owner.sudo_metadata(owner.process_snapshot())
+            self.assertEqual(owner.seen, [])
+            self.assertTrue(owner.observer_unknown)
+            with self.assertRaisesRegex(ValueError, "observer_sticky_unknown"):
+                owner.sudo_metadata(owner.process_snapshot(), cleanup=True)
+
+    def test_53_changed_process_after_root_stat_refuses_and_keeps_primary(self):
+        for after in (
+            (124, 45, 124, 124, "77"),
+            (123, 45, 123, 123, "78"),
+            (123, 45, 123, 12, "77"),
+        ):
+            owner = self.owner()
+            before = owner.process_snapshot()
+            owner.process_snapshot = unittest.mock.Mock(side_effect=[before, after])
+            with self.assertRaisesRegex(ValueError, "agent_pid_reuse"):
+                owner.sudo_metadata(before)
+            self.assertTrue(owner.observer_unknown)
+            first = owner.failure_code
+            owner.remember_failure(ValueError("observer_count"), cleanup=True)
+            self.assertIs(owner.failure_code, first)
+            self.assertEqual(owner.records, [])
+
+    def test_54_foreign_before_PID_never_reaches_sudo(self):
+        owner = self.owner()
+        with self.assertRaisesRegex(ValueError, "agent_pid_reuse"):
+            owner.sudo_metadata((999, 45, 999, 999, "77"))
+        self.assertEqual(owner.seen, [])
+
+    def test_55_tool_changed_after_normal_frontend_blocks_public_admission(self):
+        owner = self.owner()
+        owner.stable_observer_tools = unittest.mock.Mock(
+            side_effect=[None, ValueError("observer_tool_changed")]
+        )
+        with self.assertRaisesRegex(ValueError, "observer_tool_changed"):
+            owner.sudo_metadata(owner.process_snapshot())
+        self.assertEqual(len(owner.seen), 1)
+        self.assertTrue(owner.observer_unknown)
+        self.assertEqual(owner.observations, [])
+
+    def test_56_frontend_caps_and_cleanup_reservation_are_shared(self):
+        owner = self.owner()
+        owner.client_ordinal = 39
+        with self.assertRaisesRegex(ValueError, "client_count"):
+            owner.sudo_metadata(owner.process_snapshot())
+        self.assertEqual(owner.seen, [])
+        owner = self.owner()
+        owner.client_ordinal = 39
+        owner.sudo_metadata(owner.process_snapshot(), cleanup=True)
+        self.assertEqual(owner.client_ordinal, 40)
+        self.assertEqual(owner.observations[0]["phase"], "cleanup")
+        with self.assertRaisesRegex(ValueError, "client_count"):
+            owner.sudo_metadata(owner.process_snapshot(), cleanup=True)
+        self.assertEqual(len(owner.seen), 1)
+
+    def test_57_observer_and_readiness_caps_refuse_without_retry(self):
+        for count, readiness, expected in (
+            (11, 0, "observer_count"),
+            (0, 4, "observer_readiness_count"),
+        ):
+            owner = self.owner()
+            owner.observer_count, owner.readiness_observer_count = count, readiness
+            with self.assertRaisesRegex(ValueError, expected):
+                owner.sudo_metadata(owner.process_snapshot(), readiness=True)
+            self.assertEqual(owner.seen, [])
+
+    def test_58_no_spawn_without_cleanup_time_and_readiness_horizon(self):
+        owner = self.owner()
+        owner.work_end = 105
+        with self.assertRaisesRegex(ValueError, "fixture_deadline"):
+            owner.sudo_metadata(owner.process_snapshot())
+        self.assertEqual(owner.seen, [])
+        owner = self.owner()
+        owner.agent_spawn_monotonic = 90
+        with self.assertRaisesRegex(ValueError, "fixture_deadline"):
+            owner.sudo_metadata(owner.process_snapshot(), readiness=True)
+        self.assertEqual(owner.seen, [])
+
+    def test_59_actual_proc_parser_preserves_owned_PID_PPID_session_start(self):
+        owner = self.owner()
+        owner.agent_start = None
+        owner.process_snapshot = o.Owner.process_snapshot.__get__(owner, o.Owner)
+        fields = [b"S", b"45", b"123", b"123"] + [b"0"] * 15 + [b"77"]
+        raw = b"123 (name with ) delimiters) " + b" ".join(fields) + b"\n"
+        with (
+            patch("builtins.open", return_value=io.BytesIO(raw)),
+            patch.object(o.os, "getpid", return_value=45),
+        ):
+            self.assertEqual(owner.process_snapshot(), (123, 45, 123, 123, "77"))
+        for bad in (
+            raw.replace(b"77\n", b"78\n"),
+            raw.replace(b"S 45", b"Z 45"),
+            raw.replace(b"S 45", b"S 46"),
+        ):
+            with (
+                patch("builtins.open", return_value=io.BytesIO(bad)),
+                patch.object(o.os, "getpid", return_value=45),
+            ):
+                with self.assertRaises(ValueError):
+                    owner.process_snapshot()
+
+    def test_60_real_H1_function_memory_process_preserves_frontend_semantics(self):
+        owner = self.owner()
+
+        class MemoryProcess:
+            def __init__(self, argv, **kw):
+                self.pid = 900
+                self.stdout = io.BytesIO(b"1 2 81ed 0 0 1 10\n")
+                self.stderr = io.BytesIO()
+                self.args, self.options = argv, kw
+
+            def poll(self):
+                return 0
+
+            def wait(self, timeout):
+                return 0
+
+        owner.h1 = SimpleNamespace(
+            run_capped=lambda args, **kw: h1.run_capped(args, **kw, popen=MemoryProcess)
+        )
+        with patch.object(h1.os, "name", "posix"):
+            self.assertEqual(owner.sudo_metadata(owner.process_snapshot()), (1, 2))
+        self.assertTrue(owner.records[0]["owned_child_reaped"])
+        self.assertTrue(owner.records[0]["drains_complete"])
+        self.assertFalse(owner.records[0]["killed_owned_child"])
+
+    def test_61_public_count_is_frontends_not_all_OS_processes(self):
+        owner = self.owner()
+        owner.sudo_metadata(owner.process_snapshot())
+        owner.records.append(result().facts())  # Modelled normal agent completion.
+        fact = owner.observer_facts()
+        self.assertEqual(fact["frontend_count"], 1)
+        self.assertEqual(len(owner.records), 2)  # The agent is separate.
+        self.assertEqual(fact["count_scope"], "FRONTENDS_ONLY")
+        self.assertIsNone(fact["os_process_count"])
+        self.assertIn("not-exhaustive-OS", fact["normal_completion_TCB"])
+
+    def test_62_SUID_exception_is_only_fixed_sudo_and_original_GPG_guard_is_unchanged(self):
+        payload = b"\x7fELFABC"
+
+        def exercise(name, mode, *, links=1, caps=(), parent_write=False):
+            leaf = SimpleNamespace(
+                st_dev=1,
+                st_ino=2,
+                st_mode=stat.S_IFREG | mode,
+                st_uid=0,
+                st_gid=0,
+                st_nlink=links,
+                st_size=len(payload),
+                st_mtime_ns=1,
+                st_ctime_ns=1,
+            )
+
+            class FakePath:
+                def __init__(self, value):
+                    self.value = str(value)
+
+                def __str__(self):
+                    return self.value
+
+                def as_posix(self):
+                    return self.value
+
+                def is_symlink(self):
+                    return False
+
+                def lstat(self):
+                    if self.value in {"/", "/usr", "/usr/bin"}:
+                        return SimpleNamespace(
+                            st_mode=stat.S_IFDIR | (0o777 if parent_write else 0o755), st_uid=0
+                        )
+                    return leaf
+
+            with (
+                patch.object(o, "Path", FakePath),
+                patch.object(o.os, "open", return_value=99),
+                patch.object(o.os, "O_NOFOLLOW", 0, create=True),
+                patch.object(o.os, "O_NONBLOCK", 0, create=True),
+                patch.object(o.os, "fstat", return_value=leaf),
+                patch.object(o.os, "read", side_effect=[payload, b""]),
+                patch.object(o.os, "listxattr", return_value=list(caps), create=True),
+                patch.object(o.os, "close") as close,
+            ):
+                value = o.captured_observer_tool(name)
+                close.assert_called_once_with(99)
+                return value
+
+        self.assertEqual(exercise("/usr/bin/sudo", 0o4755)[0], hashlib.sha256(payload).hexdigest())
+        self.assertEqual(exercise("/usr/bin/stat", 0o755)[0], hashlib.sha256(payload).hexdigest())
+        for name, mode, options in (
+            ("/usr/bin/stat", 0o4755, {}),
+            ("/usr/bin/sudo", 0o755, {}),
+            ("/usr/bin/sudo", 0o4755, {"links": 2}),
+            ("/usr/bin/sudo", 0o4755, {"caps": ("security.capability",)}),
+            ("/usr/bin/sudo", 0o4755, {"parent_write": True}),
+            ("/usr/bin/gpg", 0o4755, {}),
+        ):
+            with self.subTest(name=name, options=options), self.assertRaises(ValueError):
+                exercise(name, mode, **options)
+        with self.assertRaisesRegex(ValueError, "tool_path"):
+            o.captured("/usr/bin/sudo", 1024, root_tool=True)
 
 
 if __name__ == "__main__":

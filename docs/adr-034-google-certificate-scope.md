@@ -169,3 +169,56 @@ sa structure ; sa nouvelle identité de source est normalement différente de
 R3. Aucun vrai reçu historique ni résultat natif n’est transféré. Les 92 tests
 purs de l’intégration passent sans réseau ni natif ; une nouvelle CI exacte
 doit encore recevoir la cause et qualifier l’agent avant toute installation.
+
+## R5 : observateur de métadonnées privilégié, générateur non-root
+
+Décision Root du 16 novembre 2026, limitée à une nouvelle VM CI Linux dédiée :
+le générateur reste non-root. Si et seulement si le stat direct de
+`/proc/<PID du Popen possédé>/exe` refuse avec errno13, un frontend fixe exécute
+`/usr/bin/sudo -n -u#0 -- /usr/bin/stat --dereference` avec un format fermé et
+cette seule cible. Aucun shell, interpréteur root, lecture de mémoire/clé,
+désactivation des protections GPG, adoption de PID ou commande de daemon.
+L’observation répétée conserve la comparaison dev/ino aux outils capturés ;
+elle n’est pas remplacée par une preuve initiale d’exec.
+
+Cette décision suit la contre-revue indépendante
+`adr034-proc-exe-sudo-stat-independent-review-20261116` : note SHA256
+`cb531db00a5b0c0d8d8ec1511082bc4ec3b78048bb0ec32a3fde7f8d93dcadd9`,
+rapport `4f4e412fefed6ec6f3b157231ca36b83f1b285c6d3f0e81a1038620e2c14004b`,
+gel `b2be4d6fe622bbce532fd340cb40598ea2c3e5f199fc8f1fb9db19efb7188380`.
+Il s’agit d’une commission SOURCE, pas d’une qualification native reçue.
+
+Les rôles sudo/stat sont distincts des gardes GPG/Python existantes : chemins
+fixes, parents root-owned non modifiables et sans alias, ELF réguliers nlink1,
+SHA/identités stables avant/après. Seul sudo exige le mode4755 ; stat reste0755.
+PPID, session, groupe, starttime et poll du Popen sont revérifiés autour du stat.
+Le socket/peer UID/GID/PID et GETINFO restent exigés, sans nouvelles autorités.
+La TCB inclut root, les outils et politiques sudo de cette VM coopérative :
+un frontend normal terminé/reaped/drained n’est pas une énumération exhaustive
+de ses descendants OS. Un timeout, nonzero, sortie ouverte, échec de contrôle ou
+incertitude privilégiée reste UNKNOWN/resources_released:false. Cette voie
+UNKNOWN est sticky : aucun nouvel observateur privilégié, même en cleanup.
+Un cleanup possédé éventuellement réussi ne répare jamais cet état.
+
+La borne structurelle est 23 frontends préparatoires/GPG/Python plus au plus
+11 observations sudo (4 readiness, 6 autour de trois GETINFO, 1 avant KILLAGENT),
+soit34 FRONTENDS, pas34 processus OS. Le plafond40, l’agent séparé et les
+180=150+30 secondes restent inchangés ; aucune capacité supplémentaire n’est
+déduite des moniteurs sudo/stat. Au plus7s par frontend observateur dont2s de
+travail et5s de reprise, sous les échéances absolues existantes. Un slot client
+est réservé au contrôle cleanup ; aucun retry ne prolonge ces bornes.
+
+Le reçu du propriétaire devient `pamolive.gpg-fixture-owner/2` et exige une
+preuve `pamolive.gpg-fixture-exe-observer/1`, liée au contexte, à la nouvelle
+source et aux faits H1. Le préflight consommateur devient `/3` et refuse
+l’ancien reçu sans cette preuve. Le purpose TEST/2, les six buffers, les17
+catégories, les gardes crypto Google et tous les budgets restent inchangés.
+L’algorithme préservé n’implique pas des reçus byte-exacts avec de nouveaux pins.
+La qualification CI réelle doit encore recevoir le fallback et ses refus ;
+aucun succès de l’ancien agent, du navigateur ou de l’installateur n’est transféré.
+
+Références primaires de la couture :
+- https://man7.org/linux/man-pages/man5/proc_pid_exe.5.html
+- https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html
+- https://raw.githubusercontent.com/coreutils/coreutils/v9.4/src/stat.c
+- https://raw.githubusercontent.com/sudo-project/sudo/main/docs/sudo.man.in

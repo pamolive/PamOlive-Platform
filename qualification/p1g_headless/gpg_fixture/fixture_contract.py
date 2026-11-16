@@ -4,6 +4,8 @@ import hashlib
 import re
 
 PURPOSE = "pamolive.gpg-selected-signer-revoked-fixture/2"
+OWNER_CONTRACT = "pamolive.gpg-fixture-owner/2"
+OBSERVER_SCHEMA = "pamolive.gpg-fixture-exe-observer/1"
 UID = "PamOlive TEST selected-subkey-revoked <test-only@example.invalid>"
 MESSAGE = b"PamOlive synthetic selected signing subkey revocation fixture v1\n"
 COMMANDS = b"key 1\nrevkey\ny\n1\n\ny\nsave\n"

@@ -29,6 +29,8 @@ SOURCE_FILES = (
     "crypto_guard.py",
     "public_packets.py",
 )
+OBSERVER_MODES = {"/usr/bin/sudo": 0o4755, "/usr/bin/stat": 0o755}
+OBSERVER_FORMAT = "%d %i %f %u %g %h %s\\n"
 
 
 def need(ok, code):
@@ -49,6 +51,15 @@ FAILURE_PHASES = {
     "unknown",
 }
 FAILURE_GUARDS = {
+    "observer_sticky_unknown",
+    "observer_tool_shape",
+    "observer_tool_changed",
+    "observer_count",
+    "observer_readiness_count",
+    "observer_output",
+    "observer_identity",
+    "observer_receipt",
+    "cleanup_frontend_reserved",
     "agent_source_changed",
     "agent_spawn_binding",
     "agent_spawn_unknown",
@@ -189,6 +200,69 @@ def captured(path, cap, *, root_tool=False):
         os.close(fd)
 
 
+def captured_observer_tool(path):
+    """Separate fixed roles: SUID is admitted only for the exact sudo executable."""
+    path = Path(path)
+    name = path.as_posix()
+    need(name in OBSERVER_MODES, "observer_tool_shape")
+    for parent in (Path("/"), Path("/usr"), Path("/usr/bin")):
+        row = parent.lstat()
+        need(
+            stat.S_ISDIR(row.st_mode)
+            and row.st_uid == 0
+            and not row.st_mode & 0o022
+            and not parent.is_symlink(),
+            "observer_tool_shape",
+        )
+    before = path.lstat()
+    need(
+        stat.S_ISREG(before.st_mode)
+        and before.st_uid == 0
+        and before.st_nlink == 1
+        and stat.S_IMODE(before.st_mode) == OBSERVER_MODES[name]
+        and not path.is_symlink()
+        and 0 < before.st_size <= 64 * 1024**2,
+        "observer_tool_shape",
+    )
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        opened = os.fstat(fd)
+        need(identity(opened) == identity(before), "observer_tool_changed")
+        digest, total, first = hashlib.sha256(), 0, True
+        while block := os.read(fd, min(65536, 64 * 1024**2 + 1 - total)):
+            total += len(block)
+            need(total <= 64 * 1024**2, "observer_tool_shape")
+            if first:
+                need(block.startswith(b"\x7fELF"), "observer_tool_shape")
+                first = False
+            digest.update(block)
+        need(
+            not first
+            and total == opened.st_size
+            and identity(os.fstat(fd)) == identity(opened)
+            and identity(path.lstat()) == identity(before)
+            and "security.capability" not in os.listxattr(fd),
+            "observer_tool_changed",
+        )
+        return digest.hexdigest(), identity(before)
+    finally:
+        os.close(fd)
+
+
+def observer_metadata(raw):
+    need(type(raw) is bytes and 0 < len(raw) <= 256, "observer_output")
+    match = re.fullmatch(
+        rb"(0|[1-9][0-9]{0,19}) (0|[1-9][0-9]{0,19}) (0|[1-9a-f][0-9a-f]{0,7}) "
+        rb"(0|[1-9][0-9]{0,19}) (0|[1-9][0-9]{0,19}) "
+        rb"(0|[1-9][0-9]{0,19}) (0|[1-9][0-9]{0,19})\n",
+        raw,
+    )
+    need(match is not None, "observer_output")
+    values = tuple(int(match[i], 16 if i == 3 else 10) for i in range(1, 8))
+    need(all(value < 2**64 for value in values), "observer_output")
+    return values
+
+
 def modules(expected):
     need(re.fullmatch("[0-9a-f]{64}", expected), "external_source_pin")
     raw, _ = captured(HERE / "source-pins.json", 8192)
@@ -263,6 +337,11 @@ class Owner:
         self.phase = "prepare"
         self.records = []
         self.client_ordinal = 0
+        self.observer_tools = {}
+        self.observer_unknown = False
+        self.observer_count = 0
+        self.readiness_observer_count = 0
+        self.observations = []
         self.tools = {}
         self.agent = None
         self.agent_result = None
@@ -294,6 +373,8 @@ class Owner:
             packet["agent_thread_joined"] = self.thread is None or not self.thread.is_alive()
             packet["agent"] = self.agent_result.facts() if self.agent_result is not None else None
             packet["cleanup_complete"] = False
+            packet["resources_released"] = False
+            packet["privileged_observer_unknown"] = getattr(self, "observer_unknown", False)
             packet["failure_code"] = getattr(self, "failure_code", None)
             packet["cleanup_failure"] = getattr(self, "cleanup_failure", None)
         raw = json.dumps(packet, sort_keys=True).encode()
@@ -335,11 +416,15 @@ class Owner:
             "operational_GO": False,
         }
         if state == "intent":
-            need(tool in self.tools, "h1_intent_tool")
+            tools = self.observer_tools if tool == "/usr/bin/sudo" else self.tools
+            need(
+                tool in tools and (tool != "/usr/bin/sudo" or prefix.startswith("client-")),
+                "h1_intent_tool",
+            )
             packet.update(
                 {
                     "tool": Path(tool).name,
-                    "tool_sha256": self.tools[tool][0],
+                    "tool_sha256": tools[tool][0],
                     "context": self.context,
                     "owner_nonce": self.root.name[-32:],
                     "source_manifest_sha256": self.source_manifest_sha256,
@@ -366,6 +451,7 @@ class Owner:
         need(type(argv) is list and argv and argv[0] in self.tools, "client_tool")
         self.stable_tools()
         remaining = self.time_left()
+        need(self.client_ordinal < 39, "cleanup_frontend_reserved")
         need(self.client_ordinal < 40, "client_count")
         self.client_ordinal += 1
         prefix = f"client-{self.client_ordinal:02d}"
@@ -564,8 +650,7 @@ class Owner:
             )
             try:
                 self.phase = "agent_exe"
-                row = os.stat(f"/proc/{self.agent.pid}/exe")
-                execed = (row.st_dev, row.st_ino) == agent_tool[:2]
+                execed = self.executable_identity(readiness=True) == agent_tool[:2]
             except FileNotFoundError:
                 execed = False
             if execed and os.path.lexists(self.socket_path):
@@ -592,32 +677,200 @@ class Owner:
         )
         return (row.st_dev, row.st_ino, row.st_mode, row.st_uid, row.st_gid, row.st_nlink)
 
-    def process_identity(self):
+    def process_snapshot(self):
         need(self.agent is not None and self.agent.poll() is None, "agent_not_alive")
         pid = self.agent.pid
+        need(type(pid) is int and 0 < pid < 2**31, "agent_proc_shape")
         with open(f"/proc/{pid}/stat", "rb") as stream:
             raw = stream.read(8193)
-        need(len(raw) <= 8192 and b") " in raw, "agent_proc_shape")
+        need(
+            len(raw) <= 8192 and raw.startswith(str(pid).encode() + b" (") and b") " in raw,
+            "agent_proc_shape",
+        )
         fields = raw.rsplit(b") ", 1)[1].split()
         need(
             len(fields) >= 20
+            and fields[0] in {b"R", b"S", b"D", b"T", b"t", b"W", b"K", b"P", b"I"}
+            and all(re.fullmatch(rb"[1-9][0-9]{0,9}", fields[i]) for i in (1, 2, 3))
             and int(fields[1]) == os.getpid()
             and int(fields[2]) == int(fields[3]) == pid,
             "agent_proc_ownership",
         )
-        row = os.stat(f"/proc/{pid}/exe")
-        tool = self.tools["/usr/bin/gpg-agent"][1]
-        need((row.st_dev, row.st_ino) == tool[:2], "agent_not_execed")
         start = fields[19]
         need(
-            start.isdigit() and (self.agent_start is None or self.agent_start == start),
+            re.fullmatch(rb"0|[1-9][0-9]{0,19}", start)
+            and int(start) < 2**64
+            and (self.agent_start is None or self.agent_start == start)
+            and self.agent.poll() is None,
             "agent_pid_reuse",
         )
         self.agent_start = start
+        return (pid, int(fields[1]), int(fields[2]), int(fields[3]), start.decode("ascii"))
+
+    def stable_observer_tools(self):
+        for path in OBSERVER_MODES:
+            current = captured_observer_tool(path)
+            if path in self.observer_tools:
+                need(current == self.observer_tools[path], "observer_tool_changed")
+            else:
+                self.observer_tools[path] = current
+
+    def sudo_metadata(self, before, *, cleanup=False, readiness=False):
+        # UNKNOWN of this privileged role is terminal even when shutdown needs metadata.
+        need(not self.observer_unknown, "observer_sticky_unknown")
+        prefix, result = None, None
+        try:
+            need(
+                type(cleanup) is bool and type(readiness) is bool and not (cleanup and readiness),
+                "observer_count",
+            )
+            need(cleanup or not self.unknown, "sticky_unknown")
+            need(self.observer_count < 11, "observer_count")
+            if readiness:
+                need(self.readiness_observer_count < 4, "observer_readiness_count")
+            need(self.client_ordinal < (40 if cleanup else 39), "client_count")
+            deadline = self.end - 5 if cleanup else self.work_end
+            if readiness:
+                deadline = min(deadline, self.agent_spawn_monotonic + 15)
+            remaining = deadline - time.monotonic()
+            need(remaining > 5, "fixture_deadline")
+            self.stable_observer_tools()
+            tool_snapshot = dict(self.observer_tools)
+            remaining = deadline - time.monotonic()
+            need(remaining > 5, "fixture_deadline")
+            need(self.process_snapshot() == before, "agent_pid_reuse")
+            self.client_ordinal += 1
+            self.observer_count += 1
+            self.readiness_observer_count += int(readiness)
+            prefix = f"client-{self.client_ordinal:02d}"
+            self.h1_journal(prefix, "intent", tool="/usr/bin/sudo")
+            argv = [
+                "/usr/bin/sudo",
+                "-n",
+                "-u#0",
+                "--",
+                "/usr/bin/stat",
+                "--dereference",
+                "--printf=" + OBSERVER_FORMAT,
+                "--",
+                f"/proc/{before[0]}/exe",
+            ]
+            result = self.h1.run_capped(
+                argv,
+                env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C", "HOME": "/nonexistent"},
+                cwd=str(self.root),
+                timeout=min(7, remaining),
+                work_timeout=min(2, remaining - 5),
+                deadline=deadline,
+                stdout_cap=256,
+                stderr_cap=4096,
+                total_cap=4352,
+                on_spawn=lambda pid: self.h1_journal(prefix, "pid", pid=pid),
+                owned_session=True,
+            )
+            self.h1_journal(prefix, "result", result=result)
+            self.c.normal(result)
+            need(result.stderr == b"", "observer_output")
+            values = observer_metadata(result.stdout)
+            need(self.process_snapshot() == before, "agent_pid_reuse")
+            candidates = [self.tools["/usr/bin/gpg-agent"][1]]
+            if readiness:
+                candidates.append(self.tools[self.c.PYTHON][1])
+            need(values in [row[:7] for row in candidates], "observer_identity")
+            self.stable_observer_tools()
+            need(self.observer_tools == tool_snapshot, "observer_tool_changed")
+            need(time.monotonic() < deadline, "fixture_deadline")
+            index = len(self.records)
+            self.records.append(result.facts())
+            self.observations.append(
+                {
+                    "ordinal": self.client_ordinal,
+                    "phase": "cleanup" if cleanup else "readiness" if readiness else "work",
+                    "pid": before[0],
+                    "starttime": before[4],
+                    "metadata": list(values),
+                    "image": "gpg-agent"
+                    if values[:2] == self.tools["/usr/bin/gpg-agent"][1][:2]
+                    else "python_bootstrap",
+                    "h1_index": index,
+                }
+            )
+            return values[:2]
+        except BaseException as error:
+            self.observer_unknown = True
+            self.remember_failure(error, cleanup=cleanup)
+            if prefix is not None:
+                try:
+                    self.h1_journal(prefix, "unknown", result=result)
+                except BaseException:
+                    self.unknown = True
+            raise
+
+    def executable_identity(self, *, cleanup=False, readiness=False):
+        before = self.process_snapshot()
+        try:
+            row = os.stat(f"/proc/{before[0]}/exe")
+            found = (row.st_dev, row.st_ino)
+        except PermissionError as error:
+            if error.errno != 13:
+                raise
+            found = self.sudo_metadata(before, cleanup=cleanup, readiness=readiness)
+        need(self.process_snapshot() == before, "agent_pid_reuse")
+        expected = [self.tools["/usr/bin/gpg-agent"][1][:2]]
+        if readiness:
+            expected.append(self.tools[self.c.PYTHON][1][:2])
+        need(found in expected, "agent_not_execed")
+        return found
+
+    def process_identity(self, *, cleanup=False):
+        self.executable_identity(cleanup=cleanup)
+
+    def observer_facts(self):
+        need(
+            not self.observer_unknown
+            and not self.unknown
+            and type(self.client_ordinal) is int
+            and 0 <= self.client_ordinal <= 40
+            and len(self.records) == self.client_ordinal + 1
+            and self.records[-1]["pid"] == self.agent.pid
+            and self.observer_count == len(self.observations)
+            and 0 <= self.observer_count <= 11
+            and 0 <= self.readiness_observer_count <= 4,
+            "observer_receipt",
+        )
+        if self.observer_count:
+            before = dict(self.observer_tools)
+            self.stable_observer_tools()
+            need(self.observer_tools == before, "observer_tool_changed")
+        else:
+            need(self.observer_tools == {}, "observer_receipt")
+        return {
+            "schema": self.c.OBSERVER_SCHEMA,
+            "context": self.context,
+            "source_manifest_sha256": self.source_manifest_sha256,
+            "owner_nonce": self.root.name[-32:],
+            "strategy": "repeated-dev-ino-direct-or-errno13-sudo-stat",
+            "target_uid": 0,
+            "privileged_unknown": False,
+            "tools_stable": True,
+            "count_scope": "FRONTENDS_ONLY",
+            "os_process_count": None,
+            "frontend_count": self.client_ordinal,
+            "frontend_limit": 40,
+            "root_observation_count": self.observer_count,
+            "readiness_root_count": self.readiness_observer_count,
+            "owned_agent_pid": self.agent.pid,
+            "normal_completion_TCB": "trusted-foreground-sudo-not-exhaustive-OS-descendant-proof",
+            "tools": {
+                Path(path).name: {"sha256": value[0], "identity": list(value[1])}
+                for path, value in self.observer_tools.items()
+            },
+            "observations": self.observations,
+        }
 
     def assuan(self, command, *, cleanup=False):
         need(command in {"GETINFO pid", "KILLAGENT"}, "assuan_command")
-        self.process_identity()
+        self.process_identity(cleanup=cleanup)
         need(self.socket_identity() == self.socket_fact, "socket_changed")
         deadline = min(self.end - 5 if cleanup else self.work_end, time.monotonic() + 2)
         need(time.monotonic() < deadline, "assuan_deadline")
@@ -884,7 +1137,7 @@ class Owner:
             path.rmdir()
 
     def run(self):
-        buffers = None
+        buffers, observation = None, None
         try:
             self.phase = "prepare"
             self.prepare()
@@ -902,13 +1155,18 @@ class Owner:
                     self.source_fd = None
                 if hasattr(self, "root_fact"):
                     self.remove_private()
+                if not self.unknown:
+                    observation = self.observer_facts()
             except BaseException as error:
                 self.unknown = True
                 self.remember_failure(error, cleanup=True, phase="cleanup")
             if self.pending and self.unknown:
                 self.journal("UNKNOWN")
         need(
-            not self.unknown and buffers is not None and time.monotonic() < self.end,
+            not self.unknown
+            and buffers is not None
+            and observation is not None
+            and time.monotonic() < self.end,
             "fixture_unknown",
         )
         fact = self.c.export_facts(buffers, p, s, cleanup=True, unknown=self.unknown)
@@ -927,6 +1185,8 @@ class Owner:
             "version": self.python_version,
         }
         fact["h1"] = self.records
+        fact["owner_contract"] = self.c.OWNER_CONTRACT
+        fact["executable_observer"] = observation
         # Admission is returned only after cleanup; the caller writes these same immutable buffers.
         self.journal("CLEANUP_COMPLETE")
         return buffers, fact
