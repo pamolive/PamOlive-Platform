@@ -19,6 +19,7 @@ try:
         COMPAT_UPSTREAM_COMMIT,
         CONFIGURATION_PROBES,
         GUAC_FLAGS,
+        JSON_PATCH_SHA,
         OPTIONS,
         PATCH_SHA,
         PREFIXES,
@@ -33,6 +34,7 @@ except ModuleNotFoundError:  # Direct invocation: python deploy/native_sbom.py
         COMPAT_UPSTREAM_COMMIT,
         CONFIGURATION_PROBES,
         GUAC_FLAGS,
+        JSON_PATCH_SHA,
         OPTIONS,
         PATCH_SHA,
         PREFIXES,
@@ -173,10 +175,14 @@ def native_components(manifest, report):
         require((component.get("version"), component.get("source_sha256")) == SOURCES[name]
                 and component.get("prefix") == PREFIXES[name], "native_source_identity")
         allowed = {"name", "prefix", "version", "source_sha256", "build_options"}
-        allowed |= {"signer_fingerprint", "transformations", "compile_policy"} if (
+        allowed |= {"signer_fingerprint", "transformations", "compile_policy",
+                    "json_backend_patch_sha256"} if (
             name == "freerdp") else {"patch_sha256", "compat_patch_sha256",
                                       "compat_upstream_commit"}
         require(set(component).issubset(allowed), "native_metadata_fields")
+        if name == "freerdp":
+            require(component.get("json_backend_patch_sha256") == JSON_PATCH_SHA,
+                    "native_json_patch")
         if "build_options" in component:
             require(component["build_options"] == (OPTIONS if name == "freerdp" else
                                                     sorted(GUAC_FLAGS)), "native_build_options")

@@ -44,6 +44,8 @@ class NativeInventoryTests(TestCase):
             self.write(folder + "/version.txt", version)
             self.write(folder + "/source-sha256.txt", digest)
             if name == "freerdp":
+                self.write(folder + "/freerdp-jansson-compat.patch", (
+                    ROOT / "deploy/freerdp-jansson-compat.patch").read_bytes())
                 self.write(folder + "/signer-fingerprint.txt", native.SIGNER)
                 self.write(folder + "/signature.status", "[GNUPG:] VALIDSIG " + native.SIGNER)
                 self.write(folder + "/build-options.txt", "\n".join(
@@ -70,9 +72,12 @@ class NativeInventoryTests(TestCase):
                 suffixes = ("/sbin/guacd", "/lib/libguac-client-rdp.so",
                             "/lib/libguac-client-ssh.so")
             for suffix in suffixes:
-                self.paths.append(self.write(prefix + suffix, elf()))
+                self.paths.append(self.write(prefix + suffix, elf(needed=(
+                    "libjansson.so.4" if "libwinpr3" in suffix else "libc.so.6"))))
         self.write("/usr/lib/x86_64-linux-gnu/libc.so.6", b"system-library")
-        self.write("/var/lib/dpkg/status", "Package: libc6\nStatus: install ok installed\n")
+        self.write("/usr/lib/x86_64-linux-gnu/libjansson.so.4", b"system-jansson")
+        self.write("/var/lib/dpkg/status", "Package: libc6\nStatus: install ok installed\n\n"
+                   "Package: libjansson4\nStatus: install ok installed\nVersion: 2.14-2+b3\n")
 
     def write(self, path, value):
         path = self.root / path.lstrip("/")
@@ -81,7 +86,8 @@ class NativeInventoryTests(TestCase):
         return path
 
     def probe(self, path):
-        return [{"soname": "libc.so.6", "path": "/usr/lib/x86_64-linux-gnu/libc.so.6"}]
+        return [{"soname": name, "path": "/usr/lib/x86_64-linux-gnu/" + name}
+                for name in ("libc.so.6", "libjansson.so.4")]
 
     def versions(self):
         return {"freerdp": "3.33.1", "winpr": "3.33.1", "guacd": "1.6.0",
@@ -285,3 +291,36 @@ class NativeInventoryTests(TestCase):
                 native, "inventory") as capture, redirect_stdout(io.StringIO()):
             self.assertEqual(native.main(["--capture", "--output", str(output)]), 1)
         capture.assert_not_called()
+
+    def test_cjson_installed_needed_and_transitive_are_refused(self):
+        status = self.root / "var/lib/dpkg/status"
+        original = status.read_text()
+        status.write_text(original + "\nPackage: libcjson1\nStatus: install ok installed\n")
+        with self.assertRaisesRegex(native.InventoryError, "cjson_package"):
+            self.inventory()
+        status.write_text(original)
+        self.paths[0].write_bytes(elf(needed="libcjson.so.1"))
+        with self.assertRaisesRegex(native.InventoryError, "cjson_needed"):
+            self.inventory()
+        self.paths[0].write_bytes(elf())
+        with self.assertRaisesRegex(native.InventoryError, "cjson_resolved"):
+            native.inventory(root=self.root, version_probe=self.versions, link_probe=lambda p:
+                self.probe(p) + [{"soname": "libcjson_utils.so.1", "path": "/tmp/no-open"}])
+
+    def test_jansson_package_version_backend_and_patch_are_required(self):
+        p = self.root / "var/lib/dpkg/status"
+        original = p.read_text()
+        for old, new, code in (("2.14-2+b3", "0.19+ds-1", "jansson_version"),
+                               ("libjansson4", "other", "jansson_package_missing")):
+            p.write_text(original.replace(old, new))
+            with self.assertRaisesRegex(native.InventoryError, code):
+                self.inventory()
+        p.write_text(original)
+        self.paths[2].write_bytes(elf())
+        with self.assertRaisesRegex(native.InventoryError, "jansson_needed"):
+            self.inventory()
+        self.paths[2].write_bytes(elf(needed="libjansson.so.4"))
+        self.write("/opt/pamolive-freerdp/share/pamolive-freerdp/"
+                   "freerdp-jansson-compat.patch", "bad")
+        with self.assertRaisesRegex(native.InventoryError, "json_patch_identity"):
+            self.inventory()

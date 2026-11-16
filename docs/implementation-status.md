@@ -592,3 +592,7 @@ Les expirations du budget de base du relais sont distinguées des révocations :
 - Reprise après sinistre, charge et actif-actif sur deux VM réelles : la restauration isolée, la qualification HTTP et SSH sur deux conteneurs du même hôte et le contrôle de cohérence de deux VM ne prouvent ni une bascule PostgreSQL ni une reprise métier sûre. Une session SSH/RDP ne migre pas à chaud.
 
 Une révocation interne n’est jamais présentée comme la preuve d’une révocation exécutée sur un système externe. Une confirmation SCIM cite une relecture datée ; elle ne garantit pas l’absence d’une modification ultérieure faite hors plateforme. Une absence d’intention dans les données collectées n’est pas présentée comme la preuve que l’accès est illégitime.
+
+## Qualification Jansson en cours
+
+Le backend natif est en qualification sur une branche indépendante ; les tests purs ne valent pas livraison. Voir [preuves et limites](p1-f-jansson-qualification.md) et [ADR-030](adr-030-jansson-native-json-backend.md). Aucune donnée ni migration métier modifiée.

@@ -334,15 +334,18 @@ class LayerReader:
         return data
 
 
-def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None):
+def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
+                  reject_cjson_elf=False, archive_stream=None):
     """Stream final file/ELF/link identities, without extraction or following links."""
+    require(type(reject_cjson_elf) is bool, "archive_cjson_option")
     requested = {checked_path(item["path"]) for item in conditions
                  if item.get("kind") in ("elf", "file_sha256")}
     require(isinstance(read_paths, (list, tuple, set)) and len(read_paths) <= 32,
             "archive_read_paths")
     read_paths = {checked_path(name) for name in read_paths}
     requested |= read_paths
-    capture_set = bool(read_paths) or any(item.get("kind") == "elf_set" for item in conditions)
+    capture_set = reject_cjson_elf or bool(read_paths) or any(
+        item.get("kind") == "elf_set" for item in conditions)
     names, elves, entries = set(), {}, {}
     captured = {}
     # Hardlinks retain bytes even after their original path is removed. Track
@@ -374,7 +377,8 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None)
 
     total = count = 0
     stream_budget, layer_digests = [0], []
-    with tarfile.open(archive, mode="r:", tarinfo=BoundedTarInfo) as outer:
+    with tarfile.open(name=archive if archive_stream is None else None,
+                      fileobj=archive_stream, mode="r:", tarinfo=BoundedTarInfo) as outer:
         manifest = docker_manifest(outer)
         layers = manifest["Layers"]
         if "Config" in manifest:
@@ -478,8 +482,20 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None)
                                 require(member.size <= 64 * 1024**2, "elf_budget")
                                 sha = hashlib.sha256(header)
                                 parts = [header] if name in read_paths else None
+                                # Inspect every physical ELF in every layer, including
+                                # copies later hidden by whiteouts. This optional migration
+                                # guard never grants a vulnerability policy exception.
+                                tail = header
+                                if reject_cjson_elf and is_elf:
+                                    require(not any(mark in tail for mark in (
+                                        b"cJSON_", b"cJSONUtils_")), "cjson_elf_symbol")
                                 while block := data.read(1024 * 1024):
                                     sha.update(block)
+                                    if reject_cjson_elf and is_elf:
+                                        combined = tail + block
+                                        require(not any(mark in combined for mark in (
+                                            b"cJSON_", b"cJSONUtils_")), "cjson_elf_symbol")
+                                        tail = combined[-32:]
                                     if parts is not None:
                                         parts.append(block)
                                 if parts is not None:

@@ -1,0 +1,80 @@
+--- a/winpr/libwinpr/utils/json/jansson.c
++++ b/winpr/libwinpr/utils/json/jansson.c
+@@ -17,6 +17,9 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
++#include <limits.h>
++#include <math.h>
++
+ #include <winpr/file.h>
+ #include <winpr/json.h>
+ #include <winpr/assert.h>
+@@ -103,26 +106,37 @@
+ {
+ 	lasterror[0] = '\0';
+ 	if (!json)
+-		(void)_snprintf(lasterror, sizeof(lasterror), "[%d:%d:%d] %s [%s]", error->line,
+-		                error->column, error->position, error->text, error->source);
++		(void)_snprintf(lasterror, sizeof(lasterror), "[%d:%d:%d] JSON refused code %d",
++		                error->line, error->column, error->position,
++		                (int)json_error_code(error));
+ 	return json;
+ }
+ 
+ WINPR_JSON* WINPR_JSON_Parse(const char* value)
+ {
+ 	json_error_t error = WINPR_C_ARRAY_INIT;
+-	WINPR_JSON* json = revcast(json_loads(value, JSON_DECODE_ANY, &error));
++	WINPR_JSON* json = revcast(json_loads(value, JSON_DECODE_ANY | JSON_REJECT_DUPLICATES, &error));
+ 	return updateError(json, &error);
+ }
+ 
+ WINPR_JSON* WINPR_JSON_ParseWithLength(const char* value, size_t buffer_length)
+ {
+-	if (!value || (buffer_length == 0))
++	lasterror[0] = '\0';
++	if (!value || buffer_length == 0 || buffer_length > INT_MAX)
++	{
++		(void)_snprintf(lasterror, sizeof(lasterror), "JSON input length refused");
+ 		return nullptr;
+-
++	}
++	const size_t slen = strnlen(value, buffer_length);
++	/* One optional trailing terminator is accepted; embedded NUL is not. */
++	if (slen < buffer_length && slen + 1 != buffer_length)
++	{
++		(void)_snprintf(lasterror, sizeof(lasterror), "JSON embedded NUL refused");
++		return nullptr;
++	}
+ 	json_error_t error = WINPR_C_ARRAY_INIT;
+-	const size_t slen = strnlen(value, buffer_length);
+-	WINPR_JSON* json = revcast(json_loadb(value, slen, JSON_DECODE_ANY, &error));
++	WINPR_JSON* json = revcast(json_loadb(value, slen,
++	                                    JSON_DECODE_ANY | JSON_REJECT_DUPLICATES, &error));
+ 	return updateError(json, &error);
+ }
+ 
+@@ -177,6 +191,8 @@
+ 
+ double WINPR_JSON_GetNumberValue(const WINPR_JSON* item)
+ {
++	if (!WINPR_JSON_IsNumber(item))
++		return NAN;
+ 	return json_number_value(ccast(item));
+ }
+ 
+@@ -349,10 +365,10 @@
+ 
+ char* WINPR_JSON_Print(WINPR_JSON* item)
+ {
+-	return json_dumps(cast(item), JSON_INDENT(2) | JSON_ENSURE_ASCII | JSON_SORT_KEYS);
++	return json_dumps(cast(item), JSON_ENCODE_ANY | JSON_INDENT(2) | JSON_ENSURE_ASCII | JSON_SORT_KEYS);
+ }
+ 
+ char* WINPR_JSON_PrintUnformatted(WINPR_JSON* item)
+ {
+-	return json_dumps(cast(item), JSON_COMPACT | JSON_ENSURE_ASCII | JSON_SORT_KEYS);
+-}
++	return json_dumps(cast(item), JSON_ENCODE_ANY | JSON_COMPACT | JSON_ENSURE_ASCII | JSON_SORT_KEYS);
++}

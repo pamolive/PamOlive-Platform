@@ -22,7 +22,7 @@ jobs:
           python -m pip install -r requirements-security.lock
           python -m pip check
       - name: Verify native inventory and SBOM qualification tools
-        run: python -m unittest tests.test_native_inventory tests.test_native_sbom tests.test_native_dns tests.test_image_scan_policy tests.test_database_driver tests.test_ldap_fixture_permissions tests.test_krb5_inventory tests.test_krb5_acquisition tests.test_krb5_sbom tests.test_scan_scratch tests.test_build_recipe tests.test_build_context tests.test_runtime_environment tests.test_secret_baseline_metadata tests.test_python_materials tests.test_python_materials_resilience tests.test_ensurepip_bundle
+        run: python -m unittest tests.test_native_inventory tests.test_native_sbom tests.test_native_dns tests.test_image_scan_policy tests.test_database_driver tests.test_ldap_fixture_permissions tests.test_krb5_inventory tests.test_krb5_acquisition tests.test_krb5_sbom tests.test_scan_scratch tests.test_build_recipe tests.test_build_context tests.test_runtime_environment tests.test_secret_baseline_metadata tests.test_python_materials tests.test_python_materials_resilience tests.test_ensurepip_bundle tests.test_jansson_image_absence tests.test_jansson_input_binding tests.test_jansson_sbom tests.test_jansson_ci_evidence tests.test_jansson_oracle_identity
       - name: Verify public metadata projections without Engine or network
         run: python -I -S -B qualification/public_engine_measurement/run_pure.py
       - name: Verify the confined public PostgreSQL identity owner without Docker
@@ -365,6 +365,27 @@ jobs:
           python -m deploy.krb5_sbom --manifest "$proof/krb5-manifest.json" --report "$proof/krb5-report.json" --image-digest-kind image_config --image-digest "$config_id" --output "$proof/krb5-backport.cdx.json"
           python -m pip_audit --strict --no-deps --disable-pip -r requirements.lock -f cyclonedx-json -o "$proof/application.cdx.json"
           python -m deploy.native_sbom --app-sbom "$proof/application.cdx.json" --native-manifest "$proof/native-manifest.json" --native-report "$proof/native-report.json" --image-digest-kind image_config --image-digest "$config_id" --output "$proof/combined.cdx.json"
+      - name: Exercise Jansson differential and receive exact-image absence DATA
+        if: >-
+          github.repository == 'pamolive/PamOlive-Platform' &&
+          ((github.event_name == 'push' && github.ref == 'refs/heads/agent/jansson-linux-qualification') ||
+           (github.event_name == 'pull_request' && github.head_ref == 'agent/jansson-linux-qualification' &&
+            github.event.pull_request.head.repo.full_name == github.repository))
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          set -euo pipefail
+          context="$RUNNER_TEMP/pamolive-committed-context"
+          oracles="$RUNNER_TEMP/pamolive-jansson-reference-data"
+          proof="$RUNNER_TEMP/pamolive-image-security"
+          test ! -e "$oracles"
+          timeout --signal=TERM --kill-after=15s 540s docker build \
+            --target json-reference-data --provenance=false --sbom=false \
+            --output "type=local,dest=$oracles" "$context"
+          timeout --signal=TERM --kill-after=15s 240s python -m deploy.jansson_ci_evidence \
+            --context "$context" --context-receipt "$RUNNER_TEMP/pamolive-committed-context.json" \
+            --bundle "$RUNNER_TEMP/pamolive-qualified-image" --oracles "$oracles" \
+            --output "$proof/jansson" --revision "$GITHUB_SHA"
       - name: Verify a fresh Compose installation of the loaded image without building
         run: |
           export PAMOLIVE_TEST_DATABASE_NETWORK
@@ -432,6 +453,12 @@ jobs:
             ${{ runner.temp }}/pamolive-image-security/
             ${{ runner.temp }}/pamolive-qualified-image/qualified-image.json
             ${{ runner.temp }}/pamolive-committed-context.json
+            ${{ runner.temp }}/pamolive-jansson-reference-data/json-reference.jsonl
+            ${{ runner.temp }}/pamolive-jansson-reference-data/winpr-jansson-build.json
+            ${{ runner.temp }}/pamolive-jansson-reference-data/winpr-jansson-runtime.json
+            ${{ runner.temp }}/pamolive-jansson-reference-data/build-identity.json
+            ${{ runner.temp }}/pamolive-jansson-reference-data/runtime-identity.json
+            ${{ runner.temp }}/pamolive-jansson-reference-data/reference-identity.json
           if-no-files-found: warn
           retention-days: 7
       - name: Retain the qualified image for main publication
