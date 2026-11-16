@@ -300,7 +300,25 @@ class ExpatProductTests(unittest.TestCase):
             input_hashes={**native.hashes, "expat": "e" * 64},
             expat_report=report,
         )
-        sbom.references(result)
+        # references() rejects the reserved native namespace in APPLICATION
+        # input. The enriched output deliberately contains that namespace.
+        sbom.validate_schema(result)
+        refs = [row["bom-ref"] for row in result["components"] if "bom-ref" in row]
+        image = result.get("metadata", {}).get("component", {})
+        if "bom-ref" in image:
+            refs.append(image["bom-ref"])
+        self.assertEqual(len(refs), len(set(refs)))
+        for edge in result["dependencies"]:
+            self.assertIn(edge["ref"], refs)
+            self.assertTrue(set(edge.get("dependsOn", [])) <= set(refs))
+        self.assertEqual(
+            result["components"][: len(native.app["components"])], native.app["components"]
+        )
+        self.assertEqual(
+            result["dependencies"][: len(native.app["dependencies"])], native.app["dependencies"]
+        )
+        with self.assertRaisesRegex(sbom.SbomError, "reserved_bom_ref"):
+            sbom.references(result)
         self.assertEqual(sum(c.get("name") == "expat" for c in result["components"]), 1)
         self.assertEqual(sum("cpe" in c for c in result["components"]), 2)
 

@@ -199,3 +199,13 @@ Le checkpoint source inclut **100/100 tests d’outillage en 3,578 s, Ruff réus
 Le laboratoire exact `3d960926` réussit avec les raisons des douze skips stdlib exportées. Le nouveau Dockerfile produit reprend ces mêmes helpers, runtime/SDK et deux extensions ; le snapshot final et ses limites sont décrits dans [ADR-031](adr-031-expat-product-snapshot.md). Les contrôles de l'archive exacte et le SBOM enrichi restent soumis aux scans exhaustifs, sans modification des seuils ni disposition automatique de CVE.
 
 Validation source : 14 tests produit ciblés et 39 tests PostgreSQL purs passent sans skip ni IO externe ; la revue indépendante ajoute six contre-cas. Le test de merge/schema SBOM complet et la suite native-SBOM complète ne sont pas exécutés sous Windows (import ctypes refusé sous audit) : ils restent obligatoires dans la CI Linux. Construction réelle de cette nouvelle image, snapshot, consommateurs, P0, restauration et scans sont encore attendus. Les succès du laboratoire ne les remplacent pas.
+
+Le premier contrôle Linux du candidat produit `4dd2884` a effectivement exécuté
+le nouveau test de fusion SBOM. Il a refusé `reserved_bom_ref` parce que ce test
+appliquait au résultat enrichi la garde réservée aux entrées applicatives.
+La correction conserve cette garde et son refus explicite ; le test de sortie
+appelle le validateur strict et contrôle unicité, fermeture des dépendances et
+préservation du graphe applicatif. La contre-revue confirme que les quatorze
+autres tests restent identiques en AST, avec trois modèles JSON adverses passés.
+Ces modèles ne simulent pas une validation de schéma réussie. Le nouveau passage
+Linux strict et la construction de l'image exacte restent obligatoires.
