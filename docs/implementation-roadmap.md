@@ -1,5 +1,20 @@
 # Roadmap d’implémentation et qualification
 
+## État courant du candidat commun — 16 novembre 2026
+
+Le [candidat assemblé P1-F](p1-f-runtime-composition.md) réunit Expat, Jansson,
+les observateurs ROOT3/PostgreSQL et la fermeture/drainage de restauration.
+Les tests purs de composition passent ; la nouvelle image et ses contrôles
+Linux complets restent à recevoir. Aucun résultat isolé ne vaut validation de
+la combinaison, aucune nouvelle image n'est promue et le NAS reste inchangé.
+
+Les sections d'essais ci-dessous conservent leurs états historiques et leurs
+commits propres. Pour ROOT3, les observations reçues à043d5e6 mesurent bien
+containerd/v2.4.2 et passwd999/999 sans autorité opérationnelle ni propriété de
+PGDATA. Pour Jansson, les oracles reçus à2f772e7 passent mais le scan reste bloqué
+sur31groupesHigh. Ces résultats ne sont pas ceux de la nouvelle composition.
+Le diagnostic Chrome896 refuse avant navigateur ; P1-G demeure ouvert.
+
 Réconciliation mise à jour le 14 novembre 2026 avec *Architecture & Roadmap 2026–2029* (pages24–28) et la mission de développement autonome continu. Le programme avance par livraisons qualifiées sans confirmation humaine pour les opérations ordinaires autorisées. Cette autonomie ne permet ni contournement des protections GitHub ni utilisation de comptes ou de systèmes de production.
 
 ## Référence réellement publiée
@@ -473,3 +488,7 @@ Les observations réelles du candidat `1e66df2` n'identifient que le format et l
 La revue contradictoire a refusé une première version pour sa projection d'identité diagnostique insuffisamment liée au contexte du processus. R2 exige le même contexte strict avant toute publication de format ou d'identité : processus terminé normalement, flux complets, outil stable et aucune autorité ni requête suivante. Les 65 tests métadonnées, 39 PostgreSQL purs et 14 tests courts passent sans skip ni IO externe. Les 19 fichiers PostgreSQL et les douze lignes de son payload restent inchangés. La nouvelle mesure Linux demeure requise ; ces tests ne constituent ni une mesure UID PostgreSQL ni une autorisation opérationnelle.
 
 La garde de délais du témoin PostgreSQL conserve ses maxima stricts. Un contre-exemple flottant reproductible pouvait produire une réserve légèrement supérieure à trente secondes ; le constructeur arrondit maintenant vers le début et reste plafonné par les anciennes échéances. Aucun seuil ni comportement UNKNOWN n'est élargi. La reproduction et les parcours CLI sous horloge contrôlée sont conservés ; ce correctif arithmétique ne prouve pas la valeur d'horloge du run historique en échec.
+
+## Qualification Jansson en cours
+
+Le backend natif est en qualification sur une branche indépendante ; les tests purs ne valent pas livraison. Voir [preuves et limites](p1-f-jansson-qualification.md) et [ADR-030](adr-030-jansson-native-json-backend.md). Aucune donnée ni migration métier modifiée.

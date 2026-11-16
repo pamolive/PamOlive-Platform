@@ -1,4 +1,5 @@
 ARG LIBPQ_DEBIAN_VERSION=17.12-0+deb13u1
+ARG JANSSON_DEBIAN_VERSION=2.14-2+b3
 FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS expat-prepared
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential binutils patch gpg=2.4.7-21+deb13u1+b5 dpkg-dev debhelper autoconf automake libtool pkg-config docbook-to-man docbook2x libexpat1-dev=2.9.0-1~deb13u1 ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY deploy/expat-remediation/ /opt/expat4/
@@ -57,12 +58,14 @@ COPY --from=expat-source-builder /expat-packages/sdk/ /tmp/expat-sdk/
 RUN --network=none dpkg --install /tmp/expat-sdk/*.deb && rm -r /tmp/expat-sdk
 
 FROM expat-sdk AS freerdp-builder
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends build-essential cmake pkg-config curl ca-certificates gnupg patchelf libssl-dev zlib1g-dev libjpeg62-turbo-dev libcjson-dev libicu-dev liburiparser-dev libcairo2-dev
+ARG JANSSON_DEBIAN_VERSION
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends build-essential cmake pkg-config curl ca-certificates gnupg patchelf libssl-dev zlib1g-dev libjpeg62-turbo-dev libjansson-dev=${JANSSON_DEBIAN_VERSION} patch libicu-dev liburiparser-dev libcairo2-dev
 COPY --from=krb5-builder /packages/runtime /tmp/pamolive-krb5-runtime
 COPY --from=krb5-builder /packages/sdk /tmp/pamolive-krb5-sdk
 RUN apt-get install -y --no-install-recommends /tmp/pamolive-krb5-runtime/*.deb /tmp/pamolive-krb5-sdk/*.deb && rm -r /tmp/pamolive-krb5-runtime /tmp/pamolive-krb5-sdk && rm -rf /var/lib/apt/lists/*
 COPY deploy/build-freerdp.sh /build-freerdp.sh
 RUN --network=none test "$(dpkg-query --show --showformat='${Version}' libexpat1)" = '2.10.0-1+pamolive1' && test "$(dpkg-query --show --showformat='${Version}' libexpat1-dev)" = '2.10.0-1+pamolive1'
+COPY deploy/freerdp-jansson-compat.patch /freerdp-jansson-compat.patch
 RUN sh /build-freerdp.sh
 
 FROM freerdp-builder AS guacd-builder
@@ -84,8 +87,9 @@ RUN python /tmp/python_materials.py acquire --manifest /tmp/python-materials.lin
 RUN --network=none export PIP_CONFIG_FILE=/dev/null PIP_DISABLE_PIP_VERSION_CHECK=1 && python -m pip install --no-compile --no-cache-dir --no-index --find-links=/opt/python-inputs/bootstrap --only-binary=:all: --no-deps --require-hashes -r /tmp/requirements-bootstrap.lock && python -m pip install --no-compile --no-cache-dir --no-index --find-links=/opt/python-inputs/build-tools --only-binary=:all: --no-deps --require-hashes -r /tmp/requirements-python-build-tools-linux.lock && python -m pip wheel --no-cache-dir --no-index --find-links=/opt/python-inputs/sources --no-binary=:all: --no-build-isolation --check-build-dependencies --no-deps --require-hashes --wheel-dir /opt/directory-wheels -r /tmp/requirements-python-native-sources-linux.lock && python /tmp/python_materials.py capture-derived --manifest /tmp/python-materials.linux-amd64.json --locks /tmp --inputs /opt/python-inputs --wheels /opt/directory-wheels --output /opt/python-evidence && cp /tmp/python-materials.linux-amd64.json /tmp/requirements-bootstrap.lock /tmp/requirements-python-*.lock /opt/python-evidence/
 
 FROM expat-runtime AS runtime-build
+ARG JANSSON_DEBIAN_VERSION
 ARG LIBPQ_DEBIAN_VERSION
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends libcairo2 libpng16-16t64 libjpeg62-turbo libpango-1.0-0 libpangocairo-1.0-0 libssh2-1t64 libssl3t64 libcjson1 libkrb5-3 libgssapi-krb5-2 libicu76 liburiparser1 zlib1g fonts-dejavu-core libldap2 libsasl2-2 libpq5=${LIBPQ_DEBIAN_VERSION} && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends libcairo2 libpng16-16t64 libjpeg62-turbo libpango-1.0-0 libpangocairo-1.0-0 libssh2-1t64 libssl3t64 libjansson4=${JANSSON_DEBIAN_VERSION} libkrb5-3 libgssapi-krb5-2 libicu76 liburiparser1 zlib1g fonts-dejavu-core libldap2 libsasl2-2 libpq5=${LIBPQ_DEBIAN_VERSION} && rm -rf /var/lib/apt/lists/*
 COPY --from=freerdp-builder /opt/pamolive-freerdp/lib /opt/pamolive-freerdp/lib
 COPY --from=freerdp-builder /opt/pamolive-freerdp/share/pamolive-freerdp /opt/pamolive-freerdp/share/pamolive-freerdp
 COPY --from=guacd-builder /opt/pamolive-guac /opt/pamolive-guac
@@ -138,12 +142,35 @@ RUN --network=none --mount=from=runtime-build,source=/,target=/__pamolive_previo
 
 FROM guacd-builder AS native-test-builder
 COPY tests/fixtures/rdp_fixture.c /tmp/rdp_fixture.c
+COPY tests/fixtures/winpr_jansson_regression.c /tmp/winpr_jansson_regression.c
+COPY deploy/jansson_oracle_identity.py /tmp/jansson_oracle_identity.py
 RUN mkdir -p /opt/pamolive-test && cc -O2 -Wall -Wextra -Werror -Wno-error=deprecated-declarations -pthread /tmp/rdp_fixture.c -o /opt/pamolive-test/rdp-fixture -Wl,-rpath,/opt/pamolive-freerdp/lib $(pkg-config --cflags --libs freerdp3 winpr3)
+
+RUN cc -O2 -Wall -Wextra -Werror /tmp/winpr_jansson_regression.c -o /opt/pamolive-test/winpr-jansson-regression -Wl,-rpath,/opt/pamolive-freerdp/lib $(pkg-config --cflags --libs freerdp3 winpr3) -lm
+RUN --network=none /opt/pamolive-test/winpr-jansson-regression > /opt/pamolive-test/winpr-jansson-regression.json && python /tmp/jansson_oracle_identity.py build /opt/pamolive-test/build-identity.json
+
+# Isolated differential reference only. The old vulnerable library and executable
+# are never copied into production or native-test. Only DATA leaves this target.
+FROM native-test-builder AS json-reference-test
+ARG CJSON_REFERENCE_VERSION=1.7.18-3.1+deb13u1
+RUN apt-get update && apt-get install -y --no-install-recommends libcjson-dev=${CJSON_REFERENCE_VERSION} && rm -rf /var/lib/apt/lists/*
+COPY tests/fixtures/json_backend_reference.c /tmp/json_backend_reference.c
+RUN cc -O2 -Wall -Wextra -Werror /tmp/json_backend_reference.c -o /tmp/json-backend-reference -Wl,-rpath,/opt/pamolive-freerdp/lib $(pkg-config --cflags --libs freerdp3 winpr3 jansson libcjson)
+RUN --network=none /tmp/json-backend-reference > /json-reference.jsonl && python /tmp/jansson_oracle_identity.py reference /reference-identity.json
 
 FROM runtime AS native-test
 COPY --from=native-test-builder /opt/pamolive-test /opt/pamolive-test
+RUN --network=none /opt/pamolive-test/winpr-jansson-regression > /opt/pamolive-test/winpr-jansson-runtime.json && python deploy/jansson_oracle_identity.py runtime /opt/pamolive-test/runtime-identity.json
 COPY requirements-python-native-test-linux.lock /tmp/requirements-python-native-test-linux.lock
 COPY --from=directory-builder /opt/python-inputs/native-test /opt/python-native-test-wheels
 RUN --network=none python -m pip --isolated --disable-pip-version-check install --no-compile --no-cache-dir --no-index --find-links=/opt/python-native-test-wheels --only-binary=:all: --no-deps --require-hashes -r /tmp/requirements-python-native-test-linux.lock && python -m pip check && rm -r /opt/python-native-test-wheels
+
+FROM scratch AS json-reference-data
+COPY --from=json-reference-test /json-reference.jsonl /json-reference.jsonl
+COPY --from=json-reference-test /reference-identity.json /reference-identity.json
+COPY --from=native-test-builder /opt/pamolive-test/winpr-jansson-regression.json /winpr-jansson-build.json
+COPY --from=native-test-builder /opt/pamolive-test/build-identity.json /build-identity.json
+COPY --from=native-test /opt/pamolive-test/winpr-jansson-runtime.json /winpr-jansson-runtime.json
+COPY --from=native-test /opt/pamolive-test/runtime-identity.json /runtime-identity.json
 
 FROM runtime AS production

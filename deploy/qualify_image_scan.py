@@ -335,8 +335,9 @@ class LayerReader:
 
 
 def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
-                  archive_stream=None, forbidden_elf_sha256=()):
+                  archive_stream=None, forbidden_elf_sha256=(), reject_cjson_elf=False):
     """Stream final file/ELF/link identities, without extraction or following links."""
+    require(type(reject_cjson_elf) is bool, "archive_cjson_option")
     requested = {checked_path(item["path"]) for item in conditions
                  if item.get("kind") in ("elf", "file_sha256")}
     require(isinstance(read_paths, (list, tuple, set)) and len(read_paths) <= 32,
@@ -347,7 +348,7 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
             and len(forbidden_elf_sha256) <= 16
             and all(isinstance(value, str) and SHA.fullmatch(value)
                     for value in forbidden_elf_sha256), "forbidden_elf_hashes")
-    capture_set = bool(forbidden_elf_sha256) or bool(read_paths) or any(
+    capture_set = reject_cjson_elf or bool(forbidden_elf_sha256) or bool(read_paths) or any(
         item.get("kind") == "elf_set" for item in conditions)
     names, elves, entries = set(), {}, {}
     captured = {}
@@ -485,8 +486,20 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                                 require(member.size <= 64 * 1024**2, "elf_budget")
                                 sha = hashlib.sha256(header)
                                 parts = [header] if name in read_paths else None
+                                # Inspect every physical ELF in every layer, including
+                                # copies later hidden by whiteouts. This optional migration
+                                # guard never grants a vulnerability policy exception.
+                                tail = header
+                                if reject_cjson_elf and is_elf:
+                                    require(not any(mark in tail for mark in (
+                                        b"cJSON_", b"cJSONUtils_")), "cjson_elf_symbol")
                                 while block := data.read(1024 * 1024):
                                     sha.update(block)
+                                    if reject_cjson_elf and is_elf:
+                                        combined = tail + block
+                                        require(not any(mark in combined for mark in (
+                                            b"cJSON_", b"cJSONUtils_")), "cjson_elf_symbol")
+                                        tail = combined[-32:]
                                     if parts is not None:
                                         parts.append(block)
                                 if parts is not None:

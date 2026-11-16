@@ -1,5 +1,20 @@
 # État réel de l’implémentation
 
+## État courant du candidat commun — 16 novembre 2026
+
+Le [candidat assemblé P1-F](p1-f-runtime-composition.md) réunit Expat, Jansson,
+les observateurs ROOT3/PostgreSQL et la fermeture/drainage de restauration.
+Les tests purs de composition passent ; la nouvelle image et ses contrôles
+Linux complets restent à recevoir. Aucun résultat isolé ne vaut validation de
+la combinaison, aucune nouvelle image n'est promue et le NAS reste inchangé.
+
+Les sections d'essais ci-dessous conservent leurs états historiques et leurs
+commits propres. Pour ROOT3, les observations reçues à043d5e6 mesurent bien
+containerd/v2.4.2 et passwd999/999 sans autorité opérationnelle ni propriété de
+PGDATA. Pour Jansson, les oracles reçus à2f772e7 passent mais le scan reste bloqué
+sur31groupesHigh. Ces résultats ne sont pas ceux de la nouvelle composition.
+Le diagnostic Chrome896 refuse avant navigateur ; P1-G demeure ouvert.
+
 Le document de vision décrit la cible complète. Cette branche construit progressivement cette cible ; elle ne constitue pas encore une version de production.
 
 ## Programme autonome : référence et travail courant
@@ -717,3 +732,7 @@ scellée. Les identités et l'absence de sessions sont revérifiées avant suppr
 un zéro tardif conserve la copie. Les 25 tests purs et dix contre-tests indépendants
 passent. La restauration PostgreSQL réelle reste à recevoir ; voir
 [les garanties et limites du drainage](backup-restore.md).
+
+## Qualification Jansson en cours
+
+Le backend natif est en qualification sur une branche indépendante ; les tests purs ne valent pas livraison. Voir [preuves et limites](p1-f-jansson-qualification.md) et [ADR-030](adr-030-jansson-native-json-backend.md). Aucune donnée ni migration métier modifiée.
