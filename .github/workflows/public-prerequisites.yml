@@ -19,6 +19,7 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
           sparse-checkout: |
+            .github/workflows
             qualification/public_prerequisites_dispatch
             qualification/public_pg_identity_probe
       - name: Verify source pins and only pure source request-graph tests
