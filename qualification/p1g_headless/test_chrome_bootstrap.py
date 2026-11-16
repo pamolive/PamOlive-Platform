@@ -22,6 +22,383 @@ PINS = json.loads((HERE / "chrome-bootstrap-pins.json").read_bytes())
 NOW = int(datetime(2026, 11, 16, 12, tzinfo=UTC).timestamp())
 
 
+class RootInterpreterTests(unittest.TestCase):
+    """The system interpreter is modeled; never executed/read on this host."""
+
+    def setUp(self):
+        self.values = (1, 22, 0o100755, 0, 0, 1, 4096, 23, 24)
+        self.context = b"synthetic source context only"
+        self.bindings = {
+            "context_sha": boot.sha(self.context),
+            "pins_sha": "b" * 64,
+            "source_sha": "c" * 64,
+            "revision": "d" * 40,
+        }
+        self.support = SimpleNamespace(tool_pin=lambda path: self.tool(path))
+
+    def row(self, values=None):
+        return SimpleNamespace(
+            **dict(
+                zip(
+                    (
+                        "st_dev",
+                        "st_ino",
+                        "st_mode",
+                        "st_uid",
+                        "st_gid",
+                        "st_nlink",
+                        "st_size",
+                        "st_mtime_ns",
+                        "st_ctime_ns",
+                    ),
+                    self.values if values is None else values,
+                    strict=True,
+                )
+            )
+        )
+
+    def tool(self, path):
+        self.assertEqual(path.as_posix(), boot.ROOT_INTERPRETER)
+        return {"sha256": "a" * 64, "bytes": 4096, "uid": 0, "mode": 0o755}
+
+    def role(self):
+        return {
+            "path": boot.ROOT_INTERPRETER,
+            "pin": self.tool(Path(boot.ROOT_INTERPRETER)),
+            "identity": list(self.values),
+        }
+
+    def runtime(self, *, sys_changes=None, uid=0, euid=0, running=None):
+        proxy = SimpleNamespace(
+            executable=boot.ROOT_INTERPRETER,
+            platform="linux",
+            version_info=SimpleNamespace(
+                major=3, minor=12, micro=3, releaselevel="final", serial=0
+            ),
+            implementation=SimpleNamespace(name="cpython", cache_tag="cpython-312"),
+            flags=SimpleNamespace(**boot.ROOT_FLAGS),
+        )
+        for name, value in (sys_changes or {}).items():
+            setattr(proxy, name, value)
+        os_proxy = SimpleNamespace(
+            getuid=lambda: uid, geteuid=lambda: euid, stat=lambda path: self.proc(path, running)
+        )
+        with (
+            patch.object(boot, "sys", proxy),
+            patch.object(boot, "os", os_proxy),
+            patch.object(boot.Path, "lstat", return_value=self.row()),
+        ):
+            return boot.root_interpreter_runtime(self.support, **self.bindings)
+
+    def proc(self, path, values):
+        self.assertEqual(path, "/proc/self/exe")
+        if isinstance(values, BaseException):
+            raise values
+        return self.row(values)
+
+    def receipt(self):
+        return {
+            "schema": boot.INSTALLED_SCHEMA,
+            "state": "INSTALLED_AUTHENTICATED_PACKAGE_ONLY",
+            "package_sha256": PINS["package"]["SHA256"],
+            "package_version": PINS["package"]["Version"],
+            "revision": self.bindings["revision"],
+            "pins_manifest_sha256": self.bindings["pins_sha"],
+            "context_receipt_sha256": self.bindings["context_sha"],
+            "target": {"sha256": "e" * 64},
+            "signature": {},
+            "key_scope": {"scope": "model"},
+            "root_interpreter": self.runtime(),
+            "all_OS_descendants_released": False,
+            "browser_executed": False,
+            "operational_GO": False,
+        }
+
+    def handoff(self, receipt, *, roles=None, until=1000):
+        trace = []
+        role_values = iter(roles or [self.role(), self.role()])
+
+        def pin(support):
+            self.assertIs(support, self.support)
+            trace.append("python_pin")
+            value = next(role_values)
+            if isinstance(value, BaseException):
+                raise value
+            return value
+
+        def read(path, cap):
+            if path.name == "p1g-source.json":
+                self.assertEqual(cap, 4 * 1024**2)
+                trace.append("context")
+                return self.context
+            self.assertEqual(path.name, "installed.json")
+            self.assertEqual(cap, 32768)
+            trace.append("receipt")
+            return json.dumps(receipt).encode()
+
+        def run(argv, **kwargs):
+            trace.append("sudo")
+            self.assertEqual(
+                argv,
+                [
+                    "/usr/bin/sudo",
+                    "-n",
+                    "--preserve-env=" + boot.PRESERVE,
+                    "--",
+                    "/usr/bin/python3.12",
+                    "-I",
+                    "-B",
+                    "-S",
+                    str(boot.HERE / "chrome_bootstrap.py"),
+                    "--pins-sha",
+                    self.bindings["pins_sha"],
+                    "--root-install",
+                    "--native-scope-preflight-required",
+                ],
+            )
+            self.assertEqual(kwargs, {"seconds": 480, "sudo": True})
+            return b"public output is not receipt authority"
+
+        commands = SimpleNamespace(run=run, until=until)
+        with (
+            patch.object(boot, "root_interpreter_pin", pin),
+            patch.object(boot, "read", read),
+            patch.object(
+                boot.os, "environ", {"RUNNER_TEMP": "/tmp", "GITHUB_SHA": self.bindings["revision"]}
+            ),
+            patch.object(boot.sys, "executable", "/frontend-venv/python"),
+            patch.object(boot.time, "monotonic", return_value=100),
+        ):
+            result = boot.root_supervisor(
+                commands,
+                self.support,
+                Path("/public"),
+                PINS,
+                self.bindings["pins_sha"],
+                {"sha256": "e" * 64},
+                {"scope": "model"},
+                self.bindings["source_sha"],
+                {},
+            )
+        return result, trace
+
+    def test_R6_fixed_role_passes_unchanged_guard_without_resolving_frontend(self):
+        with (
+            patch.object(boot.Path, "lstat", return_value=self.row()),
+            patch.object(boot.Path, "resolve", side_effect=AssertionError("no caller resolve")),
+            patch.object(boot.sys, "executable", "/untrusted/venv/python"),
+        ):
+            self.assertEqual(boot.root_interpreter_pin(self.support), self.role())
+
+    def test_R6_original_guard_alias_permission_missing_refusals_propagate(self):
+        for error in (
+            ValueError("tool_alias_refused"),
+            PermissionError(13, "PRIVATE"),
+            FileNotFoundError("PRIVATE"),
+        ):
+            with self.subTest(error=type(error).__name__):
+                guard = unittest.mock.Mock(side_effect=error)
+                with patch.object(boot.Path, "lstat", return_value=self.row()):
+                    with self.assertRaises(type(error)):
+                        boot.root_interpreter_pin(SimpleNamespace(tool_pin=guard))
+                self.assertEqual(guard.call_args.args[0].as_posix(), boot.ROOT_INTERPRETER)
+                self.assertEqual(guard.call_args.kwargs, {})
+
+    def test_R6_root_leaf_identity_and_pin_values_are_strict(self):
+        for index, value in (
+            (2, 0o120777),
+            (2, 0o100777),
+            (2, 0o104755),
+            (3, 1001),
+            (5, 2),
+            (6, 0),
+            (1, True),
+        ):
+            values = list(self.values)
+            values[index] = value
+            with (
+                self.subTest(index=index, value=value),
+                patch.object(boot.Path, "lstat", return_value=self.row(values)),
+            ):
+                with self.assertRaises(ValueError):
+                    boot.root_interpreter_pin(self.support)
+        for field, value in (
+            ("sha256", "not hash"),
+            ("bytes", 4097),
+            ("bytes", True),
+            ("mode", 0o777),
+            ("uid", False),
+        ):
+            pin = self.tool(Path(boot.ROOT_INTERPRETER)) | {field: value}
+            with (
+                self.subTest(field=field),
+                patch.object(boot.Path, "lstat", return_value=self.row()),
+            ):
+                with self.assertRaises(ValueError):
+                    boot.root_interpreter_pin(SimpleNamespace(tool_pin=lambda path: pin))
+
+    def test_R6_leaf_changed_during_original_hash_cannot_be_a_pin(self):
+        changed = list(self.values)
+        changed[1] += 1
+        with patch.object(boot.Path, "lstat", side_effect=[self.row(), self.row(changed)]):
+            with self.assertRaisesRegex(ValueError, "changed"):
+                boot.root_interpreter_pin(self.support)
+
+    def test_R6_system_micro_is_observed_not_frontend_31216(self):
+        for micro in (3, 16, 17):
+            facts = self.runtime(
+                sys_changes={
+                    "version_info": SimpleNamespace(
+                        major=3, minor=12, micro=micro, releaselevel="final", serial=0
+                    )
+                }
+            )
+            self.assertEqual(facts["version"]["micro"], micro)
+            self.assertEqual(facts["path"], "/usr/bin/python3.12")
+            self.assertFalse(facts["stdlib_loader_hermeticity_verified"])
+
+    def test_R6_real_effective_UID_and_exact_running_path_precede_tool_access(self):
+        for uid, euid, executable in (
+            (1001, 0, boot.ROOT_INTERPRETER),
+            (0, 1001, boot.ROOT_INTERPRETER),
+            (False, 0, boot.ROOT_INTERPRETER),
+            (0, 0, "/usr/bin/python3"),
+            (0, 0, "/venv/python"),
+        ):
+            with self.subTest(uid=uid, euid=euid, executable=executable):
+                with self.assertRaisesRegex(ValueError, "runtime"):
+                    self.runtime(sys_changes={"executable": executable}, uid=uid, euid=euid)
+
+    def test_R6_real_process_image_stat_mismatch_or_failure_is_not_attested(self):
+        changed = list(self.values)
+        changed[1] += 1
+        for running in (changed, PermissionError(13, "PRIVATE"), FileNotFoundError("PRIVATE")):
+            with self.subTest(running=type(running).__name__):
+                with self.assertRaises((ValueError, OSError)):
+                    self.runtime(running=running)
+
+    def test_R6_runtime_wrong_version_implementation_and_isolation_refuse(self):
+        cases = [
+            {
+                "version_info": SimpleNamespace(
+                    major=3, minor=14, micro=0, releaselevel="final", serial=0
+                )
+            },
+            {
+                "version_info": SimpleNamespace(
+                    major=3, minor=12, micro=True, releaselevel="final", serial=0
+                )
+            },
+            {
+                "version_info": SimpleNamespace(
+                    major=3, minor=12, micro=3, releaselevel="candidate", serial=1
+                )
+            },
+            {"implementation": SimpleNamespace(name="pypy", cache_tag="pypy-312")},
+            {"flags": SimpleNamespace(**(boot.ROOT_FLAGS | {"no_site": 0}))},
+            {"flags": SimpleNamespace(**(boot.ROOT_FLAGS | {"isolated": True}))},
+            {"flags": SimpleNamespace(**(boot.ROOT_FLAGS | {"safe_path": 1}))},
+        ]
+        for change in cases:
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.runtime(sys_changes=change)
+
+    def test_R6_real_parent_handoff_selects_system_role_and_checks_before_after(self):
+        receipt = self.receipt()
+        actual, trace = self.handoff(receipt)
+        self.assertEqual(actual, receipt)
+        self.assertEqual(trace, ["python_pin", "context", "sudo", "python_pin", "receipt"])
+
+    def test_R6_before_pin_refusal_never_launches_sudo(self):
+        receipt = self.receipt()
+        with self.assertRaisesRegex(ValueError, "tool_alias"):
+            self.handoff(receipt, roles=[ValueError("tool_alias_refused")])
+
+    def test_R6_after_success_pin_hash_or_inode_change_is_not_healed(self):
+        receipt = self.receipt()
+        for field in ("hash", "inode"):
+            changed = self.role()
+            if field == "hash":
+                changed["pin"]["sha256"] = "f" * 64
+            else:
+                changed["identity"][1] += 1
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "changed"):
+                self.handoff(receipt, roles=[self.role(), changed])
+
+    def test_R6_old_optional_missing_extra_and_false_authority_receipts_refuse(self):
+        receipt = self.receipt()
+        cases = [
+            receipt | {"schema": "pamolive.chrome-bootstrap/1"},
+            {key: value for key, value in receipt.items() if key != "root_interpreter"},
+            receipt | {"root_interpreter": None},
+            receipt | {"extra": "PRIVATE"},
+            receipt | {"operational_GO": True},
+            receipt | {"context_receipt_sha256": "f" * 64},
+        ]
+        for value in cases:
+            with self.subTest(keys=list(value)), self.assertRaises((ValueError, TypeError)):
+                self.handoff(value)
+
+    def test_R6_proof_version_source_flags_metadata_and_nested_fields_are_closed(self):
+        receipt = self.receipt()
+        for name, value in (
+            ("schema", "old/1"),
+            ("path", "/usr/bin/python3"),
+            ("context_receipt_sha256", "f" * 64),
+            ("bootstrap_source_sha256", "f" * 64),
+            ("pins_manifest_sha256", "f" * 64),
+            ("revision", "f" * 40),
+            ("real_uid", False),
+            ("effective_uid", 1001),
+            ("flags", boot.ROOT_FLAGS | {"site_loaded": False}),
+            ("stdlib_loader_hermeticity_verified", True),
+        ):
+            value_receipt = copy.deepcopy(receipt)
+            value_receipt["root_interpreter"][name] = value
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                self.handoff(value_receipt)
+        for name in ("identity", "running_identity"):
+            value = copy.deepcopy(receipt)
+            value["root_interpreter"][name][0] = True
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                self.handoff(value)
+
+    def test_R6_parent_deadline_is_not_extended_by_role_checks(self):
+        with self.assertRaisesRegex(ValueError, "deadline"):
+            self.handoff(self.receipt(), until=99)
+
+    def test_R6_main_checks_runtime_before_authentication_and_after_install_before_receipt(self):
+        tree = ast.parse((HERE / "chrome_bootstrap.py").read_bytes())
+        main = next(
+            node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "main"
+        )
+        runtime_calls = sorted(
+            node.lineno
+            for node in ast.walk(main)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "root_interpreter_runtime"
+        )
+        authenticate = next(
+            node.lineno
+            for node in ast.walk(main)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "authenticate"
+        )
+        self.assertEqual(len(runtime_calls), 2)
+        self.assertLess(runtime_calls[0], authenticate)
+        writer = max(
+            node.lineno
+            for node in ast.walk(main)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "fresh_write"
+        )
+        self.assertLess(runtime_calls[1], writer)
+        self.assertNotIn("Path(sys.executable)", ast.unparse(main))
+
+
 def listing():
     rows = []
     for kind, fingerprint in (("pub", PINS["primary"]), ("sub", PINS["signer"])):

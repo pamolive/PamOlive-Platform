@@ -222,3 +222,59 @@ Références primaires de la couture :
 - https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html
 - https://raw.githubusercontent.com/coreutils/coreutils/v9.4/src/stat.c
 - https://raw.githubusercontent.com/sudo-project/sudo/main/docs/sudo.man.in
+
+## R6 — rôle Python privilégié distinct du frontend
+
+Arbitrage Root du16novembre2026 sur la base
+`cd9b2fcf7bed8278e95108280ec17cbad257134d` : sélectionner exclusivement
+`/usr/bin/python3.12` pour le superviseur `--root-install`, avec le guard
+`support.tool_pin` inchangé. Aucune résolution préalable de sys.executable,
+recherche PATH, alias/fallback, installation Python/pip ou chmod/chown.
+Le frontend conserve son venv ; le générateur demeure non-root et le helper
+d’installation exige UID0. Le nouveau rôle ne réutilise pas comme commission
+la mesure du Python du producteur TEST.
+
+La réception R5 cd9 (rapport SHA256
+`da19801d2721bd029de704fb6c24ac5de8717a137b54157921d05e59d9d68bc5`)
+reçoit le générateur/six buffers,17 catégories typées et huit sudo-stat, puis
+le refus au choix de l’interpréteur du superviseur, avant son lancement.
+Les faits leaf du Python alors sélectionné ne sont pas reçus : ni UID, mode,
+nlink ou autre sous-prédicat précis ne peut être attribué à ce refus.
+La note d’architecture indépendante SHA256
+`d1fbb8f76dfd58195f4e009cec0794c500fa6aa361bbc0078a7dc5e89970d6b7`,
+rapport `f2dd92075f8bcbc7bd3798ef463f13e224b4282f3b1236671d57601eee7ad6b2`,
+gel `baa85dae10bb9125615db995a6794e97e28c9c88957ca6169d86d32d1d6ccb33`
+étaye la séparation SOURCE ; elle n’admet pas un outil ni un navigateur.
+
+Le parent mesure le chemin fixe avant sudo puis recontrôle le même hash/pin
+et l’identité complète après succès. Commands.run(sudo=True) reste responsable
+du frontend sudo ; il n’est pas présenté comme mesure du second exécutable.
+Le helper root mesure son rôle avant authentification et après installation,
+compare le vrai `/proc/self/exe` aux mêmes métadonnées, et relève in-process
+version/implémentation/flags. Aucun frontend --version supplémentaire.
+Les champs sont distincts : UID réel/effectif0, chemin fixe, pin/identités,
+CPython3.12.x final/cache_tag, flags typés -I/-B/-S, révision/source/contexte/
+manifeste. La version système n’est pas supposée3.12.16 ; son micro relève
+de la distribution Ubuntu24 maintenue, TCB distincte du venv.
+
+Le reçu d’installation devient `pamolive.chrome-bootstrap/2`, fermé, et exige
+`pamolive.chrome-root-interpreter/1`. Un ancien reçu ou un champ absent/optionnel
+ne permet pas de sauter le contrôle. Le parent vérifie ces faits, les mêmes
+pins/identités, source/contexte/manifeste, scope et signature fournisseur ; il
+refuse une dérive après retour. Un échec tardif reste UNKNOWN et ne constitue
+pas une annulation d’une installation déjà effectuée. Les drapeaux navigateur,
+GO et libération exhaustive des descendants restent false.
+
+Le chemin privilégié utilise seulement les imports stdlib déjà revus. Le hash
+de l’ELF ne prouve pas sa stdlib, son loader ni ses extensions : cette TCB système
+demeure explicite, `stdlib_loader_hermeticity_verified:false`. Aucune herméticité,
+atomicité contre un writer même UID/root, ou protection nouvelle n’est annoncée.
+Le script d’entrée reste fourni par pathname avant ses self-checks : la nouvelle
+sélection d’interpréteur ne ferme pas cette limite préexistante.
+
+Les helpers partagés, gardes GPG/Chrome, quatre matériaux Google, Owner/2,
+Observer/1, six buffers TEST/2 et17 catégories restent inchangés. Environnement/
+PRESERVE, -I/-B/-S, H1 et horizons870/450/appel480/réserves sont conservés ;
+aucun nouveau processus ni budget. La source R6 et ses purs ne qualifient ni
+l’interpréteur réel, ni installation, navigateur, PAM, produit ou CVE. Une
+nouvelle CI fraîche liée aux sources exactes est requise après contre-revue.

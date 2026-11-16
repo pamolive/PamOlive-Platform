@@ -18,6 +18,18 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 TARGET = Path("/opt/google/chrome/chrome")
 PIN_PATH = "qualification/p1g_headless/chrome-bootstrap-pins.json"
+ROOT_INTERPRETER = "/usr/bin/python3.12"
+ROOT_INTERPRETER_SCHEMA = "pamolive.chrome-root-interpreter/1"
+INSTALLED_SCHEMA = "pamolive.chrome-bootstrap/2"
+ROOT_FLAGS = {
+    "isolated": 1,
+    "ignore_environment": 1,
+    "no_user_site": 1,
+    "no_site": 1,
+    "dont_write_bytecode": 1,
+    "optimize": 0,
+    "safe_path": True,
+}
 SOURCE_PATHS = {
     "qualification/p1g_headless/chrome_bootstrap.py",
     "qualification/p1g_headless/chrome_gpg.py",
@@ -128,6 +140,10 @@ DIAGNOSTICS = {
     "release_freshness",
     "release_identity",
     "root_receipt",
+    "root_interpreter_changed",
+    "root_interpreter_identity",
+    "root_interpreter_receipt",
+    "root_interpreter_runtime",
     "scope_armor",
     "scope_armor_crc",
     "scope_bytes",
@@ -220,6 +236,238 @@ def read(path, cap):
         "input_changed",
     )
     return raw
+
+
+def interpreter_identity(row):
+    fields = ("dev", "ino", "mode", "uid", "gid", "nlink", "size", "mtime_ns", "ctime_ns")
+    values = [getattr(row, "st_" + name) for name in fields]
+    need(
+        all(type(value) is int and 0 <= value < 2**64 for value in values)
+        and stat.S_ISREG(values[2])
+        and not values[2] & 0o6022
+        and values[3] == 0
+        and values[5] == 1
+        and 0 < values[6] <= 512 * 1024**2,
+        "root_interpreter_identity",
+    )
+    return values
+
+
+def root_interpreter_pin(support):
+    # Select this role directly; never resolve/adopt the frontend or a PATH alias.
+    path = Path(ROOT_INTERPRETER)
+    before = interpreter_identity(path.lstat())
+    pin = support.tool_pin(path)  # Original UID/parents/FD/ELF/hash guard, unchanged.
+    need(
+        type(pin) is dict
+        and set(pin) == {"sha256", "bytes", "uid", "mode"}
+        and type(pin["sha256"]) is str
+        and re.fullmatch(r"[a-f0-9]{64}", pin["sha256"])
+        and type(pin["bytes"]) is int
+        and pin["bytes"] == before[6]
+        and type(pin["uid"]) is int
+        and pin["uid"] == 0
+        and type(pin["mode"]) is int
+        and pin["mode"] == stat.S_IMODE(before[2])
+        and interpreter_identity(path.lstat()) == before,
+        "root_interpreter_changed",
+    )
+    return {"path": ROOT_INTERPRETER, "pin": pin, "identity": before}
+
+
+def check_root_interpreter(facts, role, *, context_sha, pins_sha, source_sha, revision):
+    need(
+        type(facts) is dict
+        and set(facts)
+        == {
+            "schema",
+            "role",
+            "path",
+            "pin",
+            "identity",
+            "running_identity",
+            "real_uid",
+            "effective_uid",
+            "version",
+            "implementation",
+            "flags",
+            "revision",
+            "context_receipt_sha256",
+            "pins_manifest_sha256",
+            "bootstrap_source_sha256",
+            "stdlib_loader_hermeticity_verified",
+        }
+        and facts["schema"] == ROOT_INTERPRETER_SCHEMA
+        and facts["role"] == "privileged-stdlib-supervisor"
+        and facts["path"] == ROOT_INTERPRETER == role["path"]
+        and facts["pin"] == role["pin"]
+        and facts["identity"] == facts["running_identity"] == role["identity"]
+        and all(
+            type(facts[name]) is int and facts[name] == 0 for name in ("real_uid", "effective_uid")
+        )
+        and facts["revision"] == revision
+        and facts["context_receipt_sha256"] == context_sha
+        and facts["pins_manifest_sha256"] == pins_sha
+        and facts["bootstrap_source_sha256"] == source_sha
+        and facts["stdlib_loader_hermeticity_verified"] is False,
+        "root_interpreter_receipt",
+    )
+    # Equality alone would accept bools in numeric fields of a forged old receipt.
+    for name in ("identity", "running_identity"):
+        need(
+            type(facts[name]) is list
+            and len(facts[name]) == 9
+            and all(type(value) is int and 0 <= value < 2**64 for value in facts[name]),
+            "root_interpreter_receipt",
+        )
+    pin = facts["pin"]
+    need(
+        type(pin) is dict
+        and set(pin) == {"sha256", "bytes", "uid", "mode"}
+        and type(pin["sha256"]) is str
+        and re.fullmatch(r"[a-f0-9]{64}", pin["sha256"])
+        and all(type(pin[name]) is int for name in ("bytes", "uid", "mode")),
+        "root_interpreter_receipt",
+    )
+    version = facts["version"]
+    need(
+        type(version) is dict
+        and set(version) == {"major", "minor", "micro", "releaselevel", "serial"}
+        and all(type(version[name]) is int for name in ("major", "minor", "micro", "serial"))
+        and version["major"] == 3
+        and version["minor"] == 12
+        and 0 <= version["micro"] <= 999
+        and version["releaselevel"] == "final"
+        and version["serial"] == 0
+        and facts["implementation"] == {"name": "cpython", "cache_tag": "cpython-312"}
+        and type(facts["implementation"]) is dict
+        and type(facts["flags"]) is dict
+        and set(facts["flags"]) == set(ROOT_FLAGS)
+        and all(
+            type(facts["flags"][name]) is type(value) and facts["flags"][name] == value
+            for name, value in ROOT_FLAGS.items()
+        ),
+        "root_interpreter_receipt",
+    )
+
+
+def root_interpreter_runtime(support, *, context_sha, pins_sha, source_sha, revision):
+    need(
+        type(os.getuid()) is int
+        and os.getuid() == 0
+        and type(os.geteuid()) is int
+        and os.geteuid() == 0
+        and sys.executable == ROOT_INTERPRETER
+        and sys.platform == "linux",
+        "root_interpreter_runtime",
+    )
+    role = root_interpreter_pin(support)
+    running = interpreter_identity(os.stat("/proc/self/exe"))
+    version = sys.version_info
+    facts = {
+        "schema": ROOT_INTERPRETER_SCHEMA,
+        "role": "privileged-stdlib-supervisor",
+        **role,
+        "running_identity": running,
+        "real_uid": os.getuid(),
+        "effective_uid": os.geteuid(),
+        "version": {
+            name: getattr(version, name)
+            for name in ("major", "minor", "micro", "releaselevel", "serial")
+        },
+        "implementation": {
+            "name": sys.implementation.name,
+            "cache_tag": sys.implementation.cache_tag,
+        },
+        "flags": {name: getattr(sys.flags, name) for name in ROOT_FLAGS},
+        "revision": revision,
+        "context_receipt_sha256": context_sha,
+        "pins_manifest_sha256": pins_sha,
+        "bootstrap_source_sha256": source_sha,
+        "stdlib_loader_hermeticity_verified": False,
+    }
+    check_root_interpreter(
+        facts,
+        role,
+        context_sha=context_sha,
+        pins_sha=pins_sha,
+        source_sha=source_sha,
+        revision=revision,
+    )
+    return facts
+
+
+def root_supervisor(
+    commands, support, public, pins, pins_sha, target, scope_proof, source_sha, signature
+):
+    role = root_interpreter_pin(support)
+    context_sha = sha(read(Path(os.environ["RUNNER_TEMP"]) / "p1g-source.json", 4 * 1024**2))
+    commands.run(
+        [
+            "/usr/bin/sudo",
+            "-n",
+            "--preserve-env=" + PRESERVE,
+            "--",
+            ROOT_INTERPRETER,
+            "-I",
+            "-B",
+            "-S",
+            str(HERE / "chrome_bootstrap.py"),
+            "--pins-sha",
+            pins_sha,
+            "--root-install",
+            "--native-scope-preflight-required",
+        ],
+        seconds=480,
+        sudo=True,
+    )
+    need(root_interpreter_pin(support) == role, "root_interpreter_changed")
+    result = json.loads(read(public / "installed.json", 32768), object_pairs_hook=unique)
+    need(
+        type(result) is dict
+        and set(result)
+        == {
+            "schema",
+            "state",
+            "package_sha256",
+            "package_version",
+            "revision",
+            "pins_manifest_sha256",
+            "context_receipt_sha256",
+            "target",
+            "signature",
+            "key_scope",
+            "root_interpreter",
+            "all_OS_descendants_released",
+            "browser_executed",
+            "operational_GO",
+        }
+        and result["schema"] == INSTALLED_SCHEMA
+        and result["state"] == "INSTALLED_AUTHENTICATED_PACKAGE_ONLY"
+        and result["target"] == target
+        and result["package_sha256"] == pins["package"]["SHA256"]
+        and result["package_version"] == pins["package"]["Version"]
+        and result["pins_manifest_sha256"] == pins_sha
+        and result["revision"] == os.environ["GITHUB_SHA"]
+        and result["context_receipt_sha256"] == context_sha
+        and result["key_scope"] == scope_proof
+        and result["signature"] == signature
+        and all(
+            result[name] is False
+            for name in ("all_OS_descendants_released", "browser_executed", "operational_GO")
+        ),
+        "root_receipt",
+    )
+    check_root_interpreter(
+        result["root_interpreter"],
+        role,
+        context_sha=context_sha,
+        pins_sha=pins_sha,
+        source_sha=source_sha,
+        revision=os.environ["GITHUB_SHA"],
+    )
+    need(time.monotonic() < commands.until, "bootstrap_deadline")
+    return result
 
 
 def fields(raw):
@@ -754,6 +1002,18 @@ def main(argv=None):
     )
     phase = "authenticate"
     try:
+        root_runtime = None
+        if args.root_install:
+            phase = "root_interpreter"
+            root_runtime = root_interpreter_runtime(
+                support,
+                context_sha=sha(read(base / "p1g-source.json", 4 * 1024**2)),
+                pins_sha=args.pins_sha,
+                source_sha=sha(captured["qualification/p1g_headless/chrome_bootstrap.py"]),
+                revision=os.environ["GITHUB_SHA"],
+            )
+            need(time.monotonic() < commands.until, "bootstrap_deadline")
+            phase = "authenticate"
         support.fresh_write(
             command_public / "resources.json",
             json.dumps(support.resources(private)).encode(),
@@ -1008,36 +1268,16 @@ def main(argv=None):
         apt_plan(commands.run([*APT, "--simulate", "install", str(package)], seconds=30))
         if not args.root_install:
             phase = "root_supervisor"
-            python = Path(sys.executable).resolve(strict=True)
-            support.tool_pin(python)
-            commands.run(
-                [
-                    "/usr/bin/sudo",
-                    "-n",
-                    "--preserve-env=" + PRESERVE,
-                    "--",
-                    str(python),
-                    "-I",
-                    "-B",
-                    "-S",
-                    str(HERE / "chrome_bootstrap.py"),
-                    "--pins-sha",
-                    args.pins_sha,
-                    "--root-install",
-                    "--native-scope-preflight-required",
-                ],
-                seconds=480,
-                sudo=True,
-            )
-            result = json.loads(read(public / "installed.json", 32768), object_pairs_hook=unique)
-            need(
-                result["state"] == "INSTALLED_AUTHENTICATED_PACKAGE_ONLY"
-                and result["target"] == target
-                and result["package_sha256"] == pins["package"]["SHA256"]
-                and result["pins_manifest_sha256"] == args.pins_sha
-                and result["revision"] == os.environ["GITHUB_SHA"]
-                and result["key_scope"] == scope_proof,
-                "root_receipt",
+            root_supervisor(
+                commands,
+                support,
+                public,
+                pins,
+                args.pins_sha,
+                target,
+                scope_proof,
+                sha(captured["qualification/p1g_headless/chrome_bootstrap.py"]),
+                valid,
             )
         else:
             phase = "install_local_exact"
@@ -1069,11 +1309,23 @@ def main(argv=None):
                 "installed_payload_mismatch",
             )
             need(time.monotonic() < commands.until, "bootstrap_deadline")
+            need(
+                root_interpreter_runtime(
+                    support,
+                    context_sha=sha(read(base / "p1g-source.json", 4 * 1024**2)),
+                    pins_sha=args.pins_sha,
+                    source_sha=sha(captured["qualification/p1g_headless/chrome_bootstrap.py"]),
+                    revision=os.environ["GITHUB_SHA"],
+                )
+                == root_runtime,
+                "root_interpreter_changed",
+            )
+            need(time.monotonic() < commands.until, "bootstrap_deadline")
             support.fresh_write(
                 public / "installed.json",
                 json.dumps(
                     {
-                        "schema": "pamolive.chrome-bootstrap/1",
+                        "schema": INSTALLED_SCHEMA,
                         "state": "INSTALLED_AUTHENTICATED_PACKAGE_ONLY",
                         "package_sha256": pins["package"]["SHA256"],
                         "package_version": pins["package"]["Version"],
@@ -1085,6 +1337,7 @@ def main(argv=None):
                         "target": target,
                         "signature": valid,
                         "key_scope": scope_proof,
+                        "root_interpreter": root_runtime,
                         "all_OS_descendants_released": False,
                         "browser_executed": False,
                         "operational_GO": False,

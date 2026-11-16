@@ -1,6 +1,45 @@
 # P1-F — qualification de sécurité de l’image
 
-## État courant du candidat navigateur — 16 novembre 2026
+## État courant — interpréteur privilégié séparé, 16 novembre 2026
+
+Les deux essais Linux du candidat R5 `cd9b2fc`
+([push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43948941376),
+[PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43948955828))
+ont réellement terminé le générateur GPG TEST et ses huit observations sudo/stat.
+Les six buffers publics, le nettoyage et les 17 catégories de contrôles natifs,
+de modèles et de gardes sont reçus ; ces catégories ne sont pas 17 signatures
+indépendantes. L'acquisition et la simulation APT sont passées. Le refus suivant
+sur tool_type_owner_mode intervient avant le lancement du superviseur root.
+Le chemin et les métadonnées de la feuille refusée n'ont pas été exportés :
+aucune cause précise UID/mode/nlink n'est déduite. Chrome n'a pas été installé.
+
+R6 choisit explicitement /usr/bin/python3.12 pour le superviseur privilégié,
+indépendamment du Python du venv. Le guard tool_pin reste inchangé. Le parent
+vérifie le pin et l'identité complète avant et après sudo ; le superviseur exige
+UID réel/effectif 0, image /proc/self/exe correspondante, CPython 3.12.x finale
+et flags -I/-B/-S. Le reçu installé /2 impose la preuve interpréteur /1 liée
+aux mêmes source, manifeste, contexte et révision. Un ancien reçu est refusé.
+La version système effectivement utilisée reste à mesurer, sans la confondre
+avec le Python 3.12.16 du venv. Aucun nouveau processus, privilège ou budget
+n'est ajouté : horizons 870/450 et appel sudo 480 secondes conservés.
+
+Sur le checkout intégré, 125 tests purs passent sans échec, exclusion ou
+tentative externe ; Ruff et format passent. Les 25 rôles Chrome et 24 pins UI
+doivent rester fermés depuis les octets Git. Ces modèles ne prouvent pas
+l'exécution du Python système, la réauthentification root, l'installation,
+Chrome ou le parcours navigateur : nouvelle CI exacte obligatoire.
+
+Le pin ELF ne prouve pas l'herméticité du loader et de la stdlib Ubuntu.
+L'entrée du script par pathname avant ses contrôles et la TCB coopérative
+root/même UID demeurent explicites. Un refus après installation n'est pas un
+retour arrière. GPG, producteur Owner/2/Observer/1 et ses six rôles TEST restent
+inchangés. P1-F/G et l'autorité complète ADR-021 demeurent incomplets.
+La branche runtime distincte bde355e teste son contexte scellé séparément ;
+aucune qualification ne passe d'une branche à l'autre. Le parent runtime 5d8f814
+reste refusé pour 98 High dans 31 groupes. Aucun merge main, nouvelle image
+promue ou accès NAS n'est réalisé par R6.
+
+## Témoin historique R4/R5 avant réception — 16 novembre 2026
 
 Le [candidat R4 `095d0eb`](https://github.com/pamolive/PamOlive-Platform/actions/runs/43929358076)
 a reçu un refus errno 13 lors de la lecture de `/proc/<PID possédé>/exe`, puis
