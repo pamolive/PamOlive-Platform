@@ -2,18 +2,23 @@
 
 ## État courant du candidat commun — 16 novembre 2026
 
-Le [candidat assemblé P1-F](p1-f-runtime-composition.md) réunit Expat, Jansson,
-les observateurs ROOT3/PostgreSQL et la fermeture/drainage de restauration.
-Les tests purs de composition passent ; la nouvelle image et ses contrôles
-Linux complets restent à recevoir. Aucun résultat isolé ne vaut validation de
-la combinaison, aucune nouvelle image n'est promue et le NAS reste inchangé.
+La base 94064bc a passé PostgreSQL, les transports synthétiques, la restauration
+étendue, l’inventaire et le SBOM ; son scan strict reste bloqué à 98 High dans
+31 groupes source/CVE. Les preuves restent liées à ce commit.
 
-Les sections d'essais ci-dessous conservent leurs états historiques et leurs
-commits propres. Pour ROOT3, les observations reçues à043d5e6 mesurent bien
-containerd/v2.4.2 et passwd999/999 sans autorité opérationnelle ni propriété de
-PGDATA. Pour Jansson, les oracles reçus à2f772e7 passent mais le scan reste bloqué
-sur31groupesHigh. Ces résultats ne sont pas ceux de la nouvelle composition.
-Le diagnostic Chrome896 refuse avant navigateur ; P1-G demeure ouvert.
+Sur cette branche, le candidat navigateur 38ba300 a exécuté ses 86 contrats,
+puis a refusé le préflight de l’agent TEST avec fixture_unknown. Le processus
+possédé a atteint son timeout ; il est repris et ses sorties sont drainées,
+mais le nettoyage est incomplet et la cause initiale n’est pas encore reçue.
+La nouvelle source R4 conserve deux diagnostics fermés, primaire et cleanup,
+avant l’attente. Les 92 contrats purs passent ; aucune permission, commande,
+limite, garde cryptographique ou décision de cleanup n’est changée.
+
+La nouvelle mesure Linux reste requise. P1-G demeure ouvert ; aucune signature,
+installation ou session navigateur n’est admise depuis les seuls modèles.
+Les autres branches ont leurs propres preuves, à requalifier après assemblage.
+Les sections historiques ci-dessous restent liées à leurs anciens candidats.
+Aucune nouvelle image n’est promue et le NAS reste inchangé.
 
 Réconciliation mise à jour le 14 novembre 2026 avec *Architecture & Roadmap 2026–2029* (pages24–28) et la mission de développement autonome continu. Le programme avance par livraisons qualifiées sans confirmation humaine pour les opérations ordinaires autorisées. Cette autonomie ne permet ni contournement des protections GitHub ni utilisation de comptes ou de systèmes de production.
 

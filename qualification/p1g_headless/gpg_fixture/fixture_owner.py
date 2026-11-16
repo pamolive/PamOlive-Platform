@@ -36,6 +36,84 @@ def need(ok, code):
         raise ValueError(code)
 
 
+FAILURE_PHASES = {
+    "prepare",
+    "agent_spawn",
+    "agent_ready",
+    "agent_exe",
+    "socket_identity",
+    "assuan_ready",
+    "fixture",
+    "shutdown_control",
+    "cleanup",
+    "unknown",
+}
+FAILURE_GUARDS = {
+    "agent_source_changed",
+    "agent_spawn_binding",
+    "agent_spawn_unknown",
+    "agent_not_ready",
+    "socket_identity",
+    "socket_parent_changed",
+    "agent_not_alive",
+    "agent_proc_shape",
+    "agent_proc_ownership",
+    "agent_not_execed",
+    "agent_pid_reuse",
+    "socket_changed",
+    "assuan_deadline",
+    "assuan_eof",
+    "assuan_budget",
+    "assuan_greeting",
+    "assuan_pid",
+    "assuan_response",
+    "agent_not_owned_alive",
+    "socket_peer",
+    "fixture_deadline",
+    "client_unknown",
+    "sticky_unknown",
+    "tool_changed",
+    "agent_unknown",
+    "agent_shutdown_unconfirmed",
+    "agent_spawn_uncertain",
+    "agent_spawn_unconfirmed",
+    "socket_cleanup_identity",
+    "socket_not_removed",
+    "private_root_changed",
+}
+
+
+def failure_marker(error, phase):
+    # No str(error), argv, path, UID, raw status, stderr or caller-provided label.
+    kinds = {
+        ValueError: "guard",
+        PermissionError: "permission",
+        FileNotFoundError: "not_found",
+        TimeoutError: "timeout",
+        OSError: "os_error",
+        RuntimeError: "runtime",
+        KeyboardInterrupt: "cancelled",
+        SystemExit: "exit",
+    }
+    code = error.args[0] if type(error) is ValueError and len(error.args) == 1 else None
+    code = code if type(code) is str and code in FAILURE_GUARDS else "unmapped"
+    number = error.errno if isinstance(error, OSError) else None
+    number = (
+        number
+        if type(number) is int and number in {1, 2, 5, 9, 13, 20, 22, 32, 98, 104, 110, 111}
+        else None
+    )
+    return {
+        "schema": "pamolive.gpg-fixture-failure-diagnostic/1",
+        "diagnostic_only": True,
+        "phase": phase if type(phase) is str and phase in FAILURE_PHASES else "unknown",
+        "error": kinds.get(type(error), "other"),
+        "errno": number,
+        "guard": code,
+        "operational_GO": False,
+    }
+
+
 def identity(row):
     return (
         row.st_dev,
@@ -181,6 +259,8 @@ class Owner:
         self.work_end = min(self.started + 150, self.end - 30)
         self.unknown = False
         self.failure_code = None
+        self.cleanup_failure = None
+        self.phase = "prepare"
         self.records = []
         self.client_ordinal = 0
         self.tools = {}
@@ -214,9 +294,29 @@ class Owner:
             packet["agent_thread_joined"] = self.thread is None or not self.thread.is_alive()
             packet["agent"] = self.agent_result.facts() if self.agent_result is not None else None
             packet["cleanup_complete"] = False
+            packet["failure_code"] = getattr(self, "failure_code", None)
+            packet["cleanup_failure"] = getattr(self, "cleanup_failure", None)
         raw = json.dumps(packet, sort_keys=True).encode()
         need(len(raw) <= 65536, "journal_budget")
         exclusive(self.out / (state + ".json"), raw)
+
+    def remember_failure(self, error, *, cleanup=False, phase=None):
+        # First cause per lane, persisted BEFORE cleanup can block in the original H1 join.
+        self.unknown = True
+        name = "cleanup_failure" if cleanup else "failure_code"
+        if getattr(self, name, None) is not None:
+            return
+        marker = failure_marker(error, phase or getattr(self, "phase", "unknown"))
+        setattr(self, name, marker)
+        if getattr(self, "pending", False):
+            try:
+                raw = json.dumps(marker, sort_keys=True).encode()
+                need(len(raw) <= 1024, "failure_diagnostic_budget")
+                exclusive(
+                    self.out / ("cleanup-failure.json" if cleanup else "primary-failure.json"), raw
+                )
+            except BaseException:
+                self.unknown = True  # Diagnostic IO never repairs or replaces the refusal.
 
     def time_left(self, *, cleanup=False):
         left = (self.end - 5 if cleanup else self.work_end) - time.monotonic()
@@ -384,6 +484,7 @@ class Owner:
         self.socket_parent = private_dir(Path(self.socket_path).parent, self.uid)
 
     def start_agent(self):
+        self.phase = "agent_spawn"
         env = {
             "PATH": "/usr/bin:/bin",
             "LANG": "C",
@@ -455,12 +556,14 @@ class Owner:
         self.source_fd = None
         agent_tool = self.tools["/usr/bin/gpg-agent"][1]
         while True:
+            self.phase = "agent_ready"
             need(
                 self.agent.poll() is None
                 and time.monotonic() < min(self.work_end, self.agent_spawn_monotonic + 15),
                 "agent_not_ready",
             )
             try:
+                self.phase = "agent_exe"
                 row = os.stat(f"/proc/{self.agent.pid}/exe")
                 execed = (row.st_dev, row.st_ino) == agent_tool[:2]
             except FileNotFoundError:
@@ -468,7 +571,9 @@ class Owner:
             if execed and os.path.lexists(self.socket_path):
                 break
             time.sleep(0.01)
+        self.phase = "socket_identity"
         self.socket_fact = self.socket_identity()
+        self.phase = "assuan_ready"
         self.assuan("GETINFO pid")
 
     def socket_identity(self):
@@ -710,9 +815,10 @@ class Owner:
         try:
             if self.agent.poll() is None:
                 self.assuan("KILLAGENT", cleanup=True)
-        except BaseException:
+        except BaseException as error:
             control_ok = False
             self.unknown = True
+            self.remember_failure(error, cleanup=True, phase="shutdown_control")
         finally:
             # Always await the original H1 owner, even when targeted shutdown was refused.
             self.thread.join(max(0, self.end - time.monotonic()))
@@ -780,11 +886,14 @@ class Owner:
     def run(self):
         buffers = None
         try:
+            self.phase = "prepare"
             self.prepare()
             self.start_agent()
+            self.phase = "fixture"
             buffers, p, s = self.fixture()
-        except BaseException:
+        except BaseException as error:
             self.unknown = True
+            self.remember_failure(error)
         finally:
             try:
                 self.shutdown()
@@ -793,8 +902,9 @@ class Owner:
                     self.source_fd = None
                 if hasattr(self, "root_fact"):
                     self.remove_private()
-            except BaseException:
+            except BaseException as error:
                 self.unknown = True
+                self.remember_failure(error, cleanup=True, phase="cleanup")
             if self.pending and self.unknown:
                 self.journal("UNKNOWN")
         need(

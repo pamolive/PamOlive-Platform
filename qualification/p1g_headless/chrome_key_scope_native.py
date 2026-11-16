@@ -50,7 +50,7 @@ CASE_POLICY = {
 SOURCE_MATRIX_IMPLEMENTED = MATRIX_REQUIRED
 PRODUCER_CONTRACT = {
     "purpose": "pamolive.gpg-selected-signer-revoked-fixture/2",
-    "source_pin": "7bb5c0565e1a4a0c5ddd5f3b729626680076fba66b88a82729b170b115edbf84",
+    "source_pin": "6b9c794145c7db8957a59202d0f98165b55791b62040d385a009f72fdee166ad",
     "call": "produce() -> (immutable_public_buffers, typed_TEST_facts)",
     "public_names": (
         "certificate-before.pgp",

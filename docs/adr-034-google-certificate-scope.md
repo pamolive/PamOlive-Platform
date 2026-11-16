@@ -145,3 +145,27 @@ Sources primaires additionnelles :
 - https://raw.githubusercontent.com/gpg/gnupg/gnupg-2.4.7/g10/gpg.h (source GPG)
 - https://raw.githubusercontent.com/gpg/gnupg/gnupg-2.4.7/doc/DETAILS (IMPORT_PROBLEM)
 - https://raw.githubusercontent.com/gpg/gnupg/gnupg-2.4.7/g10/sig-check.c (contrôles temporels)
+
+
+## Diagnostic R4 de l’agent TEST
+
+Le run 43916635288 du candidat 38ba300 est refusé avant installation. Le reçu
+confirme huit commandes préparatoires terminées normalement, puis l’agent PID
+3896 en timeout, tué, repris et drainé ; cleanup_complete reste faux. Il ne
+contient ni première cause ni phase suffisante pour choisir une correction de
+socket, de permissions ou d’exécution. Le second échec PR n’a pas reçu ici une
+contre-preuve complète et n’identifie pas davantage cette cause.
+
+R4 ajoute seulement des diagnostics fermés : phase, classe connue, errno fini
+ou nul, garde connue ou unmapped. La première cause primaire est écrite avant
+cleanup ; sa voie séparée garde l’échec de contrôle cleanup avant le join.
+Aucun message libre, chemin, UID, argv, statut, clé ou stderr GPG n’est lu
+pour ces diagnostics. Une erreur de journalisation reste UNKNOWN. Les deux
+feuilles JSON sont déjà couvertes par la publication de preuves publiques.
+
+Les commandes, gardes, identité du processus, budgets 180=150+30, six buffers
+publics et décisions de nettoyage sont conservés. Le contrat COMPLETE conserve
+sa structure ; sa nouvelle identité de source est normalement différente de
+R3. Aucun vrai reçu historique ni résultat natif n’est transféré. Les 92 tests
+purs de l’intégration passent sans réseau ni natif ; une nouvelle CI exacte
+doit encore recevoir la cause et qualifier l’agent avant toute installation.

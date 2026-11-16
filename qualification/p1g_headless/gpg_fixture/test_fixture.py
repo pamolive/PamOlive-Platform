@@ -3,6 +3,7 @@
 import ast
 import hashlib
 import io
+import json
 import struct
 import tempfile
 import time
@@ -1010,6 +1011,193 @@ class Contracts(unittest.TestCase):
         for anchor in (True, 3600, upper, upper + 1, 2**32 - 1):
             with self.subTest(anchor=anchor), self.assertRaisesRegex(ValueError, "creation_anchor"):
                 c.creation_times(anchor)
+
+    def test_41_failure_projection_is_closed_and_never_formats_private_exception(self):
+        class Poison(Exception):
+            def __str__(self):
+                raise AssertionError("must_not_format_exception")
+
+        permission = o.failure_marker(PermissionError(13, "PRIVATE_UID_PATH_CANARY"), "agent_exe")
+        self.assertEqual(
+            (permission["phase"], permission["error"], permission["errno"]),
+            ("agent_exe", "permission", 13),
+        )
+        for error, phase in (
+            (Poison("PRIVATE_UID_PATH_CANARY"), "not_a_phase"),
+            (ValueError("PRIVATE_UID_PATH_CANARY"), []),
+            (OSError(987654321, "PRIVATE_UID_PATH_CANARY"), "fixture"),
+        ):
+            marker = o.failure_marker(error, phase)
+            raw = json.dumps(marker)
+            self.assertNotIn("PRIVATE_UID_PATH_CANARY", raw)
+            self.assertLess(len(raw), 1024)
+            self.assertIs(marker["diagnostic_only"], True)
+            self.assertIs(marker["operational_GO"], False)
+            self.assertEqual(marker["guard"], "unmapped")
+            self.assertIsNone(marker["errno"])
+
+    def diagnostic_owner(self):
+        owner = object.__new__(o.Owner)
+        owner.c, owner.context = c, c.ci_context(CI)
+        owner.unknown, owner.pending = False, True
+        owner.failure_code, owner.cleanup_failure = None, None
+        owner.out, owner.root = Path("PUBLIC-ONLY"), Path("/tmp/pamolive-fixture-" + "a" * 32)
+        owner.home, owner.end, owner.work_end = HOME, 280, 250
+        owner.started, owner.phase = 100, "prepare"
+        owner.source_manifest_sha256 = "f" * 64
+        owner.records = []
+        owner.agent, owner.agent_result, owner.thread = None, None, None
+        owner.source_fd, owner.socket_path, owner.socket_fact = 99, "OWNED", None
+        owner.tools = {"/usr/bin/gpg-agent": ("a" * 64, (1, 2))}
+        owner.spawned = SimpleNamespace(wait=lambda _: True)
+        owner.time_left = lambda: 50
+        owner.h1_journal = lambda *_args, **_kw: None
+        owner.prepare = lambda: None
+        return owner
+
+    def test_42_actual_readiness_causes_now_have_distinct_primary_markers(self):
+        observed = []
+        for kind in ("proc_permission", "socket_shape"):
+            owner = self.diagnostic_owner()
+            owner.fixture = lambda: (_ for _ in ()).throw(AssertionError("fixture_not_reached"))
+            owner.assuan = lambda *_a, **_k: (_ for _ in ()).throw(ValueError("socket_peer"))
+            packets, order = {}, []
+
+            def saved(path, raw, *args):
+                packets[Path(path).name] = json.loads(raw)
+                order.append(Path(path).name)
+
+            class Thread:
+                def __init__(self, **kwargs):
+                    pass
+
+                def start(self):
+                    owner.agent = SimpleNamespace(pid=3896, poll=lambda: None)
+                    owner.agent_spawn_monotonic = 187
+
+                def join(self, remaining):
+                    self.test_remaining = remaining
+                    self.primary_before_join = owner.failure_code
+                    self.cleanup_before_join = owner.cleanup_failure
+                    order.append("join")
+                    owner.agent_result = h1.Result(
+                        spawn_attempted=True,
+                        pid=3896,
+                        returncode=-9,
+                        reason="timeout",
+                        killed_owned_child=True,
+                        owned_child_reaped=True,
+                        drains_complete=True,
+                    )
+
+                def is_alive(self):
+                    return False
+
+            if kind == "socket_shape":
+                owner.socket_identity = lambda: (_ for _ in ()).throw(ValueError("socket_identity"))
+            with (
+                patch.object(o, "exclusive", saved),
+                patch.object(o.threading, "Thread", Thread),
+                patch.object(o.time, "monotonic", return_value=187),
+                patch.object(o.os, "close"),
+                patch.object(o.os.path, "lexists", return_value=True),
+                patch.object(o.os, "stat", side_effect=PermissionError(13, "PRIVATE_CANARY"))
+                if kind == "proc_permission"
+                else patch.object(o.os, "stat", return_value=SimpleNamespace(st_dev=1, st_ino=2)),
+                self.assertRaisesRegex(ValueError, "fixture_unknown"),
+            ):
+                owner.run()
+            self.assertLess(order.index("primary-failure.json"), order.index("join"))
+            self.assertLess(order.index("cleanup-failure.json"), order.index("join"))
+            self.assertIsNotNone(owner.thread.primary_before_join)
+            self.assertIsNotNone(owner.thread.cleanup_before_join)
+            self.assertFalse(packets["UNKNOWN.json"]["cleanup_complete"])
+            self.assertEqual(packets["UNKNOWN.json"]["agent"]["reason"], "timeout")
+            self.assertNotIn("PRIVATE_CANARY", json.dumps(packets))
+            observed.append(packets["primary-failure.json"])
+        self.assertEqual(
+            (observed[0]["phase"], observed[0]["error"], observed[0]["errno"]),
+            ("agent_exe", "permission", 13),
+        )
+        self.assertEqual(
+            (observed[1]["phase"], observed[1]["guard"]), ("socket_identity", "socket_identity")
+        )
+        self.assertNotEqual(observed[0], observed[1])
+
+    def test_43_first_primary_and_cleanup_causes_are_independent_and_sticky(self):
+        owner = self.diagnostic_owner()
+        writes = []
+        with patch.object(o, "exclusive", lambda path, raw: writes.append((path, raw))):
+            owner.remember_failure(PermissionError(13, "PRIVATE_CANARY"), phase="agent_exe")
+            primary = owner.failure_code
+            owner.remember_failure(ValueError("agent_unknown"), phase="fixture")
+            owner.remember_failure(
+                ValueError("socket_peer"), cleanup=True, phase="shutdown_control"
+            )
+            cleanup = owner.cleanup_failure
+            owner.remember_failure(ValueError("client_unknown"), cleanup=True, phase="cleanup")
+        self.assertIs(owner.failure_code, primary)
+        self.assertIs(owner.cleanup_failure, cleanup)
+        self.assertEqual(len(writes), 2)
+        self.assertTrue(owner.unknown)
+        self.assertNotIn("PRIVATE_CANARY", json.dumps([json.loads(raw) for _, raw in writes]))
+
+    def test_44_failed_diagnostic_write_never_repairs_or_replaces_primary(self):
+        owner = self.diagnostic_owner()
+        owner.start_agent = lambda: (_ for _ in ()).throw(PermissionError(13, "PRIVATE_CANARY"))
+        owner.fixture = lambda: (_ for _ in ()).throw(AssertionError("fixture_not_reached"))
+        owner.shutdown = lambda: None
+        seen = []
+        owner.journal = lambda state: seen.append(state)
+        with (
+            patch.object(o, "exclusive", side_effect=FileExistsError("PRIVATE_CANARY")),
+            self.assertRaisesRegex(ValueError, "fixture_unknown"),
+        ):
+            owner.run()
+        self.assertTrue(owner.unknown)
+        self.assertEqual(owner.failure_code["error"], "permission")
+        self.assertEqual(seen, ["UNKNOWN"])
+
+    def test_45_unknown_journal_contains_only_closed_diagnostics(self):
+        owner = self.diagnostic_owner()
+        owner.failure_code = o.failure_marker(ValueError("socket_identity"), "socket_identity")
+        owner.cleanup_failure = o.failure_marker(OSError(13, "PRIVATE_CANARY"), "shutdown_control")
+        captured = []
+        with patch.object(o, "exclusive", lambda path, raw: captured.append(json.loads(raw))):
+            owner.journal("UNKNOWN")
+        self.assertEqual(captured[0]["failure_code"], owner.failure_code)
+        self.assertEqual(captured[0]["cleanup_failure"], owner.cleanup_failure)
+        self.assertNotIn("PRIVATE_CANARY", json.dumps(captured))
+
+    def positive_diagnostic_owner(self):
+        buffers = dict(
+            zip(c.PUBLIC_NAMES, (BEFORE, AFTER, c.MESSAGE, b"POS", b"FUT", b"EXP"), strict=True)
+        )
+        owner = self.diagnostic_owner()
+        owner.start_agent = owner.shutdown = lambda: None
+        owner.fixture = lambda: (buffers, P, S)
+        owner.source_fd = None
+        owner.signature_requests = c.creation_times(NOW)
+        owner.version, owner.python_version = "2.4.7", "Python 3.12.16"
+        owner.tools[c.PYTHON] = ("b" * 64, ())
+        owner.stages = []
+        owner.journal = lambda state: owner.stages.append(state)
+        return owner
+
+    def test_46_complete_return_and_journal_have_no_new_diagnostic_contract(self):
+        owner = self.positive_diagnostic_owner()
+        with (
+            patch.object(o.time, "monotonic", return_value=187),
+            patch.object(o, "exclusive") as diagnostic,
+        ):
+            new = owner.run()
+        self.assertEqual(set(new[0]), set(c.PUBLIC_NAMES))
+        self.assertEqual(owner.stages, ["CLEANUP_COMPLETE"])
+        self.assertNotIn("failure_code", new[1])
+        self.assertNotIn("cleanup_failure", new[1])
+        self.assertEqual(new[1]["schema"], c.PURPOSE)
+        self.assertEqual(new[1]["purpose"], "TEST_ONLY")
+        diagnostic.assert_not_called()
 
 
 if __name__ == "__main__":
