@@ -114,3 +114,71 @@ obligatoires dans la CI ; les tests purs ne prouvent pas la fermeture réelle.
 Le run historique 43823595128 a retenu une copie pour session encore active,
 sans exposer l'identité ni la cause de cette session. Cette correction ne
 prétend pas avoir établi cette cause et attend une nouvelle restauration réelle.
+
+## Extension du corpus historique et reçu public CI
+
+Le run f66dc73 /43847896368 a réellement restauré une copie PostgreSQL :106
+modèles,15 valeurs chiffrées,75 preuves signées,3 reçus de provenance et une
+capture scellée. Il ne contenait toutefois aucun registre de confiance PAM ni
+preuve d'exception Governance vérifiés. Son succès limité reste historique ;
+il ne qualifie pas ces chemins absents.
+
+Le nouveau corpus utilise uniquement une base synthétique fraîche et vide. Il
+insère une observation et une évaluation V7 avec les modèles historiques avant
+les migrations de provenance, puis applique toutes les migrations et exige la
+conservation des octets/signatures. Il ne crée jamais legacy_unknown après V8,
+ne désactive aucun trigger et refuse une source déjà peuplée.
+
+Le corpus ajoute un registre PAM historique et au moins deux autorisations
+personnelles réellement vérifiées, ainsi que trois preuves d'exception
+Governance. Les ancrages publics sont capturés avant le dump, hors de la base
+restaurée ; aucun checkpoint courant ni clé privée n'est repris pour réarmer
+le PAM live. La restauration exige toujours un checkpoint actuel indépendant.
+Les quatre tests dédiés PostgreSQL du corpus ont passé ; la vérification
+complète de ces preuves après dump/restore reste à recevoir.
+
+Le mode CI exige des compteurs minimaux de preuves réellement vérifiées, et un
+retrait confirmé de la source synthétique. Le rapport public est écrit seulement
+après le nettoyage de la copie, du rôle, de la source et des deux fichiers env.
+Son schéma fermé ne contient que booléens, compteurs, temps et empreintes publiques.
+Le fichier est exclusif, borné à16Kio, mode0600 ; ni dump, ni compagnon de clés,
+ni environnement, ni sortie brute ne sont copiés vers les artefacts.
+
+Le fichier seul ne vaut jamais qualification : la réception doit le lier aux
+sources et à l'image exactes, ainsi qu'au succès de l'étape Restore. Un fsync ou
+une écriture échouée reste fatal mais peut laisser un fichier complet ou partiel ;
+aucune atomicité ou durabilité du stockage n'est revendiquée. Le job global peut
+encore échouer lors du scan strict suivant. safe_to_serve reste false, sans
+autorisation de reprise, de production, de NAS ou de session réelle.
+
+### Réception PostgreSQL et intégration du snapshot image
+
+Le run [43870177687](https://github.com/pamolive/PamOlive-Platform/actions/runs/43870177687)
+a exécuté les quatre tests dédiés du corpus sur PostgreSQL :4 tests,11.871s,
+aucun skip. Le job image avait échoué avant dump/restore ; aucun reçu de
+restauration du corpus étendu n'est transféré de ce run.
+
+La branche restore intègre maintenant le correctif runtime75813d8 comparant
+deux vues image immuables, plutôt qu'une image et les montages live du worker.
+Les octets des helpers et tests restore demeurent identiques au candidatbae ;
+les seuils, ancrages, vérificateurs et nettoyages restent exacts. La restauration complète du corpus étendu est maintenant reçue au run5ee62e4,
+sous réserve de la réception indépendante du rapport et de ses liens image/source.
+Les scans stricts restent bloquants ; aucun réarmement PAM live ni accès NAS.
+
+### Restauration étendue réelle et correction du répertoire de preuve
+
+Le [run5ee62e4](https://github.com/pamolive/PamOlive-Platform/actions/runs/43891400303)
+a réussi le dump/restore en12.958s :106modèles,82preuves signées,3reçus de
+provenance,1observationlegacy/1évaluationV7,3preuvesGovernance,1registrePAM
+et2autorisationspersonnelles,1capture scellée et1preuvecertificat. Les flags
+de refus des mauvaises clés/mots de passe et d'isolation/nettoyage sont vrais ;
+safe_to_serve restefalse et le PAM live exige un checkpoint courant indépendant.
+
+Le job a ensuite refusé au mkdir exclusif de l'inventaire/SBOM : le nouveau
+rapport restore avait créé son répertoire réservé. Cette intégration de chemin
+était incorrecte. Le reçu va désormais dans un répertoire restore-public dédié,
+créé frais en0700 et publié par son seul fichier JSON nommé. Le mkdir exclusif
+du scan, les vérificateurs, les helpers restore et leurs plafonds restent exacts.
+La reproduction réelle et un test du cycle des deux répertoires sont conservés.
+Ce succès restore ne vaut pas succès SBOM/scan ou qualification globale ; leur
+rejeu du candidat corrigé reste requis. Aucun accès NAS ni reprise de production.

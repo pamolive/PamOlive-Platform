@@ -30,6 +30,7 @@ _FAILURE_MESSAGES = {
     "Archive-bound key companion does not match.": "key_companion_invalid",
     "Restored access interpretation proof is invalid.": "access_interpretation_invalid",
     "Restored V8 event provenance receipt is invalid.": "provenance_receipt_invalid",
+    "Restored legacy event provenance is invalid.": "legacy_provenance_invalid",
     "A non-legacy event is missing its provenance receipt.": "provenance_receipt_missing",
     "Restored SCIM credential destination is invalid.": "scim_destination_invalid",
     "Restored PAM credential destination is invalid.": "pam_destination_invalid",
@@ -52,16 +53,27 @@ _FAILURE_MESSAGES = {
 }
 for _kind in ("provider", "association", "draft", "test", "flow", "pending login"):
     _FAILURE_MESSAGES[f"Restored OIDC {_kind} evidence is invalid."] = "oidc_evidence_invalid"
-for _kind in ("configuration", "scan", "report", "collection run", "sighting", "mapping",
-              "physical session", "session observation", "normalized source link"):
+for _kind in (
+    "configuration",
+    "scan",
+    "report",
+    "collection run",
+    "sighting",
+    "mapping",
+    "physical session",
+    "session observation",
+    "normalized source link",
+):
     _FAILURE_MESSAGES[f"Restored TeamViewer {_kind} proof is invalid."] = (
         "teamviewer_evidence_invalid"
     )
-_FAILURE_MESSAGES.update({
-    "Restored TeamViewer normalized source link is invalid.": "teamviewer_evidence_invalid",
-    "Restored TeamViewer scan proof is missing.": "teamviewer_evidence_invalid",
-    "Restored TeamViewer session origin link is missing.": "teamviewer_evidence_invalid",
-})
+_FAILURE_MESSAGES.update(
+    {
+        "Restored TeamViewer normalized source link is invalid.": "teamviewer_evidence_invalid",
+        "Restored TeamViewer scan proof is missing.": "teamviewer_evidence_invalid",
+        "Restored TeamViewer session origin link is missing.": "teamviewer_evidence_invalid",
+    }
+)
 for _kind in ("source", "credential", "run", "mapping", "history"):
     _FAILURE_MESSAGES[f"Restored directory {_kind} evidence is invalid."] = (
         "directory_evidence_invalid"
@@ -74,9 +86,12 @@ for _message in (
 ):
     _FAILURE_MESSAGES[_message] = "exception_evidence_invalid"
 _FAILURE_TYPES = {
-    "InvalidToken": "decryption_failed", "OperationalError": "database_unavailable",
-    "InterfaceError": "database_unavailable", "PermissionDenied": "permission_refused",
-    "TrustError": "pam_trust_invalid", "ImproperlyConfigured": "configuration_invalid",
+    "InvalidToken": "decryption_failed",
+    "OperationalError": "database_unavailable",
+    "InterfaceError": "database_unavailable",
+    "PermissionDenied": "permission_refused",
+    "TrustError": "pam_trust_invalid",
+    "ImproperlyConfigured": "configuration_invalid",
 }
 _PUBLIC_FAILURE_CODES = frozenset(
     {*_FAILURE_MESSAGES.values(), *_FAILURE_TYPES.values(), "unclassified_verification_failure"}
@@ -84,8 +99,10 @@ _PUBLIC_FAILURE_CODES = frozenset(
 
 
 def normalize_failure_code(value):
-    return value if isinstance(value, str) and value in _PUBLIC_FAILURE_CODES else (
-        "unclassified_verification_failure"
+    return (
+        value
+        if isinstance(value, str) and value in _PUBLIC_FAILURE_CODES
+        else ("unclassified_verification_failure")
     )
 
 
@@ -108,17 +125,29 @@ def public_failure_code(output):
         if not isinstance(output, (str, bytes)) or len(output) > 4096:
             raise ValueError
         value = json.loads(output, object_pairs_hook=unique)
-        if (type(value) is not dict or set(value) != {"result", "phase", "error", "code"}
-                or value["result"] != "failed"
-                or value["phase"] not in {
-                    "configuration", "database scope", "offline application verification"
-                }
-                or value["error"] not in {
-                    "RuntimeError", "InvalidToken", "OperationalError", "InterfaceError",
-                    "PermissionDenied", "TrustError", "ImproperlyConfigured", "ValueError",
-                    "TypeError", "AttributeError", "IntegrityError", "ProgrammingError",
-                }
-                or value["code"] not in _PUBLIC_FAILURE_CODES):
+        if (
+            type(value) is not dict
+            or set(value) != {"result", "phase", "error", "code"}
+            or value["result"] != "failed"
+            or value["phase"]
+            not in {"configuration", "database scope", "offline application verification"}
+            or value["error"]
+            not in {
+                "RuntimeError",
+                "InvalidToken",
+                "OperationalError",
+                "InterfaceError",
+                "PermissionDenied",
+                "TrustError",
+                "ImproperlyConfigured",
+                "ValueError",
+                "TypeError",
+                "AttributeError",
+                "IntegrityError",
+                "ProgrammingError",
+            }
+            or value["code"] not in _PUBLIC_FAILURE_CODES
+        ):
             raise ValueError
         return value["code"]
     except (TypeError, ValueError, UnicodeError):
@@ -349,11 +378,24 @@ def verify_directory_evidence():
                 ):
                     raise RuntimeError("Restored directory run evidence is invalid.")
                 fields = ADAPTERS[source.provider]
-                bodies = [dict(remote_id=str(fact.remote_id), username=fact.username,
-                               enabled=fact.enabled, groups=fact.groups)
-                          for fact in run.facts.order_by("remote_id")]
-                raw = [dict(zip(fields, (body["remote_id"], body["username"],
-                                         body["enabled"], body["groups"]))) for body in bodies]
+                bodies = [
+                    dict(
+                        remote_id=str(fact.remote_id),
+                        username=fact.username,
+                        enabled=fact.enabled,
+                        groups=fact.groups,
+                    )
+                    for fact in run.facts.order_by("remote_id")
+                ]
+                raw = [
+                    dict(
+                        zip(
+                            fields,
+                            (body["remote_id"], body["username"], body["enabled"], body["groups"]),
+                        )
+                    )
+                    for body in bodies
+                ]
                 try:
                     normalized = normalize_directory_records(source.provider, raw)
                 except Exception:
@@ -483,15 +525,35 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
     directory = verify_directory_evidence()
     result["directory_evidence_checked"] = directory
     result["encrypted_values_checked"] += directory["encrypted_values"]
-    result["signed_proofs_checked"] += sum(directory[key] for key in (
-        "sources", "runs", "facts", "mappings"
-    ))
+    result["signed_proofs_checked"] += sum(
+        directory[key] for key in ("sources", "runs", "facts", "mappings")
+    )
+    result["legacy_events_checked"] = 0
+    result["legacy_v7_evaluations_checked"] = 0
+    from platform_modules.access.provenance_status import verified_origin_status
+
+    for event in AccessEvent.unscoped.filter(provenance_channel="legacy_unknown").iterator():
+        if (
+            verified_origin_status(event) != "legacy_unknown"
+            or event.collector_source_id
+            or event.manual_actor_id
+            or event.internal_principal
+            or event.facts_schema
+            or event.facts_digest
+        ):
+            raise RuntimeError("Restored legacy event provenance is invalid.")
+        result["legacy_events_checked"] += 1
     for evaluation in AccessEvaluation.unscoped.select_related("audit", "event", "intent").iterator(
         chunk_size=100
     ):
         if not verify_evaluation(evaluation, allow_legacy=True):
             raise RuntimeError("Restored access interpretation proof is invalid.")
         result["signed_proofs_checked"] += bool(evaluation.signature)
+        if (
+            evaluation.rule_version == "access-context/7"
+            and verified_origin_status(evaluation.event) == "legacy_unknown"
+        ):
+            result["legacy_v7_evaluations_checked"] += 1
     receipt_count = 0
     for receipt in AccessProvenanceReceipt.unscoped.select_related(
         "audit", "event__collector_source"
@@ -499,9 +561,7 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
         if not verify_provenance_receipt(receipt):
             raise RuntimeError("Restored V8 event provenance receipt is invalid.")
         receipt_count += 1
-    if receipt_count != AccessEvent.unscoped.exclude(
-        provenance_channel="legacy_unknown"
-    ).count():
+    if receipt_count != AccessEvent.unscoped.exclude(provenance_channel="legacy_unknown").count():
         raise RuntimeError("A non-legacy event is missing its provenance receipt.")
     result["provenance_receipts_checked"] = receipt_count
     result["signed_proofs_checked"] += receipt_count
@@ -555,15 +615,17 @@ def verify_application(*, expected_manifest=None, probe=None, archive_sha256="")
     from platform_modules.pam.trust_registry import verify_history
 
     result["pam_trust_registries_verified"] = 0
-    for organization_id in PAMTrustRevision.unscoped.order_by().values_list(
-        "organization_id", flat=True
-    ).distinct():
+    for organization_id in (
+        PAMTrustRevision.unscoped.order_by().values_list("organization_id", flat=True).distinct()
+    ):
         verify_history(Organization.objects.get(pk=organization_id))
         result["pam_trust_registries_verified"] += 1
+    result["pam_personal_authorizations_verified"] = 0
     for proof in PAMTrustAuthorization.unscoped.filter(consumed_at__isnull=False):
         if not verify_authorization_evidence(authorization_evidence(proof)):
             raise RuntimeError("Restored independent PAM action evidence is invalid.")
         result["signed_proofs_checked"] += 1
+        result["pam_personal_authorizations_verified"] += 1
     for intent in AccessIntent.unscoped.exclude(pam_trust={}):
         _historical_registry(intent)
     # Archival verification must never treat an old checkpoint as live authority.
@@ -710,8 +772,16 @@ def main():
                 if failure is None:
                     failure = error
     if failure is not None:
-        print(json.dumps({"result": "failed", "phase": phase, "error": type(failure).__name__,
-                          "code": failure_code(failure)}))
+        print(
+            json.dumps(
+                {
+                    "result": "failed",
+                    "phase": phase,
+                    "error": type(failure).__name__,
+                    "code": failure_code(failure),
+                }
+            )
+        )
         raise SystemExit(1) from None
     if not snapshot_complete:
         print(json.dumps(result, sort_keys=True))

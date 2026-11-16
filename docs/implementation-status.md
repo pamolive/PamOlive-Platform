@@ -753,3 +753,52 @@ installation or UI execution. A bounded public GPG diagnostic was independently
 reviewed; it leaves all signature and installation guards unchanged. No successful
 browser execution, complete P1-G, qualified image promotion or NAS deployment
 is inferred. The new Linux CI is the authority for runtime outcomes.
+
+### Corpus restore V7 / Governance / confiance PAM en qualification
+
+Le candidat ajoute un corpus synthétique couvrant des chemins absents du reçu
+f66 : historique V7 migré sans reclassement, registre et autorisations personnelles
+PAM vérifiés avec ancrages publics hors sauvegarde, trois preuves Governance.
+Les compteurs proviennent des vérificateurs et ne réarment pas la confiance live.
+Le reçu public fermé n'est produit qu'après les nettoyages confirmés.
+
+Validation d'intégration :10 contrats du nouveau corpus,25 tests de drainage
+conservés et11 tests du rapport public passent, sans IO externe ni skip.
+Les doublures de trois anciens tests CI ont été mises à jour pour fournir les
+nouveaux ancrages/compteurs requis ; leurs assertions de refus sont conservées.
+La revue a détecté un guillemet manquant du workflow avant publication ; la R2
+le corrige et le teste. Les quatre tests dédiés PostgreSQL du corpus ont
+ensuite passé ; la sauvegarde/restauration complète du corpus étendu reste
+à recevoir, sans transfert des anciens succès.
+
+### Réception PostgreSQL et intégration du snapshot image
+
+Le run [43870177687](https://github.com/pamolive/PamOlive-Platform/actions/runs/43870177687)
+a exécuté les quatre tests dédiés du corpus sur PostgreSQL :4 tests,11.871s,
+aucun skip. Le job image avait échoué avant dump/restore ; aucun reçu de
+restauration du corpus étendu n'est transféré de ce run.
+
+La branche restore intègre maintenant le correctif runtime75813d8 comparant
+deux vues image immuables, plutôt qu'une image et les montages live du worker.
+Les octets des helpers et tests restore demeurent identiques au candidatbae ;
+les seuils, ancrages, vérificateurs et nettoyages restent exacts. La restauration complète du corpus étendu est maintenant reçue au run5ee62e4,
+sous réserve de la réception indépendante du rapport et de ses liens image/source.
+Les scans stricts restent bloquants ; aucun réarmement PAM live ni accès NAS.
+
+### Restauration étendue réelle et correction du répertoire de preuve
+
+Le [run5ee62e4](https://github.com/pamolive/PamOlive-Platform/actions/runs/43891400303)
+a réussi le dump/restore en12.958s :106modèles,82preuves signées,3reçus de
+provenance,1observationlegacy/1évaluationV7,3preuvesGovernance,1registrePAM
+et2autorisationspersonnelles,1capture scellée et1preuvecertificat. Les flags
+de refus des mauvaises clés/mots de passe et d'isolation/nettoyage sont vrais ;
+safe_to_serve restefalse et le PAM live exige un checkpoint courant indépendant.
+
+Le job a ensuite refusé au mkdir exclusif de l'inventaire/SBOM : le nouveau
+rapport restore avait créé son répertoire réservé. Cette intégration de chemin
+était incorrecte. Le reçu va désormais dans un répertoire restore-public dédié,
+créé frais en0700 et publié par son seul fichier JSON nommé. Le mkdir exclusif
+du scan, les vérificateurs, les helpers restore et leurs plafonds restent exacts.
+La reproduction réelle et un test du cycle des deux répertoires sont conservés.
+Ce succès restore ne vaut pas succès SBOM/scan ou qualification globale ; leur
+rejeu du candidat corrigé reste requis. Aucun accès NAS ni reprise de production.

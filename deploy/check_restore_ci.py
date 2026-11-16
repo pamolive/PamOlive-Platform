@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -26,6 +27,80 @@ def write_private(path, content):
         stream.write(content)
 
 
+PUBLIC_TRUST_ENV = {
+    "PAM_TRUST_INSTALLATION_ID",
+    "PAM_TRUST_RP_ID",
+    "PAM_TRUST_ORIGIN",
+    "PAM_TRUST_COMMISSIONING_KEYS",
+    "PAM_TRUST_CHECKPOINT_KEYS",
+}
+
+
+def public_trust_environment(raw):
+    """Finite synthetic public anchors captured before backup, never from the archive."""
+    if len(raw) > 16384:
+        raise RuntimeError("Invalid synthetic public trust configuration.")
+
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise RuntimeError("Duplicate synthetic public trust field.")
+            result[key] = value
+        return result
+
+    value = json.loads(raw, object_pairs_hook=unique)
+    if (
+        type(value) is not dict
+        or set(value) != PUBLIC_TRUST_ENV
+        or any(
+            type(item) is not str or len(item) > 8192 or any(c in item for c in "'\r\n\\")
+            for item in value.values()
+        )
+        or value["PAM_TRUST_INSTALLATION_ID"] != "synthetic-isolated-installation"
+        or value["PAM_TRUST_RP_ID"] != "pam.example.test"
+        or value["PAM_TRUST_ORIGIN"] != "https://pam.example.test"
+    ):
+        raise RuntimeError("Invalid synthetic public trust configuration.")
+    organizations = None
+    for name, key_id in (
+        ("PAM_TRUST_COMMISSIONING_KEYS", "commissioner"),
+        ("PAM_TRUST_CHECKPOINT_KEYS", "witness"),
+    ):
+        keys = json.loads(value[name], object_pairs_hook=unique)
+        if (
+            type(keys) is not dict
+            or len(keys) != 1
+            or any(
+                not re.fullmatch(r"[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}", org)
+                or type(mapping) is not dict
+                or set(mapping) != {key_id}
+                or type(mapping[key_id]) is not str
+                or not re.fullmatch(r"[A-Za-z0-9_-]{43}", mapping[key_id])
+                for org, mapping in keys.items()
+            )
+            or organizations is not None
+            and set(keys) != organizations
+        ):
+            raise RuntimeError("Invalid synthetic public trust key mapping.")
+        organizations = set(keys)
+    return value
+
+
+def require_extended_corpus(report):
+    for name, minimum, exact in (
+        ("pam_trust_registries_verified", 1, True),
+        ("pam_personal_authorizations_verified", 2, False),
+        ("governance_exception_proofs_checked", 3, True),
+        ("legacy_events_checked", 1, True),
+        ("legacy_v7_evaluations_checked", 1, True),
+        ("provenance_receipts_checked", 1, False),
+    ):
+        observed = report.get(name)
+        if type(observed) is not int or (observed != minimum if exact else observed < minimum):
+            raise RuntimeError("The synthetic corpus lacks required verified evidence.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--docker", default="docker")
@@ -36,13 +111,16 @@ def main():
         type=Path,
         default=Path(__file__).with_name("compose.active-active-check.yml"),
     )
+    parser.add_argument("--public-report", type=Path)
     args = parser.parse_args()
     directory = Path(tempfile.mkdtemp(prefix="pamolive-populated-restore-"))
     environment_file, archive = (directory / name for name in ("application.env", "source.dump"))
+    environment_files = [environment_file]
     admin = RestoreQualification(
         SimpleNamespace(docker=args.docker, postgres_container=args.postgres_container)
     )
     created, source_oid, owner_oid = False, None, None
+    source_removed = False
     source_name = "test_pamolive_restore_source"
 
     def command(arguments, *, content=None, environment=None):
@@ -112,23 +190,19 @@ def main():
             )
             return command(prefix + ["checker"] + arguments, environment=process_env)
 
-        application(
-            [
-                "-c",
-                "import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings'); "
-                "import django; django.setup(); from django.db import connection; "
-                "assert connection.settings_dict['NAME']=='test_pamolive_restore_source'; "
-                "cursor=connection.cursor(); cursor.execute('SELECT current_database()'); "
-                "assert cursor.fetchone()[0]=='test_pamolive_restore_source'; "
-                "from django.core.management import call_command; "
-                "call_command('migrate',interactive=False)",
-            ]
-        )
         # Use -c/runpy so /app remains on sys.path in an older matching image.
-        application(
+        prepared = application(
             ["-c", "import runpy; runpy.run_path('/qualification.py',run_name='__main__')"],
             Path(__file__).with_name("prepare_restore_fixture.py"),
         )
+        source_env.update(public_trust_environment(prepared))
+        # Fresh host-side env companion; no anchor is learned from the restored DB.
+        anchored_environment = directory / "application-with-public-trust.env"
+        write_private(
+            anchored_environment, "".join(f"{key}='{value}'\n" for key, value in source_env.items())
+        )
+        environment_files.append(anchored_environment)
+        environment_file = anchored_environment
         check = RestoreQualification(
             SimpleNamespace(
                 docker=args.docker,
@@ -167,6 +241,7 @@ def main():
         if failed:
             print(json.dumps(report, sort_keys=True))
             raise SystemExit(1)
+        require_extended_corpus(report)
         if report.get("certificate_possession_proofs_checked") != 1:
             raise RuntimeError("Missing or invalid restored certificate possession proof.")
         if not injected:
@@ -189,7 +264,8 @@ def main():
         )
     except Exception as error:
         report = {
-            "result": "failed", "phase": "populated restore qualification",
+            "result": "failed",
+            "phase": "populated restore qualification",
             "error": type(error).__name__,
         }
         print(json.dumps(report, sort_keys=True))
@@ -209,17 +285,35 @@ def main():
                 )
                 if source_oid is None or identity != f"{source_oid}:{owner_oid}" or sessions:
                     raise RuntimeError("Synthetic source retained for inspection.")
-                admin.sql(f"DROP DATABASE {identifier(source_name)};")
-            if environment_file.exists():
-                environment_file.unlink()
+                if admin.sql(f"DROP DATABASE {identifier(source_name)};") != "":
+                    raise RuntimeError("Synthetic source DROP acknowledgement is unknown.")
+                source_removed = True
+            for owned_environment in environment_files:
+                if owned_environment.exists():
+                    owned_environment.unlink()
         except Exception:
-            print(json.dumps({
-                "result": "failed", "phase": "synthetic source cleanup",
-                "error": "RestoreCleanupFailure", "cleanup_code": "source_cleanup_failed",
-            }, sort_keys=True))
+            print(
+                json.dumps(
+                    {
+                        "result": "failed",
+                        "phase": "synthetic source cleanup",
+                        "error": "RestoreCleanupFailure",
+                        "cleanup_code": "source_cleanup_failed",
+                    },
+                    sort_keys=True,
+                )
+            )
             if not primary_pending:
                 raise SystemExit(1) from None
+    if not source_removed:
+        raise RuntimeError("Synthetic source cleanup was not confirmed.")
+    report["synthetic_source_removed"] = source_removed
     write_private(directory / "result" / "report.json", json.dumps(report, sort_keys=True))
+    if args.public_report is not None:
+        # Root-owned helper integrates separately; called only after ALL cleanup succeeded.
+        from deploy.restore_public_report import write_public_restore_report
+
+        write_public_restore_report(report, args.public_report)
     print(json.dumps(report, sort_keys=True))
 
 
