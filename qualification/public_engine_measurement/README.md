@@ -50,10 +50,40 @@ inspection is admitted. Environment, filters, caps and nested H1 are unchanged.
 36 local pure tests and six independent countercases pass; a new real trial
 remains necessary. No operating profile or image/PGDATA authority is learned.
 
+## Env hardlink policy and ROOT packet V3
+
+The original env increment used commit5c16fa8973b56a188a039f71d8fc797a622a1935; ROOT3 derives from1e66df21716d9e42e0d466e0f768c700dd508b40.
+The exact env executable is `/usr/lib/cargo/bin/coreutils/env`; there is no
+PATH search, resolve, alternative path or fallback. Only this env role accepts
+an integer link count greater than one. Sudo, the fixed Python interpreter and
+ctr retain the one-link requirement. Every tool record now includes `nlink`
+in addition to its original seven fields. The full record, including that count,
+is compared before and after the relevant process; a changed count leaves
+UNKNOWN and cannot permit the later pull or PG phase.
+
+Root-owned regular type, nonwritable group/other mode, controlled parents,
+held-FD/path identity, bounded hash reads, environment and H1 checks remain.
+The nested child contract is now `public-containerd-roots/3`. Current packet
+and refusal validation accept only V3 and require all eight fields, including
+integer `nlink == 1` for ctr. V1/V2 packets cannot be upgraded or admitted by
+adding a field. Historical V1 remains available at the explicit base Git blob
+`5c16fa8973b56a188a039f71d8fc797a622a1935:qualification/public_engine_measurement/containerd_public.py`
+for separate historical verification; the current code has no V1/V2 fallback.
+
+The hardlink design relies on the existing trusted runner/root filesystem TCB.
+A writable alias directory does not grant write permission to a root-owned,
+nonwritable inode. POSIX ACL mask permissions are reflected in the mode group
+bits; this is not a claim about arbitrary filesystems, privileged root/mount
+replacement, an already open writable FD or transient changes between samples.
+Package source evidence does not establish this future VM's actual file type,
+link count, hash, ACL or ownership. The new tests use process and stat doubles.
+A real bounded public read is still required, and its receipt remains DATA
+with authority/profile acceptance/operational GO false.
+
 ## Closed root read
 
 Before sudo, the parent measures the actual regular root-owned nonwritable
-`/usr/lib/cargo/bin/sudo`, `/usr/bin/env`, `/usr/bin/python3.14`, then checks them again
+`/usr/lib/cargo/bin/sudo`, `/usr/lib/cargo/bin/coreutils/env`, `/usr/bin/python3.14`, then checks them again
 afterwards. The fixed 3.14 path matches the observed Ubuntu 26.04 job image
 and its [documented system Python](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2604-Readme.md);
 a missing or incompatible executable refuses the observation.
@@ -69,7 +99,7 @@ program requires exactly PATH, HOME=/nonexistent, LANG=C, LC_ALL=C.
 The root child measures `/usr/bin/ctr` before, between and after these calls:
 
 1. `ctr --version`, the local global flag, with a 3s work limit and 512B/1KiB caps.
-2. Only for the examined CLI declarations 2.2.3/v2.2.3 or 2.4.2/v2.4.2, the closed command
+2. Only for the eight exact package/version pairs in ADR029, the closed command
    `ctr --address <allowed> --namespace moby --connect-timeout 3s --timeout 5s plugins ls --detailed`
    with three fixed Type/ID filters, 8s work limit and 32KiB/4KiB caps.
 
@@ -148,3 +178,18 @@ runner binary build or an observed result. Missing supported tools, unexpected
 endpoint/path/version, insufficient privilege or unknown lifecycle remain a
 closed receipt requiring Root review. The original d47 DATA did not measure any
 of these missing fields. No previous success or build attestation is transferred.
+
+## ROOT3 exact CLI identity (ADR029)
+
+Current packets replace cli_version with cli_identity={package,version}; both
+strings retain their exact spelling. Reviewed pairs are upstream module /v2
+at2.2.3/2.4.2 and Docker packaging labels containerd/containerd.io at2.4.2 only,
+each plain or v-prefixed. The package labels are not normalized into aliases.
+ROOT1/ROOT2 and old cli_version keys refuse current admission. An unreviewed
+numeric version may appear only in typed refusal DATA; Plugins still refuses.
+
+The real1e66 run received another REDACTED package with numeric2.4.2, prefixv and
+no suffix. Its full package remains UNKNOWN; this source proposal does not name
+it. A future exact stdout/H1 match is required. Primary package mechanisms and
+the finite policy are documented in docs/adr-029-public-containerd-cli-identity.md.
+Source compatibility adds no operational profile, authority or GO.

@@ -52,8 +52,8 @@ HOST = {
     "RestartPolicy": {"Name": "no", "MaximumRetryCount": 0},
     "LogConfig": {"Type": "json-file", "Config": {"max-size": "16k", "max-file": "1"}},
     "Ulimits": [
-        {"Name": "nofile", "Hard": 64, "Soft": 64},
         {"Name": "core", "Hard": 0, "Soft": 0},
+        {"Name": "nofile", "Hard": 64, "Soft": 64},
     ],
 }
 

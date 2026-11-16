@@ -41,6 +41,7 @@ def tool(path):
         "uid": 0,
         "gid": 0,
         "mode": 0o755,
+        "nlink": 1,
     }
 
 
@@ -124,7 +125,10 @@ class PublicTests(unittest.TestCase):
             ["type==" + name + ",id==" + row[0] for name, row in p.TYPES.items()],
         )
         self.assertNotIn("version", calls[1][0])
-        self.assertEqual(packet["cli_version"], "v2.2.3")
+        self.assertEqual(
+            packet["cli_identity"],
+            {"package": "github.com/containerd/containerd/v2", "version": "v2.2.3"},
+        )
         for argv, options in calls:
             self.assertEqual(options["env"], p.ENV)
             self.assertEqual(options["env"]["CONTAINERD_SUPPRESS_DEPRECATION_WARNINGS"], "true")
@@ -231,11 +235,18 @@ class PublicTests(unittest.TestCase):
 
     def test_refusal_diagnostic_keeps_cli_measurement_not_other_fields(self):
         packet, _ = good_packet()
-        packet.update(status="CLI_UNREVIEWED", cli_version="v2.1.5", private="SYNTHETIC_PRIVATE")
-        packet["exports"] = {"private": "SYNTHETIC_PRIVATE"}
+        packet.update(
+            status="CLI_UNREVIEWED",
+            cli_identity={"package": "github.com/containerd/containerd/v2", "version": "v2.1.5"},
+            private="SYNTHETIC_PRIVATE",
+        )
+        packet.update(ctr_process=None, exports=None, filesystems=None)
         projected = p.refusal_diagnostic(packet)
         self.assertEqual(projected["ctr_tool"], tool("/usr/bin/ctr"))
-        self.assertEqual(projected["cli_version"], "v2.1.5")
+        self.assertEqual(
+            projected["cli_identity"],
+            {"package": "github.com/containerd/containerd/v2", "version": "v2.1.5"},
+        )
         self.assertNotIn("SYNTHETIC_PRIVATE", json.dumps(projected))
         self.assertNotIn("exports", projected)
 
@@ -299,7 +310,7 @@ class PublicTests(unittest.TestCase):
         self.assertEqual(timings, [(2, 25), (2, 0)])
         self.assertEqual(
             json.loads(output.getvalue()),
-            {"schema": "public-containerd-roots/1", "status": "UNKNOWN"},
+            {"schema": "public-containerd-roots/3", "status": "UNKNOWN"},
         )
         self.assertNotIn(b"PRIVATE", output.getvalue())
 
@@ -416,7 +427,8 @@ class ParentTests(unittest.TestCase):
             self.assertTrue((self.work / "root-read-intent.json").exists())
             self.assertFalse((self.work / "root-read-result.json").exists())
             self.assertEqual(
-                argv[:5], ["/usr/lib/cargo/bin/sudo", "-n", "--", "/usr/bin/env", "-i"]
+                argv[:5],
+                ["/usr/lib/cargo/bin/sudo", "-n", "--", "/usr/lib/cargo/bin/coreutils/env", "-i"],
             )
             self.assertEqual(set(options["env"]), {"PATH", "HOME", "LANG", "LC_ALL"})
             self.assertEqual(argv[-1], "/run/containerd/containerd.sock")

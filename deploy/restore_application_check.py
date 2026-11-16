@@ -659,6 +659,7 @@ def main():
     parser.add_argument("--archive-sha256", default="")
     args = parser.parse_args()
     phase = "configuration"
+    connections, failure, snapshot_complete = None, None, False
     try:
         if args.action in ("verify", "connection"):
             os.environ["DATABASE_URL"] = restore_url(
@@ -673,6 +674,7 @@ def main():
             sys.path.insert(0, "/app")
         os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
         import django
+        from django.db import connections
 
         django.setup()
         if args.action == "key-probe":
@@ -683,8 +685,8 @@ def main():
             phase = "offline application verification"
             if args.action == "snapshot-session":
                 snapshot_session()
-                return
-            if args.action == "connection":
+                snapshot_complete = True
+            elif args.action == "connection":
                 result = {"scope_verified": True}
             elif args.action == "manifest":
                 result = {"format": FORMAT, "fingerprints": model_fingerprints()}
@@ -698,11 +700,21 @@ def main():
                     probe=bundle.get("key_probe"),
                     archive_sha256=args.archive_sha256,
                 )
-        print(json.dumps(result, sort_keys=True))
     except Exception as error:
-        print(json.dumps({"result": "failed", "phase": phase, "error": type(error).__name__,
-                          "code": failure_code(error)}))
+        failure = error
+    finally:
+        if connections is not None:
+            try:
+                connections.close_all()
+            except Exception as error:
+                if failure is None:
+                    failure = error
+    if failure is not None:
+        print(json.dumps({"result": "failed", "phase": phase, "error": type(failure).__name__,
+                          "code": failure_code(failure)}))
         raise SystemExit(1) from None
+    if not snapshot_complete:
+        print(json.dumps(result, sort_keys=True))
 
 
 if __name__ == "__main__":

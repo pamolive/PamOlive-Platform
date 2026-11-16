@@ -135,6 +135,63 @@ class Queries(unittest.TestCase):
             c.collect_prerequisites(self.work, forged, None, b"")
             self.assertFalse(private.call_args.kwargs["ready"])
 
+    def test_root_v3_field_model_and_env_nlink_drift_in_actual_two_query_wrapper(self):
+        public = c.public_module()
+        model = {
+            "path": "/usr/bin/ctr",
+            "bytes": 3,
+            "sha256": "a" * 64,
+            "file_type": "regular",
+            "uid": 0,
+            "gid": 0,
+            "mode": 0o755,
+            "nlink": 1,
+        }
+        self.assertEqual(public.validate_tool(model), model)
+        self.assertEqual(len(public.TOOL_KEYS), 8)
+        with self.assertRaises(ValueError):
+            public.refusal_diagnostic({"schema": "public-containerd-roots/1", "status": "UNKNOWN"})
+        for count in (True, 0, 2):
+            with self.subTest(count=count), self.assertRaises(ValueError):
+                public.validate_tool(model | {"nlink": count})
+        old_model = dict(model)
+        del old_model["nlink"]
+        with self.assertRaises(ValueError):
+            public.validate_tool(old_model)
+        report = c.collect_two(self.work, self.runner([]), {"sha256": "x"})
+        measured = []
+
+        def measure(path):
+            measured.append(path)
+            count = 2 if len(measured) <= 3 else 3
+            return model | {"path": path, "nlink": count if path == public.ENV_TOOL else 1}
+
+        roots = []
+
+        def runner(argv, **options):
+            roots.append(argv)
+            self.assertEqual(
+                argv[:5], ["/usr/lib/cargo/bin/sudo", "-n", "--", public.ENV_TOOL, "-i"]
+            )
+            self.assertEqual(set(options["env"]), {"PATH", "HOME", "LANG", "LC_ALL"})
+            options["on_spawn"](234)
+            return Result({"schema": "public-containerd-roots/3", "status": "COMPLETE"})
+
+        c.collect_two_prerequisites(
+            self.work,
+            report,
+            runner,
+            (HERE / "engine/bounded_io.py").read_bytes(),
+            measure=measure,
+        )
+        self.assertEqual(len(roots), 1)
+        row = report["containerd_prerequisites"]
+        self.assertEqual(row["tools"]["env"]["nlink"], 2)
+        self.assertEqual(row["status"], "UNKNOWN")
+        self.assertFalse(row["tools_unchanged"])
+        self.assertIsNone(row["data"])
+        self.assertEqual(row["failure"], {"stage": "reader_tools_after", "code": "TOOL_CHANGED"})
+
     def test_pull_exact_once_closed_env_and_unknown_gate(self):
         self.work.mkdir()
         verified, calls = [], []
@@ -189,7 +246,7 @@ class Graph(unittest.TestCase):
             {"GITHUB_REF": "refs/heads/main"},
             {"GITHUB_REF": q.PUSH_REF + "-suffix"},
             {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main"},
-            {"GITHUB_REF": "refs/tags/agent/ci-public-observer-diagnostics-ecfe"},
+            {"GITHUB_REF": "refs/tags/agent/public-env-root-helper"},
         ):
             with self.subTest(delta=delta), self.assertRaises(ValueError):
                 q.event_guard(valid | delta)
@@ -367,7 +424,7 @@ class SourceContracts(unittest.TestCase):
         self.assertEqual(len(buffers), 15)
         self.assertEqual(
             q.sha(buffers["engine/containerd_public.py"]),
-            "556c24b9265b291a155ea15212f74853727f768795b6ffffc99f5a07e23e1e21",
+            "fb6b6723a073443ea6465800452cad906d5f064cce676029ffc5417670c30247",
         )
         with self.assertRaises(ValueError):
             q.capture("0" * 64)
@@ -376,8 +433,7 @@ class SourceContracts(unittest.TestCase):
         workflow = read_workflow()
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn(
-            "on:\n  push:\n    branches: [agent/ci-public-observer-diagnostics-ecfe]\n"
-            "  workflow_dispatch:",
+            "on:\n  push:\n    branches: [agent/public-env-root-helper]\n  workflow_dispatch:",
             workflow,
         )
         self.assertIn("github.ref == '" + q.PUSH_REF + "'", workflow)

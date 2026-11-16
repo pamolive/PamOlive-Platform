@@ -204,7 +204,7 @@ jobs:
           tests.test_governance_exception_restore tests.test_module_activation_authority
           tests.test_observe_story tests.test_observe_concurrency tests.test_synology_preparation
           tests.test_jobs_database_recovery tests.test_jobs_security_recovery
-          tests.test_restore_diagnostics
+          tests.test_restore_diagnostics tests.test_restore tests.test_restore_session_drain
           --noinput
       - name: Verify real P0 trust ceremonies in the synthetic HA fixture
         env:
@@ -392,7 +392,7 @@ jobs:
             RUNNER_TEMP="$RUNNER_TEMP" GITHUB_RUN_ID='${{ github.run_id }}' \
             GITHUB_RUN_ATTEMPT='${{ github.run_attempt }}' \
             /usr/bin/python3 -I -S -B "$source/owner.py" run \
-            --assets-sha 44f70509317652dd1d042aedab0f4281cbd15037a707691e84de64f027f9a81f --work "$work"
+            --assets-sha faaed14a1015f2cf3fba7959ffcf48f50d4a29d4f1089236d73fb5719e63eb9d --work "$work"
       - name: Retain only the closed public PG identity DATA report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -409,7 +409,7 @@ jobs:
           set -euo pipefail
           umask 077
           source="$GITHUB_WORKSPACE/qualification/public_engine_measurement"
-          printf '%s  %s\n' b07d0bc3b2f110f5ef0ba584fa5589cf2ae970dce918dcd97420f050fa2a3e90 "$source/collector.py" | sha256sum --check --status
+          printf '%s  %s\n' 98a8c2438f969468b949a6529a8ff526dc377f853b1cbd41c53692ab746533d8 "$source/collector.py" | sha256sum --check --status
           work="$RUNNER_TEMP/public-engine-${{ github.run_id }}-${{ github.run_attempt }}"
           test ! -e "$work"
           env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C \

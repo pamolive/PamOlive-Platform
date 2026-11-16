@@ -127,7 +127,7 @@ class ParentDiagnosticTests(unittest.TestCase):
         cp = c.public_module()
 
         def measure(path):
-            if path == "/usr/bin/env":
+            if path == "/usr/lib/cargo/bin/coreutils/env":
                 raise cp.ToolRefusal("NOT_REGULAR")
             return tool(path)
 

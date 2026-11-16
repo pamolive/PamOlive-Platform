@@ -22,18 +22,25 @@ def audit(event, _args):
 
 def main():
     sys.addaudithook(audit)
+    import test_cli_identity
     import test_collector
     import test_containerd_public
+    import test_env_contract
     import test_runtime_compatibility
+    import test_version_format
 
     suite = unittest.TestSuite(
         unittest.defaultTestLoader.loadTestsFromTestCase(cls)
         for cls in (
+            test_cli_identity.CliIdentityTests,
             test_collector.CollectorTests,
             test_containerd_public.PublicTests,
             test_containerd_public.ParentTests,
             test_runtime_compatibility.ToolCompatibilityTests,
             test_runtime_compatibility.ParentDiagnosticTests,
+            test_env_contract.EnvToolTests,
+            test_env_contract.ParentEnvTests,
+            test_version_format.VersionFormatTests,
         )
     )
     result = unittest.TextTestRunner(stream=sys.stdout, verbosity=2).run(suite)
@@ -50,7 +57,7 @@ def main():
     print(json.dumps(row))
     return (
         0
-        if result.wasSuccessful() and result.testsRun == 36 and not result.skipped and not ATTEMPTS
+        if result.wasSuccessful() and result.testsRun == 65 and not result.skipped and not ATTEMPTS
         else 1
     )
 

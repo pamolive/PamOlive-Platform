@@ -58,7 +58,8 @@ STAT_KEYS = {
     "available_blocks",
     "available_bytes",
 }
-TOOL_KEYS = {"path", "bytes", "sha256", "file_type", "uid", "gid", "mode"}
+ENV_TOOL = "/usr/lib/cargo/bin/coreutils/env"
+TOOL_KEYS = {"path", "bytes", "sha256", "file_type", "uid", "gid", "mode", "nlink"}
 
 
 def require(value):
@@ -120,8 +121,7 @@ def tool_record(path):
     """Measure explicit regular executables, never sudo's alternatives symlinks."""
     path = Path(path)
     tool_need(
-        str(path)
-        in {"/usr/bin/ctr", "/usr/lib/cargo/bin/sudo", "/usr/bin/env", "/usr/bin/python3.14"},
+        str(path) in {"/usr/bin/ctr", "/usr/lib/cargo/bin/sudo", ENV_TOOL, "/usr/bin/python3.14"},
         "PATH",
     )
     for parent in path.parents:
@@ -134,7 +134,11 @@ def tool_record(path):
         )
     before = tool_stat(path)
     tool_need(stat.S_ISREG(before.st_mode), "NOT_REGULAR")
-    tool_need(before.st_nlink == 1, "LINK_COUNT")
+    tool_need(
+        type(before.st_nlink) is int
+        and (before.st_nlink >= 1 if str(path) == ENV_TOOL else before.st_nlink == 1),
+        "LINK_COUNT",
+    )
     tool_need(before.st_uid == 0, "OWNER")
     tool_need(not before.st_mode & 0o022, "WRITABLE")
     tool_need(0 < before.st_size <= 128 * 1024**2, "SIZE")
@@ -162,6 +166,7 @@ def tool_record(path):
             "uid": before.st_uid,
             "gid": before.st_gid,
             "mode": stat.S_IMODE(before.st_mode),
+            "nlink": before.st_nlink,
         }
     finally:
         os.close(fd)
@@ -340,15 +345,103 @@ def public_facts(result):
     }
 
 
+def version_format_diagnostic(raw):
+    """Public shape only; never a parser used to authorize a CLI version."""
+    result = {"schema": "ctr-version-format-DATA/1", "form": "redacted"}
+    require(type(raw) is bytes)
+    if len(raw) > 512:
+        result["form"] = "over_limit"
+    elif not raw.endswith(b"\n") or raw.count(b"\n") != 1:
+        result["form"] = "not_single_terminal_lf"
+    elif any(byte < 32 or byte > 126 for byte in raw[:-1]):
+        result["form"] = "non_printable_ascii"
+    else:
+        match = re.fullmatch(
+            rb"ctr ([A-Za-z0-9./_-]{1,80}) (v?)([0-9]{1,2})\."
+            rb"([0-9]{1,2})\.([0-9]{1,3})([A-Za-z0-9+._-]{0,80})\n",
+            raw,
+        )
+        if match is not None:
+            package = {
+                b"github.com/containerd/containerd/v2": "module_v2",
+                b"github.com/containerd/containerd": "module_legacy",
+            }.get(match[1], "other_redacted")
+            suffix = {b"": "none", b"+unknown": "plus_unknown"}.get(match[6], "other_redacted")
+            result.update(
+                form="version_line",
+                package=package,
+                numeric_triplet=[int(match[i]) for i in (3, 4, 5)],
+                prefix_v=match[2] == b"v",
+                suffix_kind=suffix,
+            )
+    return result
+
+
+def validate_version_format(value):
+    require(type(value) is dict and value.get("schema") == "ctr-version-format-DATA/1")
+    form = value.get("form")
+    require(type(form) is str)
+    if form in {"redacted", "over_limit", "not_single_terminal_lf", "non_printable_ascii"}:
+        require(set(value) == {"schema", "form"})
+        return dict(value)
+    require(form == "version_line")
+    require(
+        set(value) == {"schema", "form", "package", "numeric_triplet", "prefix_v", "suffix_kind"}
+    )
+    require(type(value["package"]) is str)
+    require(value["package"] in {"module_v2", "module_legacy", "other_redacted"})
+    require(type(value["suffix_kind"]) is str)
+    require(value["suffix_kind"] in {"none", "plus_unknown", "other_redacted"})
+    require(type(value["prefix_v"]) is bool)
+    numbers = value["numeric_triplet"]
+    require(type(numbers) is list and len(numbers) == 3)
+    require(
+        all(
+            type(n) is int and 0 <= n <= bound
+            for n, bound in zip(numbers, (99, 99, 999), strict=True)
+        )
+    )
+    return dict(value, numeric_triplet=list(numbers))
+
+
+# These exact package/version pairs were reviewed from primary source, never learned from DATA.
+CLI_PAIRS = frozenset(
+    (package, prefix + version)
+    for package, versions in (
+        ("github.com/containerd/containerd/v2", ("2.2.3", "2.4.2")),
+        ("containerd", ("2.4.2",)),
+        ("containerd.io", ("2.4.2",)),
+    )
+    for version in versions
+    for prefix in ("", "v")
+)
+CLI_LINE = (
+    rb"ctr (github\.com/containerd/containerd/v2|containerd|containerd\.io) "
+    rb"(v?[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,3})\n"
+)
+
+
+def validate_cli_identity(value, *, reviewed=True):
+    require(type(value) is dict and set(value) == {"package", "version"})
+    require(type(value["package"]) is str and type(value["version"]) is str)
+    require(
+        value["package"] in {"github.com/containerd/containerd/v2", "containerd", "containerd.io"}
+        and re.fullmatch(r"v?[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,3}", value["version"])
+    )
+    if reviewed:
+        require((value["package"], value["version"]) in CLI_PAIRS)
+    return dict(value)
+
+
 def inspect_roots(address, runner, measure=tool_record, statter=capacity):
     require(address in ENDPOINTS)
     packet = {
-        "schema": "public-containerd-roots/1",
+        "schema": "public-containerd-roots/3",
         "status": "UNKNOWN",
         "ctr_process": None,
         "tool": None,
         "tool_unchanged": False,
-        "cli_version": None,
+        "cli_identity": None,
         "version_process": None,
         "exports": None,
         "filesystems": None,
@@ -373,15 +466,16 @@ def inspect_roots(address, runner, measure=tool_record, statter=capacity):
         if not version.ok or version.stderr != b"":
             packet["status"] = "QUERY_REFUSED"
             return packet
-        match = re.fullmatch(
-            rb"ctr github\.com/containerd/containerd/v2 (v?[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,3})\n",
-            version.stdout,
-        )
+        match = re.fullmatch(CLI_LINE, version.stdout)
         if match is None:
             packet["status"] = "CLI_UNREVIEWED"
+            packet["version_format"] = version_format_diagnostic(version.stdout)
             return packet
-        packet["cli_version"] = match[1].decode("ascii")
-        if packet["cli_version"] not in {"v2.2.3", "2.2.3", "v2.4.2", "2.4.2"}:
+        packet["cli_identity"] = {
+            "package": match[1].decode("ascii"),
+            "version": match[2].decode("ascii"),
+        }
+        if (packet["cli_identity"]["package"], packet["cli_identity"]["version"]) not in CLI_PAIRS:
             packet["status"] = "CLI_UNREVIEWED"
             return packet
         result = runner(
@@ -423,6 +517,8 @@ def validate_tool(tool):
         and set(tool) == TOOL_KEYS
         and tool["path"] == "/usr/bin/ctr"
         and tool["file_type"] == "regular"
+        and type(tool["nlink"]) is int
+        and tool["nlink"] == 1
         and type(tool["uid"]) is int
         and tool["uid"] == 0
         and type(tool["gid"]) is int
@@ -439,7 +535,8 @@ def validate_tool(tool):
 
 
 def refusal_diagnostic(value):
-    require(type(value) is dict and value.get("schema") == "public-containerd-roots/1")
+    require(type(value) is dict and "cli_version" not in value)
+    require(type(value) is dict and value.get("schema") == "public-containerd-roots/3")
     status = value.get("status")
     require(
         status
@@ -452,13 +549,59 @@ def refusal_diagnostic(value):
         }
     )
     result = {"status": status}
+    if "version_format" in value or value.get("cli_identity") is not None:
+        # Every published version observation needs the same closed pre-query
+        # context, including typed-but-unreviewed identities, not only format DATA.
+        require(status == "CLI_UNREVIEWED")
+        if "version_format" in value:
+            require(value.get("cli_identity") is None)
+        require(
+            all(
+                value.get(key) is False
+                for key in ("profile_accepted", "authority", "operational_GO")
+            )
+        )
+        require(all(value.get(key) is None for key in ("ctr_process", "exports", "filesystems")))
+        require(value.get("tool_unchanged") is True)
+        validate_tool(value.get("tool"))
+        facts = value.get("version_process")
+        require(
+            type(facts) is dict
+            and set(facts)
+            == {
+                "spawn_attempted",
+                "pid",
+                "returncode",
+                "reason",
+                "exception_type",
+                "killed_owned_child",
+                "owned_child_reaped",
+                "drains_complete",
+                "cleanup_exception_type",
+            }
+        )
+        require(
+            facts["spawn_attempted"] is True
+            and type(facts["pid"]) is int
+            and 0 < facts["pid"] < 2**31
+            and type(facts["returncode"]) is int
+            and facts["returncode"] == 0
+            and facts["reason"] is None
+            and facts["exception_type"] is None
+            and facts["killed_owned_child"] is False
+            and facts["owned_child_reaped"] is True
+            and facts["drains_complete"] is True
+            and facts["cleanup_exception_type"] is None
+        )
+        if "version_format" in value:
+            result["version_format"] = validate_version_format(value["version_format"])
     if value.get("tool") is not None:
         result["ctr_tool"] = validate_tool(value["tool"])
     if type(value.get("tool_unchanged")) is bool:
         result["ctr_tool_unchanged"] = value["tool_unchanged"]
-    cli = value.get("cli_version")
-    if type(cli) is str and re.fullmatch(r"v?[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,3}", cli):
-        result["cli_version"] = cli
+    cli = value.get("cli_identity")
+    if cli is not None:
+        result["cli_identity"] = validate_cli_identity(cli, reviewed=False)
     for name in ("version_process", "ctr_process"):
         facts = value.get(name)
         if type(facts) is not dict:
@@ -490,7 +633,7 @@ def validate_packet(value):
             "ctr_process",
             "tool",
             "tool_unchanged",
-            "cli_version",
+            "cli_identity",
             "version_process",
             "exports",
             "filesystems",
@@ -499,7 +642,7 @@ def validate_packet(value):
             "operational_GO",
         }
     )
-    require(value["schema"] == "public-containerd-roots/1")
+    require(value["schema"] == "public-containerd-roots/3")
     require(
         value["status"]
         in {
@@ -514,7 +657,7 @@ def validate_packet(value):
     require(all(value[key] is False for key in ("profile_accepted", "authority", "operational_GO")))
     # Refused/unknown child packets are not published verbatim: parent retains only status/H1.
     require(value["status"] == "COMPLETE" and value["tool_unchanged"] is True)
-    require(value["cli_version"] in {"v2.2.3", "2.2.3", "v2.4.2", "2.4.2"})
+    validate_cli_identity(value["cli_identity"])
     validate_tool(value["tool"])
     for facts in (value["version_process"], value["ctr_process"]):
         require(
@@ -587,7 +730,7 @@ def root_main():
     except BaseException:
         # No traceback, exception text or path escapes this child. Incomplete
         # nested process facts cannot be repaired by reaping the sudo frontend.
-        packet = {"schema": "public-containerd-roots/1", "status": "UNKNOWN"}
+        packet = {"schema": "public-containerd-roots/3", "status": "UNKNOWN"}
     finally:
         if os.name == "posix":
             signal.setitimer(signal.ITIMER_REAL, 0)

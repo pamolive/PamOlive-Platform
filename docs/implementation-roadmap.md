@@ -141,6 +141,39 @@ suit ce refus. Le target exact du chemin env n'est pas deduit de ce predicat.
 Main dcaa116, image produit et NAS restent inchanges ;35High/provenance
 bloquent toujours la promotion. Aucun systeme ou secret reel utilise.
 
+### Ubuntu public observer: source correction under review
+
+The bounded diagnostic on 5c16 refused `env_tool_before/NOT_REGULAR` before
+any privileged reader, pull or PG action. The independent branch
+`agent/public-env-root-helper` measures the explicit Cargo env executable,
+including its hardlink count. Multiple links are permitted only for that env
+role; root ownership, regular-file type, safe parents, hash/FD/path stability
+and all other tool guards remain required. Current receipts use ROOT/2;
+historical ROOT/1 evidence is preserved without current admission.
+
+Integration passes 54 metadata, 39 PG and 14 short pure tests plus Ruff.
+The two Docker queries, H1 process tracking and PG owner lifecycle remain
+unchanged. The typed version-format diagnostic requires complete inner H1,
+a stable valid CTR tool and no post-version operations or authority flags.
+Package/suffix strings and raw output stay redacted. The exact admission
+grammar and allowlists are unchanged; no unknown version is normalized.
+Independent composed-parent fake-process cases cover the initial ambiguous
+publication path and its corrected refusal. These tests execute no
+Docker, sudo, ctr or SQL. The actual ce29 trial confirms regular root-owned
+env with 116 stable hardlinks, then a normal ctr-version process whose output
+is refused by the reviewed grammar. Its exact CLI version remains unknown;
+no plugin/storage/PG step is admitted.
+
+The PG expected profile now uses core0 then nofile64, matching the explicit
+[Docker CLI name sort](https://raw.githubusercontent.com/docker/cli/v29.4.2/opts/ulimit.go).
+Only those two constant entries change order; values, exact START checks,
+create arguments, ownership and cleanup stay unchanged. 39 PG and 14 short
+pure tests pass; independent adverse cases preserve closed refusals. This
+does not reconstruct the redacted e256 limit names or qualify a real PG identity.
+
+The exact new branch has its own bounded DATA run; no product image or NAS
+change and no A1/W commissioning follows from these source checks.
+
 ### Reception ecfe : refus des observateurs et correction ciblee
 
 Les deux campagnes [push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43782571449)
@@ -432,3 +465,11 @@ Le run [43823586567](https://github.com/pamolive/PamOlive-Platform/actions/runs/
 Le laboratoire exact `3d960926` réussit avec les raisons des douze skips stdlib exportées. Le nouveau Dockerfile produit reprend ces mêmes helpers, runtime/SDK et deux extensions ; le snapshot final et ses limites sont décrits dans [ADR-031](adr-031-expat-product-snapshot.md). Les contrôles de l'archive exacte et le SBOM enrichi restent soumis aux scans exhaustifs, sans modification des seuils ni disposition automatique de CVE.
 
 Validation source : 14 tests produit ciblés et 39 tests PostgreSQL purs passent sans skip ni IO externe ; la revue indépendante ajoute six contre-cas. Le test de merge/schema SBOM complet et la suite native-SBOM complète ne sont pas exécutés sous Windows (import ctypes refusé sous audit) : ils restent obligatoires dans la CI Linux. Construction réelle de cette nouvelle image, snapshot, consommateurs, P0, restauration et scans sont encore attendus. Les succès du laboratoire ne les remplacent pas.
+
+## Public Engine : identité CLI ROOT3 en qualification
+
+Les observations réelles du candidat `1e66df2` n'identifient que le format et la version numérique 2.4.2 ; le package masqué reste inconnu. [ADR-029](adr-029-public-containerd-cli-identity.md) retient huit couples package/version exacts documentés, avec un schéma typé ROOT3 ; aucune normalisation de marque ni apprentissage depuis une observation refusée. Les anciens schémas restent historiques.
+
+La revue contradictoire a refusé une première version pour sa projection d'identité diagnostique insuffisamment liée au contexte du processus. R2 exige le même contexte strict avant toute publication de format ou d'identité : processus terminé normalement, flux complets, outil stable et aucune autorité ni requête suivante. Les 65 tests métadonnées, 39 PostgreSQL purs et 14 tests courts passent sans skip ni IO externe. Les 19 fichiers PostgreSQL et les douze lignes de son payload restent inchangés. La nouvelle mesure Linux demeure requise ; ces tests ne constituent ni une mesure UID PostgreSQL ni une autorisation opérationnelle.
+
+La garde de délais du témoin PostgreSQL conserve ses maxima stricts. Un contre-exemple flottant reproductible pouvait produire une réserve légèrement supérieure à trente secondes ; le constructeur arrondit maintenant vers le début et reste plafonné par les anciennes échéances. Aucun seuil ni comportement UNKNOWN n'est élargi. La reproduction et les parcours CLI sous horloge contrôlée sont conservés ; ce correctif arithmétique ne prouve pas la valeur d'horloge du run historique en échec.
