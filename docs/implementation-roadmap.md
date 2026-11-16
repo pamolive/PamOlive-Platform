@@ -84,9 +84,14 @@ role; root ownership, regular-file type, safe parents, hash/FD/path stability
 and all other tool guards remain required. Current receipts use ROOT/2;
 historical ROOT/1 evidence is preserved without current admission.
 
-Integration passes 46 standalone and 14 short pure tests, Ruff and seven
-independent adversarial cases. The two Docker queries, H1 process tracking,
-PG owner and its twelve buffers remain unchanged. These tests execute no
+Integration passes 54 metadata, 39 PG and 14 short pure tests plus Ruff.
+The two Docker queries, H1 process tracking and PG owner lifecycle remain
+unchanged. The typed version-format diagnostic requires complete inner H1,
+a stable valid CTR tool and no post-version operations or authority flags.
+Package/suffix strings and raw output stay redacted. The exact admission
+grammar and allowlists are unchanged; no unknown version is normalized.
+Independent composed-parent fake-process cases cover the initial ambiguous
+publication path and its corrected refusal. These tests execute no
 Docker, sudo, ctr or SQL. The actual ce29 trial confirms regular root-owned
 env with 116 stable hardlinks, then a normal ctr-version process whose output
 is refused by the reviewed grammar. Its exact CLI version remains unknown;

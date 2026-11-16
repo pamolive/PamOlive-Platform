@@ -26,6 +26,7 @@ def main():
     import test_containerd_public
     import test_env_contract
     import test_runtime_compatibility
+    import test_version_format
 
     suite = unittest.TestSuite(
         unittest.defaultTestLoader.loadTestsFromTestCase(cls)
@@ -37,6 +38,7 @@ def main():
             test_runtime_compatibility.ParentDiagnosticTests,
             test_env_contract.EnvToolTests,
             test_env_contract.ParentEnvTests,
+            test_version_format.VersionFormatTests,
         )
     )
     result = unittest.TextTestRunner(stream=sys.stdout, verbosity=2).run(suite)
@@ -53,7 +55,7 @@ def main():
     print(json.dumps(row))
     return (
         0
-        if result.wasSuccessful() and result.testsRun == 46 and not result.skipped and not ATTEMPTS
+        if result.wasSuccessful() and result.testsRun == 54 and not result.skipped and not ATTEMPTS
         else 1
     )
 

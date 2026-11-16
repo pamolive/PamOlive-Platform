@@ -30,7 +30,7 @@ jobs:
           source="$GITHUB_WORKSPACE/qualification/public_prerequisites_dispatch"
           printf '%s  %s\n' e568642367ad88cfaa50604beb9cefae5d6375f191a87015d14d3515ad7ff7a9 "$source/quick.py" | sha256sum --check --status
           printf '%s  %s\n' df0fd08281c900c233fc74da2372cda815f03045c9a0ee79e86838f4bc697f77 "$source/run_pure.py" | sha256sum --check --status
-          printf '%s  %s\n' dcf7a9fc9708e2f7e8e4cc73e62be999c50ff209d56900924ea17e920eb8f5ed "$source/test_source.py" | sha256sum --check --status
+          printf '%s  %s\n' f0e711ff6e404e844700c8673cebe3fe35ea984ec70c6a114e0df0e840927e9a "$source/test_source.py" | sha256sum --check --status
           env -i PATH=/usr/bin:/bin HOME=/nonexistent LANG=C LC_ALL=C \
             /usr/bin/python3 -I -S -B "$source/run_pure.py" \
             "$RUNNER_TEMP/public-prerequisites-pure-${{ github.run_id }}-${{ github.run_attempt }}"
@@ -48,7 +48,7 @@ jobs:
             GITHUB_RUN_ATTEMPT='${{ github.run_attempt }}' GITHUB_SHA='${{ github.sha }}' \
             GITHUB_REPOSITORY='${{ github.repository }}' GITHUB_EVENT_NAME='${{ github.event_name }}' GITHUB_REF='${{ github.ref }}' \
             GITHUB_JOB='${{ github.job }}' \
-            /usr/bin/python3 -I -S -B "$source/quick.py" --payload-sha a35474dd992ee0687d721ade25e8aeac70c28060fa50105ed41855701a99766a \
+            /usr/bin/python3 -I -S -B "$source/quick.py" --payload-sha b15bfec328310d507de8e05fe4330020962a0133f66ca2845a42327f78c1a8af \
             --query-mode prerequisites-only --github-hosted-disposable-public-read
       - name: Retain only closed public DATA and lifecycle facts
         if: always()

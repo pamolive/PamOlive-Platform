@@ -424,7 +424,7 @@ class SourceContracts(unittest.TestCase):
         self.assertEqual(len(buffers), 15)
         self.assertEqual(
             q.sha(buffers["engine/containerd_public.py"]),
-            "719f6c95b7bfa8aa9b1bf76d830bd23b9e1e380429381a76c87fe6c1bb66f48f",
+            "7682097d1fe20e67880a30c450d2480413b72be205337a4e8294ea7f3f16f4e5",
         )
         with self.assertRaises(ValueError):
             q.capture("0" * 64)

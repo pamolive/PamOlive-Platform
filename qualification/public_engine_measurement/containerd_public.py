@@ -121,8 +121,7 @@ def tool_record(path):
     """Measure explicit regular executables, never sudo's alternatives symlinks."""
     path = Path(path)
     tool_need(
-        str(path)
-        in {"/usr/bin/ctr", "/usr/lib/cargo/bin/sudo", ENV_TOOL, "/usr/bin/python3.14"},
+        str(path) in {"/usr/bin/ctr", "/usr/lib/cargo/bin/sudo", ENV_TOOL, "/usr/bin/python3.14"},
         "PATH",
     )
     for parent in path.parents:
@@ -346,6 +345,65 @@ def public_facts(result):
     }
 
 
+def version_format_diagnostic(raw):
+    """Public shape only; never a parser used to authorize a CLI version."""
+    result = {"schema": "ctr-version-format-DATA/1", "form": "redacted"}
+    require(type(raw) is bytes)
+    if len(raw) > 512:
+        result["form"] = "over_limit"
+    elif not raw.endswith(b"\n") or raw.count(b"\n") != 1:
+        result["form"] = "not_single_terminal_lf"
+    elif any(byte < 32 or byte > 126 for byte in raw[:-1]):
+        result["form"] = "non_printable_ascii"
+    else:
+        match = re.fullmatch(
+            rb"ctr ([A-Za-z0-9./_-]{1,80}) (v?)([0-9]{1,2})\."
+            rb"([0-9]{1,2})\.([0-9]{1,3})([A-Za-z0-9+._-]{0,80})\n",
+            raw,
+        )
+        if match is not None:
+            package = {
+                b"github.com/containerd/containerd/v2": "module_v2",
+                b"github.com/containerd/containerd": "module_legacy",
+            }.get(match[1], "other_redacted")
+            suffix = {b"": "none", b"+unknown": "plus_unknown"}.get(match[6], "other_redacted")
+            result.update(
+                form="version_line",
+                package=package,
+                numeric_triplet=[int(match[i]) for i in (3, 4, 5)],
+                prefix_v=match[2] == b"v",
+                suffix_kind=suffix,
+            )
+    return result
+
+
+def validate_version_format(value):
+    require(type(value) is dict and value.get("schema") == "ctr-version-format-DATA/1")
+    form = value.get("form")
+    require(type(form) is str)
+    if form in {"redacted", "over_limit", "not_single_terminal_lf", "non_printable_ascii"}:
+        require(set(value) == {"schema", "form"})
+        return dict(value)
+    require(form == "version_line")
+    require(
+        set(value) == {"schema", "form", "package", "numeric_triplet", "prefix_v", "suffix_kind"}
+    )
+    require(type(value["package"]) is str)
+    require(value["package"] in {"module_v2", "module_legacy", "other_redacted"})
+    require(type(value["suffix_kind"]) is str)
+    require(value["suffix_kind"] in {"none", "plus_unknown", "other_redacted"})
+    require(type(value["prefix_v"]) is bool)
+    numbers = value["numeric_triplet"]
+    require(type(numbers) is list and len(numbers) == 3)
+    require(
+        all(
+            type(n) is int and 0 <= n <= bound
+            for n, bound in zip(numbers, (99, 99, 999), strict=True)
+        )
+    )
+    return dict(value, numeric_triplet=list(numbers))
+
+
 def inspect_roots(address, runner, measure=tool_record, statter=capacity):
     require(address in ENDPOINTS)
     packet = {
@@ -385,6 +443,7 @@ def inspect_roots(address, runner, measure=tool_record, statter=capacity):
         )
         if match is None:
             packet["status"] = "CLI_UNREVIEWED"
+            packet["version_format"] = version_format_diagnostic(version.stdout)
             return packet
         packet["cli_version"] = match[1].decode("ascii")
         if packet["cli_version"] not in {"v2.2.3", "2.2.3", "v2.4.2", "2.4.2"}:
@@ -460,6 +519,47 @@ def refusal_diagnostic(value):
         }
     )
     result = {"status": status}
+    if "version_format" in value:
+        require(status == "CLI_UNREVIEWED" and value.get("cli_version") is None)
+        require(
+            all(
+                value.get(key) is False
+                for key in ("profile_accepted", "authority", "operational_GO")
+            )
+        )
+        require(all(value.get(key) is None for key in ("ctr_process", "exports", "filesystems")))
+        require(value.get("tool_unchanged") is True)
+        validate_tool(value.get("tool"))
+        facts = value.get("version_process")
+        require(
+            type(facts) is dict
+            and set(facts)
+            == {
+                "spawn_attempted",
+                "pid",
+                "returncode",
+                "reason",
+                "exception_type",
+                "killed_owned_child",
+                "owned_child_reaped",
+                "drains_complete",
+                "cleanup_exception_type",
+            }
+        )
+        require(
+            facts["spawn_attempted"] is True
+            and type(facts["pid"]) is int
+            and 0 < facts["pid"] < 2**31
+            and type(facts["returncode"]) is int
+            and facts["returncode"] == 0
+            and facts["reason"] is None
+            and facts["exception_type"] is None
+            and facts["killed_owned_child"] is False
+            and facts["owned_child_reaped"] is True
+            and facts["drains_complete"] is True
+            and facts["cleanup_exception_type"] is None
+        )
+        result["version_format"] = validate_version_format(value["version_format"])
     if value.get("tool") is not None:
         result["ctr_tool"] = validate_tool(value["tool"])
     if type(value.get("tool_unchanged")) is bool:
