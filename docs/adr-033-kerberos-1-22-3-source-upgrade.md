@@ -115,3 +115,25 @@ familles. Aucun chemin, symbole, message brut ou erreur libre n'est publié.
 Les marqueurs ne prouvent ni outil/version ni cause ; root_cause resteUNKNOWN.
 Le JSON8Kio, les budgets et tous les contrôles source/GPG/ABI restent exacts.
 Une nouvelle mesure Linux reste nécessaire avant toute correction de packaging.
+
+### Adaptation exacte du modèle de symboles Debian
+
+Le runed35af4 rapporte un refus normal avec marqueurs dpkg-gensymbols
+SYMBOLS_ADDED et SYMBOLS_TEMPLATE_MISMATCH. La comparaison des quatre tables
+d'exports MIT1.22.3 et des modèles Debian1.22.1-3 trouve un seul nom manquant :
+k5_ser_unpack_len, déclaré dans k5-int.h et implémenté dans serialize.c. Il est
+absent des tables MIT1.22.1/1.22.2, présent en1.22.3, sous krb5_3_MIT. Cela
+justifie l'adaptation source ; le delta ELF natif réel reste à recevoir.
+
+La préparation des buffers ajoute uniquement la ligne de dépendance minimale
+k5_ser_unpack_len@krb5_3_MIT1.22.3 au modèle libkrb5-3. Les SHA pré/post et le
+contexte unique sont exigés ; aucun ancien symbole/version/options n'est retiré
+ou modifié, aucun marqueur optional ni architecture plus permissive n'est ajouté.
+Les archives signées sont immuables ; seule leur copie de packaging en mémoire
+est adaptée, après authentification et avant écriture de l'arbre natif.
+
+Le vrai modèle avant correction reproduit la ligne manquante.51tests purs passent
+après, avec mutations, double application, namespace et modes invalides refusés.
+Les commandes dpkg, flags, délais et limites, règles Debian, tests et le profil
+ABI-v2 non admis sont conservés. Le prochain build doit confirmer ce seul ajout,
+les exports complets et la compatibilité ; aucune CVE ni image n'est admise ici.

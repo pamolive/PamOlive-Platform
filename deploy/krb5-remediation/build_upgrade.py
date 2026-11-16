@@ -377,6 +377,41 @@ def dpkg_build(source, log):
         raise
 
 
+def packaging_symbols(pkg):
+    """Add one authenticated-upstream export to the exact Debian template."""
+    name = "debian/libkrb5-3.symbols"
+    need(type(pkg) is dict and name in pkg, "symbols_packaging_shape")
+    row = pkg[name]
+    need(type(row) is tuple and len(row) == 2, "symbols_packaging_shape")
+    raw, mode = row
+    need(
+        type(raw) is bytes
+        and type(mode) is int
+        and mode == 0o644
+        and sha(raw) == "7452b6b13d0a121d7034bc86ea50ad042761be2682319b2513b6f98db338b727",
+        "symbols_template_preimage",
+    )
+    context = (
+        b" k5_rc_get_name@krb5_3_MIT 1.18.2\n"
+        b" k5_rc_resolve@krb5_3_MIT 1.18.2\n"
+        b" k5_rc_store@krb5_3_MIT 1.20~beta1\n"
+        b" k5_size_auth_context@krb5_3_MIT 1.18.2\n"
+        b" k5_size_authdata@krb5_3_MIT 1.18.2\n"
+    )
+    need(raw.count(context) == 1, "symbols_template_context")
+    replacement = context.replace(
+        b" k5_size_auth_context@",
+        b" k5_ser_unpack_len@krb5_3_MIT 1.22.3\n k5_size_auth_context@",
+        1,
+    )
+    changed = raw.replace(context, replacement, 1)
+    need(
+        sha(changed) == "00b743262a79ae50cd189c488a25576c3d3d52d349d7b98e115c45b95bd97ab1",
+        "symbols_template_postimage",
+    )
+    return {**pkg, name: (changed, mode)}
+
+
 def prepared_buffers(captured, plan, rebased):
     upstream = archive_buffers(captured["krb5-1.22.3.tar.gz"], "gz")
     need(all(name.startswith("krb5-1.22.3/") for name in upstream), "upstream_root")
@@ -431,7 +466,7 @@ def prepared_buffers(captured, plan, rebased):
     tree = transform(tree, rebased[name])
     need(all(sha(tree[p]) == h for p, h in row["after"].items()), "test_compat_postimage")
     required.append(name)
-    return upstream, pkg, tree, required
+    return upstream, packaging_symbols(pkg), tree, required
 
 
 def write_tree(folder, rows, strip=""):

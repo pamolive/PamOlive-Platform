@@ -1135,5 +1135,79 @@ class DpkgMarkerTests(unittest.TestCase):
             build.dpkg_failure_markers({"stdout": b"x" * (8 * 1024**2 + 1), "stderr": b""})
 
 
+class PackagingSymbolsTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.captured = {name: material(HERE / "materials", name) for name in MATERIALS}
+        cls.plan = model.json_value((HERE / "patch-plan.json").read_bytes())
+        cls.rebased = {p.name: p.read_bytes() for p in (HERE / "rebased-patches").iterdir()}
+        cls.original = model.archive_buffers(cls.captured["krb5_1.22.1-3.debian.tar.xz"], "xz")
+
+    def test_real_packaging_declares_the_actual_new_upstream_export(self):
+        _, prepared, tree, _ = build.prepared_buffers(self.captured, self.plan, self.rebased)
+        name = "debian/libkrb5-3.symbols"
+        line = b" k5_ser_unpack_len@krb5_3_MIT 1.22.3\n"
+        self.assertNotIn(line, self.original[name][0])
+        self.assertEqual(prepared[name][0].count(line), 1)
+        self.assertEqual(prepared[name][0].replace(line, b""), self.original[name][0])
+        self.assertEqual(
+            model.sha(prepared[name][0]),
+            "00b743262a79ae50cd189c488a25576c3d3d52d349d7b98e115c45b95bd97ab1",
+        )
+        self.assertEqual(
+            tree["src/lib/krb5/libkrb5.exports"].splitlines().count(b"k5_ser_unpack_len"), 1
+        )
+        for path in ("src/include/k5-int.h", "src/lib/krb5/krb/serialize.c"):
+            self.assertIn(b"k5_ser_unpack_len(", tree[path])
+
+    def test_adaptation_is_a_copy_with_one_row_and_every_old_symbol_preserved(self):
+        original = dict(self.original)
+        result = build.packaging_symbols(original)
+        self.assertIsNot(result, original)
+        self.assertEqual(original, self.original)
+        name = "debian/libkrb5-3.symbols"
+        self.assertEqual(set(result), set(original))
+        self.assertEqual(result[name][1], original[name][1])
+        self.assertEqual(
+            {k: v for k, v in result.items() if k != name},
+            {k: v for k, v in original.items() if k != name},
+        )
+        self.assertEqual(
+            model.sha(original[name][0]),
+            "7452b6b13d0a121d7034bc86ea50ad042761be2682319b2513b6f98db338b727",
+        )
+
+    def test_mutation_duplicate_already_adapted_wrong_namespace_or_mode_refuse(self):
+        name = "debian/libkrb5-3.symbols"
+        raw, mode = self.original[name]
+        line = b" k5_ser_unpack_len@krb5_3_MIT 1.22.3\n"
+        cases = [
+            (raw + b"\n", mode),
+            (raw + line, mode),
+            (raw.replace(b"krb5_3_MIT", b"OTHER_3_MIT", 1), mode),
+            (raw, 0o755),
+            (raw, float(mode)),
+            (bytearray(raw), mode),
+        ]
+        for row in cases:
+            with self.subTest(mode=type(row[1]).__name__), self.assertRaises(ValueError):
+                build.packaging_symbols({**self.original, name: row})
+        with self.assertRaises(ValueError):
+            build.packaging_symbols(build.packaging_symbols(self.original))
+
+    def test_gensymbols_strictness_and_unadmitted_profile_are_not_replaced(self):
+        tree = ast.parse((HERE / "build_upgrade.py").read_bytes())
+        main = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "main")
+        calls = [n for n in ast.walk(main) if isinstance(n, ast.Call)]
+        self.assertTrue(
+            any(isinstance(n.func, ast.Name) and n.func.id == "dpkg_build" for n in calls)
+        )
+        profile = model.json_value((HERE / "Root-profile-v2.CANDIDATE.json").read_bytes())
+        self.assertIs(profile["admitted"], False)
+        self.assertEqual(profile["libraries"], {})
+        prepared = build.packaging_symbols(self.original)
+        self.assertEqual(prepared["debian/rules"], self.original["debian/rules"])
+
+
 if __name__ == "__main__":
     unittest.main()
