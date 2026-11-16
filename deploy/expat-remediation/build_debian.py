@@ -13,8 +13,9 @@ from common import ENV, command, material, need, read, record, sha, write_new
 VERSION = "2.10.0-1+pamolive1"
 
 
-def publish_build_failure(log):
+def publish_build_failure(log, *, stage="dpkg-buildpackage"):
     """Only public Debian build logs: bounded encoded tails, never an admission."""
+    need(stage in {"dpkg-buildpackage", "make-build-check", "make-buildw-check"}, "build_stage")
     streams = {}
     for name in ("stdout", "stderr"):
         try:
@@ -43,7 +44,7 @@ def publish_build_failure(log):
             {
                 "schema": "pamolive.expat-public-build-failure/1",
                 "state": "FAILED_OR_UNKNOWN",
-                "stage": "dpkg-buildpackage",
+                "stage": stage,
                 "tail_cap_bytes": 8192,
                 "diagnostic_only": True,
                 "streams": streams,
@@ -67,6 +68,25 @@ def build_package(source, log):
     except BaseException as original:
         try:
             publish_build_failure(log)
+        except (OSError, ValueError):
+            raise original
+        raise
+
+
+def check_tree(source, output, tree):
+    need(tree in {"build", "buildw"}, "build_test_tree")
+    log = output / (tree + "-check")
+    try:
+        command(
+            ["/usr/bin/make", "-j1", "-C", tree, "check"],
+            source,
+            log,
+            seconds=300,
+            cap=8 * 1024**2,
+        )
+    except BaseException as original:
+        try:
+            publish_build_failure(log, stage="make-" + tree + "-check")
         except (OSError, ValueError):
             raise original
         raise
@@ -109,13 +129,7 @@ def main(materials, output):
     build_package(source, output / "build")
     # Debian rules have no test target. Both configured trees must be exercised explicitly.
     for tree in ("build", "buildw"):
-        command(
-            ["/usr/bin/make", "-j1", "-C", tree, "check"],
-            source,
-            output / (tree + "-check"),
-            seconds=300,
-            cap=8 * 1024**2,
-        )
+        check_tree(source, output, tree)
     published = []
     for package, folder in (("libexpat1", "runtime"), ("libexpat1-dev", "sdk")):
         files = list(work.glob(f"{package}_{VERSION}_amd64.deb"))

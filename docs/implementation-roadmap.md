@@ -99,7 +99,11 @@ manquent dans la couche echouee. Le wrapper de cette seule commande publie
 sur echec des tails8KiB/flux et le recu4KiB en base64/JSON borne, puis relance
 l'erreur. Aucun retry, succes presume ni modification common/H1/auth ;36purs
 locaux couvrent aussi plafonds, sorties illisibles et console fermee.
-Le prochain build et ses oracles restent requis.
+Le run5d a ensuite passe la construction du paquet puis refuse un des deux
+make check ; le meme diagnostic borne couvre maintenant ces deux commandes,
+stages fermes et controles inchanges.38purs locaux passent, sans suppression
+d'une suite ; nouvel arbre/exit/stderr restent a recevoir. Le prochain build
+et ses oracles restent requis.
 
 La [PR13](https://github.com/pamolive/PamOlive-Platform/pull/13) a par ailleurs
 publie les diagnostics : f396 a refuse avant toute operation faute du dossier

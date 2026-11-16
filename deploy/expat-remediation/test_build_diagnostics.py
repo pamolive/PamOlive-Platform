@@ -12,6 +12,57 @@ import build_debian
 
 
 class BuildDiagnosticTests(unittest.TestCase):
+    def test_narrow_and_wide_commands_keep_limits_and_failure_identity(self):
+        for tree in ("build", "buildw"):
+            for failed in (False, True):
+                with self.subTest(tree=tree, failed=failed):
+                    error = ValueError("child_failed_or_unknown")
+                    output = io.StringIO()
+                    with (
+                        mock.patch.object(
+                            build_debian,
+                            "command",
+                            side_effect=error if failed else None,
+                        ) as command,
+                        mock.patch.object(
+                            build_debian, "read", return_value=b"public test log"
+                        ) as read,
+                        redirect_stdout(output),
+                    ):
+                        if failed:
+                            with self.assertRaises(ValueError) as caught:
+                                build_debian.check_tree(Path("/source"), Path("/output"), tree)
+                            self.assertIs(caught.exception, error)
+                        else:
+                            build_debian.check_tree(Path("/source"), Path("/output"), tree)
+                    command.assert_called_once_with(
+                        ["/usr/bin/make", "-j1", "-C", tree, "check"],
+                        Path("/source"),
+                        Path("/output") / (tree + "-check"),
+                        seconds=300,
+                        cap=8 * 1024**2,
+                    )
+                    if failed:
+                        packet = json.loads(output.getvalue())
+                        self.assertEqual(packet["stage"], "make-" + tree + "-check")
+                        self.assertEqual(packet["state"], "FAILED_OR_UNKNOWN")
+                    else:
+                        read.assert_not_called()
+                        self.assertEqual(output.getvalue(), "")
+
+    def test_unknown_test_tree_and_diagnostic_stage_are_refused_before_io(self):
+        with (
+            mock.patch.object(build_debian, "command") as command,
+            mock.patch.object(build_debian, "read") as read,
+        ):
+            for tree in ("../foreign", "build/other", "BUILD", "", None):
+                with self.subTest(tree=tree), self.assertRaises(ValueError):
+                    build_debian.check_tree(Path("/source"), Path("/output"), tree)
+            with self.assertRaises(ValueError):
+                build_debian.publish_build_failure(Path("/log"), stage="private-authentication")
+        command.assert_not_called()
+        read.assert_not_called()
+
     def test_success_keeps_command_limits_and_does_not_publish_logs(self):
         output = io.StringIO()
         with (
