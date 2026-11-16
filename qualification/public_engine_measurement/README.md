@@ -1,75 +1,122 @@
-# Mesure publique commune W/A1 — DATA seulement
+# Public containerd prerequisites for the disposable CI runner
 
-Collecteur intégré au job Platform existant. Les tests locaux utilisent un
-faux runner ; les quatre lectures réelles sont reçues séparément pour chaque
-commit et run CI. La première réception d47 identifie Docker29.4.2/containerd,
-sans admettre de profil. Aucun nouveau workflow de mesure.
+This extends the shared collector published at 4671f6f (parent collector SHA256
+`a35f8f55e9086ef7171acfb385ccd71d51cc54cfd41bda7b2acc65ff739b7e9c`).
+It is for one disposable GitHub-hosted Platform job, after Root and independent
+review. The existing Platform workflow wires it for a bounded trial; this is not an A1/WV profile or operational GO.
+No live Docker, sudo, ctr, filesystem-root probe, SQL or network action was run
+while preparing this candidate. All process/FD tests are doubles.
 
-Quatre argv fixes, via `/usr/bin/docker --host unix:///var/run/docker.sock
---config <nouveau dossier vide>` : version, info, image inspect du PG17.12
-manifest6f7593…, image inspect de `pamolive-platform:ci` construit par le job.
-Zéro create/start/load/stop/pull/tag/exec/container inspect. Une image absente
-reste une non-réception ; aucun téléchargement ou repli.
+The existing four nonroot Docker queries retain their commands, socket, closed
+environment, output caps and H1 supervisor. Their version/info templates add
+only containerd Version/GitCommit from Server.Components and Containerd
+Address/Namespaces. Other components are excluded in the template. Unexpected
+values are redacted without their hashes or lengths. Image projections and
+their presence semantics are unchanged.
 
-TCB explicite : image GitHub-hosted runner, actions checkout/setup épinglées
-déjà admises par Platform, Docker CLI/daemon et stdlib hôte. Le binaire public
-est lu/hashé en chunks64KiB sous128MiB, identité FD/path avant/après, avant
-et après les quatre requêtes. Aucun SHA inconnu n'est pris pour une attestation.
-Le type régulier, UID, GID et les bits de permission du fichier sont aussi
-rapportés. UID/GID participent aux contrôles d'identité FD/path ; ces observations
-ne constituent ni une approbation de propriétaire ni une admission de profil.
-Le postcheck est incorporé avant l'unique écriture du rapport : tool changé ou
-non relisible empêche `four_queries_received`, sans reclassifier les données.
+Root explicitly permits one sudo -n child solely for public read-only metadata
+in that disposable VM. This exception does not authorize a PC or NAS probe.
+The entry point now requires the explicit scope flag shown in the integration
+fragment; the flag records the caller's decision, it does not attest the host.
+The bootstrap TCB is the accepted GitHub runner image, pinned checkout/setup
+actions, reviewed source, system Python/stdlib, sudo/env, Docker and containerd.
+Observed hashes and version declarations are not reproducible-build proof.
 
-Chaque commande est exécutée par le helper reçu byte-exact `98233…`, timeout15s,
-stdout32KiB/stderr4KiB bornés AVANT rétention, stdin fermé. H1 inconnu (PID,
-reap/drain/cleanup, exception, kill/timeout) arrête les commandes suivantes.
-Un simple exit non nul avec H1 confirmé permet les autres lectures. Le compteur
-ne représente pas les requêtes HTTP internes/plugins éventuelles du CLI.
+## Closed root read
 
-Env enfant fermé : PATH système, HOME neuf privé, LANG/LC_ALL=C ; pas de token,
-config Docker utilisateur, proxy, contexte ou override API ambiant. Pas de
-`DOCKER_API_VERSION` forcée : la version effective est précisément la donnée
-à observer. Le dossier Docker neuf ne contient que auths/proxies vides.
-Le script ne lit aucun environnement applicatif ni PG et ne reçoit aucun
-credential. Le daemon local est la seule cible construite par les argv.
+Before sudo, the parent measures the actual regular root-owned nonwritable
+`/usr/bin/sudo`, `/usr/bin/env`, `/usr/bin/python3.14`, then checks them again
+afterwards. The fixed 3.14 path matches the observed Ubuntu 26.04 job image
+and its [documented system Python](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2604-Readme.md);
+a missing or incompatible executable refuses the observation.
+It invokes the real interpreter explicitly; the usual python3
+symlink is neither rejected as an executable nor accepted as an arbitrary
+resolved target. No PATH search is used. Source pins are checked before use.
+The root Python program is passed as a closed -c argument made from the pinned
+bounded_io bytes and containerd_public bytes, so it does not reopen a mutable
+checkout script as root. env -i removes sudo's generated environment before
+Python starts; -I -B -S disables site/user/import-environment hooks. The root
+program requires exactly PATH, HOME=/nonexistent, LANG=C, LC_ALL=C.
 
-Les projections n'incluent ni hostname/proxy de `docker info`, ni Config.Env.
-La configuration image ne demande que huit champs publics. Valeurs inattendues,
-labels hors des trois clés publiques et namespaces RepoDigests non publics
-deviennent **redacted** sans valeur, hash ou longueur. Les stderr sont seulement
-classés en enums (`empty`, `local_image_absent`, `template_error`,
-`engine_access_failed`, `unclassified`), jamais enregistrés bruts ou hashés.
-Les observations de processus omettent aussi les tailles stdout/stderr brutes.
-Les empreintes du binaire public Docker et les identifiants/digests des images
-et couches publiques restent présents ; aucune empreinte de valeur masquée
-ou de stderr n'est publiée.
+The root child measures `/usr/bin/ctr` before, between and after these calls:
 
-Le template image utilise range/index de `.Config` pour conserver la présence
-des clés. Contrat primaire précis CLI29.6.1 : TemplateInspector tente le type
-puis `tryRawInspectFallback` relit le raw JSON avec UseNumber en map et rejoue
-le template ; le buffer typé en échec est jeté. ImageInspectWithRawResponse
-fournit ce raw. Ce n'est pas une supposition de map universelle. Un autre CLI
-incompatible doit produire `template_error` et une non-réception, pas un profil
-normalisé. Références données par NSS : docker/cli/v29.6.1,
-`cli/command/inspect/inspector.go` et `cli/command/image/inspect.go`.
+1. `ctr --version`, the local global flag, with a 3s work limit and 512B/1KiB caps.
+2. Only for the examined CLI declaration 2.2.3 or v2.2.3, the closed command
+   `ctr --address <allowed> --namespace moby --connect-timeout 3s --timeout 5s plugins ls --detailed`
+   with three fixed Type/ID filters, 8s work limit and 32KiB/4KiB caps.
 
-Le rapport `public-report.json` est le seul fichier à publier. Ne pas publier
-home/docker-config, fichiers temporaires ou stdout/stderr Docker. Il ne donne
-ni getent, UID/GID postgres, ownerPGDATA, sandbox, permission, SQL, profil admis,
-W installé ou autorité de build. Root recevra les données avant un nouveau
-commit fixant le profil ; aucune auto-acceptation dans la même campagne.
+The daemon version and CLI version are separate fields. A different valid CLI
+version is retained with its tool digest and typed refusal, but Plugins is not
+called. A version declaration alone does not authenticate binary/source identity.
+The runner/tool bootstrap TCB is explicit. Only source v2.2.3 has been examined;
+no permissive vendor/version suffix or runtime profile is learned.
 
-Position : après le scan final, `if: always()`, avant l'upload/cleanup existant,
-sans continue-on-error. Les anciennes portes s'exécutent donc avant cette mesure.
-Le fragment n'ajoute ni permission ni job. Checkout doit conserver
-`persist-credentials: false` et les actions existantes épinglées.
+`CONTAINERD_SUPPRESS_DEPRECATION_WARNINGS=true` is set explicitly for both ctr
+calls. This is necessary: NewClient otherwise calls Introspection.Server for
+deprecation warnings. The positional `ctr version` command is forbidden because
+it also calls Server. No Server/UUID/configuration API or private config read is
+used. The plugin filters are OR between three arguments, AND within each one.
 
-Tests : `CorePython -I -B -X utf8 <dossier>/run_pure.py`, huit méthodes et audit
-subprocess/socket/sqlite, zéro skip. Aucun test n'exécute le vrai collecteur main.
+Detailed stdout is bounded and parsed only in memory. Exactly content/content,
+snapshotter/overlayfs and metadata/bolt must occur once, without Error headings.
+Only the content root, snapshotter root and metadata meta.db path are projected.
+Other exports and ancillary fields are discarded, never dumped or hashed.
+Endpoint and path allowlists are source policy, not observations: see ENDPOINTS,
+BASES and TYPES in containerd_public.py. Unexpected paths are refused before any
+open/stat, with no path disclosure. There is no fallback to guessed defaults.
 
-Le champ public `server_git_commit` complète la requête version : hexadécimal
-minuscule de7à40caractères ou redaction sans valeur, empreinte ou longueur.
-Il fournit l'entrée ServerGitCommit du profil A1 sans commande supplémentaire
-ni admission de profil. L'API de découverte reste distincte de l'API opérationnelle
-approuvée séparément. Ce champ n'est pas présent dans l'ancien reçu d47.
+## Actual storage objects and lifecycle
+
+capacity() is a small reusable A1/WV function. It walks held directory FDs with
+O_NOFOLLOW, checks object type before opening, compares inode/type after open,
+and calls fstatvfs on that same FD. For metadata it opens meta.db itself, not an
+assumed parent filesystem. It reads no file content, writes no file, follows no
+symlink and creates no directory. The Docker root is measured separately. Free
+space is available blocks times fragment size; shared filesystem capacities are
+not added. These are point-in-time facts about exported objects, not reserved
+space, durable path immutability or a proof that all daemon storage is covered.
+There is no inference from DockerRootDir's device to containerd's true root.
+
+The root child has a 25s internal SIGALRM work deadline; nested received H1 cleanup
+may use up to 5s reap plus 5s drains. The parent allows 45s work plus the received
+helper's cleanup reserve. Each existing Docker call remains 15s plus cleanup;
+the proposed existing-job step cap is 4 minutes. The helper is byte-identical
+98233b..., no replacement supervisor. No global kill, extra sudo, shell or retry.
+
+Before spawn the parent fsyncs exclusive root-read-intent.json PENDING, then an
+exclusive PID record when available, then actual final facts. UNKNOWN is durable
+on exceptions. COMPLETE requires both nested ctr processes and the sudo frontend
+to be confirmed exit0/reaped/drained, empty stderr, valid projections and stable
+tools. Reaping sudo alone never proves descendants closed. A nonroot parent may
+be unable to kill root descendants: timeout, failed kill/reap/drain or missing
+nested facts remain UNKNOWN. The VM's teardown never means resources_released.
+No release field or operational authority is emitted. The three lifecycle
+journals must be uploaded alongside the projected report even after failure.
+
+Permission refusal, unexamined CLI, data refusal and UNKNOWN are distinct. The
+four legacy query receipt and new all_prerequisites_received are separate; no
+redacted/missing root input can produce a complete prerequisite receipt. A
+complete packet is public DATA only and does not commission an A1 or W/V profile.
+
+## Primary sources examined
+
+- [Docker separate containerd storage](https://docs.docker.com/engine/storage/containerd/).
+- [Moby docker-v29.4.2 daemon info](https://raw.githubusercontent.com/moby/moby/docker-v29.4.2/daemon/info.go) and
+  [containerd version component](https://raw.githubusercontent.com/moby/moby/docker-v29.4.2/daemon/info_unix.go).
+- [ctr local VersionPrinter](https://raw.githubusercontent.com/containerd/containerd/v2.2.3/cmd/ctr/app/main.go),
+  [version package](https://raw.githubusercontent.com/containerd/containerd/v2.2.3/version/version.go),
+  [pinned urfave version dependency](https://raw.githubusercontent.com/containerd/containerd/v2.2.3/go.mod) and
+  [global flag early return](https://raw.githubusercontent.com/urfave/cli/v2.27.7/command.go).
+- [NewClient suppression guard](https://raw.githubusercontent.com/containerd/containerd/v2.2.3/cmd/ctr/commands/client.go),
+  [Plugins CLI](https://raw.githubusercontent.com/containerd/containerd/v2.2.3/cmd/ctr/commands/plugins/plugins.go),
+  [filter semantics](https://raw.githubusercontent.com/containerd/containerd/v2.2.3/pkg/filters/parser.go),
+  [Plugins versus Server service](https://raw.githubusercontent.com/containerd/containerd/v2.2.3/plugins/services/introspection/local.go).
+- [Content export](https://raw.githubusercontent.com/containerd/containerd/v2.2.3/plugins/content/local/plugin/plugin.go),
+  [snapshotter effective root override](https://raw.githubusercontent.com/containerd/containerd/v2.2.3/plugins/snapshots/overlay/plugin/plugin.go),
+  [metadata database export](https://raw.githubusercontent.com/containerd/containerd/v2.2.3/plugins/metadata/plugin.go).
+
+Source review establishes the intended path for the named tags, not the actual
+runner binary build or an observed result. Missing supported tools, unexpected
+endpoint/path/version, insufficient privilege or unknown lifecycle remain a
+closed receipt requiring Root review. The original d47 DATA did not measure any
+of these missing fields. No previous success or build attestation is transferred.

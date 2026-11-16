@@ -1,4 +1,4 @@
-"""Closed eight fake-runner tests. No collector main or real Docker invocation."""
+"""Only fake runners/FDs. No operational entry point is called."""
 
 import json
 import sys
@@ -12,36 +12,42 @@ ATTEMPTS = []
 
 
 def audit(event, _args):
-    if event.startswith(("socket.", "subprocess.", "sqlite3.")) or event in {
+    if event.startswith(("socket.", "subprocess.", "sqlite3.", "ctypes.")) or event in {
         "os.system",
         "os.posix_spawn",
     }:
         ATTEMPTS.append(event)
-        raise AssertionError("Operational IO forbidden in pure tests")
+        raise AssertionError("operational IO forbidden")
 
 
 def main():
     sys.addaudithook(audit)
     import test_collector
+    import test_containerd_public
 
-    suite = unittest.defaultTestLoader.loadTestsFromTestCase(test_collector.CollectorTests)
-    assert suite.countTestCases() == 8
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
-    print(
-        json.dumps(
-            {
-                "tests": result.testsRun,
-                "failures": len(result.failures),
-                "errors": len(result.errors),
-                "skips": len(result.skipped),
-                "external_attempts": ATTEMPTS,
-                "Docker_executed": False,
-            }
+    suite = unittest.TestSuite(
+        unittest.defaultTestLoader.loadTestsFromTestCase(cls)
+        for cls in (
+            test_collector.CollectorTests,
+            test_containerd_public.PublicTests,
+            test_containerd_public.ParentTests,
         )
     )
+    result = unittest.TextTestRunner(stream=sys.stdout, verbosity=2).run(suite)
+    row = {
+        "tests": result.testsRun,
+        "failures": len(result.failures),
+        "errors": len(result.errors),
+        "skips": len(result.skipped),
+        "external_attempts": ATTEMPTS,
+        "all_processes_fake": True,
+        "Linux_FDs_fake": True,
+        "Docker_sudo_ctr_executed": False,
+    }
+    print(json.dumps(row))
     return (
         0
-        if result.wasSuccessful() and result.testsRun == 8 and not result.skipped and not ATTEMPTS
+        if result.wasSuccessful() and result.testsRun == 32 and not result.skipped and not ATTEMPTS
         else 1
     )
 

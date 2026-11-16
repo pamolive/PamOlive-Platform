@@ -25,6 +25,8 @@ jobs:
         run: python -m unittest tests.test_native_inventory tests.test_native_sbom tests.test_native_dns tests.test_image_scan_policy tests.test_database_driver tests.test_ldap_fixture_permissions tests.test_krb5_inventory tests.test_krb5_acquisition tests.test_krb5_sbom tests.test_scan_scratch tests.test_build_recipe tests.test_build_context tests.test_runtime_environment tests.test_secret_baseline_metadata tests.test_python_materials tests.test_python_materials_resilience tests.test_ensurepip_bundle
       - name: Verify public metadata projections without Engine or network
         run: python -I -S -B qualification/public_engine_measurement/run_pure.py
+      - name: Verify the confined public PostgreSQL identity owner without Docker
+        run: python -I -S -B qualification/public_pg_identity_probe/run_pure.py
       - name: Verify portable reviewed secret metadata before the unchanged secret scan
         run: python -m deploy.check_secret_baseline .secrets.baseline
       - name: Reject known vulnerabilities in the application lock
@@ -371,25 +373,54 @@ jobs:
       - name: Scan the exact image, qualify native matching and enforce individually reviewed findings
         run: bash deploy/check_image_scan_ci.sh
       # Insert AFTER the final image scan, BEFORE existing artifact upload/cleanup.
+      - name: Observe only public postgres passwd UID and GID in one confined container
+        if: always()
+        timeout-minutes: 4
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          source="$GITHUB_WORKSPACE/qualification/public_pg_identity_probe"
+          printf '%s  %s\n' c9d4dbb61e144ace2c3f3feca9c73bb0b221a3a653a312c3fc7f9a040c059fb9 "$source/owner.py" | sha256sum --check --status
+          work="$RUNNER_TEMP/pamolive-pg-identity-${{ github.run_id }}-${{ github.run_attempt }}"
+          test ! -e "$work"
+          env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C \
+            GITHUB_ACTIONS=true CI=true RUNNER_ENVIRONMENT=github-hosted \
+            RUNNER_TEMP="$RUNNER_TEMP" GITHUB_RUN_ID='${{ github.run_id }}' \
+            GITHUB_RUN_ATTEMPT='${{ github.run_attempt }}' \
+            /usr/bin/python3 -I -S -B "$source/owner.py" run \
+            --assets-sha 2f6645783ba9937401d7c2c4efa870e029fcc1ea0845a7023257f4000c701f3b --work "$work"
+      - name: Retain only the closed public PG identity DATA report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: public-pg-identity-data-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pamolive-pg-identity-${{ github.run_id }}-${{ github.run_attempt }}/public-report.json
+          if-no-files-found: warn
+          retention-days: 7
       - name: Observe public Docker and image metadata without changing the Engine
         if: always()
-        timeout-minutes: 2
+        timeout-minutes: 4
         shell: bash
         run: |
           set -euo pipefail
           umask 077
           source="$GITHUB_WORKSPACE/qualification/public_engine_measurement"
-          printf '%s  %s\n' a35f8f55e9086ef7171acfb385ccd71d51cc54cfd41bda7b2acc65ff739b7e9c "$source/collector.py" | sha256sum --check --status
+          printf '%s  %s\n' f441d6cc2e25784182a4da561de6666e05e2f6797c1efab41a24fc1e299c5450 "$source/collector.py" | sha256sum --check --status
           work="$RUNNER_TEMP/public-engine-${{ github.run_id }}-${{ github.run_attempt }}"
           test ! -e "$work"
           env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C \
-            /usr/bin/python3 -I -S -B "$source/collector.py" --work "$work"
+            /usr/bin/python3 -I -S -B "$source/collector.py" --work "$work" --github-hosted-disposable-public-read
       - name: Retain only public Engine DATA
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: public-engine-data-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/public-engine-${{ github.run_id }}-${{ github.run_attempt }}/public-report.json
+          path: |
+            ${{ runner.temp }}/public-engine-${{ github.run_id }}-${{ github.run_attempt }}/public-report.json
+            ${{ runner.temp }}/public-engine-${{ github.run_id }}-${{ github.run_attempt }}/root-read-intent.json
+            ${{ runner.temp }}/public-engine-${{ github.run_id }}-${{ github.run_attempt }}/root-read-pid.json
+            ${{ runner.temp }}/public-engine-${{ github.run_id }}-${{ github.run_attempt }}/root-read-result.json
           if-no-files-found: warn
           retention-days: 7
       - name: Retain image identity and full security evidence even when promotion is blocked

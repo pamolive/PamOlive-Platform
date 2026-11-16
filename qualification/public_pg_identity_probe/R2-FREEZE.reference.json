@@ -1,0 +1,94 @@
+{
+  "schema": "W-PG-identity-source-freeze/1",
+  "files": {
+    "bindings.json": {
+      "bytes": 1886,
+      "sha256": "b8b31bbb7286ee4c9d72b7ac6104868ded20c1721a6bb7d2db704d16368798ae"
+    },
+    "data/amd64-manifest.json": {
+      "bytes": 3628,
+      "sha256": "6f7593c161689b6b02c78668b314af7da8811b592c5519108c57a49d0b6ad788"
+    },
+    "data/capsule.json": {
+      "bytes": 3746,
+      "sha256": "f486ba14bdd38c598eb61f05545d89c8b133f51bb519c1b778ebed8f798c452d"
+    },
+    "data/config.json": {
+      "bytes": 10147,
+      "sha256": "140936e8665d5274aa58df31b722693b4b451c541bb0f1a263a345d424bfacb4"
+    },
+    "data/index.reference.json": {
+      "bytes": 10237,
+      "sha256": "0d938e975177bef9f1f61f3f9dbcf2e0aa0a139568f66d3415ed8892eb97f6ac"
+    },
+    "data/profile.json": {
+      "bytes": 5038,
+      "sha256": "a6f6f19c93af272b5acfa7cc67be16afa0717c218b6bf55be30fa04d6214115c"
+    },
+    "helpers/bounded_io.py": {
+      "bytes": 6794,
+      "sha256": "98233b610f2d53dfd698d0d91f61f3d3ebcb1693a847983f0472f89a885f414f"
+    },
+    "helpers/lease_support.py": {
+      "bytes": 2886,
+      "sha256": "cbcb33ec203a47e9138119ee039255c4ce751c62cbf8208f918ab8efc730f07a"
+    },
+    "helpers/legacy.py": {
+      "bytes": 29843,
+      "sha256": "7f3bfa46307673ba51c3a21fa3b70171ab9f931547e1903adce2fc02a29e02ce"
+    },
+    "helpers/linux.py": {
+      "bytes": 38545,
+      "sha256": "40f5bbc845457ed18bf893fbb5d04eb90c6af0959077b0667a3dae3717120b80"
+    },
+    "NSS-REVIEW.reference.json": {
+      "bytes": 291,
+      "sha256": "3e5d76ab747868667a06c52f10ea7bc208b8912508f929ff04041814f2b29f05"
+    },
+    "prepare.py": {
+      "bytes": 3046,
+      "sha256": "87bce1354d5fdcb475acfd8ff223325a8cec56e5e982a05edb3dea2a4691bb23"
+    },
+    "probe.py": {
+      "bytes": 15446,
+      "sha256": "c890d931b576cf3df6e3f205d548c5459a6821e08c925fdf0e2d8368f1972388"
+    },
+    "pure-process.json": {
+      "bytes": 291,
+      "sha256": "f10da96a6f91157546d1c25757f3f1377a257dc4d38ea2f9fddfb6db91b9e81b"
+    },
+    "pure-stderr.log": {
+      "bytes": 2216,
+      "sha256": "d02ada7a52135ef01ae50917cfe3505f92aa63cdccca632f95ec8c8004b6e2e4"
+    },
+    "pure-stdout.json": {
+      "bytes": 110,
+      "sha256": "e68a9785a15bdb52c4891689b5a6a5742ded2499084f53b01376924bb5b14150"
+    },
+    "R1-FREEZE.reference.json": {
+      "bytes": 2909,
+      "sha256": "292ab31f285a5d9d9ba0f2cf8b4c47333e0618fe9329b7a470cf3309ea9c911f"
+    },
+    "README.md": {
+      "bytes": 8203,
+      "sha256": "cfc51ce3ad8975f70dd72a64b1068426faac292ecc217850c9a2902671f9f3a1"
+    },
+    "report.json": {
+      "bytes": 4219,
+      "sha256": "5cc1b9a8697579433cf0d50fd12cbdb201b64b24ca1384fbb106171d30a09a6e"
+    },
+    "run_pure.py": {
+      "bytes": 1563,
+      "sha256": "cf1a91dca8aa7371a351421c31a36d705d71ecb0a9a8480d1f05d95ebbeaa1f1"
+    },
+    "seal.py": {
+      "bytes": 5063,
+      "sha256": "d50668629b7f77024846b94134b71a76f363f259a157dae815a7b05437364fd6"
+    },
+    "test_probe.py": {
+      "bytes": 18922,
+      "sha256": "d33fb358d39d40d1fed7a02e236e2440a37621175c3d334ad4b653c2b94c0546"
+    }
+  },
+  "operational_GO": false
+}

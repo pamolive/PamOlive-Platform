@@ -74,6 +74,25 @@ réussie. La qualification navigateur/JavaScript reste distincte et non exécut�
 
 ## P2 — architecture hybride et domaines sensibles
 
+### Prochain essai : prerequisites publics containerd et PostgreSQL
+
+Le runner exact4671 utilise Ubuntu26.04. Le nouvel enfant isole emploie
+explicitement /usr/bin/python3.14, mesure avant/apres ; aucune resolution
+arbitraire de symlink ni supposition de Python3.12. Le vrai essai reste requis.
+
+Les deux Platform4671 et les campagnes distinctes installed52/public30 sont
+recues ; seul le scan35High refuse. ServerGitCommitd329809 est une observation
+reelle, sans inferrer les versions/roots containerd encore inconnus.
+Le prochain candidat raccorde au job existant une sonde getent bornee (26purs,
+8adverses) et les exports/statvfs containerd (32purs,6adverses). Les essais reels
+restent a recevoir ; aucun profil ni UID/PGDATA n'est attribue automatiquement.
+Les anciens gates et permissions sont conserves. Le privelege de lecture sudo
+est limite a la VM CI jetable. Les avertissements statiques B102/B108 sont
+conserves et tries, sans nosec/ignore ni modification de seuil existant.
+A1R2 corrige les redirections du raccord source ; W/VR3 distingue les identites
+containerd. Tous deux restent inactifs jusqu'aux profils/commissions et essais
+reels requis. Les35High et la provenance bloquent toujours main/image/NAS.
+
 ### Etat courant du 16 novembre
 
 PR11 d47faeb recoit ses deux campagnes Platform push/PR : gates applicatifs,

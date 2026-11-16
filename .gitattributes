@@ -20,3 +20,7 @@ components/usage-anchor/pamolive_usage_anchor/client.py -text whitespace=cr-at-e
 components/usage-anchor/pamolive_usage_anchor/ledger.py -text whitespace=cr-at-eol
 components/usage-anchor/tests/fixtures.py -text whitespace=cr-at-eol
 components/usage-anchor/tests/golden/codec.json -text whitespace=cr-at-eol
+
+# Keep the reviewed public CI observers and their manifests byte-exact.
+qualification/public_engine_measurement/** -text whitespace=cr-at-eol
+qualification/public_pg_identity_probe/** -text whitespace=cr-at-eol

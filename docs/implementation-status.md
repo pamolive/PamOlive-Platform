@@ -6,6 +6,63 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 
 La [roadmap réconciliée](implementation-roadmap.md) distingue désormais les lots P1-F/G, P2 et P3 du premier ordre historique. Référence publiée : main `dcaa116be6f026f67ad3825feb38d90ac632ce80`, PR1 fusionnée, [CI complète réussie](https://github.com/pamolive/PamOlive-Platform/actions/runs/43074618211) et [image GHCR publiée/attestée](https://github.com/pamolive/PamOlive-Platform/actions/runs/43078536377). Les résultats détaillés P0/P1 demeurent dans leurs rapports ; leur portée historique est conservée.
 
+### Mesures publiques du 16 novembre : prochain essai CI borne
+
+Le runner exact4671 utilise Ubuntu26.04. Le nouvel enfant isole emploie
+explicitement /usr/bin/python3.14, mesure avant/apres ; aucune resolution
+arbitraire de symlink ni supposition de Python3.12. Le vrai essai reste requis.
+
+Les deux campagnes Platform de la [PR11 4671f6f](https://github.com/pamolive/PamOlive-Platform/pull/11)
+sont recues : dix ZIP/114 membres verifies, memes gates PostgreSQL/P0, W62,
+transports, HA meme hote, restauration et Compose ; seuls les scans35High
+refusent. Les suites security303+8 passent. Les campagnes distinctes runtime52
+et verifier30 sont aussi recues sans echec/erreur/exclusion, avec nettoyage.
+ServerGitCommit=d329809 est maintenant reellement recu sur les deux rapports,
+avec Docker29.4.2/API1.54/min1.40 et le CLI3e898 deja decrit ci-dessous.
+Aucune preuve du head precedent n'a ete transferee.
+
+Le nouveau candidat conserve ces quatre lectures Docker et ajoute une lecture
+publique bornee des vrais exports containerd et de leur filesystem. Un unique
+enfant sudo-n est autorise uniquement dans la VM GitHub-hosted jetable, jamais
+sur PC/NAS. Il interroge ctr --version local puis Plugins pour le seul CLI2.2.3
+examine ; un autre CLI refuse Plugins. L'environnement supprime l'appel Server
+indirect de NewClient ; ctr version, Server/UUID et les configurations privees
+sont exclus. Parent et deux CLI imbriques exigent H1 complet/outils stables.
+Les trois journaux d'intention/PID/resultat sont publies sans streams bruts.
+32 tests purs et six contre-epreuves independantes passent ; aucun disque,
+endpoint ou profil operationnel n'est auto-admis a partir de ces donnees.
+
+La [sonde PG publique](../qualification/public_pg_identity_probe/README.md)
+cree un seul conteneur getent confine, depuis le manifest PG deja local :
+CPU0.10/RAM64MiB, netnone, rootfsRO, caps0/NNP, aucun port/bind/volume anonyme,
+PGDATA couvert par tmpfsRO. Elle publie seulement UID/GID apres arret/suppression
+et H1 confirmes ;26purs et huit contre-epreuves independantes passent. Un create
+perdu et deux cleanup conservent UNKNOWN/leaseheld. Ni SQL ni serveur PG ne sont
+lances, aucun UID999 ou droit PGDATA n'est suppose. Le fragment est place apres
+le scan strict et avant la mesure containerd ; les anciens gates/permissions
+sont preserves. Aucune execution reelle de ces deux essais n'est encore recue.
+
+Les sources et manifests sont conserves byte-exacts par des attributs Git
+limites aux deux dossiers de qualification. Seuls deux imports de tests ont ete
+reordonnes pour la configuration Ruff du projet ; aucun asset runtime n'a change.
+L'analyse Bandit complementaire des quatre nouveaux scripts actifs emet quatre
+B102 et un B108, conserves et examines individuellement : exec compile seulement
+les buffers source verifies par SHA/ensemble ferme avant emploi (dont la classe
+Lease recue), et /tmp designe un tmpfs RO du conteneur getent, pas un fichier
+hote partage. Ce diagnostic n'est pas une sortie Bandit verte ; aucun nosec,
+filtre ou seuil de securite existant n'est ajoute/modifie pour ces points.
+
+La contre-revue A1 a reproduit trois routes de redirection dangereuses dans le
+raccord inactif, avec transport memoire sans reseau. Le candidat R2 les refuse
+avant contact et borne le worker via H1 :11cas auteur+4contre-cas Root passent.
+Il reste inactif, en attente du sujet containerd et des profils/commissions.
+La source W/V containerd R3 passe37purs+10contre-cas Root, mais garde son HOLD
+stockage/getent/PGDATA avant toute preparation privee. Aucune nouvelle remise
+de secret, migration produit ou session PAM n'est ouverte par ces observateurs.
+
+Main reste dcaa116 ;35High et la provenance de build incomplete bloquent
+fusion/image. Aucun Docker local, GUI, NAS, donnees reelles ou production touches.
+
 ### Reception du 16 novembre : PR11 et donnees publiques du laboratoire
 
 La [PR11 d47faeb](https://github.com/pamolive/PamOlive-Platform/pull/11) publie

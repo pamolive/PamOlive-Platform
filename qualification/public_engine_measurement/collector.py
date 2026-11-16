@@ -13,6 +13,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 CLI = Path("/usr/bin/docker")
 BOUNDED_SHA = "98233b610f2d53dfd698d0d91f61f3d3ebcb1693a847983f0472f89a885f414f"
+PUBLIC_SHA = "430595e46cf34a11e4cad8c994fa0854178c52b0ce8952295f28894a5446e6f7"
 PG = (
     "docker.io/library/postgres@sha256:"
     "6f7593c161689b6b02c78668b314af7da8811b592c5519108c57a49d0b6ad788"
@@ -23,11 +24,15 @@ VERSION = (
     '"server_version":{{json .Server.Version}},"server_api_max":{{json .Server.APIVersion}},'
     '"server_api_min":{{json .Server.MinAPIVersion}},'
     '"server_git_commit":{{json .Server.GitCommit}},'
-    '"server_os":{{json .Server.Os}},"server_arch":{{json .Server.Arch}}}'
+    '"server_os":{{json .Server.Os}},"server_arch":{{json .Server.Arch}},'
+    '"containerd":[{{$first := true}}{{range .Server.Components}}{{if eq .Name "containerd"}}'
+    "{{if not $first}},{{end}}{{$first = false}}"
+    '{"version":{{json .Version}},"revision":{{json (index .Details "GitCommit")}}}'
+    "{{end}}{{end}}]}"
 )
 INFO = (
     '{"driver":{{json .Driver}},"driver_status":{{json .DriverStatus}},'
-    '"root":{{json .DockerRootDir}}}'
+    '"root":{{json .DockerRootDir}},"containerd":{{json .Containerd}}}'
 )
 CONFIG_FIELDS = (
     "User",
@@ -43,6 +48,40 @@ CONFIG_FIELDS = (
 
 def sha(raw):
     return hashlib.sha256(raw).hexdigest()
+
+
+def public_source():
+    path = HERE / "containerd_public.py"
+    info = path.lstat()
+    need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and 0 < info.st_size <= 32768)
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    try:
+        opened = os.fstat(fd)
+        need(
+            stat.S_ISREG(opened.st_mode)
+            and opened.st_nlink == 1
+            and (opened.st_dev, opened.st_ino, opened.st_size)
+            == (info.st_dev, info.st_ino, info.st_size)
+        )
+        with os.fdopen(fd, "rb", closefd=False) as stream:
+            raw = stream.read(32769)
+        need(len(raw) == opened.st_size and len(raw) <= 32768 and sha(raw) == PUBLIC_SHA)
+        after = path.lstat()
+        need(
+            (after.st_dev, after.st_ino, after.st_size) == (info.st_dev, info.st_ino, info.st_size)
+        )
+    finally:
+        os.close(fd)
+    return raw
+
+
+def public_module():
+    module = type(sys)("_containerd_public")
+    exec(
+        compile(public_source(), "containerd_public.py", "exec", dont_inherit=True),
+        module.__dict__,
+    )
+    return module
 
 
 def need(value):
@@ -76,7 +115,10 @@ COMMANDS = (
     ("version", ["version", "--format", VERSION]),
     ("info", ["info", "--format", INFO]),
     ("postgres", ["image", "inspect", PG, "--format", image_template()]),
-    ("application", ["image", "inspect", "pamolive-platform:ci", "--format", image_template()]),
+    (
+        "application",
+        ["image", "inspect", "pamolive-platform:ci", "--format", image_template()],
+    ),
 )
 
 
@@ -164,10 +206,17 @@ def project(name, value):
             "server_api_min",
             "server_os",
             "server_arch",
+            "containerd",
         }
         need(set(value) == keys)
         result = {}
         for key, item in value.items():
+            if key == "containerd":
+                try:
+                    result[key] = public_module().component(item)
+                except (ValueError, TypeError):
+                    result[key] = redact_value(item)
+                continue
             valid = type(item) is str and (
                 key.endswith("_version")
                 and re.fullmatch(r"[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,3}(?:-(?:ce|ee))?", item)
@@ -183,7 +232,11 @@ def project(name, value):
             result[key] = item if valid else redact_value(item)
         return result
     if name == "info":
-        need(set(value) == {"driver", "driver_status", "root"})
+        need(set(value) == {"driver", "driver_status", "root", "containerd"})
+        try:
+            containerd = public_module().endpoint(value["containerd"])
+        except (ValueError, TypeError):
+            containerd = redact_value(value["containerd"])
         rows = value["driver_status"]
         need(
             rows is None
@@ -220,6 +273,7 @@ def project(name, value):
             ]
         )
         return {
+            "containerd": containerd,
             "driver": value["driver"]
             if type(value["driver"]) is str
             and value["driver"]
@@ -277,7 +331,10 @@ def project(name, value):
             type(row) is dict and set(row) == {"present", "value"} and type(row["present"]) is bool
         )
         need(row["present"] or row["value"] is None)
-        result[field] = {"present": row["present"], "value": safe_field(field, row["value"])}
+        result[field] = {
+            "present": row["present"],
+            "value": safe_field(field, row["value"]),
+        }
     return result
 
 
@@ -335,7 +392,12 @@ def collect(work, runner, tool):
         os.chmod(work / name, 0o700)
     (work / "docker-config/config.json").write_bytes(b'{"auths":{},"proxies":{}}\n')
     os.chmod(work / "docker-config/config.json", 0o600)
-    env = {"PATH": "/usr/bin:/bin", "HOME": str(work / "home"), "LANG": "C", "LC_ALL": "C"}
+    env = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": str(work / "home"),
+        "LANG": "C",
+        "LC_ALL": "C",
+    }
     prefix = [
         "/usr/bin/docker",
         "--host",
@@ -443,6 +505,10 @@ def finalize(work, report, tool_after):
         and report["all_clients_reaped_drained"]
         and report["tool_unchanged"]
     )
+    report["all_prerequisites_received"] = (
+        report["four_queries_received"]
+        and report.get("containerd_prerequisites", {}).get("status") == "COMPLETE"
+    )
     path = work / "public-report.json"
     need(not path.exists())
     raw = json.dumps(report, indent=2, allow_nan=False).encode() + b"\n"
@@ -450,14 +516,156 @@ def finalize(work, report, tool_after):
     with path.open("xb") as stream:
         os.chmod(path, 0o600)
         stream.write(raw)
-    return 0 if report["four_queries_received"] else 42
+    return 0 if report["all_prerequisites_received"] else 42
+
+
+def durable(work, ordinal, row):
+    raw = json.dumps(row, allow_nan=False, sort_keys=True).encode() + b"\n"
+    need(len(raw) <= 16384)
+    with (work / ("root-read-" + ordinal + ".json")).open("xb") as stream:
+        os.chmod(stream.name, 0o600)
+        need(stream.write(raw) == len(raw))
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def collect_prerequisites(work, report, runner, bounded_raw, *, measure=None, python=None):
+    cp = public_module()
+    row = {
+        "status": "NOT_ATTEMPTED",
+        "process": None,
+        "data": None,
+        "tools": None,
+        "tools_unchanged": False,
+        "profile_accepted": False,
+        "operational_GO": False,
+    }
+    report["containerd_prerequisites"] = row
+    if not report["four_queries_projected"] or not report["all_clients_reaped_drained"]:
+        return
+    version, info = (report["queries"][name]["data"] for name in ("version", "info"))
+    try:
+        cp.component([version["containerd"]])
+        address = cp.endpoint(info["containerd"])["Address"]
+        need(
+            info["driver"] == "overlayfs"
+            and info["root"] == "/var/lib/docker"
+            and info["driver_status"] == [["driver-type", "io.containerd.snapshotter.v1"]]
+        )
+        need(sha(bounded_raw) == BOUNDED_SHA)
+        measure = cp.tool_record if measure is None else measure
+        python = "/usr/bin/python3.14" if python is None else python
+        need(python == "/usr/bin/python3.14")
+        tools = {
+            "sudo": measure("/usr/bin/sudo"),
+            "env": measure("/usr/bin/env"),
+            "python": measure(python),
+        }
+        row["tools"] = tools
+        payload = bounded_raw + b"\n" + public_source() + b"\nraise SystemExit(root_main())\n"
+        need(len(payload) <= 65536)
+        command = [
+            "/usr/bin/sudo",
+            "-n",
+            "--",
+            "/usr/bin/env",
+            "-i",
+            "PATH=/usr/bin:/bin",
+            "HOME=/nonexistent",
+            "LANG=C",
+            "LC_ALL=C",
+            python,
+            "-I",
+            "-B",
+            "-S",
+            "-c",
+            payload.decode("utf-8"),
+            address,
+        ]
+        env = {
+            "PATH": "/usr/bin:/bin",
+            "HOME": "/nonexistent",
+            "LANG": "C",
+            "LC_ALL": "C",
+        }
+        durable(
+            work,
+            "intent",
+            {
+                "state": "PENDING",
+                "operation": "containerd-public-roots",
+                "payload_sha256": sha(payload),
+                "tools": tools,
+            },
+        )
+        row["status"] = "UNKNOWN"
+
+        def spawned(pid):
+            need(type(pid) is int and pid > 0)
+            durable(work, "pid", {"state": "PENDING", "pid": pid})
+
+        result = runner(
+            command,
+            env=env,
+            cwd="/",
+            timeout=45,
+            stdout_cap=16384,
+            stderr_cap=4096,
+            on_spawn=spawned,
+        )
+        row["process"] = cp.public_facts(result)
+        row["tools_unchanged"] = tools == {
+            "sudo": measure("/usr/bin/sudo"),
+            "env": measure("/usr/bin/env"),
+            "python": measure(python),
+        }
+        if not cp.h1(result) or not row["tools_unchanged"]:
+            return
+        if not result.ok or result.stderr != b"":
+            row["status"] = (
+                "PERMISSION_REFUSED"
+                if b"permission denied" in result.stderr.lower()
+                or b"password is required" in result.stderr.lower()
+                else "CHILD_REFUSED"
+            )
+            # A confirmed nonzero child may still provide a typed public refusal.
+            if result.stderr == b"":
+                try:
+                    diagnostic = cp.refusal_diagnostic(parse(result.stdout))
+                    row["status"] = diagnostic["status"]
+                    row["diagnostic"] = diagnostic
+                except (ValueError, TypeError, KeyError):
+                    pass
+            return
+        row["data"] = cp.validate_packet(parse(result.stdout))
+        row["status"] = "COMPLETE"
+    except (ValueError, OSError, TypeError, KeyError, UnicodeError):
+        # PENDING, if it exists, is never erased; no later query heals UNKNOWN.
+        if row["status"] != "UNKNOWN":
+            row["status"] = "PRECONDITION_REFUSED"
+    finally:
+        durable(
+            work,
+            "result",
+            {
+                "state": row["status"],
+                "process": row["process"],
+                "tools_unchanged": row["tools_unchanged"],
+            },
+        )
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--work", type=Path, required=True)
+    parser.add_argument("--github-hosted-disposable-public-read", action="store_true")
     args = parser.parse_args()
-    need(os.name == "posix" and os.getuid() > 0 and not args.work.exists())
+    need(
+        os.name == "posix"
+        and os.getuid() > 0
+        and not args.work.exists()
+        and args.github_hosted_disposable_public_read
+    )
     tool = binary_record()
     helper = HERE / "bounded_io.py"
     info = helper.lstat()
@@ -470,6 +678,7 @@ def main():
     sys.modules[spec.name] = module
     exec(compile(raw, str(helper), "exec", dont_inherit=True), module.__dict__)
     report = collect(args.work.absolute(), module.run_capped, tool)
+    collect_prerequisites(args.work.absolute(), report, module.run_capped, raw)
     try:
         after = binary_record()
     except (ValueError, OSError):

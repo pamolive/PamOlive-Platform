@@ -21,6 +21,12 @@ def version():
         "server_api_max": "1.55",
         "server_os": "linux",
         "server_arch": "amd64",
+        "containerd": [
+            {
+                "version": "v2.2.3",
+                "revision": "1234567890abcdef1234567890abcdef12345678",
+            }
+        ],
     }
 
 
@@ -83,6 +89,13 @@ class CollectorTests(unittest.TestCase):
                         "driver": "overlayfs",
                         "driver_status": [["driver-type", "io.containerd.snapshotter.v1"]],
                         "root": "/var/lib/docker",
+                        "containerd": {
+                            "Address": "/run/containerd/containerd.sock",
+                            "Namespaces": {
+                                "Containers": "moby",
+                                "Plugins": "plugins.moby",
+                            },
+                        },
                     }
                 )
             return Result(image())
@@ -95,7 +108,7 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(len(calls), 4)
         self.assertFalse((self.work / "public-report.json").exists())
         self.assertEqual([args[5] for args, _ in calls], ["version", "info", "image", "image"])
-        self.assertEqual(c.finalize(self.work, report, self.tool), 0)
+        self.assertEqual(c.finalize(self.work, report, self.tool), 42)
         written = json.loads((self.work / "public-report.json").read_bytes())
         self.assertTrue(written["four_queries_received"])
         self.assertFalse(written["profile_accepted"])
@@ -129,7 +142,10 @@ class CollectorTests(unittest.TestCase):
         def run(argv, **options):
             if not calls:
                 calls.append((argv, options))
-                return Result(error=b"Error response from daemon: No such image: SYNTHETIC", code=1)
+                return Result(
+                    error=b"Error response from daemon: No such image: SYNTHETIC",
+                    code=1,
+                )
             return good(argv, **options)
 
         report = c.collect(self.work, run, self.tool)
@@ -191,7 +207,8 @@ class CollectorTests(unittest.TestCase):
         for _name, args in c.COMMANDS:
             self.assertNotIn(".Config.Env", " ".join(args))
             self.assertNotIn(
-                args[0], {"create", "start", "pull", "load", "stop", "exec", "container"}
+                args[0],
+                {"create", "start", "pull", "load", "stop", "exec", "container"},
             )
         self.assertIn("range $k,$v := .Config", c.image_template())
         self.assertEqual(c.stderr_class(b"UNEXPECTED_SYNTHETIC_SECRET"), "unclassified")

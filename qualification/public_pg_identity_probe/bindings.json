@@ -1,0 +1,37 @@
+{
+  "files": {
+    "data/profile.json": {
+      "bytes": 5038,
+      "sha256": "a6f6f19c93af272b5acfa7cc67be16afa0717c218b6bf55be30fa04d6214115c"
+    },
+    "data/config.json": {
+      "bytes": 10147,
+      "sha256": "140936e8665d5274aa58df31b722693b4b451c541bb0f1a263a345d424bfacb4"
+    },
+    "data/amd64-manifest.json": {
+      "bytes": 3628,
+      "sha256": "6f7593c161689b6b02c78668b314af7da8811b592c5519108c57a49d0b6ad788"
+    },
+    "data/index.reference.json": {
+      "bytes": 10237,
+      "sha256": "0d938e975177bef9f1f61f3f9dbcf2e0aa0a139568f66d3415ed8892eb97f6ac"
+    },
+    "helpers/linux.py": {
+      "bytes": 38545,
+      "sha256": "40f5bbc845457ed18bf893fbb5d04eb90c6af0959077b0667a3dae3717120b80"
+    },
+    "helpers/legacy.py": {
+      "bytes": 29843,
+      "sha256": "7f3bfa46307673ba51c3a21fa3b70171ab9f931547e1903adce2fc02a29e02ce"
+    },
+    "helpers/bounded_io.py": {
+      "bytes": 6794,
+      "sha256": "98233b610f2d53dfd698d0d91f61f3d3ebcb1693a847983f0472f89a885f414f"
+    },
+    "helpers/lease_support.py": {
+      "bytes": 2886,
+      "sha256": "cbcb33ec203a47e9138119ee039255c4ce751c62cbf8208f918ab8efc730f07a"
+    }
+  },
+  "operational_GO": false
+}

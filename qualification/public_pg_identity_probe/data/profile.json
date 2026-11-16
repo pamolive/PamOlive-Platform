@@ -1,0 +1,151 @@
+{
+  "schema": "pamolive.PostgreSQL1712-declared-image-config-profile/1",
+  "reference": "docker.io/library/postgres@sha256:6f7593c161689b6b02c78668b314af7da8811b592c5519108c57a49d0b6ad788",
+  "index_reference": "docker.io/library/postgres@sha256:0d938e975177bef9f1f61f3f9dbcf2e0aa0a139568f66d3415ed8892eb97f6ac",
+  "config_digest": "sha256:140936e8665d5274aa58df31b722693b4b451c541bb0f1a263a345d424bfacb4",
+  "manifest_descriptor_complete": {
+    "annotations": {
+      "com.docker.official-images.bashbrew.arch": "amd64",
+      "org.opencontainers.image.base.digest": "sha256:7378260c0a098d27ac206225db5e7d92b8c7c84ea7afccc86eeb513756bbd392",
+      "org.opencontainers.image.base.name": "debian:trixie-slim",
+      "org.opencontainers.image.created": "2026-11-12T20:54:58Z",
+      "org.opencontainers.image.revision": "76a70e36d51517f2ab061a9bb60b1980a6902e29",
+      "org.opencontainers.image.source": "https://github.com/docker-library/postgres.git#76a70e36d51517f2ab061a9bb60b1980a6902e29:17/trixie",
+      "org.opencontainers.image.url": "https://hub.docker.com/_/postgres",
+      "org.opencontainers.image.version": "17.12"
+    },
+    "digest": "sha256:6f7593c161689b6b02c78668b314af7da8811b592c5519108c57a49d0b6ad788",
+    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+    "platform": {
+      "architecture": "amd64",
+      "os": "linux"
+    },
+    "size": 3628
+  },
+  "config_descriptor": {
+    "mediaType": "application/vnd.oci.image.config.v1+json",
+    "digest": "sha256:140936e8665d5274aa58df31b722693b4b451c541bb0f1a263a345d424bfacb4",
+    "size": 10147
+  },
+  "os": "linux",
+  "architecture": "amd64",
+  "rootfs_type": "layers",
+  "rootfs_diff_ids": [
+    "sha256:dd57f90311a2567b55ff22eeacff1602fd04ad7566e315957731359eab173b90",
+    "sha256:570721fd48654e7d9bf64fad0d566948a147dccf7fb8b0bff462d82f683d5332",
+    "sha256:04cda7fc04582b24bb226d98274c33ba0154ce4a188e26d4346d686ff380a842",
+    "sha256:af62874a31febc51e43637e71faffbef3cddc7de3bd9ee0347bd41df2072928a",
+    "sha256:8ded4d41713921d6918d6f15c0b21f687f0c9583d04659796c148fb822f5fd19",
+    "sha256:febd34e12a73c74d7a2bf2cb2387a17d20cf0654bdeba90fa2fcf4f31e3aa0d4",
+    "sha256:03fe53c4aeeedb410d21045d593456b22ae3a3fd584f50c4029c11e95bafeb19",
+    "sha256:a68cd270ff7ec4d8b8962047c8fb4dd975f9acc307058a38c0d5fefddfa4b558",
+    "sha256:95acb967acf8acfc79cf5f876b622d0eb86434a2c1b212588bbefc141374d13a",
+    "sha256:9648728c3bc8d57c12c172f342534c71552fadf0f0021cfd6b9ea1c4bf844e45",
+    "sha256:5acdba3a31dda495a27943abb5e1786930cb81aca60aec9d68dddaa74118be1b",
+    "sha256:a24d8b1910aa8c79148617434077cb4b3730945b6f06488d0b0d381c04ca118f",
+    "sha256:dca5f5fe7ae9ad1cb621f229cf0f59ac9e580cb51ce563e05195a9a071a50423",
+    "sha256:27cf50b061af1cd181832b82b7f07c07d320e13eab95259e6d917051331e721f"
+  ],
+  "image_config_fields_exact_presence": {
+    "User": {
+      "present": false,
+      "value": null
+    },
+    "Entrypoint": {
+      "present": true,
+      "value": [
+        "docker-entrypoint.sh"
+      ]
+    },
+    "Cmd": {
+      "present": true,
+      "value": [
+        "postgres"
+      ]
+    },
+    "Volumes": {
+      "present": true,
+      "value": {
+        "/var/lib/postgresql/data": {}
+      }
+    },
+    "Env": {
+      "present": true,
+      "value": [
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/postgresql/17/bin",
+        "GOSU_VERSION=1.19",
+        "LANG=en_US.utf8",
+        "PG_MAJOR=17",
+        "PG_VERSION=17.12-1.pgdg13+1",
+        "PGDATA=/var/lib/postgresql/data"
+      ]
+    },
+    "ExposedPorts": {
+      "present": true,
+      "value": {
+        "5432/tcp": {}
+      }
+    },
+    "WorkingDir": {
+      "present": false,
+      "value": null
+    },
+    "StopSignal": {
+      "present": true,
+      "value": "SIGINT"
+    },
+    "Labels": {
+      "present": false,
+      "value": null
+    },
+    "OnBuild": {
+      "present": false,
+      "value": null
+    },
+    "Shell": {
+      "present": false,
+      "value": null
+    },
+    "ArgsEscaped": {
+      "present": false,
+      "value": null
+    },
+    "Tty": {
+      "present": false,
+      "value": null
+    },
+    "OpenStdin": {
+      "present": false,
+      "value": null
+    },
+    "StdinOnce": {
+      "present": false,
+      "value": null
+    },
+    "AttachStdin": {
+      "present": false,
+      "value": null
+    },
+    "AttachStdout": {
+      "present": false,
+      "value": null
+    },
+    "AttachStderr": {
+      "present": false,
+      "value": null
+    }
+  },
+  "declared_public_image_env": {
+    "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/postgresql/17/bin",
+    "GOSU_VERSION": "1.19",
+    "LANG": "en_US.utf8",
+    "PG_MAJOR": "17",
+    "PG_VERSION": "17.12-1.pgdg13+1",
+    "PGDATA": "/var/lib/postgresql/data"
+  },
+  "numeric_postgres_uid_gid_from_filesystem_not_measured": true,
+  "User_field_not_a_running_UID_measurement": true,
+  "entrypoint_or_volume_initialization_not_executed": true,
+  "Docker_Engine_inspect_representation_not_measured": true,
+  "operational_GO": false
+}
