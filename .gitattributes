@@ -43,3 +43,11 @@ qualification/p1g_headless/chrome_materials/Packages -text whitespace=-blank-at-
 qualification/p1g_headless/chrome_materials/Release -text
 qualification/p1g_headless/chrome_materials/Release.gpg -text
 qualification/p1g_headless/chrome_materials/google-key.asc -text
+
+# Preserve reviewed public GPG fixtures and source pins byte-for-byte.
+qualification/p1g_headless/chrome_scope_fixtures/** -text whitespace=cr-at-eol
+qualification/p1g_headless/gpg_fixture/** -text whitespace=cr-at-eol
+qualification/p1g_headless/chrome_bootstrap.py -text whitespace=cr-at-eol
+qualification/p1g_headless/test_chrome_bootstrap.py -text whitespace=cr-at-eol
+qualification/p1g_headless/test_chrome_key_scope.py -text whitespace=cr-at-eol
+qualification/p1g_headless/chrome_scope_native_fixtures.json -text whitespace=cr-at-eol

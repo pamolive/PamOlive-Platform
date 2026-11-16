@@ -166,22 +166,41 @@ class ChromeBootstrapTests(unittest.TestCase):
             and isinstance(node.func, ast.Name)
             and node.func.id == "gpg_status_diagnostic"
         )
+        scope_tree = ast.parse((HERE / "chrome_key_scope.py").read_bytes())
+        authenticate = next(
+            n
+            for n in scope_tree.body
+            if isinstance(n, ast.FunctionDef) and n.name == "authenticate"
+        )
+        callback = next(
+            n
+            for n in ast.walk(authenticate)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Name)
+            and n.func.id == "diagnostic_sink"
+        )
         validation = next(
-            node
-            for node in ast.walk(main)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "valid_status"
+            n
+            for n in ast.walk(authenticate)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "valid_status"
         )
-        self.assertLess(diagnostic.lineno, validation.lineno)
+        self.assertLess(callback.lineno, validation.lineno)
         self.assertEqual(
-            [node.id for node in validation.args if isinstance(node, ast.Name)], ["status", "now"]
+            [n.id for n in validation.args if isinstance(n, ast.Name)],
+            ["status", "PRIMARY", "SIGNER", "now"],
         )
-        # No parsed diagnostic is used as an authentication condition.
         self.assertNotIn("diagnostic[", ast.unparse(main))
+        self.assertIn("diagnostic_sink=", ast.unparse(main))
+        self.assertIsNotNone(diagnostic)
 
     def test_actual_controller_bad_signature_or_package_never_reaches_extraction_install(self):
-        for failure in ("signature", "package", "malformed"):
+        from qualification.p1g_headless import chrome_key_scope as scope
+        from qualification.p1g_headless import chrome_key_scope_native as native
+        from qualification.p1g_headless.test_chrome_key_scope import full_listing, projected
+
+        for failure in ("signature", "package", "malformed", "incomplete"):
             with tempfile.TemporaryDirectory() as directory:
                 base = Path(directory).resolve()
                 captured = {
@@ -190,6 +209,7 @@ class ChromeBootstrapTests(unittest.TestCase):
                 captured.update(
                     {name: b"synthetic source not executed" for name in boot.SOURCE_PATHS}
                 )
+                captured["qualification/p1g_headless/gpg_fixture/source-pins.json"] = b"model"
                 calls = []
 
                 def runner(argv, **kwargs):
@@ -197,7 +217,9 @@ class ChromeBootstrapTests(unittest.TestCase):
                     kwargs["on_spawn"](123)
                     output = b""
                     if "--list-keys" in argv:
-                        output = listing()
+                        output = full_listing() if "gnupg-original" in argv[3] else listing()
+                    if "--export-filter" in argv:
+                        output = projected()
                     if "--verify" in argv:
                         output = status() + (
                             b"[GNUPG:] BADSIG PRIVATE\n" if failure == "signature" else b""
@@ -230,6 +252,39 @@ class ChromeBootstrapTests(unittest.TestCase):
                     tool_pin=lambda path: {"sha256": "a" * 64},
                     fresh_write=lab_support.fresh_write,
                 )
+                captured["qualification/p1g_headless/chrome_scope_native_fixtures.json"] = (
+                    json.dumps({"cases": {label: {} for label in native.LIFECYCLE}}).encode()
+                )
+                native_model = SimpleNamespace(
+                    LIFECYCLE=native.LIFECYCLE,
+                    PRODUCER_CONTRACT={
+                        **native.PRODUCER_CONTRACT,
+                        "source_pin": boot.sha(b"model"),
+                    },
+                    REQUIRED=native.REQUIRED,
+                    RECEIPT_SCHEMA=native.RECEIPT_SCHEMA,
+                    MATRIX_REQUIRED=native.MATRIX_REQUIRED,
+                    SOURCE_MATRIX_IMPLEMENTED=native.MATRIX_REQUIRED,
+                    exercise=lambda *args, **kwargs: {
+                        "schema": native.RECEIPT_SCHEMA,
+                        "matrix_required": sorted(native.MATRIX_REQUIRED),
+                        "matrix_completed": sorted(native.MATRIX_REQUIRED),
+                        "matrix_missing": [],
+                        "source_unimplemented": [],
+                        "ADR_evidence_matrix_complete": True,
+                        "all_rows_are_native_crypto": False,
+                        "producer_contract": native.PRODUCER_CONTRACT["purpose"],
+                        "producer_source_connected": True,
+                        "other_expired_keys_freshly_observed": 5,
+                        "state": "COMPLETE",
+                        "missing": ["signer_revoked"] if failure == "incomplete" else [],
+                        "cases": {
+                            k: {"refused": True, "complete_H1": True} for k in native.REQUIRED
+                        },
+                        "purpose": scope.PURPOSE,
+                        "operational_GO": False,
+                    },
+                )
                 env = {
                     "GITHUB_ACTIONS": "true",
                     "RUNNER_TEMP": str(base),
@@ -244,10 +299,32 @@ class ChromeBootstrapTests(unittest.TestCase):
                     patch.object(boot.os, "umask", return_value=0),
                     patch.dict(boot.os.environ, env),
                     patch.object(boot.time, "time", return_value=NOW),
+                    patch.object(scope.time, "time", return_value=NOW),
                     patch.object(boot, "context", return_value=(PINS, captured)),
-                    patch.object(boot, "load", side_effect=[support, gpg]),
+                    patch.object(
+                        boot,
+                        "load",
+                        side_effect=[
+                            support,
+                            gpg,
+                            scope,
+                            native_model,
+                            SimpleNamespace(
+                                modules=lambda pin: (
+                                    {
+                                        "fixture_contract": SimpleNamespace(
+                                            ci_context=lambda env: {}
+                                        )
+                                    },
+                                    {},
+                                )
+                            ),
+                        ],
+                    ),
                 ):
-                    self.assertEqual(boot.main(["--pins-sha", "f" * 64]), 42)
+                    self.assertEqual(
+                        boot.main(["--pins-sha", "f" * 64, "--native-scope-preflight-required"]), 42
+                    )
                 packet = json.loads((base / "p1g-headless-123-1-chrome/UNKNOWN.json").read_bytes())
                 self.assertEqual(
                     packet["code"],
@@ -255,6 +332,7 @@ class ChromeBootstrapTests(unittest.TestCase):
                         "signature": "status_bad",
                         "package": "package_bytes",
                         "malformed": "status_framing",
+                        "incomplete": "scope_native_preflight_incomplete",
                     }[failure],
                 )
                 self.assertTrue(
@@ -270,7 +348,7 @@ class ChromeBootstrapTests(unittest.TestCase):
                 self.assertTrue(diagnostic["diagnostic_only"])
                 self.assertFalse(diagnostic["operational_GO"])
                 self.assertNotIn("PRIVATE", json.dumps(diagnostic))
-                if failure in {"signature", "malformed"}:
+                if failure in {"signature", "malformed", "incomplete"}:
                     self.assertTrue(all(argv[0] != "/usr/bin/curl" for argv in calls))
                 self.assertNotIn("PRIVATE", json.dumps(packet))
 
@@ -490,7 +568,7 @@ class ChromeBootstrapTests(unittest.TestCase):
             for node in ast.walk(main)
             if isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "valid_status"
+            and node.func.attr == "authenticate"
         ]
         extractions = [
             node.lineno

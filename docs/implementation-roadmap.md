@@ -549,3 +549,20 @@ du scan, les vérificateurs, les helpers restore et leurs plafonds restent exact
 La reproduction réelle et un test du cycle des deux répertoires sont conservés.
 Ce succès restore ne vaut pas succès SBOM/scan ou qualification globale ; leur
 rejeu du candidat corrigé reste requis. Aucun accès NAS ni reprise de production.
+
+
+### Suite P1-G — intégration du 16 novembre 2026
+
+Le candidat de restauration 94064bc est intégré localement par merge 2836fd2.
+ADR-034 ajoute le contrôle borné de la lignée du certificat Google et les essais
+GPG synthétiques indépendants avant toute installation du navigateur. Les
+86 contrats purs passent ; la validation native reste à effectuer sur le SHA
+composé, avec les mêmes seuils, deadlines et secrets exclusivement synthétiques.
+
+Prochaines preuves : authentification Google, refus GPG avec processus terminés
+et sorties drainées, agent TEST nettoyé, revérification root, installation du
+paquet exact, puis parcours navigateur. Les futures sessions SSH/RDP réelles
+de laboratoire constituent encore des jalons distincts. La clôture des alertes
+d’image, la régression PostgreSQL/P0 et la restauration doivent être recevables
+sur la composition finale avant fusion ou publication. P2/P3 et le NAS ne sont
+pas déclarés qualifiés par ces seuls tests de source.

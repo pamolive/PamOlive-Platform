@@ -157,3 +157,35 @@ one-line Expat SDK C-header dependency fix. Its earlier 293 selected pure tests
 passed before the diagnostic delta; the changed bootstrap and retained UI tests
 were rerun afterward. Native image qualification, all remaining High findings,
 SSH/RDP browser execution and complete P1-G remain open.
+
+
+### ADR034 selected-signer certificate candidate (SOURCE/LAB only)
+
+The new purpose is `google-release-selected-signer-certificate-v1`; the original
+vendor key, Release/signature/Packages and `chrome_gpg.py` remain byte-exact.
+`chrome_key_scope.py` checks finite public packet DATA and signed-block lineage,
+then both supervisors independently run the unchanged strict GPG predicates on
+the derived subject. This does not qualify the historical whole-certificate
+verification. See [ADR034](../../docs/adr-034-google-certificate-scope.md).
+
+The native preflight is mandatory before download/package/install. R2 connects
+the separately reviewed NSS TEST producer R3, purpose/2, six immutable public
+buffers, to an independent native consumer. Actual signature identity, key dates,
+future/expiry and revoked-subkey state must be received in Linux; source test
+success cannot admit them. The17-row receipt explicitly separates native crypto,
+native state/authority guards, DATA guards and models; all_rows_are_native_crypto
+is false. Read ADR034 for exact coverage and limits. R1 remains frozen INCOMPLETE.
+
+The TEST-only owned agent is foreground/supervised, with180s total,150s work and
+30s cleanup on the dedicated Ubuntu24/Python3.12 profile. It may create synthetic
+private keys only in its fresh private home, remove its owned socket and private
+tree, and return public buffers only after confirmed cleanup. No autostart,
+global kill, weak flags, BAD suppression, key server or production authority is
+introduced. The Google key, Release, signature, Packages and001d predicates stay
+byte-exact. Root reauthenticates the selected Google subject independently.
+
+The CI hunk retains40min/job,15min/bootstrap,870s/frontend,450s/root,480s/rootcall,
+and600s+60s/browser. Every negative lane shares the frontend deadline and keeps
+UNKNOWN sticky. Only fixed typed metadata/H1 JSON and the six public TEST files
+are uploaded; homes, UID, stderr and raw status stay private. Real GPG/agent,
+installation, browser/UI/native SSH/RDP and product qualification remain PENDING.

@@ -34,14 +34,16 @@ def audit(event, args):
 
 
 sys.addaudithook(audit)
-test_chrome_bootstrap = __import__(
-    "qualification.p1g_headless.test_chrome_bootstrap", fromlist=["test_chrome_bootstrap"]
-)
-
+sys.path.insert(0, str(Path(__file__).resolve().parent / "gpg_fixture"))
+suite = unittest.TestSuite()
+for name in ("test_chrome_bootstrap", "test_chrome_key_scope"):
+    module = __import__("qualification.p1g_headless." + name, fromlist=[name])
+    suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(module))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "gpg_fixture"))
+fixture = __import__("test_fixture")
+suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(fixture))
 log = io.StringIO()
-result = unittest.TextTestRunner(stream=log, verbosity=2).run(
-    unittest.defaultTestLoader.loadTestsFromModule(test_chrome_bootstrap)
-)
+result = unittest.TextTestRunner(stream=log, verbosity=2).run(suite)
 print(
     json.dumps(
         {

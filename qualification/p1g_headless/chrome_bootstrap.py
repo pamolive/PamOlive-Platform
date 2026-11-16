@@ -21,68 +21,168 @@ PIN_PATH = "qualification/p1g_headless/chrome-bootstrap-pins.json"
 SOURCE_PATHS = {
     "qualification/p1g_headless/chrome_bootstrap.py",
     "qualification/p1g_headless/chrome_gpg.py",
+    "qualification/p1g_headless/chrome_key_scope.py",
+    "qualification/p1g_headless/chrome_key_scope_native.py",
     "qualification/p1g_headless/lab_support.py",
     "deploy/expat-remediation/bounded_io.py",
+    *{
+        "qualification/p1g_headless/gpg_fixture/" + name
+        for name in (
+            "fixture_owner.py",
+            "fixture_contract.py",
+            "agent_exec.py",
+            "bounded_io.py",
+            "crypto_guard.py",
+            "public_packets.py",
+        )
+    },
 }
 TEST_PATHS = {
     "qualification/p1g_headless/test_chrome_bootstrap.py",
+    "qualification/p1g_headless/test_chrome_key_scope.py",
+    "qualification/p1g_headless/chrome_scope_native_fixtures.json",
+    "qualification/p1g_headless/chrome_scope_fixtures/primary-expired.asc",
+    "qualification/p1g_headless/chrome_scope_fixtures/primary-revoked.pgp",
     "qualification/p1g_headless/run_chrome_pure.py",
+    "qualification/p1g_headless/gpg_fixture/test_fixture.py",
+    "qualification/p1g_headless/gpg_fixture/source-pins.json",
 }
 MATERIALS = {"google-key.asc", "Release", "Release.gpg", "Packages"}
 BASE_URL = "https://dl.google.com/linux/chrome/deb/"
 ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C", "LC_ALL": "C"}
 DIAGNOSTICS = {
-    "release_identity",
-    "release_UTC",
-    "release_freshness",
-    "release_SHA256_shape",
-    "release_Packages_binding",
-    "package_exact_stanza",
-    "package_path_budget",
-    "package_control",
-    "dependencies_not_already_satisfied",
-    "payload_budget",
-    "payload_path",
-    "payload_target_type_owner_mode",
-    "payload_target_size",
-    "payload_target_ELF",
-    "payload_target_missing",
-    "package_bytes",
-    "package_changed",
-    "command_UNKNOWN",
-    "tool_changed",
-    "sudo_role",
-    "sudo_changed",
-    "root_receipt",
-    "installed_payload_mismatch",
-    "installed_package_identity",
     "bootstrap_deadline",
-    "status_framing",
-    "status_bad",
-    "signature_ambiguity",
-    "signature_fields",
-    "signature_authority",
-    "signature_future",
-    "signature_expired",
-    "signature_hash",
+    "command_UNKNOWN",
+    "consumer_key_state_changed",
+    "consumer_native_key_times",
+    "consumer_native_sub_r",
+    "consumer_positive_RSA_SHA256",
+    "dependencies_not_already_satisfied",
+    "fixture_unknown",
+    "installed_package_identity",
+    "installed_payload_mismatch",
     "key_bundle_ambiguity",
-    "key_unusable",
-    "key_primary",
+    "key_duplicate",
+    "key_expired",
     "key_fields",
     "key_fingerprint",
-    "key_duplicate",
-    "signer_not_in_purpose_certificate",
     "key_future",
-    "key_expired",
-    "signature_before_key",
+    "key_primary",
+    "key_unusable",
+    "matrix_expired_other_not_observed",
+    "matrix_expiry_precondition",
+    "matrix_kind",
+    "matrix_original_keyset",
+    "matrix_unexpected_guard",
+    "native_crosscert_fixture",
+    "native_fixture_fields",
+    "native_fixture_pin",
+    "native_fixture_schema",
+    "native_fixture_state",
+    "native_import_not_certificate_refusal",
+    "native_lifecycle_not_refused",
+    "native_lifecycle_wrong_guard",
+    "native_mutation_kind",
+    "native_negative_H1_unknown",
+    "native_negative_accepted",
+    "native_negative_not_cryptographic_refusal",
+    "native_negative_tool_changed",
+    "native_positive_certificate_changed",
+    "native_producer_source_not_reviewed",
+    "native_receipt_budget",
+    "native_selfsig_fixture",
+    "native_status_budget",
+    "native_status_bytes",
+    "native_subpacket",
+    "native_unexpected_FAILURE",
+    "native_verify_unknown",
+    "package_bytes",
+    "package_changed",
+    "package_control",
+    "package_exact_stanza",
+    "package_path_budget",
+    "payload_budget",
+    "payload_path",
+    "payload_target_ELF",
+    "payload_target_missing",
+    "payload_target_size",
+    "payload_target_type_owner_mode",
+    "producer_H1",
+    "producer_H1_bytes",
+    "producer_TEST_identity",
+    "producer_buffer_binding",
+    "producer_external_source_pin",
+    "producer_lineage",
+    "producer_message",
+    "producer_not_admitted",
+    "producer_public_budget",
+    "producer_public_facts_budget",
+    "producer_public_fields",
+    "producer_public_names",
+    "producer_python_binding",
+    "producer_requested_times",
+    "producer_tool_binding",
+    "release_Packages_binding",
+    "release_SHA256_shape",
+    "release_UTC",
+    "release_freshness",
+    "release_identity",
+    "root_receipt",
+    "scope_armor",
+    "scope_armor_crc",
+    "scope_bytes",
+    "scope_duplicate_subkey",
+    "scope_exact_keys",
+    "scope_indeterminate_length",
+    "scope_key_body_pin",
+    "scope_mode",
+    "scope_multiple_primaries",
+    "scope_native_preflight_incomplete",
+    "scope_original_keyset",
+    "scope_original_pin",
+    "scope_packet_budget",
+    "scope_packet_header",
+    "scope_packet_length",
+    "scope_packet_order",
+    "scope_packet_size",
+    "scope_partial_length",
+    "scope_primary_block_changed",
+    "scope_primary_first",
+    "scope_primary_signature_type",
+    "scope_purpose",
+    "scope_secret_or_unknown_tag",
+    "scope_selected_state_changed",
+    "scope_signature_lengths",
+    "scope_signer_block_changed",
+    "scope_subkey_signature_type",
+    "scope_v4_RSA_key",
+    "scope_v4_fingerprint",
+    "scope_v4_signature",
     "signature_after_key_expiry",
+    "signature_ambiguity",
+    "signature_authority",
+    "signature_before_key",
+    "signature_expired",
+    "signature_fields",
+    "signature_future",
+    "signature_hash",
+    "signer_not_in_purpose_certificate",
     "signing_capability_missing",
+    "status_bad",
+    "status_framing",
+    "sudo_changed",
+    "sudo_role",
+    "temporal_VALID_count",
+    "temporal_actual_signature",
+    "temporal_expired_state",
+    "temporal_future_state",
     "tool_alias_refused",
-    "tool_type_owner_mode",
-    "tool_parent_writable_or_alias",
-    "tool_fd_identity",
     "tool_byte_budget",
+    "tool_changed",
     "tool_changed_or_not_ELF",
+    "tool_fd_identity",
+    "tool_parent_writable_or_alias",
+    "tool_type_owner_mode",
 }
 
 
@@ -263,7 +363,7 @@ def context(root, receipt_path, pins_sha, revision):
         and set(pins["files"]) == MATERIALS
         and pins["Release_max_age_seconds"] == 604800
         and pins["future_tolerance_seconds"] == 300
-        and pins["purpose"] == "disposable-p1g-CI-only"
+        and pins["purpose"] == "google-release-selected-signer-certificate-v1"
         and pins["primary"] == "EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796"
         and pins["signer"] == "0E225917414670F4442C250DFD533C07C264648F"
         and pins["PGP_validity_still_required_in_CI"] is True,
@@ -595,6 +695,8 @@ def gpg_status_diagnostic(status, listing, primary, signer, now):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--pins-sha", required=True)
+    parser.add_argument("--native-scope-preflight-required", action="store_true", required=True)
+    parser.add_argument("--scope-native-only", action="store_true")
     parser.add_argument("--root-install", action="store_true")
     args = parser.parse_args(argv)
     need(sys.platform == "linux" and os.environ.get("GITHUB_ACTIONS") == "true", "CI_Linux_only")
@@ -617,6 +719,13 @@ def main(argv=None):
         captured["qualification/p1g_headless/chrome_gpg.py"],
         root / "qualification/p1g_headless/chrome_gpg.py",
     )
+    scope = load(
+        "p1g_chrome_key_scope",
+        captured["qualification/p1g_headless/chrome_key_scope.py"],
+        root / "qualification/p1g_headless/chrome_key_scope.py",
+    )
+    need(pins["purpose"] == scope.PURPOSE, "scope_purpose")
+    need(not (args.root_install and args.scope_native_only), "scope_mode")
     support.guard(os.environ, uid=int(os.environ["SUDO_UID"]) if args.root_install else os.getuid())
     support.source_binding(
         root, Path(os.environ["RUNNER_TEMP"]) / "p1g-source.json", os.environ["GITHUB_SHA"]
@@ -658,57 +767,178 @@ def main(argv=None):
         for name, body in captured.items():
             if name in MATERIALS:
                 support.fresh_write(staged / name, body, mode=0o400)
-        home = private / "gnupg"
-        home.mkdir(mode=0o700)
-        command = [
-            "/usr/bin/gpg",
-            "--no-options",
-            "--homedir",
-            str(home),
-            "--batch",
-            "--no-tty",
-            "--no-autostart",
-            "--no-auto-key-retrieve",
-            "--no-auto-key-import",
-            "--auto-key-locate",
-            "clear",
-            "--no-auto-check-trustdb",
-            "--require-cross-certification",
-        ]
-        commands.run(command + ["--import", str(staged / "google-key.asc")], seconds=10)
-        listed = commands.run(
-            command
-            + [
-                "--with-colons",
-                "--fixed-list-mode",
-                "--fingerprint",
-                "--with-subkey-fingerprint",
-                "--list-keys",
-            ],
-            seconds=10,
+        valid, scope_proof, positive_status, positive_listing = scope.authenticate(
+            commands,
+            support,
+            staged,
+            private,
+            gpg,
+            captured["google-key.asc"],
+            diagnostic_sink=lambda status, listed, now: support.fresh_write(
+                command_public / "gpg-status-diagnostic.json",
+                json.dumps(
+                    gpg_status_diagnostic(status, listed, pins["primary"], pins["signer"], now)
+                ).encode(),
+                mode=0o444,
+            ),
         )
-        keys = gpg.one_primary(listed, pins["primary"])
-        status = commands.run(
-            command
-            + [
-                "--status-fd",
-                "1",
-                "--verify",
-                str(staged / "Release.gpg"),
-                str(staged / "Release"),
-            ],
-            seconds=10,
+        native_path = public / "scope-native-preflight.json"
+        native = load(
+            "p1g_chrome_key_scope_native",
+            captured["qualification/p1g_headless/chrome_key_scope_native.py"],
+            root / "qualification/p1g_headless/chrome_key_scope_native.py",
         )
+        if not args.root_install:
+            phase = "scope_native_preflight"
+            original_listing = commands.run(
+                scope.options(private / "gnupg-original")
+                + [
+                    "--with-colons",
+                    "--fixed-list-mode",
+                    "--fingerprint",
+                    "--with-subkey-fingerprint",
+                    "--list-keys",
+                ],
+                seconds=10,
+                cap=16384,
+            )
+            fixture_prefix = "qualification/p1g_headless/gpg_fixture/"
+            need(
+                sha(captured[fixture_prefix + "source-pins.json"])
+                == native.PRODUCER_CONTRACT["source_pin"],
+                "producer_external_source_pin",
+            )
+            owner_module = load(
+                "p1g_TEST_fixture_owner",
+                captured[fixture_prefix + "fixture_owner.py"],
+                root / (fixture_prefix + "fixture_owner.py"),
+            )
+            loaded, fixture_sources = owner_module.modules(native.PRODUCER_CONTRACT["source_pin"])
+            fixture_context = loaded["fixture_contract"].ci_context(os.environ)
+
+            def produce():
+                return owner_module.Owner(
+                    loaded,
+                    fixture_sources,
+                    command_public / "TEST-fixture-generator",
+                    until=commands.until,
+                    context=os.environ,
+                ).run()
+
+            def publish_fixture(buffers, facts):
+                destination = command_public / "TEST-fixture-public"
+                destination.mkdir(mode=0o700)
+                need(
+                    set(buffers) == set(native.PRODUCER_CONTRACT["public_names"]),
+                    "producer_public_names",
+                )
+                for name in native.PRODUCER_CONTRACT["public_names"]:
+                    support.fresh_write(destination / name, buffers[name], mode=0o444)
+                raw = json.dumps(facts).encode()
+                need(len(raw) <= 65536, "producer_public_facts_budget")
+                support.fresh_write(destination / "fixture-facts.json", raw, mode=0o444)
+
+            def lane_factory(label):
+                local = private / ("native-" + label)
+                local.mkdir(mode=0o700)
+                journal = command_public / ("native-" + label)
+                journal.mkdir(mode=0o700)
+                lane = Commands(support, commands.io, local, journal)
+                lane.until = commands.until
+                return lane, local
+
+            try:
+                tested = native.exercise(
+                    scope,
+                    gpg,
+                    support,
+                    read,
+                    captured,
+                    private,
+                    lane_factory,
+                    expected_scoped_sha256=scope_proof["scoped_sha256"],
+                    positive_proof=scope_proof,
+                    positive_status=positive_status,
+                    positive_listing=positive_listing,
+                    original_listing=original_listing,
+                    producer=produce,
+                    producer_context=fixture_context,
+                    publish_fixture=publish_fixture,
+                )
+            except BaseException:
+                support.fresh_write(
+                    native_path,
+                    json.dumps(
+                        {
+                            "schema": native.RECEIPT_SCHEMA,
+                            "state": "INCOMPLETE",
+                            "cases": {},
+                            "missing": sorted(native.REQUIRED),
+                            "purpose": scope.PURPOSE,
+                            "operational_GO": False,
+                            "native_case_failed_or_UNKNOWN": True,
+                            "matrix_required": sorted(native.MATRIX_REQUIRED),
+                            "matrix_completed": [],
+                            "matrix_missing": sorted(native.MATRIX_REQUIRED),
+                            "source_unimplemented": sorted(
+                                native.MATRIX_REQUIRED - native.SOURCE_MATRIX_IMPLEMENTED
+                            ),
+                            "ADR_evidence_matrix_complete": False,
+                            "all_rows_are_native_crypto": False,
+                        }
+                    ).encode(),
+                    mode=0o444,
+                )
+                raise
+            tested.update(
+                revision=os.environ["GITHUB_SHA"],
+                pins_manifest_sha256=args.pins_sha,
+                run=os.environ["GITHUB_RUN_ID"],
+                attempt=os.environ["GITHUB_RUN_ATTEMPT"],
+                scoped_sha256=scope_proof["scoped_sha256"],
+            )
+            native_raw = json.dumps(tested).encode()
+            need(len(native_raw) <= 16384, "native_receipt_budget")
+            support.fresh_write(native_path, native_raw, mode=0o444)
+        else:
+            tested = json.loads(read(native_path, 16384), object_pairs_hook=unique)
+        need(
+            native.MATRIX_REQUIRED <= native.SOURCE_MATRIX_IMPLEMENTED
+            and tested["schema"] == native.RECEIPT_SCHEMA
+            and tested["ADR_evidence_matrix_complete"] is True
+            and tested["all_rows_are_native_crypto"] is False
+            and tested["producer_contract"] == native.PRODUCER_CONTRACT["purpose"]
+            and tested["producer_source_connected"] is True
+            and set(tested["matrix_required"]) == native.MATRIX_REQUIRED
+            and set(tested["matrix_completed"]) == native.MATRIX_REQUIRED
+            and tested["matrix_missing"] == []
+            and tested["source_unimplemented"] == []
+            and tested["other_expired_keys_freshly_observed"] > 0
+            and tested["state"] == "COMPLETE"
+            and tested["missing"] == []
+            and set(tested["cases"]) == native.REQUIRED
+            and set(
+                json.loads(
+                    captured["qualification/p1g_headless/chrome_scope_native_fixtures.json"],
+                    object_pairs_hook=unique,
+                )["cases"]
+            )
+            == set(native.LIFECYCLE)
+            and all(
+                r["refused"] is True and r["complete_H1"] is True for r in tested["cases"].values()
+            )
+            and tested["purpose"] == scope.PURPOSE
+            and tested["operational_GO"] is False
+            and tested["revision"] == os.environ["GITHUB_SHA"]
+            and tested["pins_manifest_sha256"] == args.pins_sha
+            and tested["run"] == os.environ["GITHUB_RUN_ID"]
+            and tested["attempt"] == os.environ["GITHUB_RUN_ATTEMPT"]
+            and tested["scoped_sha256"] == scope_proof["scoped_sha256"],
+            "scope_native_preflight_incomplete",
+        )
+        if args.scope_native_only:
+            return 0
         now = int(time.time())
-        support.fresh_write(
-            command_public / "gpg-status-diagnostic.json",
-            json.dumps(
-                gpg_status_diagnostic(status, listed, pins["primary"], pins["signer"], now)
-            ).encode(),
-            mode=0o444,
-        )
-        valid = gpg.valid_status(status, pins["primary"], pins["signer"], now)
-        gpg.signing_capability(keys, pins["primary"], pins["signer"], now, valid["timestamp"])
         # Metadata is parsed again AFTER actual GPG authentication, before DEB processing.
         release_check(captured["Release"], captured["Packages"], now)
         phase = "package_bytes"
@@ -794,6 +1024,7 @@ def main(argv=None):
                     "--pins-sha",
                     args.pins_sha,
                     "--root-install",
+                    "--native-scope-preflight-required",
                 ],
                 seconds=480,
                 sudo=True,
@@ -804,7 +1035,8 @@ def main(argv=None):
                 and result["target"] == target
                 and result["package_sha256"] == pins["package"]["SHA256"]
                 and result["pins_manifest_sha256"] == args.pins_sha
-                and result["revision"] == os.environ["GITHUB_SHA"],
+                and result["revision"] == os.environ["GITHUB_SHA"]
+                and result["key_scope"] == scope_proof,
                 "root_receipt",
             )
         else:
@@ -852,6 +1084,7 @@ def main(argv=None):
                         ),
                         "target": target,
                         "signature": valid,
+                        "key_scope": scope_proof,
                         "all_OS_descendants_released": False,
                         "browser_executed": False,
                         "operational_GO": False,

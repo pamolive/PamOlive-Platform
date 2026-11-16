@@ -1,6 +1,6 @@
 {
   "schema": "pamolive.chrome-bootstrap-pins/1",
-  "purpose": "disposable-p1g-CI-only",
+  "purpose": "google-release-selected-signer-certificate-v1",
   "files": {
     "google-key.asc": {
       "bytes": 19640,
@@ -33,14 +33,28 @@
   "Release_max_age_seconds": 604800,
   "future_tolerance_seconds": 300,
   "source_files": {
-    "qualification/p1g_headless/chrome_bootstrap.py": "1bfe517e4a520652887a9688bd58bbbcf585b9cefdc0965b45c78417b8dd9094",
+    "deploy/expat-remediation/bounded_io.py": "72b778ad6e441744e8bd9ac84ba7f47b1f6b577b7885a2e0daf3b4584cc0150a",
+    "qualification/p1g_headless/chrome_bootstrap.py": "c79d8ba3e44a775c037db5329dfb32ef1a56f3d71e81acbaa6f4c8f5268b0b01",
     "qualification/p1g_headless/chrome_gpg.py": "001d178e5876df97156bf2061df19a51fc56bbf5b9bfa102098999bc10357512",
-    "qualification/p1g_headless/lab_support.py": "83169d823c2ea9e3e1abdba105f17c4259bc7f1a5c1a4827e34bd35fea7df7a8",
-    "deploy/expat-remediation/bounded_io.py": "72b778ad6e441744e8bd9ac84ba7f47b1f6b577b7885a2e0daf3b4584cc0150a"
+    "qualification/p1g_headless/chrome_key_scope.py": "1ee01826ddd241e5bde35a98363b1c1d36f59946e44cf552b370f82b80bbad1c",
+    "qualification/p1g_headless/chrome_key_scope_native.py": "eee2708eb8a5f482c46f3af11fc01c5a10544ad4dfff6bc4f5fdc5729e03f171",
+    "qualification/p1g_headless/gpg_fixture/agent_exec.py": "276798947ee7f7b9502eb3e999e4d137b93c4352804190400245d85895c2ae26",
+    "qualification/p1g_headless/gpg_fixture/bounded_io.py": "72b778ad6e441744e8bd9ac84ba7f47b1f6b577b7885a2e0daf3b4584cc0150a",
+    "qualification/p1g_headless/gpg_fixture/crypto_guard.py": "001d178e5876df97156bf2061df19a51fc56bbf5b9bfa102098999bc10357512",
+    "qualification/p1g_headless/gpg_fixture/fixture_contract.py": "90d28bddd748b9c2147e1dc09e1da6b1032259188633e3a04aebd9658b95a54b",
+    "qualification/p1g_headless/gpg_fixture/fixture_owner.py": "8157680fdefd554d9c0a91d473eab578e3c7df92e54fe272299fa0739664fa4c",
+    "qualification/p1g_headless/gpg_fixture/public_packets.py": "1ee01826ddd241e5bde35a98363b1c1d36f59946e44cf552b370f82b80bbad1c",
+    "qualification/p1g_headless/lab_support.py": "83169d823c2ea9e3e1abdba105f17c4259bc7f1a5c1a4827e34bd35fea7df7a8"
   },
   "PGP_validity_still_required_in_CI": true,
   "test_files": {
-    "qualification/p1g_headless/test_chrome_bootstrap.py": "70cdcb47e192803c9258041bb862538384fced44529328aac815b5080e0f1705",
-    "qualification/p1g_headless/run_chrome_pure.py": "c81b8be76d2aed7ef403ce0c828fa37cd43554c49ea8b5634b0c9eb6e436afb7"
+    "qualification/p1g_headless/chrome_scope_fixtures/primary-expired.asc": "6f609a78bb44446a781b1ee6c51119af2425168a88beb69acd03ef7295281d65",
+    "qualification/p1g_headless/chrome_scope_fixtures/primary-revoked.pgp": "e332cfcd0f62174f9f07ed1910251050addc445ca45090e87dc528fb7fe02cdf",
+    "qualification/p1g_headless/chrome_scope_native_fixtures.json": "d521d048b7d10bf9b40f907409d724bb656f991186ba128a6db43dca95d7b8c7",
+    "qualification/p1g_headless/gpg_fixture/source-pins.json": "7bb5c0565e1a4a0c5ddd5f3b729626680076fba66b88a82729b170b115edbf84",
+    "qualification/p1g_headless/gpg_fixture/test_fixture.py": "f6710739158c1e3ecb0e28068fa60a0868141109541c5e0354d06cf7355c5ad3",
+    "qualification/p1g_headless/run_chrome_pure.py": "f99155a607c5d638bc7c7fab4987bf534615f9821cd57299629b52c8f2940d48",
+    "qualification/p1g_headless/test_chrome_bootstrap.py": "688aa1166b04e796fec382adbf1f5007a909dd6a54107430896fe651148544b2",
+    "qualification/p1g_headless/test_chrome_key_scope.py": "82e31ba86f6ef29c936c576ae236bcfc569157e3995f44acd1b8b8739ca9840a"
   }
 }

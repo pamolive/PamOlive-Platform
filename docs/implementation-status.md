@@ -802,3 +802,27 @@ du scan, les vérificateurs, les helpers restore et leurs plafonds restent exact
 La reproduction réelle et un test du cycle des deux répertoires sont conservés.
 Ce succès restore ne vaut pas succès SBOM/scan ou qualification globale ; leur
 rejeu du candidat corrigé reste requis. Aucun accès NAS ni reprise de production.
+
+
+### P1-G — certificat de navigateur et restauration, intégration locale du 16 novembre 2026
+
+Le merge local 2836fd2 conserve les correctifs de restauration du candidat 94064bc,
+avec 204 tests de contrats purs et le contrôle de secrets sur 1 332 fichiers réussis.
+Les preuves natives de 94064bc restent liées à ce candidat ; elles ne qualifient
+pas une nouvelle image issue du merge.
+
+ADR-034 est implémenté pour une qualification dédiée sous Ubuntu 24.04 :
+certificat Google limité au signer déjà autorisé, lignée des paquets contrôlée,
+revérification indépendante par le superviseur root, et fixtures GPG synthétiques
+sous agent possédé. Les quatre matériaux Google et les prédicats cryptographiques
+existants sont inchangés. La fermeture des sources compte 25 fichiers vérifiés
+depuis l’index Git ; les huit fichiers du producteur de fixtures sont conservés
+exactement. Les 86 tests purs passent, sans accès natif, réseau, base ou navigateur.
+
+La matrice distingue les refus cryptographiques natifs, les gardes sur sorties
+natives, les contrôles de données et les modèles de branches. Une réussite des
+modèles ne constitue pas une signature authentifiée. Les signatures, la durée
+de vie de l’agent, son nettoyage, l’installation et le parcours navigateur doivent
+encore être confirmés sur une nouvelle CI liée à ce commit. P1-G reste incomplet.
+Le scan strict de l’image 94064bc reste bloquant ; aucune qualification ou
+publication de cette nouvelle image, fusion dans main ou modification NAS.

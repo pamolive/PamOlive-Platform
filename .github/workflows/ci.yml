@@ -55,10 +55,10 @@ jobs:
         run: python -m bandit -r config platform_core platform_modules components/vault/src components/vault/runtime/pamolive_vault_runtime components/vault-registry/src components/pam-trust-verifier/src components/usage-anchor/pamolive_usage_anchor -ll -f json -o "$RUNNER_TEMP/pamolive-bandit-application.json"
       - name: Retain all deployment and browser bootstrap findings for review
         if: always()
-        run: python -m bandit -r deploy qualification/p1g_headless/chrome_bootstrap.py qualification/p1g_headless/chrome_gpg.py --exit-zero -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-all.json"
+        run: python -m bandit -r deploy qualification/p1g_headless/chrome_bootstrap.py qualification/p1g_headless/chrome_gpg.py qualification/p1g_headless/chrome_key_scope.py qualification/p1g_headless/chrome_key_scope_native.py qualification/p1g_headless/gpg_fixture --exit-zero -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-all.json"
       - name: Reject high severity deployment and browser bootstrap findings
         if: always()
-        run: python -m bandit -r deploy qualification/p1g_headless/chrome_bootstrap.py qualification/p1g_headless/chrome_gpg.py -lll -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-high.json"
+        run: python -m bandit -r deploy qualification/p1g_headless/chrome_bootstrap.py qualification/p1g_headless/chrome_gpg.py qualification/p1g_headless/chrome_key_scope.py qualification/p1g_headless/chrome_key_scope_native.py qualification/p1g_headless/gpg_fixture -lll -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-high.json"
       - name: Reject new secrets against the reviewed baseline without network verification
         if: always()
         shell: bash
@@ -791,7 +791,7 @@ jobs:
           "$RUNNER_TEMP/p1g-venv/bin/python" -m pip check
       - name: Check only source contracts without opening a browser or database
         run: 'python -I -B -S "$RUNNER_TEMP/p1g-source/qualification/p1g_headless/run_pure.py"'
-      - name: Authenticate and reinstall only the reviewed Chrome package
+      - name: Authenticate scoped certificate, require native negatives, reinstall reviewed Chrome
         timeout-minutes: 15
         env:
           DATABASE_URL: postgresql://p1g:p1g-synthetic-disposable-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/pamolive_p1g
@@ -815,7 +815,7 @@ jobs:
               assert len(raw) == row.st_size and len(raw) <= cap
               return raw
           name = "qualification/p1g_headless/chrome-bootstrap-pins.json"
-          expected = "b269dc936114230e25c0236009009b93ba2d303dc648396efe010ba5e57a975f"
+          expected = "9bf316cb1f30cc10ea44a550559640dae8c5c01daa32229e25472b627532cf69"
           raw = read(root / name, 131072)
           assert len(raw) <= 131072 and hashlib.sha256(raw).hexdigest() == expected
           receipt = json.loads(read(receipt_path, 4 * 1024**2))
@@ -831,7 +831,7 @@ jobs:
               assert hashlib.sha256(raw).hexdigest() == expected == receipt["files"][name]
           PY
           python -I -B -S "$source/qualification/p1g_headless/run_chrome_pure.py"
-          "$RUNNER_TEMP/p1g-venv/bin/python" -I -B -S "$source/qualification/p1g_headless/chrome_bootstrap.py" --pins-sha b269dc936114230e25c0236009009b93ba2d303dc648396efe010ba5e57a975f
+          "$RUNNER_TEMP/p1g-venv/bin/python" -I -B -S "$source/qualification/p1g_headless/chrome_bootstrap.py" --pins-sha 9bf316cb1f30cc10ea44a550559640dae8c5c01daa32229e25472b627532cf69 --native-scope-preflight-required
       - name: Exercise the synthetic P1-G JavaScript increment
         timeout-minutes: 12
         env:
@@ -848,6 +848,12 @@ jobs:
           path: |
             ${{ runner.temp }}/p1g-headless-${{ github.run_id }}-${{ github.run_attempt }}/*.json
             ${{ runner.temp }}/p1g-headless-${{ github.run_id }}-${{ github.run_attempt }}-chrome/**/*.json
+            ${{ runner.temp }}/p1g-headless-${{ github.run_id }}-${{ github.run_attempt }}-chrome/frontend/TEST-fixture-public/certificate-before.pgp
+            ${{ runner.temp }}/p1g-headless-${{ github.run_id }}-${{ github.run_attempt }}-chrome/frontend/TEST-fixture-public/certificate-revoked.pgp
+            ${{ runner.temp }}/p1g-headless-${{ github.run_id }}-${{ github.run_attempt }}-chrome/frontend/TEST-fixture-public/message.bin
+            ${{ runner.temp }}/p1g-headless-${{ github.run_id }}-${{ github.run_attempt }}-chrome/frontend/TEST-fixture-public/signature.sig
+            ${{ runner.temp }}/p1g-headless-${{ github.run_id }}-${{ github.run_attempt }}-chrome/frontend/TEST-fixture-public/signature-future.sig
+            ${{ runner.temp }}/p1g-headless-${{ github.run_id }}-${{ github.run_attempt }}-chrome/frontend/TEST-fixture-public/signature-expired.sig
             ${{ runner.temp }}/p1g-source.json
           if-no-files-found: warn
           retention-days: 7
