@@ -26,7 +26,7 @@ COPY --from=expat-builder /expat-packages/sdk/ /tmp/expat-sdk/
 COPY --from=expat-builder /expat-before/ABI.json /expat-before.json
 COPY deploy/expat-remediation/ /opt/expat4/
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential binutils gpg=2.4.7-21+deb13u1+b5 /tmp/expat-sdk/*.deb && rm -rf /var/lib/apt/lists/*
-RUN --network=none python -I -B -S /opt/expat4/build_python_xml.py /expat-materials /python-xml-build
+RUN --network=none python -I -B -S /opt/expat4/build_python_xml.py --optimization-policy xml-local-no-pgo-v1 /expat-materials /python-xml-build
 RUN --network=none install -m 0755 /python-xml-build/pyexpat.cpython-312-x86_64-linux-gnu.so /usr/local/lib/python3.12/lib-dynload/pyexpat.cpython-312-x86_64-linux-gnu.so
 RUN --network=none install -m 0755 /python-xml-build/_elementtree.cpython-312-x86_64-linux-gnu.so /usr/local/lib/python3.12/lib-dynload/_elementtree.cpython-312-x86_64-linux-gnu.so
 RUN --network=none python -I -B -S /opt/expat4/abi_gate.py capture /usr/share/pamolive/expat4/after

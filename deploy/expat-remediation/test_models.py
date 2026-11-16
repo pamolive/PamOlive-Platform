@@ -208,23 +208,30 @@ class RootPurposeTests(unittest.TestCase):
                 pass
 
         data = {a.key: (MATERIALS / a.key).read_bytes() for a in authorities}
-        data.update({
-            "expat_2.10.0.orig.tar.gz": b"Debian orig fixture",
-            "expat_2.10.0-1.debian.tar.xz": b"Debian packaging fixture",
-        })
+        data.update(
+            {
+                "expat_2.10.0.orig.tar.gz": b"Debian orig fixture",
+                "expat_2.10.0-1.debian.tar.xz": b"Debian packaging fixture",
+            }
+        )
         text = b"Source: expat\nVersion: 2.10.0-1\nChecksums-Sha256:\n"
         for name in ("expat_2.10.0.orig.tar.gz", "expat_2.10.0-1.debian.tar.xz"):
             text += f" {common.sha(data[name])} {len(data[name])} {name}\n".encode()
         data["expat-2.10.0-1.dsc"] = (
-            b"-----BEGIN PGP SIGNED MESSAGE-----\n\n" + text
+            b"-----BEGIN PGP SIGNED MESSAGE-----\n\n"
+            + text
             + b"-----BEGIN PGP SIGNATURE-----\nfixture\n-----END PGP SIGNATURE-----\n"
         )
 
         def fake_command(args, cwd, log, **kwargs):
             captured.append((args, str(log), kwargs))
-            a = next(a for a in authorities if str(log).endswith(
-                (a.purpose + "-import", a.purpose + "-keys", a.purpose + "-verify")
-            ))
+            a = next(
+                a
+                for a in authorities
+                if str(log).endswith(
+                    (a.purpose + "-import", a.purpose + "-keys", a.purpose + "-verify")
+                )
+            )
             if "--import" in args:
                 return b""
             if "--list-keys" in args:
@@ -236,7 +243,9 @@ class RootPurposeTests(unittest.TestCase):
 
         with (
             mock.patch.multiple(
-                authenticate, Path=FakePath, approved_authorities=lambda: authorities,
+                authenticate,
+                Path=FakePath,
+                approved_authorities=lambda: authorities,
                 check_materials=lambda folder: None,
                 material_rows=lambda: [{"name": n} for n in data],
                 material=lambda folder, name: data[name],
@@ -289,16 +298,27 @@ class BuildModelTests(unittest.TestCase):
             "CFLAGS": "-O3 -fwrapv",
             "CCSHARED": "-fPIC",
             "LDFLAGS": "",
-            "PY_STDMODULE_CFLAGS": "-O3 -fwrapv -I./Include/internal",
+            "PY_STDMODULE_CFLAGS": (
+                "-O3 -fwrapv -fprofile-use -fprofile-correction -I./Include/internal"
+            ),
+            "LIBS": "-ldl",
+            "SYSLIBS": "-lm",
             "PY_LDFLAGS": "",
             "PY_LDFLAGS_NODIST": "",
         }
 
     def test_exact_python_abi(self):
-        self.assertEqual(build_pyexpat.abi(self.config(), (3, 12, 16))[0], "/usr/bin/gcc")
+        self.assertEqual(
+            build_pyexpat.abi(
+                self.config(), (3, 12, 16), optimization_policy=build_pyexpat.OPTIMIZATION_POLICY
+            )[0],
+            "/usr/bin/gcc",
+        )
         for version in ((3, 14, 0), (3, 12, 15)):
             with self.assertRaises(ValueError):
-                build_pyexpat.abi(self.config(), version)
+                build_pyexpat.abi(
+                    self.config(), version, optimization_policy=build_pyexpat.OPTIMIZATION_POLICY
+                )
         for field, value in (
             ("SOABI", "cpython-314"),
             ("CC", "ccache gcc"),
@@ -308,7 +328,9 @@ class BuildModelTests(unittest.TestCase):
         ):
             row = self.config() | {field: value}
             with self.assertRaises(ValueError):
-                build_pyexpat.abi(row, (3, 12, 16))
+                build_pyexpat.abi(
+                    row, (3, 12, 16), optimization_policy=build_pyexpat.OPTIMIZATION_POLICY
+                )
 
     def test_compiler_injection_and_missing_profiles(self):
         for flag in (

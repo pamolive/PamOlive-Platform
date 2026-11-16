@@ -74,7 +74,7 @@ réussie. La qualification navigateur/JavaScript reste distincte et non exécut�
 
 ## P2 — architecture hybride et domaines sensibles
 
-### Expat : laboratoire de correction prepare, execution Linux requise
+### Expat : laboratoire execute, correction des refus natifs en cours
 
 Le correctif candidat reconstruit Expat2.10.0 sur trixie et les deux modules
 CPython3.12.16 pyexpat/_elementtree avec le meme SDK, sans falsifier la capsule
@@ -101,9 +101,19 @@ l'erreur. Aucun retry, succes presume ni modification common/H1/auth ;36purs
 locaux couvrent aussi plafonds, sorties illisibles et console fermee.
 Le run5d a ensuite passe la construction du paquet puis refuse un des deux
 make check ; le meme diagnostic borne couvre maintenant ces deux commandes,
-stages fermes et controles inchanges.38purs locaux passent, sans suppression
-d'une suite ; nouvel arbre/exit/stderr restent a recevoir. Le prochain build
-et ses oracles restent requis.
+stages fermes et controles inchanges. Le run e256eff identifie ensuite
+make-buildw-check termine avec code2 : le banc amont refuse UTF-16 sans
+wchar_t. Ce refus reste bloquant, sans modifier ABI ni supprimer les tests.
+
+La politique explicite [ADR-027](adr-027-native-python-xml-pgo.md), revue
+independamment, retire seulement la paire PGO heritee pour les deux extensions
+XML ; LTO, options restantes et controles ABI/capsule sont conserves. Les
+48purs passent sans exclusion ni execution externe ; Ruff et Bandit deploy
+High passent. Le scan de secrets sur1272fichiers ne trouve aucun nouveau
+secret. Aucun profil importe, equivalence de performance ou succes natif
+n'est revendique ; wide, SDK et oracles restent a qualifier. Les deux CI
+Platform e256 sont terminees en echec au scan et aux deux observations, avec
+les jobs securite et bibliotheques installees reussis.
 
 La [PR13](https://github.com/pamolive/PamOlive-Platform/pull/13) a par ailleurs
 publie les diagnostics : f396 a refuse avant toute operation faute du dossier
