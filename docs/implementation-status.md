@@ -6,6 +6,31 @@ Le document de vision décrit la cible complète. Cette branche construit progre
 
 La [roadmap réconciliée](implementation-roadmap.md) distingue désormais les lots P1-F/G, P2 et P3 du premier ordre historique. Référence publiée : main `dcaa116be6f026f67ad3825feb38d90ac632ce80`, PR1 fusionnée, [CI complète réussie](https://github.com/pamolive/PamOlive-Platform/actions/runs/43074618211) et [image GHCR publiée/attestée](https://github.com/pamolive/PamOlive-Platform/actions/runs/43078536377). Les résultats détaillés P0/P1 demeurent dans leurs rapports ; leur portée historique est conservée.
 
+### Expat : laboratoire de correction prepare, execution Linux requise
+
+Le correctif candidat reconstruit Expat2.10.0 sur trixie et les deux modules
+CPython3.12.16 pyexpat/_elementtree avec le meme SDK, sans falsifier la capsule
+C ni confondre symboles ABI @/@@. Les primaires et sous-cles de signature sont
+separees et leurs usages fermes.31tests purs passes et contre-revues source
+ne prouvent pas encore les signatures GPG ou les compilations reelles.
+
+Le [laboratoire Linux](../deploy/expat-remediation/README.md) a son Dockerfile
+et son workflow distincts, sans modifier le Dockerfile produit ni publier sur
+GHCR. Il acquiert10materiaux publics epingles, lance GPG hors reseau, puis
+rebuild/tests amont/UBSan/ABI/oracles XML. Les extractions et compilations sont
+precedees de verifications de signature dans chaque builder. Les empreintes
+source et le contexte Git sont verifies avant emploi ; echec ou preuve absente
+ne deviennent jamais une reussite. La nouvelle CI reste a recevoir.
+
+La [PR13](https://github.com/pamolive/PamOlive-Platform/pull/13) a par ailleurs
+publie les diagnostics : f396 a refuse avant toute operation faute du dossier
+workflow dans le checkout partiel ;5c16 ajoute ce seul dossier et ses13purs
+passent reellement sous Linux. Ses deux lectures Docker reussissent, puis
+la mesure env_tool_before refuse NOT_REGULAR. Aucun root-read, pull ou PG ne
+suit ce refus. Le target exact du chemin env n'est pas deduit de ce predicat.
+Main dcaa116, image produit et NAS restent inchanges ;35High/provenance
+bloquent toujours la promotion. Aucun systeme ou secret reel utilise.
+
 ### Reception ecfe : refus des observateurs et correction ciblee
 
 Les deux campagnes [push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43782571449)

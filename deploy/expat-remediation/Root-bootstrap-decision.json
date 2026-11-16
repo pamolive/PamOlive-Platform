@@ -1,0 +1,47 @@
+{
+  "schema": "pamolive.Root.expat4.vendor-key-bootstrap-decision/1",
+  "actor": "Root technical integrator under user-authorized development scope",
+  "decision": "Accept these finite vendor/TLS bootstrap pins for the future isolated Linux verification, not as an already verified signature or product build.",
+  "proposal_sha256": "9493277d89ac502b548c2a2d188de51a5f8030baea5cf14b6f6ce06781d4e448",
+  "entries": [
+    {
+      "purpose": "debian",
+      "bundle_sha256": "40adb6ae82d9961eda53ff4620530747632abbb7686fa8c206005e9ef021bb92",
+      "bundle_bytes": 21416,
+      "primary_fingerprint": "A0DF7E0D3851E0EE45C00BC8ACE1F33CB933BBBB",
+      "artifact_signer_fingerprint": "7D887DC8BA7BBBA7B835E3BADCE310E7864CC8BF",
+      "allowed_scope": "Debian uploader gcs: authenticate ONLY expat_2.10.0-1.dsc; then its exact two Checksums-Sha256 tuples, never upstream signature as Debian orig authority"
+    },
+    {
+      "purpose": "expat",
+      "bundle_sha256": "94ecb6d2dce61f22935c1352552ab3d75599c2ef4ff5e42d4ae0724c32431898",
+      "bundle_bytes": 5413,
+      "primary_fingerprint": "3176EF7DB2367F1FCA4F306B1F9B0E909AF37285",
+      "artifact_signer_fingerprint": "CB8DE70A90CFBF6C3BF5CC5696262ACFFBD3AEC6",
+      "allowed_scope": "Sebastian Pipping/hartwork: ONLY upstream expat-2.10.0.tar.gz and its detached signature; does not authenticate Debian orig"
+    },
+    {
+      "purpose": "python",
+      "bundle_sha256": "1de2bbd31e2dd10aab4098c3ab2f937c530d924ddbfa2dd091f0c7cfb2ee182a",
+      "bundle_bytes": 12310,
+      "primary_fingerprint": "7169605F62C751356D054A26A821E680E5FA6305",
+      "artifact_signer_fingerprint": "7169605F62C751356D054A26A821E680E5FA6305",
+      "allowed_scope": "Thomas Wouters: ONLY exact Python-3.12.16.tar.xz and its detached signature for both original XML extension sources/clinic"
+    }
+  ],
+  "rationale": [
+    "Full Debian primary published by official LDAP and NM services; matching public-key packets from the official DD keyring. Archive-keyring alone is insufficient.",
+    "Expat maintainer MEMBER publication and official Arch package independently name the same primary; purpose does not authorize the distinct Debian orig archive.",
+    "Python.org release-manager/keyID policy, already pinned OCI config and exact Docker Library source commit agree on Python primary/version/source."
+  ],
+  "required_before_unpack_or_compile": [
+    "New source delta separates Debian primary A0DF from signer7D; old R2 policy remains refused.",
+    "Verify key primary/subkey binding, validity, revocation/expiration and exact per-artifact signer with real bounded offline GPG under Linux.",
+    "Verify DSC signature before its exact orig+Debian SHA tuples; verify detached upstream/Python signatures for their own finite artifacts.",
+    "Unknown process state, unexpected signer/primary or negative status fails closed; no digest/fingerprint learned from output."
+  ],
+  "PGP_verified": false,
+  "code_or_runtime_build_approved": false,
+  "product_promotion_approved": false,
+  "no_hardware_or_TUF_attestation_claim": true
+}

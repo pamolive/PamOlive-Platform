@@ -1,0 +1,67 @@
+{
+  "schema": "pamolive.expat4.materials/1",
+  "files": [
+    {
+      "name": "expat-2.10.0-1.dsc",
+      "URL": "https://deb.debian.org/debian/pool/main/e/expat/expat_2.10.0-1.dsc",
+      "bytes": 1977,
+      "sha256": "8c4623c101959b8709a3f0a10c06a40d413dc7a6f5ffad3bc9d0cd010d850956"
+    },
+    {
+      "name": "expat-maintainer.asc",
+      "URL": "https://github.com/hartwork.gpg",
+      "bytes": 5413,
+      "sha256": "94ecb6d2dce61f22935c1352552ab3d75599c2ef4ff5e42d4ae0724c32431898"
+    },
+    {
+      "name": "python-release-manager.asc",
+      "URL": "https://keys.openpgp.org/vks/v1/by-fingerprint/7169605F62C751356D054A26A821E680E5FA6305",
+      "bytes": 12310,
+      "sha256": "1de2bbd31e2dd10aab4098c3ab2f937c530d924ddbfa2dd091f0c7cfb2ee182a"
+    },
+    {
+      "name": "expat_2.10.0.orig.tar.gz",
+      "URL": "https://deb.debian.org/debian/pool/main/e/expat/expat_2.10.0.orig.tar.gz",
+      "bytes": 8498836,
+      "sha256": "b3644a12f62d7762b62c444f69d169ba0234f13138d0240244bca64cbe35286f"
+    },
+    {
+      "name": "expat_2.10.0-1.debian.tar.xz",
+      "URL": "https://deb.debian.org/debian/pool/main/e/expat/expat_2.10.0-1.debian.tar.xz",
+      "bytes": 14472,
+      "sha256": "9be65c3ff79ca0508590970422de0a55f117bb7134a0274dd1ed3261f85631dc"
+    },
+    {
+      "name": "expat-2.10.0.tar.gz",
+      "URL": "https://github.com/libexpat/libexpat/releases/download/R_2_10_0/expat-2.10.0.tar.gz",
+      "bytes": 860532,
+      "sha256": "5466a341f9c692ef7a958a6881311be597f8e1ce345984cf78414f54793dea4c"
+    },
+    {
+      "name": "expat-2.10.0.tar.gz.asc",
+      "URL": "https://github.com/libexpat/libexpat/releases/download/R_2_10_0/expat-2.10.0.tar.gz.asc",
+      "bytes": 870,
+      "sha256": "2941bd050fa96fdf6deaac7e724f0755f2a65babc85a68d375087a2581c5ccd7"
+    },
+    {
+      "name": "Python-3.12.16.tar.xz",
+      "URL": "https://www.python.org/ftp/python/3.12.16/Python-3.12.16.tar.xz",
+      "bytes": 20839652,
+      "sha256": "b5796915dc45ff745cfb4e990a7e7c93d6f546328a102ce31448d69ebc37575c"
+    },
+    {
+      "name": "Python-3.12.16.tar.xz.asc",
+      "URL": "https://www.python.org/ftp/python/3.12.16/Python-3.12.16.tar.xz.asc",
+      "bytes": 833,
+      "sha256": "abf484364233972765d25d5981ecffc76287317a065761fbe10fca21bcc0a197"
+    },
+    {
+      "name": "debian-expat-maintainer.asc",
+      "URL": "https://db.debian.org/fetchkey.cgi?fingerprint=7D887DC8BA7BBBA7B835E3BADCE310E7864CC8BF",
+      "bytes": 21416,
+      "sha256": "40adb6ae82d9961eda53ff4620530747632abbb7686fa8c206005e9ef021bb92"
+    }
+  ],
+  "PGP_verified_during_preparation": false,
+  "bootstrap": "Root must approve exact key bytes/fingerprints/purposes; publisher TLS+SHA DATA is not signature verification"
+}

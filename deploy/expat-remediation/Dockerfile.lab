@@ -1,0 +1,60 @@
+ARG LIBPQ_DEBIAN_VERSION=17.12-0+deb13u1
+FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS expat-prepared
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential binutils gpg=2.4.7-21+deb13u1+b5 dpkg-dev debhelper autoconf automake libtool pkg-config docbook-to-man docbook2x libexpat1-dev=2.9.0-1~deb13u1 ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY deploy/expat-remediation/ /opt/expat4/
+RUN python -I -B -S /opt/expat4/download.py /expat-materials
+# Only these pinned public inputs become traversable by the non-root GPG preflight.
+# Files remain root-owned0444; its supervisor journal remains private0700.
+RUN --network=none chmod 0755 /expat-materials
+FROM expat-prepared AS expat-builder
+RUN --network=none python -I -B -S /opt/expat4/abi_gate.py capture /expat-before
+RUN --network=none python -I -B -S /opt/expat4/build_debian.py /expat-materials /expat-packages
+RUN --network=none python -I -B -S /opt/expat4/source_audit.py /expat-materials /expat-source-audit.json
+RUN --network=none python -I -B -S /opt/expat4/check_sanitizer.py /expat-materials /expat-sanitizer
+# Evidence packaging only; source/runtime modules above remain byte-exact R3.
+RUN --network=none mkdir /expat-proof && \
+    timeout -k 5s 30s tar --exclude='./work' --exclude='./runtime' --exclude='./sdk' --exclude='./authentication/inputs' --exclude='./authentication/*-home' -cf /expat-proof/debian.tar -C /expat-packages . && \
+    timeout -k 5s 30s tar --exclude='./source' --exclude='./authentication/inputs' --exclude='./authentication/*-home' -cf /expat-proof/sanitizer.tar -C /expat-sanitizer .
+
+FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS expat-runtime
+COPY --from=expat-builder /expat-packages/runtime/ /tmp/expat-runtime/
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends /tmp/expat-runtime/*.deb && rm -r /tmp/expat-runtime && rm -rf /var/lib/apt/lists/*
+
+FROM expat-runtime AS python-xml-builder
+COPY --from=expat-builder /expat-materials/ /expat-materials/
+COPY --from=expat-builder /expat-packages/sdk/ /tmp/expat-sdk/
+COPY --from=expat-builder /expat-before/ABI.json /expat-before.json
+COPY deploy/expat-remediation/ /opt/expat4/
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential binutils gpg=2.4.7-21+deb13u1+b5 /tmp/expat-sdk/*.deb && rm -rf /var/lib/apt/lists/*
+RUN --network=none python -I -B -S /opt/expat4/build_python_xml.py /expat-materials /python-xml-build
+RUN --network=none install -m 0755 /python-xml-build/pyexpat.cpython-312-x86_64-linux-gnu.so /usr/local/lib/python3.12/lib-dynload/pyexpat.cpython-312-x86_64-linux-gnu.so
+RUN --network=none install -m 0755 /python-xml-build/_elementtree.cpython-312-x86_64-linux-gnu.so /usr/local/lib/python3.12/lib-dynload/_elementtree.cpython-312-x86_64-linux-gnu.so
+RUN --network=none python -I -B -S /opt/expat4/abi_gate.py capture /usr/share/pamolive/expat4/after
+RUN --network=none python -I -B -S /opt/expat4/abi_gate.py compare /expat-before.json /usr/share/pamolive/expat4/after/ABI.json
+RUN --network=none python -I -B -S /opt/expat4/qualify_linux.py /expat-materials /expat-tests
+RUN --network=none timeout -k 5s 30s tar --exclude='./authentication/inputs' --exclude='./authentication/*-home' --exclude='./clinic' --exclude='./*.c' --exclude='./*.so' -cf /expat-xml-proof.tar -C /python-xml-build . && \
+    timeout -k 5s 30s tar --exclude='./stdlib' --exclude='./expat-regression' -cf /expat-native-proof.tar -C /expat-tests .
+
+FROM expat-runtime AS expat-patched-base
+COPY --from=python-xml-builder /usr/local/lib/python3.12/lib-dynload/pyexpat.cpython-312-x86_64-linux-gnu.so /usr/local/lib/python3.12/lib-dynload/
+COPY --from=python-xml-builder /usr/local/lib/python3.12/lib-dynload/_elementtree.cpython-312-x86_64-linux-gnu.so /usr/local/lib/python3.12/lib-dynload/
+COPY --from=python-xml-builder /usr/share/pamolive/expat4/after/ABI.json /usr/share/pamolive/expat4/after/ABI.json
+COPY --from=python-xml-builder /expat-before.json /usr/share/pamolive/expat4/before.json
+COPY --from=python-xml-builder /python-xml-build/BUILD.json /usr/share/pamolive/expat4/python-xml-build.json
+COPY --from=python-xml-builder /expat-tests/QUALIFICATION.json /usr/share/pamolive/expat4/qualification.json
+COPY --from=expat-builder /expat-packages/SOURCE-REBUILD.json /usr/share/pamolive/expat4/source-rebuild.json
+COPY --from=expat-builder /expat-sanitizer/SANITIZER.json /usr/share/pamolive/expat4/sanitizer.json
+COPY deploy/expat-remediation/common.py deploy/expat-remediation/bounded_io.py deploy/expat-remediation/verify_runtime.py deploy/expat-remediation/run_python_case.py deploy/expat-remediation/python_cases.py /usr/local/libexec/pamolive-expat4/
+RUN --network=none python -I -B -S /usr/local/libexec/pamolive-expat4/verify_runtime.py /usr/share/pamolive/expat4/runtime-base
+
+
+# A local exporter emits only proof DATA, never a product/root filesystem.
+FROM scratch AS expat-qualification-evidence
+COPY --from=expat-builder /expat-proof/ /build/
+COPY --from=expat-prepared /expat-materials/DOWNLOAD.json /acquisition/DOWNLOAD.json
+COPY --from=expat-prepared /expat-materials/supervisor/ /acquisition/supervisor/
+COPY --from=expat-builder /expat-before/ /before/
+COPY --from=expat-builder /expat-source-audit.json /source-audit.json
+COPY --from=python-xml-builder /expat-xml-proof.tar /build/python-xml.tar
+COPY --from=python-xml-builder /expat-native-proof.tar /build/native-oracles.tar
+COPY --from=expat-patched-base /usr/share/pamolive/expat4/ /runtime/

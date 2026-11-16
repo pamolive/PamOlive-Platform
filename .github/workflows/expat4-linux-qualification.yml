@@ -1,0 +1,171 @@
+name: Expat4 R3 Linux qualification only
+on:
+  push:
+    branches: [agent/expat4-linux-qualification]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: expat4-linux-qualification-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  expat4-linux:
+    if: github.repository == 'pamolive/PamOlive-Platform' && github.ref == 'refs/heads/agent/expat4-linux-qualification'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      DOCKER_BUILDKIT: '1'
+      SOURCE_LIST_SHA256: 7f05d5847c48ce95c6b1ed584f5d21995e93d005645ed472b429c7147137b086
+      EVIDENCE: ${{ runner.temp }}/expat4-${{ github.run_id }}-${{ github.run_attempt }}
+      CONTEXT: ${{ runner.temp }}/expat4-context-${{ github.run_id }}-${{ github.run_attempt }}
+      AUTH_WORK: ${{ runner.temp }}/expat4-auth-${{ github.run_id }}-${{ github.run_attempt }}
+      PREPARED_IMAGE: pamolive-expat4-prepared:${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+      LAB_BASE_IMAGE: pamolive-expat4-lab:${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Bind exact branch and source bytes before importing project code
+        id: source
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$GITHUB_REF" = refs/heads/agent/expat4-linux-qualification
+          [[ "$GITHUB_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test ! -e "$EVIDENCE"
+          test ! -e "$CONTEXT"
+          test ! -e "$AUTH_WORK"
+          mkdir "$EVIDENCE" "$AUTH_WORK"
+          printf '%s  deploy/expat-remediation/source-checksums.sha256\n' "$SOURCE_LIST_SHA256" | sha256sum --check --strict
+          sha256sum --check --strict deploy/expat-remediation/source-checksums.sha256 > "$EVIDENCE/source-checks.txt"
+          cp deploy/expat-remediation/source-checksums.sha256 "$EVIDENCE/inputs.sha256"
+          TREE_SHA="$(git rev-parse HEAD^{tree})" python3 -I -S -B - <<'PY'
+          import json,os
+          from pathlib import Path
+          keys=('GITHUB_SHA','GITHUB_REF','GITHUB_EVENT_NAME','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','GITHUB_JOB','RUNNER_OS','RUNNER_ARCH','ImageOS','ImageVersion','TREE_SHA')
+          data={k:os.environ.get(k) for k in keys}
+          data.update(product_qualified=False,publication_authorized=False)
+          Path(os.environ['EVIDENCE'],'run.json').write_text(json.dumps(data,indent=2)+'\n')
+          PY
+      - name: Prepare the existing bounded committed context, never local extras
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          python3 -I -S -B deploy/build_context.py --revision "$GITHUB_SHA" --destination "$CONTEXT" --output "$EVIDENCE/committed-context.json"
+          cd "$CONTEXT"
+          sha256sum --check --strict deploy/expat-remediation/source-checksums.sha256 > "$EVIDENCE/context-source-checks.txt"
+      - name: Install the pinned trixie toolchain and acquire ten exact public inputs
+        id: prepared
+        timeout-minutes: 6
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM --kill-after=20s 320s docker buildx build --builder default --load --no-cache \
+            --platform linux/amd64 --target expat-prepared --provenance=false --sbom=false --progress=plain \
+            --file "$CONTEXT/deploy/expat-remediation/Dockerfile.lab" --tag "$PREPARED_IMAGE" "$CONTEXT" \
+            2>&1 | tee "$EVIDENCE/prepared.log"
+      - name: Replay pure guards then authenticate three signatures offline with real GPG
+        id: authentication
+        timeout-minutes: 7
+        run: |
+          set -euo pipefail
+          status=0
+          timeout --signal=TERM --kill-after=10s 360s docker run \
+            --cidfile "$EVIDENCE/authentication.cid" \
+            --user "$(id -u):$(id -g)" \
+            --label "io.pamolive.expat4.run=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --label "io.pamolive.expat4.revision=$GITHUB_SHA" \
+            --network none --dns 127.0.0.1 --cap-drop ALL --security-opt no-new-privileges \
+            --read-only --cpus 1 --memory 512m --pids-limit 64 --tmpfs /tmp:size=16m,mode=1777 \
+            --mount "type=bind,source=$AUTH_WORK,target=/authentication" \
+            --entrypoint /bin/sh "$PREPARED_IMAGE" -euc \
+            'dpkg-query -W gpg libexpat1 libexpat1-dev gcc binutils dpkg-dev debhelper autoconf automake libtool pkg-config docbook-to-man docbook2x > /authentication/toolchain.txt;
+            python -I -B -S -c "import json,sys,sysconfig;sys.path.insert(0,\"/opt/expat4\");from build_python_xml import KEYS;print(json.dumps(dict(version=sys.version,sysconfig={k:sysconfig.get_config_var(k) for k in KEYS}),sort_keys=True))" > /authentication/python-config.json;
+            python -I -B -S /opt/expat4/run_pure.py /authentication/pure.json /expat-materials;
+            exec python -I -B -S /opt/expat4/authenticate.py /expat-materials /authentication/session' \
+            > "$EVIDENCE/authentication.log" 2>&1 || status=$?
+          printf '{"frontend_exit":%s,"product_qualified":false}\n' "$status" > "$EVIDENCE/authentication-status.json"
+          exit "$status"
+      - name: Remove only the acknowledged authentication container
+        if: always() && (steps.authentication.outcome == 'success' || steps.authentication.outcome == 'failure')
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          unknown() { printf '{"state":"UNKNOWN","product_qualified":false}\n' > "$EVIDENCE/authentication-cleanup.json"; exit 1; }
+          test -s "$EVIDENCE/authentication.cid" || unknown
+          test "$(wc -c < "$EVIDENCE/authentication.cid")" -le 65 || unknown
+          cid="$(cat "$EVIDENCE/authentication.cid")"
+          [[ "$cid" =~ ^[a-f0-9]{64}$ ]] || unknown
+          owner="$(timeout --kill-after=5s 20s docker container inspect --format '{{index .Config.Labels "io.pamolive.expat4.run"}}|{{index .Config.Labels "io.pamolive.expat4.revision"}}' "$cid")" || unknown
+          test "$owner" = "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT|$GITHUB_SHA" || unknown
+          timeout --kill-after=5s 30s docker container rm --force "$cid" > "$EVIDENCE/removed.cid" || unknown
+          test "$(cat "$EVIDENCE/removed.cid")" = "$cid" || unknown
+          printf '{"state":"REMOVED_ACKNOWLEDGED_CID","product_qualified":false}\n' > "$EVIDENCE/authentication-cleanup.json"
+      - name: Retain only the public GPG and pure-test journals, including partial failures
+        if: always() && (steps.authentication.outcome == 'success' || steps.authentication.outcome == 'failure')
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          timeout --kill-after=5s 30s tar --exclude='./session/inputs' --exclude='./session/*-home' \
+            -cf "$EVIDENCE/authentication-journals.tar" -C "$AUTH_WORK" .
+      - name: Build the real patched base, ABI, UBSan and bounded native oracles
+        id: native
+        timeout-minutes: 35
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM --kill-after=30s 2040s docker buildx build --builder default --load \
+            --platform linux/amd64 --target expat-patched-base --provenance=false --sbom=false --progress=plain \
+            --file "$CONTEXT/deploy/expat-remediation/Dockerfile.lab" --tag "$LAB_BASE_IMAGE" "$CONTEXT" \
+            2>&1 | tee "$EVIDENCE/native-build.log"
+      - name: Export proof DATA from the same cached stages, never a product image
+        id: export
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM --kill-after=10s 140s docker buildx build --builder default \
+            --platform linux/amd64 --target expat-qualification-evidence --provenance=false --sbom=false --progress=plain \
+            --file "$CONTEXT/deploy/expat-remediation/Dockerfile.lab" \
+            --output "type=tar,dest=$EVIDENCE/native-evidence.tar" "$CONTEXT" 2>&1 | tee "$EVIDENCE/proof-export.log"
+      - name: Record outcomes without promoting incomplete native evidence
+        if: always() && steps.source.outcome == 'success'
+        timeout-minutes: 1
+        env:
+          AUTH_OUTCOME: ${{ steps.authentication.outcome }}
+          NATIVE_OUTCOME: ${{ steps.native.outcome }}
+          EXPORT_OUTCOME: ${{ steps.export.outcome }}
+        run: |
+          python3 -I -S -B - <<'PY'
+          import json,os
+          from pathlib import Path
+          data={k:os.environ[k] for k in ('AUTH_OUTCOME','NATIVE_OUTCOME','EXPORT_OUTCOME')}
+          data.update(product_qualified=False,fixed4_admitted=False,complete_platform_ci_pending=True,
+                      missing_internal_journals='UNKNOWN if build/export failed; VM teardown is not evidence')
+          Path(os.environ['EVIDENCE'],'outcomes.json').write_text(json.dumps(data,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always() && steps.source.outcome == 'success'
+        timeout-minutes: 2
+        with:
+          name: expat4-r3-linux-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.EVIDENCE }}/run.json
+            ${{ env.EVIDENCE }}/source-checks.txt
+            ${{ env.EVIDENCE }}/inputs.sha256
+            ${{ env.EVIDENCE }}/committed-context.json
+            ${{ env.EVIDENCE }}/context-source-checks.txt
+            ${{ env.EVIDENCE }}/prepared.log
+            ${{ env.EVIDENCE }}/authentication.log
+            ${{ env.EVIDENCE }}/authentication-status.json
+            ${{ env.EVIDENCE }}/authentication-cleanup.json
+            ${{ env.EVIDENCE }}/authentication-journals.tar
+            ${{ env.EVIDENCE }}/native-build.log
+            ${{ env.EVIDENCE }}/proof-export.log
+            ${{ env.EVIDENCE }}/native-evidence.tar
+            ${{ env.EVIDENCE }}/outcomes.json
+          if-no-files-found: error
+          retention-days: 7

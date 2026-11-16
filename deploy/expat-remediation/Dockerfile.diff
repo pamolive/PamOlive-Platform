@@ -1,0 +1,72 @@
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,12 +1,50 @@
+ ARG LIBPQ_DEBIAN_VERSION=17.12-0+deb13u1
+-FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS krb5-builder
++FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS expat-builder
++RUN apt-get update && apt-get install -y --no-install-recommends build-essential binutils gpg=2.4.7-21+deb13u1+b5 dpkg-dev debhelper autoconf automake libtool pkg-config docbook-to-man docbook2x libexpat1-dev=2.9.0-1~deb13u1 ca-certificates && rm -rf /var/lib/apt/lists/*
++COPY deploy/expat4/ /opt/expat4/
++RUN python -I -B -S /opt/expat4/download.py /expat-materials
++RUN --network=none python -I -B -S /opt/expat4/abi_gate.py capture /expat-before
++RUN --network=none python -I -B -S /opt/expat4/build_debian.py /expat-materials /expat-packages
++RUN --network=none python -I -B -S /opt/expat4/source_audit.py /expat-materials /expat-source-audit.json
++RUN --network=none python -I -B -S /opt/expat4/check_sanitizer.py /expat-materials /expat-sanitizer
++
++FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS expat-runtime
++COPY --from=expat-builder /expat-packages/runtime/ /tmp/expat-runtime/
++RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends /tmp/expat-runtime/*.deb && rm -r /tmp/expat-runtime && rm -rf /var/lib/apt/lists/*
++
++FROM expat-runtime AS python-xml-builder
++COPY --from=expat-builder /expat-materials/ /expat-materials/
++COPY --from=expat-builder /expat-packages/sdk/ /tmp/expat-sdk/
++COPY --from=expat-builder /expat-before/ABI.json /expat-before.json
++COPY deploy/expat4/ /opt/expat4/
++RUN apt-get update && apt-get install -y --no-install-recommends build-essential binutils gpg=2.4.7-21+deb13u1+b5 /tmp/expat-sdk/*.deb && rm -rf /var/lib/apt/lists/*
++RUN --network=none python -I -B -S /opt/expat4/build_python_xml.py /expat-materials /python-xml-build
++RUN --network=none install -m 0755 /python-xml-build/pyexpat.cpython-312-x86_64-linux-gnu.so /usr/local/lib/python3.12/lib-dynload/pyexpat.cpython-312-x86_64-linux-gnu.so
++RUN --network=none install -m 0755 /python-xml-build/_elementtree.cpython-312-x86_64-linux-gnu.so /usr/local/lib/python3.12/lib-dynload/_elementtree.cpython-312-x86_64-linux-gnu.so
++RUN --network=none python -I -B -S /opt/expat4/abi_gate.py capture /usr/share/pamolive/expat4/after
++RUN --network=none python -I -B -S /opt/expat4/abi_gate.py compare /expat-before.json /usr/share/pamolive/expat4/after/ABI.json
++RUN --network=none python -I -B -S /opt/expat4/qualify_linux.py /expat-materials /expat-tests
++
++FROM expat-runtime AS expat-patched-base
++COPY --from=python-xml-builder /usr/local/lib/python3.12/lib-dynload/pyexpat.cpython-312-x86_64-linux-gnu.so /usr/local/lib/python3.12/lib-dynload/
++COPY --from=python-xml-builder /usr/local/lib/python3.12/lib-dynload/_elementtree.cpython-312-x86_64-linux-gnu.so /usr/local/lib/python3.12/lib-dynload/
++COPY --from=python-xml-builder /usr/share/pamolive/expat4/after/ABI.json /usr/share/pamolive/expat4/after/ABI.json
++COPY --from=python-xml-builder /expat-before.json /usr/share/pamolive/expat4/before.json
++COPY --from=python-xml-builder /python-xml-build/BUILD.json /usr/share/pamolive/expat4/python-xml-build.json
++COPY --from=python-xml-builder /expat-tests/QUALIFICATION.json /usr/share/pamolive/expat4/qualification.json
++COPY --from=expat-builder /expat-packages/SOURCE-REBUILD.json /usr/share/pamolive/expat4/source-rebuild.json
++COPY --from=expat-builder /expat-sanitizer/SANITIZER.json /usr/share/pamolive/expat4/sanitizer.json
++COPY deploy/expat4/common.py deploy/expat4/bounded_io.py deploy/expat4/verify_runtime.py deploy/expat4/run_python_case.py deploy/expat4/python_cases.py /usr/local/libexec/pamolive-expat4/
++RUN --network=none python -I -B -S /usr/local/libexec/pamolive-expat4/verify_runtime.py /usr/share/pamolive/expat4/runtime-base
++
++FROM expat-patched-base AS krb5-builder
+ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends build-essential curl ca-certificates gpgv debian-archive-keyring dpkg-dev devscripts quilt && rm -rf /var/lib/apt/lists/*
+ COPY deploy/build-krb5.sh deploy/krb5-asn1-sequence.patch deploy/krb5-test-keyring-seccomp.patch deploy/check_krb5_asn1.sh deploy/krb5_inventory.py tests/fixtures/krb5_asn1_regression.c /build-fixtures/
+ RUN sh /build-fixtures/build-krb5.sh fetch
+ RUN python /build-fixtures/krb5_inventory.py --capture-baseline --output /usr/share/pamolive/krb5-backport/baseline.json
+ RUN --network=none sh /build-fixtures/build-krb5.sh build
+ 
+-FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS krb5-runtime
++FROM expat-patched-base AS krb5-runtime
+ COPY --from=krb5-builder /packages/runtime /tmp/pamolive-krb5-runtime
+ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends /tmp/pamolive-krb5-runtime/*.deb && rm -r /tmp/pamolive-krb5-runtime && rm -rf /var/lib/apt/lists/*
+ COPY --from=krb5-builder /usr/share/pamolive/krb5-backport /usr/share/pamolive/krb5-backport
+@@ -14,6 +52,8 @@
+ RUN python /tmp/krb5_inventory.py --capture --output /usr/share/pamolive/krb5-backport/inventory.json && chmod 0444 /usr/share/pamolive/krb5-backport/inventory.json && rm /tmp/krb5_inventory.py
+ 
+ FROM krb5-runtime AS freerdp-builder
++COPY --from=expat-builder /expat-packages/sdk/ /tmp/expat-sdk/
++RUN apt-get update && apt-get install -y --no-install-recommends /tmp/expat-sdk/*.deb && rm -r /tmp/expat-sdk && rm -rf /var/lib/apt/lists/*
+ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends build-essential cmake pkg-config curl ca-certificates gnupg patchelf libssl-dev zlib1g-dev libjpeg62-turbo-dev libcjson-dev libicu-dev liburiparser-dev libcairo2-dev
+ COPY --from=krb5-builder /packages/runtime /tmp/pamolive-krb5-runtime
+ COPY --from=krb5-builder /packages/sdk /tmp/pamolive-krb5-sdk
+@@ -68,6 +108,7 @@
+ COPY third_party/ ./third_party/
+ RUN python deploy/native_inventory.py --capture --output /opt/pamolive-native-manifest.json
+ RUN python deploy/krb5_inventory.py --verify --output /tmp/krb5-verification.json && rm /tmp/krb5-verification.json
++RUN --network=none python -I -B -S /usr/local/libexec/pamolive-expat4/verify_runtime.py /usr/share/pamolive/expat4/runtime-final
+ RUN python manage.py collectstatic --noinput
+ USER root
+ EXPOSE 8000
