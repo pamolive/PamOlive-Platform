@@ -134,7 +134,8 @@ personnelles réellement vérifiées, ainsi que trois preuves d'exception
 Governance. Les ancrages publics sont capturés avant le dump, hors de la base
 restaurée ; aucun checkpoint courant ni clé privée n'est repris pour réarmer
 le PAM live. La restauration exige toujours un checkpoint actuel indépendant.
-Les nouvelles assertions SQL/cryptographiques exigent encore une exécution CI.
+Les quatre tests dédiés PostgreSQL du corpus ont passé ; la vérification
+complète de ces preuves après dump/restore reste à recevoir.
 
 Le mode CI exige des compteurs minimaux de preuves réellement vérifiées, et un
 retrait confirmé de la source synthétique. Le rapport public est écrit seulement
@@ -149,3 +150,17 @@ une écriture échouée reste fatal mais peut laisser un fichier complet ou part
 aucune atomicité ou durabilité du stockage n'est revendiquée. Le job global peut
 encore échouer lors du scan strict suivant. safe_to_serve reste false, sans
 autorisation de reprise, de production, de NAS ou de session réelle.
+
+### Réception PostgreSQL et intégration du snapshot image
+
+Le run [43870177687](https://github.com/pamolive/PamOlive-Platform/actions/runs/43870177687)
+a exécuté les quatre tests dédiés du corpus sur PostgreSQL :4 tests,11.871s,
+aucun skip. Le job image avait échoué avant dump/restore ; aucun reçu de
+restauration du corpus étendu n'est transféré de ce run.
+
+La branche restore intègre maintenant le correctif runtime75813d8 comparant
+deux vues image immuables, plutôt qu'une image et les montages live du worker.
+Les octets des helpers et tests restore demeurent identiques au candidatbae ;
+les seuils, ancrages, vérificateurs et nettoyages restent exacts. Une nouvelle
+restauration complète avec rapport public lié à l'image reste requise.
+Les scans stricts restent bloquants ; aucun réarmement PAM live ni accès NAS.

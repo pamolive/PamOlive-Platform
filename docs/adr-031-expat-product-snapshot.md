@@ -83,3 +83,36 @@ forbidden_elf_sha256 et reject_cjson_elf dans archive_facts, puis les deux enric
 SBOM et les arguments CI. Les listes de tests et pins doivent refléter cette
 composition revue. Aucun conflit n'autorise un fallback cJSON ou une désactivation
 du contrôle d'absence physique de l'une des deux migrations.
+
+## Correction de la vue comparée après réception Linux
+
+Le [run0f2bf83](https://github.com/pamolive/PamOlive-Platform/actions/runs/43871934888/job/133315062835)
+a reçu15737 entrées par côté et exactement deux écarts : les répertoires /proc
+et /sys ont mode0755 dans le snapshot image et0555 dans le RUN vivant. Type,
+UID/GID et toutes les autres entrées sont identiques. Cette mesure ne prouve
+pas une image qualifiée ; elle révèle que la comparaison précédente mélangeait
+une vue image avec les montages du worker.
+
+La correction compare deux racines d'image immuables montées en lecture seule.
+Le stage runtime-copy part toujours de scratch et copie runtime-build avec
+les mêmes ENV/Cmd/User/Healthcheck. Le stage snapshot-check dérive séparément
+de runtime-build et monte runtime-build et runtime-copy sous deux préfixes.
+Il appelle le même comparateur, sans aucun changement de champ, de permission,
+de PRUNED/INJECTED, de normalisation ou d'exception. Une vraie différence de
+mode /proc ou /sys entre images reste refusée, comme toute différence du scope.
+
+Le runtime final hérite de runtime-copy et ne copie depuis snapshot-check que
+le snapshot.json qui n'existe qu'après succès. Aucun système de fichiers du
+worker ou montage de vérification n'est copié vers le payload final. Le graphe
+reste dépendant du contrôle ; il n'y a ni fallback, ni nouvelle couche de base
+réintroduisant les anciens ELF, ni chmod/chown global. Comme auparavant, le
+reçu ajouté ensuite ne prouve ni contenu, hardlinks, xattrs, origine ou égalité
+de provenance OCI. Les contrôles archive/config/provider restent obligatoires.
+
+La [référence Dockerfile](https://docs.docker.com/reference/dockerfile/#run---mounttypebind)
+et la [construction multi-stage](https://docs.docker.com/build/building/multi-stage/)
+décrivent ces mécanismes de bind en lecture seule et de copie sélective. Elles
+ne démontrent pas que cette nouvelle recette s'exécute : un nouveau build et
+tous les tests/scans réels restent requis. Les SDK et les autres étapes sont
+conservés. Le pin Dockerfile est recalculé depuis Git ; les13 autres pins produit
+et les35 sources Expat restent inchangés.

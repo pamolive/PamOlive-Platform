@@ -750,5 +750,20 @@ conservés et11 tests du rapport public passent, sans IO externe ni skip.
 Les doublures de trois anciens tests CI ont été mises à jour pour fournir les
 nouveaux ancrages/compteurs requis ; leurs assertions de refus sont conservées.
 La revue a détecté un guillemet manquant du workflow avant publication ; la R2
-le corrige et le teste. SQL, migration, crypto et restauration réelles sont
-encore à recevoir ; aucun succès antérieur ne leur est transféré.
+le corrige et le teste. Les quatre tests dédiés PostgreSQL du corpus ont
+ensuite passé ; la sauvegarde/restauration complète du corpus étendu reste
+à recevoir, sans transfert des anciens succès.
+
+### Réception PostgreSQL et intégration du snapshot image
+
+Le run [43870177687](https://github.com/pamolive/PamOlive-Platform/actions/runs/43870177687)
+a exécuté les quatre tests dédiés du corpus sur PostgreSQL :4 tests,11.871s,
+aucun skip. Le job image avait échoué avant dump/restore ; aucun reçu de
+restauration du corpus étendu n'est transféré de ce run.
+
+La branche restore intègre maintenant le correctif runtime75813d8 comparant
+deux vues image immuables, plutôt qu'une image et les montages live du worker.
+Les octets des helpers et tests restore demeurent identiques au candidatbae ;
+les seuils, ancrages, vérificateurs et nettoyages restent exacts. Une nouvelle
+restauration complète avec rapport public lié à l'image reste requise.
+Les scans stricts restent bloquants ; aucun réarmement PAM live ni accès NAS.

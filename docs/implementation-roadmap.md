@@ -495,9 +495,24 @@ Le backend natif est en qualification sur une branche indépendante ; les tests 
 
 ### Porte de restauration synthétique élargie
 
-Exécuter les quatre tests PostgreSQL du corpus enrichi sans skip, puis une vraie
-sauvegarde/restauration avec V7, V8, Governance et confiance PAM historique.
+Les quatre tests PostgreSQL du corpus enrichi ont passé sans skip. Recevoir
+ensuite une vraie sauvegarde/restauration avec V7, V8, Governance et confiance
+PAM historique.
 Recevoir le JSON public lié au source/image exacts et à l'étape réussie, tout
 en conservant les refus de clés, l'isolation concurrente et les nettoyages.
 La promotion reste aussi conditionnée au build natif et au scan strict ;
 la qualification du corpus n'autorise aucune reprise live ou écriture NAS.
+
+### Réception PostgreSQL et intégration du snapshot image
+
+Le run [43870177687](https://github.com/pamolive/PamOlive-Platform/actions/runs/43870177687)
+a exécuté les quatre tests dédiés du corpus sur PostgreSQL :4 tests,11.871s,
+aucun skip. Le job image avait échoué avant dump/restore ; aucun reçu de
+restauration du corpus étendu n'est transféré de ce run.
+
+La branche restore intègre maintenant le correctif runtime75813d8 comparant
+deux vues image immuables, plutôt qu'une image et les montages live du worker.
+Les octets des helpers et tests restore demeurent identiques au candidatbae ;
+les seuils, ancrages, vérificateurs et nettoyages restent exacts. Une nouvelle
+restauration complète avec rapport public lié à l'image reste requise.
+Les scans stricts restent bloquants ; aucun réarmement PAM live ni accès NAS.
