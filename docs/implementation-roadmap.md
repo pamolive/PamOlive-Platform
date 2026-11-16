@@ -87,7 +87,18 @@ historical ROOT/1 evidence is preserved without current admission.
 Integration passes 46 standalone and 14 short pure tests, Ruff and seven
 independent adversarial cases. The two Docker queries, H1 process tracking,
 PG owner and its twelve buffers remain unchanged. These tests execute no
-Docker, sudo, ctr or SQL. Actual Linux tools/root/storage results are pending.
+Docker, sudo, ctr or SQL. The actual ce29 trial confirms regular root-owned
+env with 116 stable hardlinks, then a normal ctr-version process whose output
+is refused by the reviewed grammar. Its exact CLI version remains unknown;
+no plugin/storage/PG step is admitted.
+
+The PG expected profile now uses core0 then nofile64, matching the explicit
+[Docker CLI name sort](https://raw.githubusercontent.com/docker/cli/v29.4.2/opts/ulimit.go).
+Only those two constant entries change order; values, exact START checks,
+create arguments, ownership and cleanup stay unchanged. 39 PG and 14 short
+pure tests pass; independent adverse cases preserve closed refusals. This
+does not reconstruct the redacted e256 limit names or qualify a real PG identity.
+
 The exact new branch has its own bounded DATA run; no product image or NAS
 change and no A1/W commissioning follows from these source checks.
 
