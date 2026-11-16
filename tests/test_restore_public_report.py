@@ -242,9 +242,57 @@ class PublicRestoreReportTests(unittest.TestCase):
         self.assertEqual(tokens.count("--public-report"), 1)
         self.assertEqual(
             tokens[tokens.index("--public-report") + 1],
-            "$RUNNER_TEMP/pamolive-image-security/restore-qualification.json",
+            "$RUNNER_TEMP/pamolive-restore-public/restore-qualification.json",
         )
         self.assertEqual(
             tokens[-1],
-            "$RUNNER_TEMP/pamolive-image-security/restore-qualification.json",
+            "$RUNNER_TEMP/pamolive-restore-public/restore-qualification.json",
         )
+
+    def test_restore_report_does_not_claim_the_later_fresh_scan_namespace(self):
+        import shlex
+
+        workflow = Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml"
+        text = workflow.read_text(encoding="utf-8")
+        restore = text.split("- name: Restore a populated archive", 1)[1].split("      - name:", 1)[
+            0
+        ]
+        native = text.split("- name: Verify installed native binaries and bind", 1)[1].split(
+            "      - name:", 1
+        )[0]
+        mkdir = next(
+            line.strip() for line in restore.splitlines() if line.strip().startswith("mkdir ")
+        )
+        created = shlex.split(mkdir)[-1]
+        assignment = next(
+            line.strip() for line in native.splitlines() if line.strip().startswith("proof=")
+        )
+        scan = shlex.split(assignment)[0].split("=", 1)[1]
+        command = next(
+            line.strip()
+            for line in restore.splitlines()
+            if "python -m deploy.check_restore_ci " in line
+        )
+        tokens = shlex.split(command)
+        public = tokens[tokens.index("--public-report") + 1]
+        for value in (created, scan, public):
+            self.assertTrue(value.startswith("$RUNNER_TEMP/"))
+            self.assertNotIn("..", value)
+        self.assertEqual(public.rsplit("/", 1)[0], created)
+        self.assertIn('mkdir -m 700 "$proof"', native)
+        # Model the actual shell directory lifecycle, using the unchanged exclusive writer.
+        # The old workflow fails here: Restore had already created the scan directory.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            restore_dir = root / created.removeprefix("$RUNNER_TEMP/")
+            scan_dir = root / scan.removeprefix("$RUNNER_TEMP/")
+            restore_dir.mkdir(mode=0o700)
+            report = root / public.removeprefix("$RUNNER_TEMP/")
+            write_public_restore_report(synthetic_report(), report)
+            before = report.read_bytes()
+            scan_dir.mkdir(mode=0o700)
+            self.assertEqual(report.read_bytes(), before)
+            self.assertNotEqual(restore_dir, scan_dir)
+        self.assertEqual(shlex.split(mkdir)[:4], ["mkdir", "-m", "700", "--"])
+        public_artifact = public.replace("$RUNNER_TEMP", "${{ runner.temp }}")
+        self.assertIn("            " + public_artifact + "\n", text)

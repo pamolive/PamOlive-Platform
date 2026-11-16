@@ -313,8 +313,8 @@ jobs:
           python -m deploy.check_active_active --env-file /tmp/pamolive-ha-ci.env --native-pam --native-rdp --database-partition
       - name: Restore a populated archive with restricted credentials and intact proofs
         run: |
-          mkdir -p -- "$RUNNER_TEMP/pamolive-image-security"
-          python -m deploy.check_restore_ci --postgres-container '${{ job.services.postgres.id }}' --ha-env-file /tmp/pamolive-ha-ci.env --public-report "$RUNNER_TEMP/pamolive-image-security/restore-qualification.json"
+          mkdir -m 700 -- "$RUNNER_TEMP/pamolive-restore-public"
+          python -m deploy.check_restore_ci --postgres-container '${{ job.services.postgres.id }}' --ha-env-file /tmp/pamolive-ha-ci.env --public-report "$RUNNER_TEMP/pamolive-restore-public/restore-qualification.json"
       - name: Verify controlled historical upgrade, rollback and exact old-column preservation
         run: python -m deploy.check_upgrade_ci --postgres-container '${{ job.services.postgres.id }}' --ha-env-file /tmp/pamolive-ha-ci.env
       - name: Verify the image-only Compose runtime is identical
@@ -453,6 +453,7 @@ jobs:
           name: pamolive-image-security-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/pamolive-image-security/
+            ${{ runner.temp }}/pamolive-restore-public/restore-qualification.json
             ${{ runner.temp }}/pamolive-qualified-image/qualified-image.json
             ${{ runner.temp }}/pamolive-committed-context.json
             ${{ runner.temp }}/pamolive-jansson-reference-data/json-reference.jsonl
