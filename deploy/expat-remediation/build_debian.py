@@ -29,6 +29,9 @@ def publish_build_failure(log, *, stage="dpkg-buildpackage"):
             "wide-exported-c-run",
             "wide-exported-cpp-compile",
             "wide-exported-cpp-run",
+            "ubsan-configure",
+            "ubsan-build",
+            "ubsan-check",
         },
         "build_stage",
     )

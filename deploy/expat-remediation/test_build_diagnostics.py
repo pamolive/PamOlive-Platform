@@ -9,9 +9,81 @@ from pathlib import Path
 from unittest import mock
 
 import build_debian
+import check_sanitizer
 
 
 class BuildDiagnosticTests(unittest.TestCase):
+    def test_sanitizer_phases_preserve_options_and_original_failure(self):
+        source, log = Path("/source"), Path("/log")
+        environment = {"CFLAGS": "-fsanitize=undefined", "UBSAN_OPTIONS": "halt_on_error=1"}
+        for stage, args, seconds, cap in (
+            (
+                "ubsan-configure",
+                ["/source/configure", "--disable-shared", "--enable-static"],
+                120,
+                None,
+            ),
+            ("ubsan-build", ["/usr/bin/make", "-j1"], 300, 8 * 1024**2),
+            ("ubsan-check", ["/usr/bin/make", "-j1", "check"], 300, 8 * 1024**2),
+        ):
+            error = ValueError("child_failed_or_unknown")
+            options = {"seconds": seconds, "env": environment}
+            if cap is not None:
+                options["cap"] = cap
+            output = io.StringIO()
+            with (
+                mock.patch.object(check_sanitizer, "command", side_effect=error) as command,
+                mock.patch.object(build_debian, "read", return_value=b"public compiler log"),
+                redirect_stdout(output),
+                self.assertRaises(ValueError) as caught,
+            ):
+                check_sanitizer.build_step(args, source, log, stage=stage, **options)
+            self.assertIs(caught.exception, error)
+            command.assert_called_once_with(args, source, log, **options)
+            packet = json.loads(output.getvalue())
+            self.assertEqual(packet["stage"], stage)
+            self.assertEqual(packet["state"], "FAILED_OR_UNKNOWN")
+            self.assertTrue(packet["diagnostic_only"])
+
+    def test_sanitizer_success_does_not_read_or_publish_logs(self):
+        expected = object()
+        with (
+            mock.patch.object(check_sanitizer, "command", return_value=expected) as command,
+            mock.patch.object(check_sanitizer, "publish_build_failure") as publish,
+        ):
+            actual = check_sanitizer.build_step(
+                ["/usr/bin/make", "-j1"],
+                Path("/source"),
+                Path("/log"),
+                stage="ubsan-build",
+                seconds=300,
+            )
+        self.assertIs(actual, expected)
+        command.assert_called_once()
+        publish.assert_not_called()
+
+    def test_sanitizer_unknown_stage_and_closed_console_remain_failed(self):
+        with (
+            mock.patch.object(check_sanitizer, "command") as command,
+            mock.patch.object(check_sanitizer, "publish_build_failure") as publish,
+            self.assertRaisesRegex(ValueError, "sanitizer_stage"),
+        ):
+            check_sanitizer.build_step([], Path("/source"), Path("/log"), stage="other")
+        command.assert_not_called()
+        publish.assert_not_called()
+        for error_type in (OSError, ValueError):
+            error = ValueError("child_failed_or_unknown")
+            with (
+                mock.patch.object(check_sanitizer, "command", side_effect=error) as command,
+                mock.patch.object(check_sanitizer, "publish_build_failure", side_effect=error_type),
+                self.assertRaises(ValueError) as caught,
+            ):
+                check_sanitizer.build_step(
+                    ["/usr/bin/make", "-j1"], Path("/source"), Path("/log"), stage="ubsan-build"
+                )
+            self.assertIs(caught.exception, error)
+            command.assert_called_once()
+
     def test_narrow_and_wide_commands_keep_limits_and_failure_identity(self):
         for tree in ("build", "buildw"):
             for failed in (False, True):

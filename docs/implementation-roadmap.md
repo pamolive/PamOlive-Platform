@@ -116,7 +116,12 @@ n'est revendique ; wide, SDK et oracles restent a qualifier. Le port test-only
 sans nouvelle allocation diagnostic ;58purs preparatoires passent. Paquets
 SDK/runtime doivent rester byteexacts, logs/TRS complets narrow/wide et
 smoke C++ exporte restent a recevoir. Les compilations negatives C99/C++/type
-incompatible restent requises avant qualification finale. Les deux CI
+incompatible restent requises avant qualification finale. Le run408 franchit
+le builder Debian et source_audit puis échoue à make -j1 UBSan ; la cause et
+les faits du compilateur restent inconnus faute de journaux internes. Un
+wrapper de diagnostic fermé couvre les trois commandes UBSan sans changer
+leurs conditions ; 61 tests purs passent localement. La réception complète
+des journaux/paquets et les autres oracles restent nécessaires, sans admission CVE. Les deux CI
 Platform e256 sont terminees en echec au scan et aux deux observations, avec
 les jobs securite et bibliotheques installees reussis.
 

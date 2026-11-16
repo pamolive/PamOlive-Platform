@@ -7,7 +7,21 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from authenticate import main as authenticate
+from build_debian import publish_build_failure
 from common import ENV, command, material, need, read, record, write_new
+
+
+def build_step(args, source, log, *, stage, **options):
+    """Retain a bounded public diagnostic, then propagate the original failure."""
+    need(stage in {"ubsan-configure", "ubsan-build", "ubsan-check"}, "sanitizer_stage")
+    try:
+        return command(args, source, log, **options)
+    except BaseException as original:
+        try:
+            publish_build_failure(log, stage=stage)
+        except (OSError, ValueError):
+            raise original
+        raise
 
 
 def instrument(raw):
@@ -71,20 +85,28 @@ def main(materials, output):
         "LDFLAGS": "-fsanitize=undefined",
         "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=0",
     }
-    command(
+    build_step(
         [str(source / "configure"), "--disable-shared", "--enable-static"],
         source,
         output / "configure",
+        stage="ubsan-configure",
         seconds=120,
         env=env,
     )
-    command(
-        ["/usr/bin/make", "-j1"], source, output / "build", seconds=300, cap=8 * 1024**2, env=env
+    build_step(
+        ["/usr/bin/make", "-j1"],
+        source,
+        output / "build",
+        stage="ubsan-build",
+        seconds=300,
+        cap=8 * 1024**2,
+        env=env,
     )
-    command(
+    build_step(
         ["/usr/bin/make", "-j1", "check"],
         source,
         output / "check",
+        stage="ubsan-check",
         seconds=300,
         cap=8 * 1024**2,
         env=env,
