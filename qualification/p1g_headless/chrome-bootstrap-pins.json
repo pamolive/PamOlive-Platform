@@ -33,14 +33,14 @@
   "Release_max_age_seconds": 604800,
   "future_tolerance_seconds": 300,
   "source_files": {
-    "qualification/p1g_headless/chrome_bootstrap.py": "2b3f139dd6c5bedd60abe1a1c1564a46e668a3ea6146b4990abdabcc7bf20e67",
+    "qualification/p1g_headless/chrome_bootstrap.py": "1bfe517e4a520652887a9688bd58bbbcf585b9cefdc0965b45c78417b8dd9094",
     "qualification/p1g_headless/chrome_gpg.py": "001d178e5876df97156bf2061df19a51fc56bbf5b9bfa102098999bc10357512",
     "qualification/p1g_headless/lab_support.py": "83169d823c2ea9e3e1abdba105f17c4259bc7f1a5c1a4827e34bd35fea7df7a8",
     "deploy/expat-remediation/bounded_io.py": "72b778ad6e441744e8bd9ac84ba7f47b1f6b577b7885a2e0daf3b4584cc0150a"
   },
   "PGP_validity_still_required_in_CI": true,
   "test_files": {
-    "qualification/p1g_headless/test_chrome_bootstrap.py": "c4e84e6d0beebae49c687848a5a41b6468e5dfb1c143f0ff0cf3af1d90d5ca8e",
+    "qualification/p1g_headless/test_chrome_bootstrap.py": "70cdcb47e192803c9258041bb862538384fced44529328aac815b5080e0f1705",
     "qualification/p1g_headless/run_chrome_pure.py": "c81b8be76d2aed7ef403ce0c828fa37cd43554c49ea8b5634b0c9eb6e436afb7"
   }
 }

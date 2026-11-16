@@ -498,3 +498,12 @@ La garde de délais du témoin PostgreSQL conserve ses maxima stricts. Un contre
 ## Qualification Jansson en cours
 
 Le backend natif est en qualification sur une branche indépendante ; les tests purs ne valent pas livraison. Voir [preuves et limites](p1-f-jansson-qualification.md) et [ADR-030](adr-030-jansson-native-json-backend.md). Aucune donnée ni migration métier modifiée.
+
+### Active qualification work: runtime composition and browser authentication
+
+The headless candidate incorporates PR #19's runtime fixes. Next gates are an
+actual successful image build and unchanged strict security scans, receipt of the
+bounded GPG authentication diagnostic, then actual portal and native-session
+assertions. Restore coverage must additionally exercise historical V7, Governance
+and independently anchored PAM trust data on synthetic PostgreSQL. Pure tests
+and a partial restore corpus do not close these gates.

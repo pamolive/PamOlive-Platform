@@ -742,3 +742,14 @@ passent. La restauration PostgreSQL réelle reste à recevoir ; voir
 ## Qualification Jansson en cours
 
 Le backend natif est en qualification sur une branche indépendante ; les tests purs ne valent pas livraison. Voir [preuves et limites](p1-f-jansson-qualification.md) et [ADR-030](adr-030-jansson-native-json-backend.md). Aucune donnée ni migration métier modifiée.
+
+### Current headless candidate qualification follow-up
+
+The P1-G candidate now composes PR #19's Expat/Jansson/restore runtime and its
+Expat SDK C-header fix. Selected pure contract suites passed (293 tests before
+the GPG diagnostic delta, then 15 bootstrap and 14 unchanged UI tests rerun).
+The actual prior browser run refused authenticate/status_bad before package
+installation or UI execution. A bounded public GPG diagnostic was independently
+reviewed; it leaves all signature and installation guards unchanged. No successful
+browser execution, complete P1-G, qualified image promotion or NAS deployment
+is inferred. The new Linux CI is the authority for runtime outcomes.

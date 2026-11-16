@@ -69,8 +69,119 @@ def tar_payload(entries):
 
 
 class ChromeBootstrapTests(unittest.TestCase):
+    def test_diagnostic_projects_only_known_BAD_names_not_arguments_or_UID(self):
+        for code in gpg.BAD:
+            raw = status() + ("[GNUPG:] " + code + " PRIVATE_UID_PRIVATE_PAYLOAD\n").encode()
+            diagnostic = boot.gpg_status_diagnostic(
+                raw, listing(), PINS["primary"], PINS["signer"], NOW
+            )
+            self.assertEqual(diagnostic["bad_names"], [code])
+            self.assertEqual((diagnostic["GOODSIG_count"], diagnostic["VALIDSIG_count"]), (1, 1))
+            self.assertTrue(diagnostic["diagnostic_only"])
+            self.assertFalse(diagnostic["operational_GO"])
+            self.assertNotIn("PRIVATE", json.dumps(diagnostic))
+            self.assertNotIn(PINS["primary"], json.dumps(diagnostic))
+            with self.assertRaises(ValueError):
+                gpg.valid_status(raw, PINS["primary"], PINS["signer"], NOW)
+
+    def test_diagnostic_does_not_attribute_KEYEXPIRED_to_expected_key(self):
+        rows = listing().decode().splitlines()
+        extra = rows[2].split(":")
+        extra[1], extra[6] = "e", str(NOW - 1)
+        rows.extend(
+            [
+                ":".join(extra),
+                ":".join(["fpr"] + [""] * 8 + ["F" * 40, ""]),
+                "uid:PRIVATE_UID_MUST_NEVER_LEAVE",
+            ]
+        )
+        raw = status() + b"[GNUPG:] KEYEXPIRED 123456 PRIVATE\n"
+        diagnostic = boot.gpg_status_diagnostic(
+            raw, ("\n".join(rows) + "\n").encode(), PINS["primary"], PINS["signer"], NOW
+        )
+        self.assertEqual(diagnostic["other_keys"]["observed"], 1)
+        self.assertEqual(diagnostic["other_keys"]["expired"], 1)
+        self.assertEqual(diagnostic["expected_keys"]["signer"]["expires"], 0)
+        self.assertFalse(diagnostic["KEYEXPIRED_attributed_to_specific_key"])
+        self.assertNotIn("PRIVATE", json.dumps(diagnostic))
+        with self.assertRaises(ValueError):
+            gpg.valid_status(raw, PINS["primary"], PINS["signer"], NOW)
+
+    def test_diagnostic_expected_expired_signer_and_duplicate_remain_non_authority(self):
+        rows = listing().decode().splitlines()
+        key = rows[2].split(":")
+        key[1], key[6] = "e", str(NOW - 1)
+        rows[2] = ":".join(key)
+        raw = ("\n".join(rows) + "\n").encode()
+        diagnostic = boot.gpg_status_diagnostic(status(), raw, PINS["primary"], PINS["signer"], NOW)
+        self.assertEqual(diagnostic["expected_keys"]["signer"]["validity"], "e")
+        self.assertEqual(diagnostic["expected_keys"]["signer"]["expires"], NOW - 1)
+        with self.assertRaises(ValueError):
+            gpg.signing_capability(
+                gpg.one_primary(raw, PINS["primary"]), PINS["primary"], PINS["signer"], NOW
+            )
+        doubled = listing() + listing()
+        diagnostic = boot.gpg_status_diagnostic(
+            status(), doubled, PINS["primary"], PINS["signer"], NOW
+        )
+        self.assertTrue(diagnostic["expected_keys"]["primary"]["seen"])
+        self.assertFalse(diagnostic["expected_keys"]["primary"]["unambiguous"])
+        self.assertIsNone(diagnostic["expected_keys"]["primary"]["created"])
+        with self.assertRaises(ValueError):
+            gpg.one_primary(doubled, PINS["primary"])
+
+    def test_diagnostic_malformed_budget_and_unknown_are_bounded_not_success(self):
+        for raw in (
+            None,
+            b"X" * 16385,
+            b"\xff",
+            b"PRIVATE_UNFRAMED\n",
+            b"[GNUPG:] \n",
+            b"[GNUPG:] NEW_UNKNOWN PRIVATE\n",
+            b"[GNUPG:] X\n" * 1025,
+        ):
+            diagnostic = boot.gpg_status_diagnostic(
+                raw, listing(), PINS["primary"], PINS["signer"], NOW
+            )
+            self.assertFalse(diagnostic["operational_GO"])
+            self.assertTrue(diagnostic["unknown_status_present"])
+            self.assertLess(len(json.dumps(diagnostic)), 16384)
+            self.assertNotIn("PRIVATE", json.dumps(diagnostic))
+        for raw in (None, b"X" * 16385, b"\xff", b"uid:\n" * 1025):
+            diagnostic = boot.gpg_status_diagnostic(
+                status(), raw, PINS["primary"], PINS["signer"], NOW
+            )
+            self.assertFalse(diagnostic["listing_parse_complete"])
+            self.assertLess(len(json.dumps(diagnostic)), 16384)
+
+    def test_diagnostic_is_written_before_unchanged_guard_in_both_supervisors(self):
+        tree = ast.parse((HERE / "chrome_bootstrap.py").read_bytes())
+        main = next(
+            node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "main"
+        )
+        diagnostic = next(
+            node
+            for node in ast.walk(main)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "gpg_status_diagnostic"
+        )
+        validation = next(
+            node
+            for node in ast.walk(main)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "valid_status"
+        )
+        self.assertLess(diagnostic.lineno, validation.lineno)
+        self.assertEqual(
+            [node.id for node in validation.args if isinstance(node, ast.Name)], ["status", "now"]
+        )
+        # No parsed diagnostic is used as an authentication condition.
+        self.assertNotIn("diagnostic[", ast.unparse(main))
+
     def test_actual_controller_bad_signature_or_package_never_reaches_extraction_install(self):
-        for failure in ("signature", "package"):
+        for failure in ("signature", "package", "malformed"):
             with tempfile.TemporaryDirectory() as directory:
                 base = Path(directory).resolve()
                 captured = {
@@ -91,6 +202,8 @@ class ChromeBootstrapTests(unittest.TestCase):
                         output = status() + (
                             b"[GNUPG:] BADSIG PRIVATE\n" if failure == "signature" else b""
                         )
+                    if "--verify" in argv and failure == "malformed":
+                        output = b"UNFRAMED PRIVATE UID OUTPUT\n"
                     if argv[0] == "/usr/bin/curl":
                         kwargs["stdout_sink"].write(b"SYNTHETIC_INVALID_PACKAGE_BYTES")
                     return SimpleNamespace(
@@ -137,7 +250,12 @@ class ChromeBootstrapTests(unittest.TestCase):
                     self.assertEqual(boot.main(["--pins-sha", "f" * 64]), 42)
                 packet = json.loads((base / "p1g-headless-123-1-chrome/UNKNOWN.json").read_bytes())
                 self.assertEqual(
-                    packet["code"], "status_bad" if failure == "signature" else "package_bytes"
+                    packet["code"],
+                    {
+                        "signature": "status_bad",
+                        "package": "package_bytes",
+                        "malformed": "status_framing",
+                    }[failure],
                 )
                 self.assertTrue(
                     all(
@@ -145,7 +263,14 @@ class ChromeBootstrapTests(unittest.TestCase):
                         for argv in calls
                     )
                 )
-                if failure == "signature":
+                diagnostic_path = (
+                    base / "p1g-headless-123-1-chrome/frontend/gpg-status-diagnostic.json"
+                )
+                diagnostic = json.loads(diagnostic_path.read_bytes())
+                self.assertTrue(diagnostic["diagnostic_only"])
+                self.assertFalse(diagnostic["operational_GO"])
+                self.assertNotIn("PRIVATE", json.dumps(diagnostic))
+                if failure in {"signature", "malformed"}:
                     self.assertTrue(all(argv[0] != "/usr/bin/curl" for argv in calls))
                 self.assertNotIn("PRIVATE", json.dumps(packet))
 

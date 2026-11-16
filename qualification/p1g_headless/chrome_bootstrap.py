@@ -420,6 +420,178 @@ APT = [
 ]
 
 
+def gpg_status_diagnostic(status, listing, primary, signer, now):
+    """Bounded metadata only. Never an authentication predicate or key attribution."""
+    bad_names = {
+        "BADSIG",
+        "ERRSIG",
+        "EXPSIG",
+        "EXPKEYSIG",
+        "REVKEYSIG",
+        "NO_PUBKEY",
+        "NODATA",
+        "FAILURE",
+        "ERROR",
+        "KEYEXPIRED",
+        "SIGEXPIRED",
+        "KEYREVOKED",
+        "BADARMOR",
+    }
+    benign_names = {
+        "NEWSIG",
+        "KEY_CONSIDERED",
+        "SIG_ID",
+        "GOODSIG",
+        "VALIDSIG",
+        "TRUST_UNDEFINED",
+        "TRUST_NEVER",
+        "TRUST_MARGINAL",
+        "TRUST_FULLY",
+        "TRUST_ULTIMATE",
+        "POLICY_URL",
+        "NOTATION_NAME",
+        "NOTATION_DATA",
+    }
+
+    def blank_key():
+        return {
+            "seen": False,
+            "unambiguous": False,
+            "validity": "unknown",
+            "created": None,
+            "expires": None,
+            "times_well_formed": False,
+            "signing_capability": None,
+        }
+
+    result = {
+        "schema": "pamolive.chrome-gpg-status-diagnostic/1",
+        "diagnostic_only": True,
+        "operational_GO": False,
+        "status_budget_ok": type(status) is bytes and len(status) <= 16384,
+        "status_rows_ok": False,
+        "status_framing_ok": False,
+        "status_parse_complete": False,
+        "unknown_status_present": True,
+        "bad_names": [],
+        "GOODSIG_count": None,
+        "VALIDSIG_count": None,
+        "listing_budget_ok": type(listing) is bytes and len(listing) <= 16384,
+        "listing_rows_ok": False,
+        "listing_parse_complete": False,
+        "expected_keys": {"primary": blank_key(), "signer": blank_key()},
+        "other_keys": {"observed": None, "expired": None, "unusable": None, "unclassified": None},
+        "KEYEXPIRED_attributed_to_specific_key": False,
+    }
+    if result["status_budget_ok"]:
+        try:
+            lines = status.decode("ascii", "strict").splitlines()
+        except UnicodeError:
+            lines = None
+        if lines is not None and len(lines) <= 1024:
+            result["status_rows_ok"] = True
+            framed = bool(lines) and all(line.startswith("[GNUPG:] ") for line in lines)
+            result["status_framing_ok"] = framed
+            if framed:
+                rows = [line[9:].split() for line in lines]
+                names = [row[0] for row in rows if row]
+                complete = len(names) == len(rows)
+                result.update(
+                    {
+                        "status_parse_complete": complete,
+                        "unknown_status_present": not complete
+                        or any(name not in bad_names | benign_names for name in names),
+                        "bad_names": sorted(set(names) & bad_names),
+                        "GOODSIG_count": names.count("GOODSIG"),
+                        "VALIDSIG_count": names.count("VALIDSIG"),
+                    }
+                )
+    if not result["listing_budget_ok"]:
+        return result
+    try:
+        lines = listing.decode("utf-8", "strict").splitlines()
+    except UnicodeError:
+        return result
+    if len(lines) > 1024:
+        return result
+    result["listing_rows_ok"] = True
+    expected_valid = all(
+        type(value) is str and re.fullmatch(r"[0-9A-F]{40}", value) for value in (primary, signer)
+    )
+    if not expected_valid or type(now) is not int or not 0 <= now <= 253402300799:
+        return result
+    rows, matches, complete = [line.split(":") for line in lines], {primary: [], signer: []}, True
+    others = {"observed": 0, "expired": 0, "unusable": 0, "unclassified": 0}
+    other_fingerprints = set()
+
+    def timestamp(value, *, empty=False):
+        if value == "" and empty:
+            return None, True
+        if value.isascii() and value.isdigit() and len(value) <= 12:
+            number = int(value)
+            if number <= 253402300799:
+                return number, True
+        return None, False
+
+    for index, row in enumerate(rows):
+        if not row or row[0] not in {"pub", "sub"}:
+            if not row or row[0] not in {"fpr", "uid", "uat", "tru", "grp"}:
+                complete = False
+            continue  # UID/trust arguments are never projected.
+        if len(row) < 12 or index + 1 >= len(rows):
+            complete = False
+            others["unclassified"] += 1
+            continue
+        fpr = rows[index + 1]
+        if len(fpr) < 10 or fpr[0] != "fpr" or not re.fullmatch(r"[0-9A-F]{40}", fpr[9]):
+            complete = False
+            others["unclassified"] += 1
+            continue
+        created, created_ok = timestamp(row[5])
+        expires, expires_ok = timestamp(row[6], empty=True)
+        validity = (
+            row[1]
+            if row[1] in {"-", "q", "n", "m", "f", "u", "r", "e", "d", "i", "o", "w", "s"}
+            else "unknown"
+        )
+        caps_ok = len(row[11]) <= 32 and all(c in "escaESCA?D" for c in row[11])
+        state = {
+            "seen": True,
+            "unambiguous": True,
+            "validity": validity,
+            "created": created,
+            "expires": expires,
+            "times_well_formed": created_ok and expires_ok,
+            "signing_capability": "s" in row[11] if caps_ok else None,
+        }
+        complete &= created_ok and expires_ok and caps_ok and validity != "unknown"
+        if fpr[9] in matches:
+            matches[fpr[9]].append(state)
+        else:
+            if fpr[9] in other_fingerprints:
+                complete = False
+                continue
+            other_fingerprints.add(fpr[9])
+            others["observed"] += 1
+            others["expired"] += int(
+                validity == "e" or (expires_ok and expires not in {None, 0} and expires <= now)
+            )
+            others["unusable"] += int(validity in {"r", "e", "d", "i"} or "D" in row[11])
+    for label, fingerprint in (("primary", primary), ("signer", signer)):
+        found = matches[fingerprint]
+        if len(found) == 1:
+            result["expected_keys"][label] = found[0]
+        elif found:
+            state = blank_key()
+            state["seen"] = True
+            result["expected_keys"][label] = state
+            complete = False
+    complete &= bool(matches[primary]) and bool(matches[signer])
+    result["other_keys"] = others
+    result["listing_parse_complete"] = complete
+    return result
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--pins-sha", required=True)
@@ -528,6 +700,13 @@ def main(argv=None):
             seconds=10,
         )
         now = int(time.time())
+        support.fresh_write(
+            command_public / "gpg-status-diagnostic.json",
+            json.dumps(
+                gpg_status_diagnostic(status, listed, pins["primary"], pins["signer"], now)
+            ).encode(),
+            mode=0o444,
+        )
         valid = gpg.valid_status(status, pins["primary"], pins["signer"], now)
         gpg.signing_capability(keys, pins["primary"], pins["signer"], now, valid["timestamp"])
         # Metadata is parsed again AFTER actual GPG authentication, before DEB processing.

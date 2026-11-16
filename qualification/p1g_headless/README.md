@@ -133,3 +133,27 @@ are unchanged. A mode0777 observation is never repaired into an admission.
 Only typed command/installation JSON receipts are published. Private command
 output, DEB, payload, HOME, keyrings and fixture credentials remain excluded.
 The ten source tests do not qualify an installed browser, sandbox or UI session.
+
+## Authentication refusal and diagnostic follow-up
+
+The actual 9c9d61f push run 43860529318 refused in authenticate with
+status_bad, before installation and the UI. Three supervised commands returned
+zero with reaped/drained frontend receipts. Their private GPG output was not
+exported, so no particular BAD status, key expiration or signature result is
+inferred. All browser assertions remained unexecuted.
+
+The follow-up writes a bounded, typed GPG diagnostic before passing the original
+unchanged status to the existing strict validator. It contains only closed status
+names, counts, framing/budget flags and expected-key state labels; raw key
+fingerprints, UID, arguments, stderr and private output remain excluded. This
+diagnostic cannot authorize authentication or installation. The original BAD
+predicates, package bytes, supplier metadata, Chrome permissions and UI guards
+remain unchanged. Fifteen bootstrap pure tests and fourteen UI contracts pass;
+independent review adds four adversarial cases to the fifteen. Actual GPG and
+Chrome qualification still require a new Linux receipt.
+
+This branch now incorporates the runtime composition from PR #19, including its
+one-line Expat SDK C-header dependency fix. Its earlier 293 selected pure tests
+passed before the diagnostic delta; the changed bootstrap and retained UI tests
+were rerun afterward. Native image qualification, all remaining High findings,
+SSH/RDP browser execution and complete P1-G remain open.
