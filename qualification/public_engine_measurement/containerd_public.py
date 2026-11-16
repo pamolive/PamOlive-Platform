@@ -404,15 +404,44 @@ def validate_version_format(value):
     return dict(value, numeric_triplet=list(numbers))
 
 
+# These exact package/version pairs were reviewed from primary source, never learned from DATA.
+CLI_PAIRS = frozenset(
+    (package, prefix + version)
+    for package, versions in (
+        ("github.com/containerd/containerd/v2", ("2.2.3", "2.4.2")),
+        ("containerd", ("2.4.2",)),
+        ("containerd.io", ("2.4.2",)),
+    )
+    for version in versions
+    for prefix in ("", "v")
+)
+CLI_LINE = (
+    rb"ctr (github\.com/containerd/containerd/v2|containerd|containerd\.io) "
+    rb"(v?[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,3})\n"
+)
+
+
+def validate_cli_identity(value, *, reviewed=True):
+    require(type(value) is dict and set(value) == {"package", "version"})
+    require(type(value["package"]) is str and type(value["version"]) is str)
+    require(
+        value["package"] in {"github.com/containerd/containerd/v2", "containerd", "containerd.io"}
+        and re.fullmatch(r"v?[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,3}", value["version"])
+    )
+    if reviewed:
+        require((value["package"], value["version"]) in CLI_PAIRS)
+    return dict(value)
+
+
 def inspect_roots(address, runner, measure=tool_record, statter=capacity):
     require(address in ENDPOINTS)
     packet = {
-        "schema": "public-containerd-roots/2",
+        "schema": "public-containerd-roots/3",
         "status": "UNKNOWN",
         "ctr_process": None,
         "tool": None,
         "tool_unchanged": False,
-        "cli_version": None,
+        "cli_identity": None,
         "version_process": None,
         "exports": None,
         "filesystems": None,
@@ -437,16 +466,16 @@ def inspect_roots(address, runner, measure=tool_record, statter=capacity):
         if not version.ok or version.stderr != b"":
             packet["status"] = "QUERY_REFUSED"
             return packet
-        match = re.fullmatch(
-            rb"ctr github\.com/containerd/containerd/v2 (v?[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,3})\n",
-            version.stdout,
-        )
+        match = re.fullmatch(CLI_LINE, version.stdout)
         if match is None:
             packet["status"] = "CLI_UNREVIEWED"
             packet["version_format"] = version_format_diagnostic(version.stdout)
             return packet
-        packet["cli_version"] = match[1].decode("ascii")
-        if packet["cli_version"] not in {"v2.2.3", "2.2.3", "v2.4.2", "2.4.2"}:
+        packet["cli_identity"] = {
+            "package": match[1].decode("ascii"),
+            "version": match[2].decode("ascii"),
+        }
+        if (packet["cli_identity"]["package"], packet["cli_identity"]["version"]) not in CLI_PAIRS:
             packet["status"] = "CLI_UNREVIEWED"
             return packet
         result = runner(
@@ -506,7 +535,8 @@ def validate_tool(tool):
 
 
 def refusal_diagnostic(value):
-    require(type(value) is dict and value.get("schema") == "public-containerd-roots/2")
+    require(type(value) is dict and "cli_version" not in value)
+    require(type(value) is dict and value.get("schema") == "public-containerd-roots/3")
     status = value.get("status")
     require(
         status
@@ -519,8 +549,12 @@ def refusal_diagnostic(value):
         }
     )
     result = {"status": status}
-    if "version_format" in value:
-        require(status == "CLI_UNREVIEWED" and value.get("cli_version") is None)
+    if "version_format" in value or value.get("cli_identity") is not None:
+        # Every published version observation needs the same closed pre-query
+        # context, including typed-but-unreviewed identities, not only format DATA.
+        require(status == "CLI_UNREVIEWED")
+        if "version_format" in value:
+            require(value.get("cli_identity") is None)
         require(
             all(
                 value.get(key) is False
@@ -559,14 +593,15 @@ def refusal_diagnostic(value):
             and facts["drains_complete"] is True
             and facts["cleanup_exception_type"] is None
         )
-        result["version_format"] = validate_version_format(value["version_format"])
+        if "version_format" in value:
+            result["version_format"] = validate_version_format(value["version_format"])
     if value.get("tool") is not None:
         result["ctr_tool"] = validate_tool(value["tool"])
     if type(value.get("tool_unchanged")) is bool:
         result["ctr_tool_unchanged"] = value["tool_unchanged"]
-    cli = value.get("cli_version")
-    if type(cli) is str and re.fullmatch(r"v?[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,3}", cli):
-        result["cli_version"] = cli
+    cli = value.get("cli_identity")
+    if cli is not None:
+        result["cli_identity"] = validate_cli_identity(cli, reviewed=False)
     for name in ("version_process", "ctr_process"):
         facts = value.get(name)
         if type(facts) is not dict:
@@ -598,7 +633,7 @@ def validate_packet(value):
             "ctr_process",
             "tool",
             "tool_unchanged",
-            "cli_version",
+            "cli_identity",
             "version_process",
             "exports",
             "filesystems",
@@ -607,7 +642,7 @@ def validate_packet(value):
             "operational_GO",
         }
     )
-    require(value["schema"] == "public-containerd-roots/2")
+    require(value["schema"] == "public-containerd-roots/3")
     require(
         value["status"]
         in {
@@ -622,7 +657,7 @@ def validate_packet(value):
     require(all(value[key] is False for key in ("profile_accepted", "authority", "operational_GO")))
     # Refused/unknown child packets are not published verbatim: parent retains only status/H1.
     require(value["status"] == "COMPLETE" and value["tool_unchanged"] is True)
-    require(value["cli_version"] in {"v2.2.3", "2.2.3", "v2.4.2", "2.4.2"})
+    validate_cli_identity(value["cli_identity"])
     validate_tool(value["tool"])
     for facts in (value["version_process"], value["ctr_process"]):
         require(
@@ -695,7 +730,7 @@ def root_main():
     except BaseException:
         # No traceback, exception text or path escapes this child. Incomplete
         # nested process facts cannot be repaired by reaping the sudo frontend.
-        packet = {"schema": "public-containerd-roots/2", "status": "UNKNOWN"}
+        packet = {"schema": "public-containerd-roots/3", "status": "UNKNOWN"}
     finally:
         if os.name == "posix":
             signal.setitimer(signal.ITIMER_REAL, 0)

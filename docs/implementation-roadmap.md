@@ -388,3 +388,9 @@ Branche → modifications/tests/revue → commit/push/PR → CI vérifiée → f
 ## Relation avec l’ancien ordre d’implémentation
 
 L’ancien document décrivait contrats → noyau → IAM → gouvernance → PAM. Ce sont des dépendances historiques déjà partiellement ou largement implémentées, pas de nouveaux lots à réécrire. Les ADR encore proposés restent visibles dans leur index ; l’autonomie technique ne les rend pas rétroactivement qualifiés. Le worker/outbox PostgreSQL actuel est réutilisé ; Redis n’est pas ajouté sans besoin démontré et ADR.
+
+## Public Engine : identité CLI ROOT3 en qualification
+
+Les observations réelles du candidat `1e66df2` n'identifient que le format et la version numérique 2.4.2 ; le package masqué reste inconnu. [ADR-029](adr-029-public-containerd-cli-identity.md) retient huit couples package/version exacts documentés, avec un schéma typé ROOT3 ; aucune normalisation de marque ni apprentissage depuis une observation refusée. Les anciens schémas restent historiques.
+
+La revue contradictoire a refusé une première version pour sa projection d'identité diagnostique insuffisamment liée au contexte du processus. R2 exige le même contexte strict avant toute publication de format ou d'identité : processus terminé normalement, flux complets, outil stable et aucune autorité ni requête suivante. Les 65 tests métadonnées, 39 PostgreSQL purs et 14 tests courts passent sans skip ni IO externe. Les 19 fichiers PostgreSQL et les douze lignes de son payload restent inchangés. La nouvelle mesure Linux demeure requise ; ces tests ne constituent ni une mesure UID PostgreSQL ni une autorisation opérationnelle.

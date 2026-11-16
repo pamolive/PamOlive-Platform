@@ -22,6 +22,7 @@ def audit(event, _args):
 
 def main():
     sys.addaudithook(audit)
+    import test_cli_identity
     import test_collector
     import test_containerd_public
     import test_env_contract
@@ -31,6 +32,7 @@ def main():
     suite = unittest.TestSuite(
         unittest.defaultTestLoader.loadTestsFromTestCase(cls)
         for cls in (
+            test_cli_identity.CliIdentityTests,
             test_collector.CollectorTests,
             test_containerd_public.PublicTests,
             test_containerd_public.ParentTests,
@@ -55,7 +57,7 @@ def main():
     print(json.dumps(row))
     return (
         0
-        if result.wasSuccessful() and result.testsRun == 54 and not result.skipped and not ATTEMPTS
+        if result.wasSuccessful() and result.testsRun == 65 and not result.skipped and not ATTEMPTS
         else 1
     )
 

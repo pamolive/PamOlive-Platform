@@ -13,7 +13,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 CLI = Path("/usr/bin/docker")
 BOUNDED_SHA = "98233b610f2d53dfd698d0d91f61f3d3ebcb1693a847983f0472f89a885f414f"
-PUBLIC_SHA = "7682097d1fe20e67880a30c450d2480413b72be205337a4e8294ea7f3f16f4e5"
+PUBLIC_SHA = "fb6b6723a073443ea6465800452cad906d5f064cce676029ffc5417670c30247"
 PG = (
     "docker.io/library/postgres@sha256:"
     "6f7593c161689b6b02c78668b314af7da8811b592c5519108c57a49d0b6ad788"

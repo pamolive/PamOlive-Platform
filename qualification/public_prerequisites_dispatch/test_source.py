@@ -135,7 +135,7 @@ class Queries(unittest.TestCase):
             c.collect_prerequisites(self.work, forged, None, b"")
             self.assertFalse(private.call_args.kwargs["ready"])
 
-    def test_root_v2_field_model_and_env_nlink_drift_in_actual_two_query_wrapper(self):
+    def test_root_v3_field_model_and_env_nlink_drift_in_actual_two_query_wrapper(self):
         public = c.public_module()
         model = {
             "path": "/usr/bin/ctr",
@@ -175,7 +175,7 @@ class Queries(unittest.TestCase):
             )
             self.assertEqual(set(options["env"]), {"PATH", "HOME", "LANG", "LC_ALL"})
             options["on_spawn"](234)
-            return Result({"schema": "public-containerd-roots/2", "status": "COMPLETE"})
+            return Result({"schema": "public-containerd-roots/3", "status": "COMPLETE"})
 
         c.collect_two_prerequisites(
             self.work,
@@ -424,7 +424,7 @@ class SourceContracts(unittest.TestCase):
         self.assertEqual(len(buffers), 15)
         self.assertEqual(
             q.sha(buffers["engine/containerd_public.py"]),
-            "7682097d1fe20e67880a30c450d2480413b72be205337a4e8294ea7f3f16f4e5",
+            "fb6b6723a073443ea6465800452cad906d5f064cce676029ffc5417670c30247",
         )
         with self.assertRaises(ValueError):
             q.capture("0" * 64)
@@ -433,8 +433,7 @@ class SourceContracts(unittest.TestCase):
         workflow = read_workflow()
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn(
-            "on:\n  push:\n    branches: [agent/public-env-root-helper]\n"
-            "  workflow_dispatch:",
+            "on:\n  push:\n    branches: [agent/public-env-root-helper]\n  workflow_dispatch:",
             workflow,
         )
         self.assertIn("github.ref == '" + q.PUSH_REF + "'", workflow)

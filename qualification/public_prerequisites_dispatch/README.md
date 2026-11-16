@@ -30,7 +30,7 @@ The new exact bootstrap branch is `agent/public-env-root-helper`, based on
 5c16fa8973b56a188a039f71d8fc797a622a1935. Push and manual dispatch remain closed
 to that branch, repository and job; full Platform gates remain required.
 The derived collector uses the same new helper bytes as the standalone
-collector, accepts only `public-containerd-roots/2`, and measures
+collector, accepts only `public-containerd-roots/3`, and measures
 `/usr/lib/cargo/bin/coreutils/env`. Only env permits multiple stable hardlinks.
 All eight tool fields, including `nlink`, are compared across the process.
 The earlier V1 source is historical evidence, not current admission.
@@ -39,3 +39,9 @@ The two metadata queries, ctr queries, H1/permissions/time budgets, one fixed
 PG pull, PG owner and 12 PG payload buffers remain unchanged. The new branch
 does not commission a profile or authorize application/P0 operations. No real
 root read or VM file attributes are inferred from source or pure test success.
+
+ROOT3 now carries the exact package/version cli_identity from ADR029, with no
+cli_version alias or historical ROOT1/ROOT2 fallback. Only the two engine rows
+of payload.json change; all twelve PG rows, sorted Ulimits and START/cleanup
+controls remain exact. Actual1e66 package is still redacted/unknown. No profile
+or operational authority follows from this source/pure integration.

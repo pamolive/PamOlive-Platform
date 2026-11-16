@@ -406,7 +406,7 @@ jobs:
           set -euo pipefail
           umask 077
           source="$GITHUB_WORKSPACE/qualification/public_engine_measurement"
-          printf '%s  %s\n' 41b8fd476d830f3d4bf123afb94a8da3e5c0533c63db7d1b942f1f9a26b76fb3 "$source/collector.py" | sha256sum --check --status
+          printf '%s  %s\n' 98a8c2438f969468b949a6529a8ff526dc377f853b1cbd41c53692ab746533d8 "$source/collector.py" | sha256sum --check --status
           work="$RUNNER_TEMP/public-engine-${{ github.run_id }}-${{ github.run_attempt }}"
           test ! -e "$work"
           env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C \

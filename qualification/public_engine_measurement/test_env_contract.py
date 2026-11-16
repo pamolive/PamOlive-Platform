@@ -140,7 +140,7 @@ class EnvToolTests(unittest.TestCase):
 
     def test_root_packet_v2_requires_exact_eight_fields_and_ctr_one_link(self):
         packet, _ = good_packet()
-        self.assertEqual(packet["schema"], "public-containerd-roots/2")
+        self.assertEqual(packet["schema"], "public-containerd-roots/3")
         self.assertEqual(len(packet["tool"]), 8)
         self.assertEqual(p.validate_packet(packet), packet)
         for value in (True, False, 0, -1, 2, "1", 1.0):

@@ -84,7 +84,7 @@ class VersionFormatTests(unittest.TestCase):
             for suffix, label in ((b"+unknown", "plus_unknown"), (b"-private", "other_redacted")):
                 packet, calls, stats = self.inspect(b"ctr " + module + b" v2.4.2" + suffix + b"\n")
                 self.assertEqual(packet["status"], "CLI_UNREVIEWED")
-                self.assertIsNone(packet["cli_version"])
+                self.assertIsNone(packet["cli_identity"])
                 diagnostic = p.refusal_diagnostic(packet)["version_format"]
                 self.assertEqual(diagnostic["numeric_triplet"], [2, 4, 2])
                 self.assertEqual(diagnostic["package"], expected)
@@ -119,7 +119,10 @@ class VersionFormatTests(unittest.TestCase):
     def test_numeric_match_outside_allowlist_is_not_format_failure(self):
         packet, calls, stats = self.inspect(b"ctr github.com/containerd/containerd/v2 v9.9.9\n")
         self.assertEqual(packet["status"], "CLI_UNREVIEWED")
-        self.assertEqual(packet["cli_version"], "v9.9.9")
+        self.assertEqual(
+            packet["cli_identity"],
+            {"package": "github.com/containerd/containerd/v2", "version": "v9.9.9"},
+        )
         self.assertNotIn("version_format", packet)
         self.assertEqual(len(calls), 1)
         self.assertEqual(stats, [])
@@ -164,9 +167,11 @@ class VersionFormatTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 p.refusal_diagnostic(
                     {
-                        "schema": "public-containerd-roots/2",
+                        "schema": "public-containerd-roots/3",
                         "status": state,
-                        "cli_version": cli,
+                        "cli_identity": None
+                        if cli is None
+                        else {"package": "github.com/containerd/containerd/v2", "version": cli},
                         "version_format": good,
                     }
                 )
