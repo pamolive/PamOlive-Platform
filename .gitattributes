@@ -34,3 +34,10 @@ deploy/expat-remediation/Dockerfile.diff -text whitespace=-blank-at-eol,cr-at-eo
 
 # A pinned unified-diff DATA file retains mandatory blank context lines.
 deploy/expat-remediation/expat-ushort-tests.patch -text whitespace=-blank-at-eol,cr-at-eol
+
+# Exact public Google APT signature/metadata inputs (no EOL conversion).
+# The exact signed index retains its supplier's terminal stanza separator.
+qualification/p1g_headless/chrome_materials/Packages -text whitespace=-blank-at-eof
+qualification/p1g_headless/chrome_materials/Release -text
+qualification/p1g_headless/chrome_materials/Release.gpg -text
+qualification/p1g_headless/chrome_materials/google-key.asc -text

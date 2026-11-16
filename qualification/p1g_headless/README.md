@@ -120,3 +120,16 @@ stat or admit a tool. Four new pure tests bring the suite to 14, all passing
 with no external attempts. Independent review passed those 14 and three
 additional adversarial tests. Actual Chrome metadata and all UI assertions
 remain pending a new Linux run; this diagnostic grants no qualification.
+
+## Authenticated browser bootstrap candidate
+
+[ADR-032](../../docs/adr-032-authenticated-ci-browser-bootstrap.md) selects an
+exact authenticated Google package in the disposable CI VM. The pinned public
+Release/key/Packages metadata is checked before native package processing;
+actual GPG, payload inspection, dependency refusal and local-only reinstall
+remain required in Linux. The original Chrome guard and UI source manifest
+are unchanged. A mode0777 observation is never repaired into an admission.
+
+Only typed command/installation JSON receipts are published. Private command
+output, DEB, payload, HOME, keyrings and fixture credentials remain excluded.
+The ten source tests do not qualify an installed browser, sandbox or UI session.

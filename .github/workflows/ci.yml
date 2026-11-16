@@ -51,12 +51,12 @@ jobs:
       - name: Reject medium and high severity application findings
         if: always()
         run: python -m bandit -r config platform_core platform_modules components/vault/src components/vault/runtime/pamolive_vault_runtime components/vault-registry/src components/pam-trust-verifier/src components/usage-anchor/pamolive_usage_anchor -ll -f json -o "$RUNNER_TEMP/pamolive-bandit-application.json"
-      - name: Retain all deployment findings for review
+      - name: Retain all deployment and browser bootstrap findings for review
         if: always()
-        run: python -m bandit -r deploy --exit-zero -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-all.json"
-      - name: Reject high severity deployment findings
+        run: python -m bandit -r deploy qualification/p1g_headless/chrome_bootstrap.py qualification/p1g_headless/chrome_gpg.py --exit-zero -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-all.json"
+      - name: Reject high severity deployment and browser bootstrap findings
         if: always()
-        run: python -m bandit -r deploy -lll -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-high.json"
+        run: python -m bandit -r deploy qualification/p1g_headless/chrome_bootstrap.py qualification/p1g_headless/chrome_gpg.py -lll -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-high.json"
       - name: Reject new secrets against the reviewed baseline without network verification
         if: always()
         shell: bash
@@ -720,7 +720,7 @@ jobs:
        (github.event_name == 'pull_request' && github.head_ref == 'agent/p1-g-headless' &&
         github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 40
     permissions:
       contents: read
     services:
@@ -761,6 +761,47 @@ jobs:
           "$RUNNER_TEMP/p1g-venv/bin/python" -m pip check
       - name: Check only source contracts without opening a browser or database
         run: 'python -I -B -S "$RUNNER_TEMP/p1g-source/qualification/p1g_headless/run_pure.py"'
+      - name: Authenticate and reinstall only the reviewed Chrome package
+        timeout-minutes: 15
+        env:
+          DATABASE_URL: postgresql://p1g:p1g-synthetic-disposable-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/pamolive_p1g
+          PAMOLIVE_TEST_DATABASE_NAME: test_pamolive_p1g_browser
+          PAMOLIVE_P1G_DISPOSABLE: '1'
+          P1G_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          source="$RUNNER_TEMP/p1g-source"
+          python -I -B -S - "$source" "$RUNNER_TEMP/p1g-source.json" "$GITHUB_SHA" <<'PY'
+          import hashlib, json, stat, sys
+          from pathlib import Path
+          root, receipt_path, revision = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+          def read(path, cap):
+              row = path.lstat()
+              assert stat.S_ISREG(row.st_mode) and 0 < row.st_size <= cap
+              with path.open("rb") as stream:
+                  raw = stream.read(cap + 1)
+              assert len(raw) == row.st_size and len(raw) <= cap
+              return raw
+          name = "qualification/p1g_headless/chrome-bootstrap-pins.json"
+          expected = "0306f3c2c80f2c3519c44476c90d166f2fc09ea7fbc1d886b3908914625cc840"
+          raw = read(root / name, 131072)
+          assert len(raw) <= 131072 and hashlib.sha256(raw).hexdigest() == expected
+          receipt = json.loads(read(receipt_path, 4 * 1024**2))
+          assert receipt["schema"] == "pamolive.committed-build-context.v1" and receipt["revision"] == revision
+          assert receipt["files"][name] == expected
+          pins = json.loads(raw)
+          rows = {**pins["source_files"], **pins["test_files"]}
+          rows.update({"qualification/p1g_headless/chrome_materials/" + name: row["sha256"] for name, row in pins["files"].items()})
+          for name, expected in rows.items():
+              path = root / name
+              assert not path.is_symlink() and stat.S_ISREG(path.lstat().st_mode) and path.stat().st_size <= 131072
+              raw = read(path, 131072)
+              assert hashlib.sha256(raw).hexdigest() == expected == receipt["files"][name]
+          PY
+          python -I -B -S "$source/qualification/p1g_headless/run_chrome_pure.py"
+          "$RUNNER_TEMP/p1g-venv/bin/python" -I -B -S "$source/qualification/p1g_headless/chrome_bootstrap.py" --pins-sha 0306f3c2c80f2c3519c44476c90d166f2fc09ea7fbc1d886b3908914625cc840
       - name: Exercise the synthetic P1-G JavaScript increment
         timeout-minutes: 12
         env:
@@ -776,6 +817,7 @@ jobs:
           name: p1g-headless-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/p1g-headless-${{ github.run_id }}-${{ github.run_attempt }}/*.json
+            ${{ runner.temp }}/p1g-headless-${{ github.run_id }}-${{ github.run_attempt }}-chrome/**/*.json
             ${{ runner.temp }}/p1g-source.json
           if-no-files-found: warn
           retention-days: 7
