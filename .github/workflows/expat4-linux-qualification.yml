@@ -19,9 +19,6 @@ jobs:
     env:
       DOCKER_BUILDKIT: '1'
       SOURCE_LIST_SHA256: 7f05d5847c48ce95c6b1ed584f5d21995e93d005645ed472b429c7147137b086
-      EVIDENCE: ${{ runner.temp }}/expat4-${{ github.run_id }}-${{ github.run_attempt }}
-      CONTEXT: ${{ runner.temp }}/expat4-context-${{ github.run_id }}-${{ github.run_attempt }}
-      AUTH_WORK: ${{ runner.temp }}/expat4-auth-${{ github.run_id }}-${{ github.run_attempt }}
       PREPARED_IMAGE: pamolive-expat4-prepared:${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
       LAB_BASE_IMAGE: pamolive-expat4-lab:${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
@@ -32,12 +29,17 @@ jobs:
       - name: Bind exact branch and source bytes before importing project code
         id: source
         timeout-minutes: 1
+        env:
+          EVIDENCE: ${{ runner.temp }}/expat4-${{ github.run_id }}-${{ github.run_attempt }}
+          CONTEXT: ${{ runner.temp }}/expat4-context-${{ github.run_id }}-${{ github.run_attempt }}
+          AUTH_WORK: ${{ runner.temp }}/expat4-auth-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
           umask 077
           test "$GITHUB_REF" = refs/heads/agent/expat4-linux-qualification
           [[ "$GITHUB_SHA" =~ ^[a-f0-9]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          printf 'EVIDENCE=%s\nCONTEXT=%s\nAUTH_WORK=%s\n' "$EVIDENCE" "$CONTEXT" "$AUTH_WORK" >> "$GITHUB_ENV"
           test ! -e "$EVIDENCE"
           test ! -e "$CONTEXT"
           test ! -e "$AUTH_WORK"
