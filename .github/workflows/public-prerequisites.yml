@@ -48,7 +48,7 @@ jobs:
             GITHUB_RUN_ATTEMPT='${{ github.run_attempt }}' GITHUB_SHA='${{ github.sha }}' \
             GITHUB_REPOSITORY='${{ github.repository }}' GITHUB_EVENT_NAME='${{ github.event_name }}' GITHUB_REF='${{ github.ref }}' \
             GITHUB_JOB='${{ github.job }}' \
-            /usr/bin/python3 -I -S -B "$source/quick.py" --payload-sha 4b5cf94cdb6d496c83e1915293755d1a474139f9fefeec558874cfedc3d5bb32 \
+            /usr/bin/python3 -I -S -B "$source/quick.py" --payload-sha b20eb7f21dd77622072bbc81b38f4059823343d5aaf367bd1c293fb7d4f16932 \
             --query-mode prerequisites-only --github-hosted-disposable-public-read
       - name: Retain only closed public DATA and lifecycle facts
         if: always()

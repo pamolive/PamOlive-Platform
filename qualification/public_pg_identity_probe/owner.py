@@ -4,6 +4,7 @@ import argparse
 import ast
 import hashlib
 import json
+import math
 import os
 import re
 import stat
@@ -414,6 +415,14 @@ def public_context(probe, state, report):
     }
 
 
+def run_deadlines(now):
+    # Round toward the start, never beyond either existing maximum. Separate
+    # additions of 90 and 120 can otherwise produce a reserve slightly > 30.
+    work = math.nextafter(now + 90, now)
+    cleanup = min(now + 120, math.nextafter(work + 30, work))
+    return work, cleanup
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("mode", choices=("run", "cleanup"))
@@ -440,6 +449,7 @@ def main():
             os.chmod(work / name, 0o700)
         (work / "docker-config/config.json").write_bytes(b'{"auths":{},"proxies":{}}\n')
         os.chmod(work / "docker-config/config.json", 0o600)
+        work_deadline, cleanup_deadline = run_deadlines(now)
         state = {
             "schema": "W-PG-identity-owner-state/1",
             "run": "w-pg-id-" + uuid.uuid4().hex,
@@ -453,8 +463,8 @@ def main():
             "IO_uncertain": False,
             "started": False,
             "pull": "not_attempted",
-            "work_deadline": now + 90,
-            "cleanup_deadline": now + 120,
+            "work_deadline": work_deadline,
+            "cleanup_deadline": cleanup_deadline,
             "metadata_verified": False,
             "owner_cleaning": False,
             "cleanup_attempts": 0,
