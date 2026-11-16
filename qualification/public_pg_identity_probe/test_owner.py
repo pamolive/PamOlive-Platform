@@ -153,6 +153,14 @@ class OwnerTests(unittest.TestCase):
             with self.subTest(args=args[:2]), self.assertRaises(ValueError):
                 o.command_allowed(p, state, args)
         state.update(owner_cleaning=True)
+        state["IO"] = [{"operation": "create", **Result().facts()}]
+        state["create_ack"] = {
+            "cid": CID,
+            "run": RUN,
+            "manifest": p.MANIFEST,
+            "user": "0:0",
+            "io_index": 0,
+        }
         o.command_allowed(p, state, ["rm", CID])
 
     def test_checked_runner_exact_env_caps_and_cli_pre_post(self):
@@ -291,7 +299,7 @@ class OwnerTests(unittest.TestCase):
         # journal, view wrappers, received Lease body and exact argv gate are real.
         asset_sha = o.sha((HERE / "assets.json").read_bytes())
         original_load = o.load
-        for lost in (False, True):
+        for lost in (False, True, "profile"):
             with (
                 self.subTest(lost=lost),
                 tempfile.TemporaryDirectory(prefix="pamolive-getent-pure-") as directory,
@@ -321,7 +329,7 @@ class OwnerTests(unittest.TestCase):
                     if args[0] == "create":
                         self.assertEqual(snapshot["legacy_reservation"]["outcome"], "pending")
                         self.assertEqual(snapshot["legacy_reservation"]["image_config"], p.MANIFEST)
-                        if lost:
+                        if lost is True:
                             raise TimeoutError("SYNTHETIC lost create response")
                         created = True
                         return Result((CID + "\n").encode())
@@ -331,6 +339,8 @@ class OwnerTests(unittest.TestCase):
                             "/" + run + "-stage0",
                             {p.LABEL: run},
                         )
+                        if lost == "profile":
+                            value["HostConfig"]["Mounts"] = None
                         return Result(json.dumps([value]).encode())
                     if args[:2] == ["start", "--attach"]:
                         return Result(b"postgres:x:123:456:SYNTHETIC:/synthetic/home:/bin/sh\n")
@@ -358,8 +368,23 @@ class OwnerTests(unittest.TestCase):
                 report = json.loads((work / "public-report.json").read_bytes())
                 self.assertNotIn("SYNTHETIC:/synthetic", json.dumps(report))
                 self.assertFalse(report["PGDATA_ownership_measured"])
-                if not lost:
-                    self.assertEqual(report["measurement"], {"uid": 123, "gid": 456})
+                if lost is not True:
+                    if lost == "profile":
+                        self.assertIsNone(report["measurement"])
+                        self.assertEqual(
+                            report["inspect_refusals"],
+                            [{"phase": "START_PROFILE", "code": "HOST_MOUNTS_MUST_BE_ABSENT"}],
+                        )
+                        self.assertFalse(report["ok"])
+                        self.assertTrue(
+                            any(
+                                d["phase"] == "START_PROFILE" for d in report["inspect_diagnostics"]
+                            )
+                        )
+                        self.assertFalse(any(a[0] in {"start", "stop"} for a in calls))
+                        self.assertEqual(sum(a == ["rm", CID] for a in calls), 1)
+                    else:
+                        self.assertEqual(report["measurement"], {"uid": 123, "gid": 456})
                     self.assertTrue(report["resources_released"])
                     self.assertFalse((root / ".pamolive-public-pg-identity-ci.lock").exists())
                     continue

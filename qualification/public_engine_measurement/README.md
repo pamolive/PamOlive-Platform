@@ -22,10 +22,38 @@ The bootstrap TCB is the accepted GitHub runner image, pinned checkout/setup
 actions, reviewed source, system Python/stdlib, sudo/env, Docker and containerd.
 Observed hashes and version declarations are not reproducible-build proof.
 
+## Exact ecfe reception and the next source correction
+
+Both exact ecfe Platform jobs received their four nonroot Docker queries but
+refused before recording the initial sudo/env/Python tools. No root child,
+ctr CLI version, storage export or filesystem capacity was observed. The public
+**daemon** containerd version2.4.2 is not evidence of the CLI version.
+
+The new source chooses the explicit regular executable `/usr/lib/cargo/bin/sudo`,
+never a resolved alternative or fallback. Official [Ubuntu sudo-rs packaging](https://packages.ubuntu.com/resolute/sudo-rs)
+[alternatives and scripts](https://archive.ubuntu.com/ubuntu/pool/main/r/rust-sudo-rs/rust-sudo-rs_0.2.13-0ubuntu1.2.debian.tar.xz)
+identify that target; this is packaging evidence, not a stat of either CI VM.
+The [0.2.13 source](https://archive.ubuntu.com/ubuntu/pool/main/r/rust-sudo-rs/rust-sudo-rs_0.2.13.orig.tar.gz)
+supports `-n -- <command>`. Parents, regular type, link count, ownership, size,
+held-FD/path identity and hashes remain checked before/after. Missing or unsafe
+tools refuse. A closed phase/predicate code now identifies a refusal without
+raw exceptions, unexpected paths or private values. Partial tools never imply
+COMPLETE, and a post-spawn failure remains UNKNOWN with the durable intention.
+
+The exact additional CLI2.4.2 policy follows [its local version printer](https://raw.githubusercontent.com/containerd/containerd/v2.4.2/cmd/ctr/app/main.go),
+[urfave3.11 version handling](https://raw.githubusercontent.com/urfave/cli/v3.11.0/command_run.go),
+[NewClient suppression](https://raw.githubusercontent.com/containerd/containerd/v2.4.2/cmd/ctr/commands/client.go),
+[Plugins command](https://raw.githubusercontent.com/containerd/containerd/v2.4.2/cmd/ctr/commands/plugins/plugins.go)
+and [separate service paths](https://raw.githubusercontent.com/containerd/containerd/v2.4.2/plugins/services/introspection/local.go).
+No vendor suffix, unexamined2.4.3, positional `version`, Server/UUID or runtime
+inspection is admitted. Environment, filters, caps and nested H1 are unchanged.
+36 local pure tests and six independent countercases pass; a new real trial
+remains necessary. No operating profile or image/PGDATA authority is learned.
+
 ## Closed root read
 
 Before sudo, the parent measures the actual regular root-owned nonwritable
-`/usr/bin/sudo`, `/usr/bin/env`, `/usr/bin/python3.14`, then checks them again
+`/usr/lib/cargo/bin/sudo`, `/usr/bin/env`, `/usr/bin/python3.14`, then checks them again
 afterwards. The fixed 3.14 path matches the observed Ubuntu 26.04 job image
 and its [documented system Python](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2604-Readme.md);
 a missing or incompatible executable refuses the observation.
@@ -41,14 +69,14 @@ program requires exactly PATH, HOME=/nonexistent, LANG=C, LC_ALL=C.
 The root child measures `/usr/bin/ctr` before, between and after these calls:
 
 1. `ctr --version`, the local global flag, with a 3s work limit and 512B/1KiB caps.
-2. Only for the examined CLI declaration 2.2.3 or v2.2.3, the closed command
+2. Only for the examined CLI declarations 2.2.3/v2.2.3 or 2.4.2/v2.4.2, the closed command
    `ctr --address <allowed> --namespace moby --connect-timeout 3s --timeout 5s plugins ls --detailed`
    with three fixed Type/ID filters, 8s work limit and 32KiB/4KiB caps.
 
 The daemon version and CLI version are separate fields. A different valid CLI
 version is retained with its tool digest and typed refusal, but Plugins is not
 called. A version declaration alone does not authenticate binary/source identity.
-The runner/tool bootstrap TCB is explicit. Only source v2.2.3 has been examined;
+The runner/tool bootstrap TCB is explicit. Sources v2.2.3 and v2.4.2 have been examined;
 no permissive vendor/version suffix or runtime profile is learned.
 
 `CONTAINERD_SUPPRESS_DEPRECATION_WARNINGS=true` is set explicitly for both ctr

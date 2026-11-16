@@ -263,12 +263,14 @@ def command_allowed(probe, state, args):
         args in (["start", "--attach", cid], ["stop", "--time", "5", cid], ["rm", cid]),
         "CLOSED_GETENT_ARGV_ONLY",
     )
+    probe.require_create_ack(state, cid)
     need(state.get("metadata_verified") is True, "METADATA_BEFORE_MUTATION")
     if args[0] == "start":
         need(
             state.get("owner_cleaning") is False
             and state.get("started") is True
-            and item.get("outcome") == "confirmed",
+            and item.get("outcome") == "confirmed"
+            and state.get("start_profile_cid") == cid,
             "ONE_GETENT_START_INTENT",
         )
     else:
@@ -407,6 +409,8 @@ def public_context(probe, state, report):
         "image_config": probe.CONFIG,
         "storage_qualification_received": False,
         "operational_GO": False,
+        "inspect_diagnostics": state.get("inspect_diagnostics", []),
+        "inspect_refusals": state.get("inspect_refusals", []),
     }
 
 

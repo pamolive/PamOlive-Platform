@@ -415,7 +415,9 @@ class ParentTests(unittest.TestCase):
         def runner(argv, **options):
             self.assertTrue((self.work / "root-read-intent.json").exists())
             self.assertFalse((self.work / "root-read-result.json").exists())
-            self.assertEqual(argv[:5], ["/usr/bin/sudo", "-n", "--", "/usr/bin/env", "-i"])
+            self.assertEqual(
+                argv[:5], ["/usr/lib/cargo/bin/sudo", "-n", "--", "/usr/bin/env", "-i"]
+            )
             self.assertEqual(set(options["env"]), {"PATH", "HOME", "LANG", "LC_ALL"})
             self.assertEqual(argv[-1], "/run/containerd/containerd.sock")
             self.assertNotIn("SYNTHETIC_PRIVATE", argv)

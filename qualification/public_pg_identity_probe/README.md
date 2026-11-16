@@ -1,11 +1,13 @@
-# Sonde PG publique R3 — owner Linux CI concret
+# Sonde PG publique R4 — owner Linux CI concret
 
 Increment separe du laboratoire W/V R3. Aucun Docker, SQL, NAS ou reseau reel
 execute par l'auteur ; aucun checkout modifie. La campagne proposee ne depend
 pas d'un stockage containerd qualifie ni d'une propriete PGDATA deja connue.
 Elle lit seulement `/usr/bin/getent passwd postgres` dans une instance isolee de
 l'image PG17.12 deja presente dans le job, sans installer/pull une image.
-Root doit revoir et integrer les pins/fragment avant cette nouvelle campagne DATA.
+Les pins sont integres apres revue independante ; une nouvelle campagne DATA
+reste necessaire. Les deux anciens essais ecfe restent refuses, sans UID/GID
+ni nettoyage confirme. Le champ incompatible demeure indetermine.
 
 ## Contrat exact de cette source
 
@@ -78,8 +80,8 @@ NNP, IPC/cgroup prives. Aucun bind, socket, volume anonyme ni port hote.
 Le VOLUME PGDATA est couvert par tmpfs RO4MiB,nosuid/nodev/noexec,mode0700 ;
 /tmp est tmpfs RO1MiB,nosuid/nodev/noexec. L'entrypoint PG est remplace par
 getent, arguments fixes passwd postgres ; aucun demarrage de PG ni SQL.
-Ces contraintes sont demandees et verifiees dans l'inspect avant start et
-cleanup. Une forme inattendue refuse ; aucun defaut appris depuis le run.
+Ces contraintes sont demandees et verifiees par le predicat R3 exact avant START.
+Une forme inattendue refuse START ; aucun defaut appris depuis le run.
 Cela n'est pas une mesure independante de l'etat kernel ni une qualif stockage.
 
 ## Recu uniquement DATA
@@ -97,9 +99,9 @@ Le gros labo W/V garde ses HOLD stockage/getent/PGDATA jusqu'a revue ulterieure.
 
 ## Verification
 
-`CorePython -I -B -X utf8 <capsule>/run_pure.py` :26methodes,zero erreur/echec/
+`CorePython -I -B -X utf8 <capsule>/run_pure.py` :36methodes,zero erreur/echec/
 skip/tentative externe. Les16contre-cas R2 sont adaptes au seul modele
-containerd, puis10tests owner. Le cycle owner complet compile les vrais buffers,
+containerd, puis10tests owner et10contre-tests R4. Le cycle owner complet compile les vrais buffers,
 utilise les vrais wrappers/journal et la vraie classe Lease sur des fichiers
 temporaires synthetiques ; seul run_capped est remplace par un Fake. Ce chemin
 verifie succes synthetique et create perdu suivi de deux reprises owner reelles,
@@ -110,3 +112,48 @@ ignore de code ou de scan n'est ajoute.
 Le capsule.json historique contient des origines locales et est donc omis du
 nouveau payload. Son SHA reste dans le gel R2 de reference ; manifest/config/
 profile/index publics et les quatre helpers conserves ne sont pas reecrits.
+
+## Correction R4 apres les deux observations ecfe
+
+Les deux rapports publics exacts contiennent huit IO completes (version, info,
+image inspect, nom, CREATE, inspect, nom, inspect), sans START/STOP/RM, avec
+measurement null et resources_released false. Aucun JSON inspect ou code de
+refus precis n'etait exporte. Le champ reel incompatible demeure inconnu.
+Le premier inspect strict precedait la persistance du CID dans reserve_create ;
+le meme predicat strict bloquait ensuite reconcile. C'est un couplage du contrat
+START et de l'identite de nettoyage, pas une preuve de la valeur refusee.
+
+R4 sauvegarde l'ACK CID d'une reponse CREATE canonique, exit0/stderr vide/H1
+complete, avant tout inspect. Son nonce, manifest, User et entree IO CREATE
+sont lies. Un CREATE perdu ne donne aucun ACK et reste UNKNOWN. Les quatre
+helpers et leur reserve_create/reconcile/remove/Lease demeurent byte-exacts.
+L'inspect minimal de cleanup exige ACK CID exact, nom nonce, dictionnaire label
+exact, container.Image manifest, User0:0 et types d'etat stricts. Un objet running
+sans intention START de ce journal refuse meme STOP. Aucune identite etrangere
+ne donne de suppression. Les commandes de cleanup restent STOP5 puis RM sans
+force ni suppression de volume, apres les controles des helpers recus.
+
+Le predicat inspect_profile R3 est AST identique. Apres reserve_create et avant
+l'intention START, inspect_start doit le satisfaire entierement. Le owner exige
+ensuite le meme CID dans start_profile_cid et dans l'ACK pour START. Un profil
+incompatible peut donc etre nettoye s'il est minimalement et exactement possede,
+mais ne produit aucun getent ni UID/GID. La verification finale reste complete.
+
+Au plus quatre projections d'inspect sont publiques, chacune bornee16KiB :
+presence, type, comparaison attendue et uniquement valeurs publiques autorisees.
+Env ne fournit que presence/type/egalite, jamais cle/valeur/hash/longueur. Les
+labels ne fournissent qu'egalite ; les inconnus chemins/strings/cles sont omis.
+Null, liste vide, nombres et booleens bornes, et les seules constantes attendues
+sont explicites. Aucun raw inspect, nom CID, texte d'exception, passwd ou journal
+n'est publie. Quatre codes fermes avec phase distinguent refus START et cleanup ;
+les exceptions non classees donnent MALFORMED_OR_UNCONFIRMED. Ces projections
+servent a un futur diagnostic ; elles n'admettent aucun profil automatiquement.
+
+Ces sources ne recuperent pas retroactivement les objets ecfe. Aucun cleanup0,
+UID, stockage ou autorisation operationnelle reel n'est revendique. Les essais
+sont fake-only ; Root integre et fait relire avant toute nouvelle campagne DATA.
+
+La liberation indiquee par cette sonde concerne les ressources suivies : son
+conteneur, ses clients CLI et son bail. Elle ne prouve ni le nettoyage global
+du daemon, ni la liberation de volumes non inventories. Aucun volume n'est
+supprime, et aucun journal R3 sans ACK CREATE n'est adopte retroactivement.

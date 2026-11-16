@@ -74,6 +74,54 @@ réussie. La qualification navigateur/JavaScript reste distincte et non exécut�
 
 ## P2 — architecture hybride et domaines sensibles
 
+### Reception ecfe : refus des observateurs et correction ciblee
+
+Les deux campagnes [push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43782571449)
+et [PR12](https://github.com/pamolive/PamOlive-Platform/actions/runs/43782608225)
+du commit ecfe3c6 sont terminees. Securite303+32+26, PostgreSQL/P0,
+transports natifs, restauration et Compose passent ; le general rapporte1479
+tests, avec40 exclusions de methodes et deux de classes conservees a part.
+Le scan garde35 groupes High non admis. Les deux etapes d'observation echouent
+aussi ; leurs resultats ne constituent pas des prerequisites qualifies.
+Installed52 et verifier30 de ce meme head sont recus sans erreur ni exclusion.
+
+Les quatre lectures Docker sont recues dans chaque campagne : daemoncontainerd
+v2.4.2, mais aucune versionCLI ctr ou propriete des outils root. La lecture
+privilegiee refuse avant intention/PID ; sa cause exacte n'etait pas exportee.
+Le candidat ajoute codes fermes de phase/predicat et utilise le binaire regulier
+sudo-rs documente /usr/lib/cargo/bin/sudo, sans suivre d'alternative ni fallback.
+La CLI2.4.2 est examinee separement et admise exactement, pas deduite du daemon.
+Les32purs existants et4nouveaux passent, puis6contre-cas independants ; aucune
+lecture root reelle de ce nouveau sujet n'est encore recue.
+
+PG a produit8IO completes par campagne, CREATE puis inspect, sans START,
+UID/GID ou liberation confirmee. R4 sauvegarde l'ACK CREATE avant inspect,
+separe l'identite minimale de nettoyage du profil complet de START et ajoute
+une projection publique fermee. Le predicat START reste AST identique ; aucune
+forme inspect inconnue n'est admise pour deviner la cause.36purs et6contre-cas
+Root passent ; les journaux R3 sans ACK ne sont pas adoptes. La liberation
+concerne seulement conteneur/client/bail suivis, jamais des volumes inconnus.
+
+Le workflow court [Public prerequisites DATA only](../.github/workflows/public-prerequisites.yml)
+est ajoute sur la seule branche agent/ci-public-observer-diagnostics-ecfe.
+Il effectue deux lectures publiques, la lecture containerd, un pull PG public
+unique puis le proprietaire R4, sans build APP, SQL ou publication. Il refuse
+la suite apres UNKNOWN et conserve les reservations de nettoyage (235s au total,
+etape240s/job300s). Les quinze buffers sont epingles avant execution ; le PG
+existant est reutilise, sans copie runtime supplementaire.13tests purs passent
+dans le layout deploye, dont l'absence du vrai workflow. Ruff du depot passe.
+Les mesures reelles du candidat restent a recevoir ; ces DATA ne donnent ni
+GO A1/W ni qualification produit et ne remplacent aucune porte Platform.
+
+Le diagnostic Bandit additionnel des sept scripts actifs conserve neuf
+signalements examines : sept executions de sources epinglees, un chemin tmpfs
+RO /tmp du conteneur et un champ booleen de provenance. Aucun High, nosec,
+filtre ou seuil ajoute ; le retour Bandit1 reste documente, pas declare vert.
+
+Aucun correctif produit P0, modele ou migration ne change. La nouvelle CI et
+les mesures restent a recevoir ;35High et la provenance bloquent main/image.
+Aucun Docker local, GUI, NAS, systeme reel ou secret reel contacte.
+
 ### Prochain essai : prerequisites publics containerd et PostgreSQL
 
 Le runner exact4671 utilise Ubuntu26.04. Le nouvel enfant isole emploie

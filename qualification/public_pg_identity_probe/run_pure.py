@@ -1,4 +1,4 @@
-"""Closed26 pure suite; stdout only, never rewrites a frozen result."""
+"""Closed36 pure suite; stdout only, never rewrites a frozen result."""
 
 import hashlib
 import json
@@ -13,7 +13,7 @@ ATTEMPTS = []
 
 
 def audit(event, _args):
-    if event.startswith(("socket.", "subprocess.", "sqlite3.")) or event in {
+    if event.startswith(("socket.", "subprocess.", "sqlite3.", "ctypes.")) or event in {
         "os.system",
         "os.posix_spawn",
     }:
@@ -29,14 +29,16 @@ def main():
         assert len(raw) == row["bytes"] and hashlib.sha256(raw).hexdigest() == row["sha256"]
     import test_owner
     import test_probe
+    import test_r4
 
     suite = unittest.TestSuite(
         (
             unittest.defaultTestLoader.loadTestsFromTestCase(test_probe.ProbeTests),
             unittest.defaultTestLoader.loadTestsFromTestCase(test_owner.OwnerTests),
+            unittest.defaultTestLoader.loadTestsFromTestCase(test_r4.R4Tests),
         )
     )
-    assert suite.countTestCases() == 26
+    assert suite.countTestCases() == 36
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     print(
         json.dumps(
@@ -52,7 +54,7 @@ def main():
     )
     return (
         0
-        if result.wasSuccessful() and result.testsRun == 26 and not result.skipped and not ATTEMPTS
+        if result.wasSuccessful() and result.testsRun == 36 and not result.skipped and not ATTEMPTS
         else 1
     )
 

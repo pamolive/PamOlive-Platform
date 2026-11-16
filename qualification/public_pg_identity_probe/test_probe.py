@@ -408,7 +408,7 @@ class ProbeTests(unittest.TestCase):
             if args[0] == "inspect":
                 inspect_count += 1
                 candidate = row()
-                candidate["State"]["OOMKilled"] = oom_late and inspect_count >= 3
+                candidate["State"]["OOMKilled"] = oom_late and inspect_count >= 4
                 return Result(json.dumps([candidate]).encode())
             if args[:2] == ["start", "--attach"]:
                 self.assertEqual(options["stdout_cap"], 4096)

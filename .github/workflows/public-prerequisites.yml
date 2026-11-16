@@ -1,0 +1,73 @@
+name: Public prerequisites DATA only
+
+on:
+  push:
+    branches: [agent/ci-public-observer-diagnostics-ecfe]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public_prerequisites:
+    if: github.repository == 'pamolive/PamOlive-Platform' && github.ref == 'refs/heads/agent/ci-public-observer-diagnostics-ecfe' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            qualification/public_prerequisites_dispatch
+            qualification/public_pg_identity_probe
+      - name: Verify source pins and only pure source request-graph tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          source="$GITHUB_WORKSPACE/qualification/public_prerequisites_dispatch"
+          printf '%s  %s\n' 8747afbc65ad43be1102d0a1f561dbb6515823b5d9d1a7ceef553a202604e6a6 "$source/quick.py" | sha256sum --check --status
+          printf '%s  %s\n' df0fd08281c900c233fc74da2372cda815f03045c9a0ee79e86838f4bc697f77 "$source/run_pure.py" | sha256sum --check --status
+          printf '%s  %s\n' c76ebe915de7c2d6cd136a0c4da0cc87e3c0cf75ea10a1f3a5a7adf3a3c8aef6 "$source/test_source.py" | sha256sum --check --status
+          env -i PATH=/usr/bin:/bin HOME=/nonexistent LANG=C LC_ALL=C \
+            /usr/bin/python3 -I -S -B "$source/run_pure.py" \
+            "$RUNNER_TEMP/public-prerequisites-pure-${{ github.run_id }}-${{ github.run_attempt }}"
+      - name: Observe public prerequisites and synthetic PG identity only
+        timeout-minutes: 4
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          source="$GITHUB_WORKSPACE/qualification/public_prerequisites_dispatch"
+          printf '%s  %s\n' 8747afbc65ad43be1102d0a1f561dbb6515823b5d9d1a7ceef553a202604e6a6 "$source/quick.py" | sha256sum --check --status
+          env -i PATH=/usr/bin:/bin HOME=/nonexistent LANG=C LC_ALL=C \
+            GITHUB_ACTIONS=true CI=true RUNNER_ENVIRONMENT=github-hosted \
+            RUNNER_TEMP="$RUNNER_TEMP" GITHUB_RUN_ID='${{ github.run_id }}' \
+            GITHUB_RUN_ATTEMPT='${{ github.run_attempt }}' GITHUB_SHA='${{ github.sha }}' \
+            GITHUB_REPOSITORY='${{ github.repository }}' GITHUB_EVENT_NAME='${{ github.event_name }}' GITHUB_REF='${{ github.ref }}' \
+            GITHUB_JOB='${{ github.job }}' \
+            /usr/bin/python3 -I -S -B "$source/quick.py" --payload-sha 44705870c24ceffbcae99171d597f8f6a87f093db39c7cb51358b4413d0ee405 \
+            --query-mode prerequisites-only --github-hosted-disposable-public-read
+      - name: Retain only closed public DATA and lifecycle facts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: public-prerequisites-data-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/public-prerequisites-pure-${{ github.run_id }}-${{ github.run_attempt }}/report.json
+            ${{ runner.temp }}/public-prerequisites-${{ github.run_id }}-${{ github.run_attempt }}/context.json
+            ${{ runner.temp }}/public-prerequisites-${{ github.run_id }}-${{ github.run_attempt }}/intent.json
+            ${{ runner.temp }}/public-prerequisites-${{ github.run_id }}-${{ github.run_attempt }}/public-report.json
+            ${{ runner.temp }}/public-prerequisites-${{ github.run_id }}-${{ github.run_attempt }}/pull-intent.json
+            ${{ runner.temp }}/public-prerequisites-${{ github.run_id }}-${{ github.run_attempt }}/pull-pid.json
+            ${{ runner.temp }}/public-prerequisites-${{ github.run_id }}-${{ github.run_attempt }}/pull-process.json
+            ${{ runner.temp }}/public-prerequisites-${{ github.run_id }}-${{ github.run_attempt }}/pull-result.json
+            ${{ runner.temp }}/public-prerequisites-${{ github.run_id }}-${{ github.run_attempt }}/pull-unknown.json
+            ${{ runner.temp }}/public-prerequisites-${{ github.run_id }}-${{ github.run_attempt }}/engine/public-report.json
+            ${{ runner.temp }}/public-prerequisites-${{ github.run_id }}-${{ github.run_attempt }}/engine/root-read-intent.json
+            ${{ runner.temp }}/public-prerequisites-${{ github.run_id }}-${{ github.run_attempt }}/engine/root-read-pid.json
+            ${{ runner.temp }}/public-prerequisites-${{ github.run_id }}-${{ github.run_attempt }}/engine/root-read-result.json
+            ${{ runner.temp }}/pamolive-pg-identity-${{ github.run_id }}-${{ github.run_attempt }}/public-report.json
+          if-no-files-found: error
+          retention-days: 7

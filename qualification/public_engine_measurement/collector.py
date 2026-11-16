@@ -13,7 +13,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 CLI = Path("/usr/bin/docker")
 BOUNDED_SHA = "98233b610f2d53dfd698d0d91f61f3d3ebcb1693a847983f0472f89a885f414f"
-PUBLIC_SHA = "430595e46cf34a11e4cad8c994fa0854178c52b0ce8952295f28894a5446e6f7"
+PUBLIC_SHA = "556c24b9265b291a155ea15212f74853727f768795b6ffffc99f5a07e23e1e21"
 PG = (
     "docker.io/library/postgres@sha256:"
     "6f7593c161689b6b02c78668b314af7da8811b592c5519108c57a49d0b6ad788"
@@ -537,6 +537,7 @@ def collect_prerequisites(work, report, runner, bounded_raw, *, measure=None, py
         "data": None,
         "tools": None,
         "tools_unchanged": False,
+        "failure": None,
         "profile_accepted": False,
         "operational_GO": False,
     }
@@ -544,6 +545,7 @@ def collect_prerequisites(work, report, runner, bounded_raw, *, measure=None, py
     if not report["four_queries_projected"] or not report["all_clients_reaped_drained"]:
         return
     version, info = (report["queries"][name]["data"] for name in ("version", "info"))
+    stage = "version_info"
     try:
         cp.component([version["containerd"]])
         address = cp.endpoint(info["containerd"])["Address"]
@@ -552,20 +554,25 @@ def collect_prerequisites(work, report, runner, bounded_raw, *, measure=None, py
             and info["root"] == "/var/lib/docker"
             and info["driver_status"] == [["driver-type", "io.containerd.snapshotter.v1"]]
         )
+        stage = "bounded_source"
         need(sha(bounded_raw) == BOUNDED_SHA)
         measure = cp.tool_record if measure is None else measure
         python = "/usr/bin/python3.14" if python is None else python
         need(python == "/usr/bin/python3.14")
-        tools = {
-            "sudo": measure("/usr/bin/sudo"),
-            "env": measure("/usr/bin/env"),
-            "python": measure(python),
-        }
+        tools = {}
         row["tools"] = tools
+        for name, path in (
+            ("sudo", "/usr/lib/cargo/bin/sudo"),
+            ("env", "/usr/bin/env"),
+            ("python", python),
+        ):
+            stage = name + "_tool_before"
+            tools[name] = measure(path)
+        stage = "payload"
         payload = bounded_raw + b"\n" + public_source() + b"\nraise SystemExit(root_main())\n"
         need(len(payload) <= 65536)
         command = [
-            "/usr/bin/sudo",
+            "/usr/lib/cargo/bin/sudo",
             "-n",
             "--",
             "/usr/bin/env",
@@ -604,6 +611,7 @@ def collect_prerequisites(work, report, runner, bounded_raw, *, measure=None, py
             need(type(pid) is int and pid > 0)
             durable(work, "pid", {"state": "PENDING", "pid": pid})
 
+        stage = "root_process"
         result = runner(
             command,
             env=env,
@@ -614,12 +622,20 @@ def collect_prerequisites(work, report, runner, bounded_raw, *, measure=None, py
             on_spawn=spawned,
         )
         row["process"] = cp.public_facts(result)
-        row["tools_unchanged"] = tools == {
-            "sudo": measure("/usr/bin/sudo"),
-            "env": measure("/usr/bin/env"),
-            "python": measure(python),
-        }
+        after = {}
+        for name, path in (
+            ("sudo", "/usr/lib/cargo/bin/sudo"),
+            ("env", "/usr/bin/env"),
+            ("python", python),
+        ):
+            stage = name + "_tool_after"
+            after[name] = measure(path)
+        row["tools_unchanged"] = tools == after
         if not cp.h1(result) or not row["tools_unchanged"]:
+            row["failure"] = {
+                "stage": "root_process" if not cp.h1(result) else "reader_tools_after",
+                "code": "UNKNOWN_H1" if not cp.h1(result) else "TOOL_CHANGED",
+            }
             return
         if not result.ok or result.stderr != b"":
             row["status"] = (
@@ -628,6 +644,7 @@ def collect_prerequisites(work, report, runner, bounded_raw, *, measure=None, py
                 or b"password is required" in result.stderr.lower()
                 else "CHILD_REFUSED"
             )
+            row["failure"] = {"stage": "root_process", "code": "CHILD_REFUSED"}
             # A confirmed nonzero child may still provide a typed public refusal.
             if result.stderr == b"":
                 try:
@@ -637,9 +654,16 @@ def collect_prerequisites(work, report, runner, bounded_raw, *, measure=None, py
                 except (ValueError, TypeError, KeyError):
                     pass
             return
+        stage = "root_packet"
         row["data"] = cp.validate_packet(parse(result.stdout))
         row["status"] = "COMPLETE"
-    except (ValueError, OSError, TypeError, KeyError, UnicodeError):
+    except (ValueError, OSError, TypeError, KeyError, UnicodeError) as error:
+        code = (
+            error.code
+            if isinstance(error, cp.ToolRefusal) and error.code in cp.TOOL_FAILURES
+            else "READ_REFUSED"
+        )
+        row["failure"] = {"stage": stage, "code": code}
         # PENDING, if it exists, is never erased; no later query heals UNKNOWN.
         if row["status"] != "UNKNOWN":
             row["status"] = "PRECONDITION_REFUSED"
@@ -651,6 +675,7 @@ def collect_prerequisites(work, report, runner, bounded_raw, *, measure=None, py
                 "state": row["status"],
                 "process": row["process"],
                 "tools_unchanged": row["tools_unchanged"],
+                "failure": row["failure"],
             },
         )
 

@@ -79,42 +79,80 @@ def identity(row):
     )
 
 
+TOOL_FAILURES = frozenset(
+    {
+        "PATH",
+        "MISSING",
+        "UNREADABLE",
+        "PARENT_UNSAFE",
+        "NOT_REGULAR",
+        "LINK_COUNT",
+        "OWNER",
+        "WRITABLE",
+        "SIZE",
+        "IDENTITY_CHANGED",
+    }
+)
+
+
+class ToolRefusal(ValueError):
+    def __init__(self, code):
+        require(code in TOOL_FAILURES)
+        self.code = code
+        super().__init__("PUBLIC_TOOL_REFUSED")
+
+
+def tool_need(value, code):
+    if not value:
+        raise ToolRefusal(code)
+
+
+def tool_stat(path):
+    try:
+        return path.lstat()
+    except FileNotFoundError:
+        raise ToolRefusal("MISSING") from None
+    except PermissionError:
+        raise ToolRefusal("UNREADABLE") from None
+
+
 def tool_record(path):
-    """Measure the actual regular executable, not a PATH search or its output."""
+    """Measure explicit regular executables, never sudo's alternatives symlinks."""
     path = Path(path)
-    require(
-        str(path) in {"/usr/bin/ctr", "/usr/bin/sudo", "/usr/bin/env"}
-        or str(path) == "/usr/bin/python3.14"
+    tool_need(
+        str(path)
+        in {"/usr/bin/ctr", "/usr/lib/cargo/bin/sudo", "/usr/bin/env", "/usr/bin/python3.14"},
+        "PATH",
     )
     for parent in path.parents:
-        parent_info = parent.lstat()
-        require(
+        parent_info = tool_stat(parent)
+        tool_need(
             stat.S_ISDIR(parent_info.st_mode)
             and parent_info.st_uid == 0
-            and not parent_info.st_mode & 0o022
+            and not parent_info.st_mode & 0o022,
+            "PARENT_UNSAFE",
         )
-    before = path.lstat()
-    require(
-        stat.S_ISREG(before.st_mode)
-        and before.st_nlink == 1
-        and before.st_uid == 0
-        and not before.st_mode & 0o022
-        and 0 < before.st_size <= 128 * 1024**2
-    )
+    before = tool_stat(path)
+    tool_need(stat.S_ISREG(before.st_mode), "NOT_REGULAR")
+    tool_need(before.st_nlink == 1, "LINK_COUNT")
+    tool_need(before.st_uid == 0, "OWNER")
+    tool_need(not before.st_mode & 0o022, "WRITABLE")
+    tool_need(0 < before.st_size <= 128 * 1024**2, "SIZE")
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK)
     try:
-        require(identity(before) == identity(os.fstat(fd)))
+        tool_need(identity(before) == identity(os.fstat(fd)), "IDENTITY_CHANGED")
         total, digest = 0, hashlib.sha256()
         while True:
             block = os.read(fd, min(65536, 128 * 1024**2 + 1 - total))
             if not block:
                 break
             total += len(block)
-            require(total <= 128 * 1024**2)
+            tool_need(total <= 128 * 1024**2, "SIZE")
             digest.update(block)
-        require(
-            total == before.st_size
-            and identity(before) == identity(os.fstat(fd)) == identity(path.lstat())
+        tool_need(total == before.st_size, "SIZE")
+        tool_need(
+            identity(before) == identity(os.fstat(fd)) == identity(tool_stat(path)),
+            "IDENTITY_CHANGED",
         )
         return {
             "path": str(path),
@@ -343,7 +381,7 @@ def inspect_roots(address, runner, measure=tool_record, statter=capacity):
             packet["status"] = "CLI_UNREVIEWED"
             return packet
         packet["cli_version"] = match[1].decode("ascii")
-        if packet["cli_version"] not in {"v2.2.3", "2.2.3"}:
+        if packet["cli_version"] not in {"v2.2.3", "2.2.3", "v2.4.2", "2.4.2"}:
             packet["status"] = "CLI_UNREVIEWED"
             return packet
         result = runner(
@@ -476,7 +514,7 @@ def validate_packet(value):
     require(all(value[key] is False for key in ("profile_accepted", "authority", "operational_GO")))
     # Refused/unknown child packets are not published verbatim: parent retains only status/H1.
     require(value["status"] == "COMPLETE" and value["tool_unchanged"] is True)
-    require(value["cli_version"] in {"v2.2.3", "2.2.3"})
+    require(value["cli_version"] in {"v2.2.3", "2.2.3", "v2.4.2", "2.4.2"})
     validate_tool(value["tool"])
     for facts in (value["version_process"], value["ctr_process"]):
         require(

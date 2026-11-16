@@ -255,6 +255,141 @@ def inspect_profile(row, run, profile):
     }
 
 
+def require_create_ack(state, cid):
+    """A confirmed CREATE response is necessary for any subsequent mutation."""
+    ack = state.get("create_ack")
+    need(
+        type(ack) is dict and set(ack) == {"cid", "run", "manifest", "user", "io_index"},
+        "CREATE_ACK",
+    )
+    need(
+        type(cid) is str
+        and re.fullmatch(r"[a-f0-9]{64}", cid)
+        and ack["cid"] == cid
+        and ack["run"] == state["run"]
+        and ack["manifest"] == MANIFEST
+        and ack["user"] == "0:0"
+        and type(ack["io_index"]) is int
+        and 0 <= ack["io_index"] < len(state["IO"]),
+        "CREATE_ACK_BINDING",
+    )
+    io = state["IO"][ack["io_index"]]
+    need(
+        io.get("operation") == "create"
+        and type(io.get("returncode")) is int
+        and io["returncode"] == 0
+        and io.get("spawn_attempted") is True
+        and type(io.get("pid")) is int
+        and io["pid"] > 0
+        and io.get("owned_child_reaped") is True
+        and io.get("drains_complete") is True
+        and io.get("killed_owned_child") is False
+        and io.get("reason") is None
+        and io.get("exception_type") is None
+        and io.get("cleanup_exception_type") is None,
+        "CREATE_ACK_H1",
+    )
+
+
+def inspect_owned(row, state, cid):
+    """Minimal cleanup identity; does not grant permission to START."""
+    require_create_ack(state, cid)
+    config, status = row["Config"], row["State"]
+    need(
+        row["Id"] == cid
+        and row["Name"] == "/" + state["run"] + "-stage0"
+        and row["Image"] == MANIFEST
+        and config["User"] == "0:0"
+        and same(config["Labels"], {LABEL: state["run"]}),
+        "CLEANUP_OWNERSHIP",
+    )
+    need(
+        type(status["Running"]) is bool
+        and type(status["OOMKilled"]) is bool
+        and type(status["ExitCode"]) is int
+        and 0 <= status["ExitCode"] <= 255,
+        "CLEANUP_STATE_TYPES",
+    )
+    need(not status["Running"] or state.get("started") is True, "UNEXPECTED_RUNNING_NO_STOP")
+    return {
+        "Id": cid,
+        "Name": row["Name"],
+        "Image": MANIFEST,
+        "Run": state["run"],
+        "User": "0:0",
+        "Running": status["Running"],
+        "OOMKilled": status["OOMKilled"],
+        "ExitCode": status["ExitCode"],
+    }
+
+
+def inspect_projection(row, run, profile, phase):
+    """Closed public schema. Unknown strings/keys and all Env bytes are withheld."""
+
+    def project(value, expected):
+        result = {"type": type(value).__name__, "matches_expected": same(value, expected)}
+        if value is None or type(value) is bool or type(value) is int and -1 <= value <= 2**40:
+            result["value"] = value
+        elif type(value) is str and value == expected:
+            result["value"] = expected
+        elif type(value) is list and type(expected) is list:
+            if not value:
+                result["value"] = []
+            elif len(value) == len(expected):
+                result["items"] = [project(a, b) for a, b in zip(value, expected)]
+        elif type(value) is dict and type(expected) is dict:
+            result["fields"] = {k: field(value, k, v) for k, v in expected.items()}
+        return result
+
+    def field(container, key, expected):
+        if type(container) is not dict or key not in container:
+            return {"present": False}
+        return {"present": True, **project(container[key], expected)}
+
+    config = row.get("Config") if type(row) is dict else None
+    env = config.get("Env") if type(config) is dict else None
+    expected_env = dict(profile["declared_public_image_env"], LANG="C", LC_ALL="C")
+    env_ok = False
+    if type(env) is list and all(type(v) is str and "=" in v for v in env):
+        pairs = [v.split("=", 1) for v in env]
+        env_ok = len({k for k, _ in pairs}) == len(pairs) and dict(pairs) == expected_env
+    configs = {
+        "Image": IMAGE,
+        "User": "0:0",
+        "Entrypoint": ["/usr/bin/getent"],
+        "Cmd": ["passwd", "postgres"],
+        "WorkingDir": "",
+        "Tty": False,
+        "OpenStdin": False,
+    }
+    result = {
+        "phase": phase,
+        "Config": {k: field(config, k, v) for k, v in configs.items()},
+        "Env": {
+            "present": type(config) is dict and "Env" in config,
+            "type": type(env).__name__,
+            "matches_expected": env_ok,
+        },
+        "Labels_match": type(config) is dict and same(config.get("Labels"), {LABEL: run}),
+        "HostConfig": {k: field(row.get("HostConfig"), k, v) for k, v in HOST.items()},
+        "HostConfig_Mounts": field(row.get("HostConfig"), "Mounts", []),
+        "Path": field(row, "Path", "/usr/bin/getent"),
+        "Args": field(row, "Args", ["passwd", "postgres"]),
+        "Mounts": field(row, "Mounts", []),
+        "State": {
+            k: field(row.get("State"), k, v)
+            for k, v in {"Running": False, "OOMKilled": False, "ExitCode": 0}.items()
+        },
+        "identity_matches": type(config) is dict
+        and row.get("Name") == "/" + run + "-stage0"
+        and row.get("Image") == MANIFEST
+        and type(row.get("Id")) is str
+        and bool(re.fullmatch(r"[a-f0-9]{64}", row["Id"])),
+    }
+    need(len(json.dumps(result)) <= 16384, "PROJECTION_BUDGET")
+    return result
+
+
 def parse_passwd(raw):
     need(type(raw) is bytes and 0 < len(raw) <= 4096, "PASSWD_BUDGET")
     need(raw.endswith(b"\n") and raw.count(b"\n") == 1, "PASSWD_ONE_RECORD")
@@ -337,17 +472,83 @@ def make_client(legacy, linux, bounded, work, state, save, profile, *, runner=No
                     and result.reason in (None, "nonzero_exit"),
                     "CLI_UNCONFIRMED",
                 )
+                if args[0] == "create" and result.returncode == 0 and result.stderr == b"":
+                    need(re.fullmatch(rb"[a-f0-9]{64}\n", result.stdout), "CREATE_RESPONSE")
+                    need("create_ack" not in state, "ONE_CREATE_ACK")
+                    state["create_ack"] = {
+                        "cid": result.stdout[:-1].decode("ascii"),
+                        "run": state["run"],
+                        "manifest": MANIFEST,
+                        "user": "0:0",
+                        "io_index": len(state["IO"]) - 1,
+                    }
+                    save()  # Durable CID acknowledgement precedes all inspect validation.
                 return result.returncode, result.stdout, result.stderr
             except BaseException:
                 state["IO_uncertain"] = True
                 save()
                 raise
 
-        def inspect(self, cid):
+        def inspect_row(self, cid, phase):
+            state["inspect_phase"] = phase
+            save()
             rows = self.json("inspect", cid)
-            need(type(rows) is list and len(rows) == 1, "INSPECT_SHAPE")
+            need(type(rows) is list and len(rows) == 1 and type(rows[0]) is dict, "INSPECT_SHAPE")
+            diagnostics = state.setdefault("inspect_diagnostics", [])
+            if len(diagnostics) < 4:
+                diagnostics.append(inspect_projection(rows[0], state["run"], profile, phase))
+                save()
             need(rows[0]["Id"] == cid, "INSPECT_ID")
-            return inspect_profile(rows[0], state["run"], profile)
+            return rows[0]
+
+        def checked_inspect(self, cid, phase, full):
+            try:
+                row = self.inspect_row(cid, phase)
+                if full:
+                    return inspect_profile(row, state["run"], profile)
+                return inspect_owned(row, state, cid)
+            except (Refusal, KeyError, TypeError, ValueError, AttributeError) as error:
+                codes = {
+                    "RUN",
+                    "OWNERSHIP",
+                    "ENV_TYPES",
+                    "ENV_EXACT",
+                    "CONFIG_EXACT",
+                    "ARGV",
+                    "HOST_PROFILE",
+                    "HOST_MOUNTS_MUST_BE_ABSENT",
+                    "NO_HOST_OR_ANONYMOUS_VOLUME",
+                    "STATE_TYPES",
+                    "CREATE_ACK",
+                    "CREATE_ACK_BINDING",
+                    "CREATE_ACK_H1",
+                    "CLEANUP_OWNERSHIP",
+                    "CLEANUP_STATE_TYPES",
+                    "UNEXPECTED_RUNNING_NO_STOP",
+                    "INSPECT_SHAPE",
+                    "INSPECT_ID",
+                    "PROJECTION_BUDGET",
+                }
+                code = (
+                    str(error)
+                    if type(error) is Refusal and str(error) in codes
+                    else "MALFORMED_OR_UNCONFIRMED"
+                )
+                records = state.setdefault("inspect_refusals", [])
+                if len(records) < 4:
+                    records.append({"phase": phase, "code": code})
+                save()
+                raise
+
+        def inspect(self, cid):
+            phase = "CLEANUP_IDENTITY" if self.cleaning else "CREATE_IDENTITY"
+            return self.checked_inspect(cid, phase, False)
+
+        def inspect_start(self, cid):
+            return self.checked_inspect(cid, "START_PROFILE", True)
+
+        def inspect_final(self, cid):
+            return self.checked_inspect(cid, "FINAL_PROFILE", True)
 
     return Client()
 
@@ -379,11 +580,13 @@ def observe(client, legacy, linux, lease, state, save, profile):
         state["metadata_verified"] = True
         save()
         cid = reserve_owned(client, legacy, state, save)
+        client.inspect_start(cid)  # Full R3 predicate, unchanged, before any START intent.
+        state["start_profile_cid"] = cid
         state["started"] = True
         save()
         code, raw, error = client.command("start", "--attach", cid, timeout=15)
         need(code == 0 and error == b"", "GETENT_FAILED")
-        final = client.inspect(cid)
+        final = client.inspect_final(cid)
         need(
             final["Running"] is False and final["OOMKilled"] is False and final["ExitCode"] == 0,
             "GETENT_FINAL_STATE",
@@ -430,6 +633,8 @@ def observe(client, legacy, linux, lease, state, save, profile):
         "commissioned": False,
         "PGDATA_ownership_measured": False,
         "authority": False,
+        "inspect_diagnostics": state.get("inspect_diagnostics", []),
+        "inspect_refusals": state.get("inspect_refusals", []),
     }
 
 
