@@ -27,6 +27,33 @@ def verify_contract(raw, old):
     return new
 
 
+def project_upper(raw):
+    """Project the actual authenticated MIT1.22.3 definition, never a replacement."""
+    need(
+        type(raw) is bytes
+        and len(raw) == 5101
+        and sha(raw) == "3f9963a973e1f05345d06367f7f9d7221b349586c7a8402188f48aa5c3127d3f",
+        "TLS_utf8_header_preimage",
+    )
+    lines = [line for line in raw.splitlines(keepends=True) if b"KRB5_UPPER" in line]
+    need(len(lines) == 1, "TLS_upper_unique")
+    definition = lines[0]
+    need(
+        len(definition) == 59
+        and sha(definition) == "c8d3e30ab326502110ef537d6d409a21b149a58a4fa0091fd81c2824bd60c8b4"
+        and definition == b"#define KRB5_UPPER(c)           ((c) >= 'A' && (c) <= 'Z')\n",
+        "TLS_upper_definition",
+    )
+    need(
+        raw.endswith(
+            b"/*\n * these macros assume 'x' is an ASCII x\n"
+            b' * and assume the "C" locale\n */\n' + definition + b"\n#endif /* K5_UTF8_H */\n"
+        ),
+        "TLS_upper_context",
+    )
+    return definition
+
+
 def compile_failure_data(log):
     """Public TLS C compiler/linker only, following Expat publish_build_failure.
 
@@ -163,11 +190,29 @@ def main(source, work):
     raw = read(source / "src/plugins/tls/k5tls/openssl.c", 1024**2)
     old = read(HERE / "TLS-old-hostname-contract.DATA.inc", 32768)
     helpers = verify_contract(raw, old)
+    utf8_header = read(source / "src/include/k5-utf8.h", 16384)
+    upper = project_upper(utf8_header)
+    public_header = source / "build/include/krb5/krb5.h"
+    public_path = public_header.as_posix()
+    need(
+        public_header.is_absolute()
+        and all(32 <= ord(char) < 127 and char not in '\\"' for char in public_path),
+        "TLS_configured_header_path",
+    )
+    configured_header = read(public_header, 2 * 1024**2)
+    need(
+        configured_header.startswith(
+            b"/* This file is generated, please don't edit it directly.  */\n"
+            b"#ifndef KRB5_KRB5_H_INCLUDED\n#define KRB5_KRB5_H_INCLUDED\n"
+        ),
+        "TLS_configured_header_shape",
+    )
     preamble = (
-        b'#include "k5-int.h"\n#include "k5-utf8.h"\n#include <arpa/inet.h>\n'
+        b'#include "' + public_path.encode("ascii") + b'"\n'
+        b"#include <stddef.h>\n#include <string.h>\n#include <arpa/inet.h>\n"
         b"#include <openssl/x509.h>\n#include <openssl/x509v3.h>\n"
     )
-    write_new(work / "hostname-helpers.inc", preamble + helpers)
+    write_new(work / "hostname-helpers.inc", preamble + upper + helpers)
     binary = work / "hostname-oracle"
     compile_checked(
         [
@@ -190,6 +235,10 @@ def main(source, work):
         work / "compile",
         seconds=60,
     )
+    need(
+        read(public_header, 2 * 1024**2) == configured_header,
+        "TLS_configured_header_changed",
+    )
     result = json_value(command([str(binary)], work, work / "run", seconds=10))
     need(
         result == {"cases": 12, "passed": 12, "certificate_chain_verified": False},
@@ -201,6 +250,9 @@ def main(source, work):
             "actual_source_sha256": sha(raw),
             "actual_helper_region_sha256": sha(helpers),
             "old_helper_region_sha256": sha(old),
+            "actual_utf8_header_sha256": sha(utf8_header),
+            "projected_upper_sha256": sha(upper),
+            "configured_public_header_sha256": sha(configured_header),
             "matching": result,
             "certificate_chain_or_AD_interop": "NOT_EXECUTED",
             "partial_label_wildcards_admitted": False,

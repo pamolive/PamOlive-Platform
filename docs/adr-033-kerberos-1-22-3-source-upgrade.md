@@ -167,3 +167,42 @@ restent conservés. Toute erreur de diagnostic est secondaire : l’exception
 initiale est toujours relancée. Un rc normal ne prouve pas la stabilité de
 l’outil ; le marqueur UNKNOWN est conservé. Aucun échec n’est admis comme
 succès et les 12 cas C ne sont pas annoncés validés.
+
+### Projection minimale des dépendances de l'oracle MATCHING-ONLY
+
+Le stderr public du run46a montre six erreurs de paramètres inutilisés dans
+k5-thread.h sous les warnings stricts de l'oracle. Remplacer k5-int.h par le
+header public tout en incluant k5-utf8.h ne suffit pas : ce dernier inclut
+k5-platform.h, puis k5-thread.h dans la configuration effectivement observée.
+
+Le choix retenu pour ce seul oracle est d'inclure le vrai header public
+build/include/krb5/krb5.h du même build authentifié pour les types et booléens,
+et de projeter la définition exacte KRB5_UPPER depuis k5-utf8.h authentifié.
+Le header source complet, sa taille/SHA, l'unicité, la ligne59octets/SHA et son
+contexte final sont vérifiés avant cc. Les octets émis sont ceux capturés dans
+le header, pas une réimplémentation manuelle. Le header public généré a une
+identité distincte : lecture régulière bornée, préfixe généré prévu par le
+Makefile, include absolu au chemin attendu et SHA dans le reçu. Son absence
+refuse avant cc, sans fallback /usr/include ; une relecture différente après
+cc refuse avant exécution de l'oracle. Le répertoire de build privé appartient
+au TCB existant ; ce contrôle n'est pas une preuve atomique contre root.
+
+Les alternatives -isystem, pragma et -Wno sont rejetées : elles masqueraient
+des warnings de headers/macros. Aucun typedef, corps TLS, prédicat de matching
+ou option de compilation n'est recréé ou assoupli. Les douze cas, bibliothèques,
+-std=c99/-O2/-Wall/-Wextra/-Werror, délais60/10 et le H1 commun restent requis.
+Le reçu ajoute les trois empreintes séparées du header UTF8 source, de la
+définition projetée et du header public généré effectivement capturé.
+
+Cette projection prouve la définition du candidat MIT1.22.3, pas encore celle
+de l'ancien1.22.1 par la seule comparaison des corps6286B. Elle ne compile pas
+le plugin complet et ne qualifie ni chaîne X509, threads, ABI, KDC/AD ni CVE.
+Les modèles purs de refus/mutation ne remplacent pas la prochaine compilation
+Linux et l'exécution réelle des douze cas avec tous les contrôles existants.
+
+
+La documentation officielle GCC confirme que les répertoires `-isystem`
+reçoivent un traitement particulier qui supprime des warnings de headers et
+de certaines expansions de macros. Cette alternative n’est pas retenue ici :
+[options de répertoires](https://gcc.gnu.org/onlinedocs/gcc/Directory-Options.html),
+[headers système](https://gcc.gnu.org/onlinedocs/cpp/System-Headers.html).

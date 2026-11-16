@@ -497,6 +497,12 @@ class UpgradeTests(unittest.TestCase):
             inputs = {
                 source / "src/plugins/tls/k5tls/openssl.c": raw,
                 HERE / "TLS-old-hostname-contract.DATA.inc": old,
+                source / "src/include/k5-utf8.h": tree["src/include/k5-utf8.h"],
+                source / "build/include/krb5/krb5.h": (
+                    b"/* This file is generated, please don't edit it directly.  */\n"
+                    b"#ifndef KRB5_KRB5_H_INCLUDED\n#define KRB5_KRB5_H_INCLUDED\n"
+                    b"/* SYNTHETIC public-header buffer; no native preprocessing. */\n"
+                ),
             }
 
             def reader(path, cap):
@@ -515,10 +521,18 @@ class UpgradeTests(unittest.TestCase):
             ):
                 tls_oracle.main(source, work)
             preamble = (
-                b'#include "k5-int.h"\n#include "k5-utf8.h"\n#include <arpa/inet.h>\n'
+                b'#include "' + (source / "build/include/krb5/krb5.h").as_posix().encode() + b'"\n'
+                b"#include <stddef.h>\n#include <string.h>\n#include <arpa/inet.h>\n"
                 b"#include <openssl/x509.h>\n#include <openssl/x509v3.h>\n"
             )
-            self.assertEqual(outputs, {work / "hostname-helpers.inc": preamble + helpers})
+            self.assertEqual(
+                outputs,
+                {
+                    work / "hostname-helpers.inc": preamble
+                    + tls_oracle.project_upper(tree["src/include/k5-utf8.h"])
+                    + helpers
+                },
+            )
             self.assertEqual(command.call_count, 2)
             self.assertEqual(
                 command.call_args_list[0].args,
@@ -555,6 +569,13 @@ class UpgradeTests(unittest.TestCase):
                     "actual_source_sha256": model.sha(raw),
                     "actual_helper_region_sha256": model.sha(helpers),
                     "old_helper_region_sha256": model.sha(old),
+                    "actual_utf8_header_sha256": model.sha(tree["src/include/k5-utf8.h"]),
+                    "projected_upper_sha256": model.sha(
+                        tls_oracle.project_upper(tree["src/include/k5-utf8.h"])
+                    ),
+                    "configured_public_header_sha256": model.sha(
+                        inputs[source / "build/include/krb5/krb5.h"]
+                    ),
                     "matching": result,
                     "certificate_chain_or_AD_interop": "NOT_EXECUTED",
                     "partial_label_wildcards_admitted": False,
@@ -1472,6 +1493,157 @@ class TLSCompileDiagnosticTests(unittest.TestCase):
         ]
         self.assertEqual(len(calls), 1)
         self.assertEqual([(k.arg, k.value.value) for k in calls[0].keywords], [("seconds", 10)])
+
+
+class TLSProjectionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        captured = {name: material(HERE / "materials", name) for name in MATERIALS}
+        plan = model.json_value((HERE / "patch-plan.json").read_bytes())
+        rebased = {p.name: p.read_bytes() for p in (HERE / "rebased-patches").iterdir()}
+        _, _, cls.tree, _ = build.prepared_buffers(captured, plan, rebased)
+
+    def exercise(self, *, utf8=None, generated=None, missing=False, changed=False, reply=None):
+        events = SimpleNamespace(calls=[], outputs={}, receipts=[], reads=[], error=None)
+        with tempfile.TemporaryDirectory() as directory:
+            source, work = Path(directory) / "source", Path(directory) / "work"
+            public = source / "build/include/krb5/krb5.h"
+            fake = (
+                b"/* This file is generated, please don't edit it directly.  */\n"
+                b"#ifndef KRB5_KRB5_H_INCLUDED\n#define KRB5_KRB5_H_INCLUDED\n"
+                b"/* SYNTHETIC; no preprocessing/native compiler. */\n"
+            )
+            inputs = {
+                source / "src/plugins/tls/k5tls/openssl.c": self.tree[
+                    "src/plugins/tls/k5tls/openssl.c"
+                ],
+                source / "src/include/k5-utf8.h": self.tree["src/include/k5-utf8.h"]
+                if utf8 is None
+                else utf8,
+                HERE / "TLS-old-hostname-contract.DATA.inc": (
+                    HERE / "TLS-old-hostname-contract.DATA.inc"
+                ).read_bytes(),
+                public: fake if generated is None else generated,
+            }
+
+            def reader(path, cap):
+                events.reads.append(path)
+                if path == public:
+                    if missing:
+                        raise FileNotFoundError("synthetic missing configured header")
+                    if changed and events.reads.count(public) > 1:
+                        return inputs[path] + b"/* changed */\n"
+                self.assertIn(path, inputs)  # No system-header fallback is modeled.
+                self.assertLessEqual(len(inputs[path]), cap)
+                return inputs[path]
+
+            def command(*args, **kwargs):
+                events.calls.append((args, kwargs))
+                if len(events.calls) == 1:
+                    return b""
+                return json.dumps(
+                    {"cases": 12, "passed": 12, "certificate_chain_verified": False}
+                    if reply is None
+                    else reply
+                ).encode()
+
+            with (
+                patch.object(tls_oracle, "read", side_effect=reader),
+                patch.object(tls_oracle, "command", side_effect=command),
+                patch.object(
+                    tls_oracle,
+                    "write_new",
+                    side_effect=lambda p, b: events.outputs.setdefault(p, b),
+                ),
+                patch.object(
+                    tls_oracle, "record", side_effect=lambda p, v: events.receipts.append((p, v))
+                ),
+            ):
+                try:
+                    tls_oracle.main(source, work)
+                except (OSError, ValueError) as error:
+                    events.error = error
+            events.source, events.public = source, public
+        return events
+
+    def test_actual_macro_buffer_and_closed_dependency_preamble(self):
+        raw = self.tree["src/include/k5-utf8.h"]
+        expected = next(line for line in raw.splitlines(keepends=True) if b"KRB5_UPPER" in line)
+        self.assertEqual(tls_oracle.project_upper(raw), expected)
+        events = self.exercise()
+        self.assertIsNone(events.error)
+        self.assertEqual(len(events.calls), 2)
+        output = next(iter(events.outputs.values()))
+        self.assertIn(b'#include "' + events.public.as_posix().encode() + b'"\n', output)
+        self.assertIn(expected, output)
+        for unwanted in (b'"k5-int.h"', b'"k5-utf8.h"', b"-isystem", b"#pragma"):
+            self.assertNotIn(unwanted, output)
+        self.assertEqual(events.reads.count(events.public), 2)
+        receipt = events.receipts[0][1]
+        self.assertEqual(receipt["actual_utf8_header_sha256"], model.sha(raw))
+        self.assertEqual(receipt["projected_upper_sha256"], model.sha(expected))
+        self.assertIs(receipt["operational_GO"], False)
+
+    def test_header_mutations_refuse_before_cc(self):
+        raw = self.tree["src/include/k5-utf8.h"]
+        for mutated in (
+            raw.replace(b"'A'", b"'B'"),
+            raw.replace(b"#define KRB5_UPPER", b"#define KRB5_OTHER"),
+            raw + b"#define KRB5_UPPER(c) 1\n",
+            raw.replace(b"#define KRB5_UPPER", b"#ifdef UNKNOWN\n#define KRB5_UPPER"),
+            raw.replace(b"((c) >=", b"\\\n((c) >="),
+            raw.replace(b"\n", b"\r\n"),
+        ):
+            with self.subTest(mutation_sha=model.sha(mutated)):
+                events = self.exercise(utf8=mutated)
+                self.assertIsInstance(events.error, ValueError)
+                self.assertEqual(str(events.error), "TLS_utf8_header_preimage")
+                self.assertEqual(events.calls, [])
+                self.assertEqual(events.outputs, {})
+
+    def test_context_and_uniqueness_still_refuse_if_header_digest_is_recommissioned(self):
+        raw = self.tree["src/include/k5-utf8.h"]
+        real_sha = tls_oracle.sha
+        for mutated, code in (
+            (b"KRB5_UPPER" + raw[10:], "TLS_upper_unique"),
+            (raw.replace(b"/*\n * these macros", b"/*\n * OTHER macros"), "TLS_upper_context"),
+            (raw.replace(b"'A'", b"'B'"), "TLS_upper_definition"),
+        ):
+            with self.subTest(code=code):
+                self.assertEqual(len(mutated), len(raw))
+                # Independent guard challenge: weaken only the whole-header gate in memory.
+                with patch.object(
+                    tls_oracle,
+                    "sha",
+                    side_effect=lambda b: real_sha(raw) if b is mutated else real_sha(b),
+                ):
+                    with self.assertRaisesRegex(ValueError, code):
+                        tls_oracle.project_upper(mutated)
+
+    def test_missing_or_non_generated_header_has_no_fallback_before_cc(self):
+        for options in ({"missing": True}, {"generated": b"/* unrelated system header */\n"}):
+            with self.subTest(options=options):
+                events = self.exercise(**options)
+                self.assertIsNotNone(events.error)
+                self.assertEqual(events.calls, [])
+                self.assertEqual(events.outputs, {})
+                self.assertNotIn(Path("/usr/include/krb5.h"), events.reads)
+
+    def test_configured_header_changed_after_cc_blocks_execution_and_receipt(self):
+        events = self.exercise(changed=True)
+        self.assertIsInstance(events.error, ValueError)
+        self.assertEqual(str(events.error), "TLS_configured_header_changed")
+        self.assertEqual(len(events.calls), 1)
+        self.assertEqual(events.receipts, [])
+
+    def test_projected_oracle_still_requires_all_twelve_cases(self):
+        events = self.exercise(
+            reply={"cases": 12, "passed": 11, "certificate_chain_verified": False}
+        )
+        self.assertIsInstance(events.error, ValueError)
+        self.assertEqual(str(events.error), "TLS_matching_result")
+        self.assertEqual(len(events.calls), 2)
+        self.assertEqual(events.receipts, [])
 
 
 if __name__ == "__main__":
