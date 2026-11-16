@@ -88,3 +88,13 @@ content hashes, hardlink topology, source origin, image qualification or serving
 authority. Existing fourteen Expat pure methods and four added adversarial cases
 are preserved; the composed selection of127 pure tests passes without external
 attempts or skips. Full strict schema/native/build/scans still require Linux.
+
+### Correctif du sujet de comparaison des métadonnées
+
+Le diagnostic0f confirme que seuls /proc et /sys diffèrent entre le snapshot
+image0755 et le worker0555. Le correctif compare désormais deux racines d'image
+montées en lecture seule dans un stage séparé. Le runtime conserve son COPY
+scratch et n'importe que le reçu de succès ; aucun root de worker n'est copié.
+Le helper, ses exclusions et tous les refus restent inchangés, y compris pour
+une vraie dérive /proc ou /sys entre images. Voir ADR031 pour le graphe et les
+limites ; le nouveau build/config/archive/native/restore/scan reste à recevoir.

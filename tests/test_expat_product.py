@@ -420,13 +420,71 @@ class ExpatProductTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.examine(raw, image_id)
 
+    def test_snapshot_compares_image_roots_and_still_refuses_actual_proc_sys_mode_drift(self):
+        directory = {"type": 16384, "mode": 0o755, "uid": 0, "gid": 0}
+        source = {name: dict(directory) for name in ("/", "/proc", "/sys")}
+        copied = copy.deepcopy(source)
+        worker = copy.deepcopy(source)
+        for name in ("/proc", "/sys"):
+            worker[name]["mode"] = 0o555
+        maps = {"source-image": source, "copied-image": copied, "live-worker": worker}
+        with patch.object(snapshot, "metadata", side_effect=lambda name: maps[name]):
+            # Reproduce the measured old subject mismatch without normalizing any mode.
+            with self.assertRaisesRegex(ValueError, "snapshot_metadata_changed"):
+                snapshot.compare("source-image", "live-worker")
+            self.assertTrue(snapshot.compare("source-image", "copied-image")["metadata_equal"])
+            for name in ("/proc", "/sys"):
+                with self.subTest(path=name):
+                    copied[name]["mode"] = 0o555
+                    with self.assertRaisesRegex(ValueError, "snapshot_metadata_changed"):
+                        snapshot.compare("source-image", "copied-image")
+                    copied[name]["mode"] = 0o755
+
     def test_docker_product_uses_received_builders_both_modules_and_clean_final_root(self):
         docker = (Path(__file__).parents[1] / "Dockerfile").read_text(encoding="utf8")
         self.assertIn("--optimization-policy xml-local-no-pgo-v1", docker)
-        self.assertEqual(docker.count("FROM scratch AS runtime\n"), 1)
-        runtime = docker.split("FROM scratch AS runtime\n")[1].split("FROM guacd-builder")[0]
-        self.assertIn("COPY --from=runtime-build / /", runtime)
-        self.assertNotIn("--chown", runtime.split("COPY --from=runtime-build / /", 1)[1])
+        self.assertEqual(docker.count("FROM scratch AS runtime-copy\n"), 1)
+        runtime_copy = docker.split("FROM scratch AS runtime-copy\n")[1].split(
+            "FROM runtime-build AS snapshot-check"
+        )[0]
+        self.assertIn("COPY --from=runtime-build / /", runtime_copy)
+        copy_instructions = "\n".join(
+            line
+            for line in runtime_copy.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        self.assertNotIn("--chown", copy_instructions)
+        self.assertNotIn("--chmod", copy_instructions)
+        self.assertFalse(any(line.startswith("RUN ") for line in copy_instructions.splitlines()))
+        checking = docker.split("FROM runtime-build AS snapshot-check\n")[1].split(
+            "FROM runtime-copy AS runtime"
+        )[0]
+        self.assertIn("--network=none", checking)
+        self.assertIn(
+            "--mount=from=runtime-build,source=/,target=/__pamolive_previous,ro", checking
+        )
+        self.assertIn(
+            "--mount=from=runtime-copy,source=/,target=/__pamolive_candidate,ro", checking
+        )
+        self.assertIn(
+            "expat_snapshot.py /__pamolive_previous /__pamolive_candidate "
+            "/usr/share/pamolive/expat4/snapshot.json",
+            checking,
+        )
+        self.assertNotIn("expat_snapshot.py /__pamolive_previous / ", checking)
+        runtime = docker.split("FROM runtime-copy AS runtime\n")[1].split("FROM guacd-builder")[0]
+        instructions = [
+            line
+            for line in runtime.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        self.assertEqual(
+            instructions,
+            [
+                "COPY --from=snapshot-check /usr/share/pamolive/expat4/snapshot.json "
+                "/usr/share/pamolive/expat4/snapshot.json"
+            ],
+        )
         for name in (
             "build_debian.py",
             "check_sanitizer.py",
