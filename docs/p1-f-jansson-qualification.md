@@ -45,3 +45,15 @@ amd64 n'implique aucune compatibilité ARM ou Synology.
 Décision : [ADR-030](adr-030-jansson-native-json-backend.md).
 
 La première image produit `7123f3f` se construit réellement. L'oracle C compile puis refuse JANSSON_CASE_142 avant sa capture d'identité : son hypothèse sur les pointeurs initiaux était fausse. FreeRDP initialise un certificat vide. Le banc configure désormais les trois pointeurs NULL avec le setter officiel ownership-aware et une longueur nulle, avant la sérialisation ; toutes les assertions antérieures et limites natives sont conservées. Deux gardes source supplémentaires portent les tests purs à 103. Aucun changement du wrapper ou du produit, et aucune validation native de ce nouveau banc n'est déduite du correctif source.
+
+## Délais du témoin PostgreSQL
+
+Le job de sécurité du run PR 43843504645 a échoué séparément des oracles
+natifs : un test du témoin PostgreSQL a rencontré DEADLINE_BOUNDS dans le cas
+de perte de profil. La valeur réelle de l'horloge n'était pas exportée. Cette
+branche intègre désormais le correctif arithmétique revu indépendamment dans
+PR #15 : construction conservative des échéances, sans extension des maxima
+ni changement de la garde stricte. Les 39 tests purs du témoin passent, sans
+skip ou IO externe. Les quatorze entrées produit Jansson restent inchangées ;
+la CI et sa source effectivement exécutée restent liées au contexte du commit.
+Ce correctif ne qualifie pas les oracles natifs ni les scanners du nouveau head.

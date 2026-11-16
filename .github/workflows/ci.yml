@@ -402,7 +402,7 @@ jobs:
           set -euo pipefail
           umask 077
           source="$GITHUB_WORKSPACE/qualification/public_pg_identity_probe"
-          printf '%s  %s\n' 4aad6b43214ca0d26fb45c2f4bd337da4008d52dbf7b96b0ec28afdc690239d8 "$source/owner.py" | sha256sum --check --status
+          printf '%s  %s\n' 127868b6c9cfba30058de7469240ac4ffa51ac57591586779c9fbb9b02b4256f "$source/owner.py" | sha256sum --check --status
           work="$RUNNER_TEMP/pamolive-pg-identity-${{ github.run_id }}-${{ github.run_attempt }}"
           test ! -e "$work"
           env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C \
