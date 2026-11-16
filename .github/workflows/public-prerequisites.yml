@@ -2,7 +2,7 @@ name: Public prerequisites DATA only
 
 on:
   push:
-    branches: [agent/ci-public-observer-diagnostics-ecfe]
+    branches: [agent/public-env-root-helper]
   workflow_dispatch:
 
 permissions:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   public_prerequisites:
-    if: github.repository == 'pamolive/PamOlive-Platform' && github.ref == 'refs/heads/agent/ci-public-observer-diagnostics-ecfe' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.repository == 'pamolive/PamOlive-Platform' && github.ref == 'refs/heads/agent/public-env-root-helper' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
@@ -28,9 +28,9 @@ jobs:
           set -euo pipefail
           umask 077
           source="$GITHUB_WORKSPACE/qualification/public_prerequisites_dispatch"
-          printf '%s  %s\n' 8747afbc65ad43be1102d0a1f561dbb6515823b5d9d1a7ceef553a202604e6a6 "$source/quick.py" | sha256sum --check --status
+          printf '%s  %s\n' e62eb380308c5ef2d61848789e1aabbcc2bb1b38560dc92ef4009debfd0a4b54 "$source/quick.py" | sha256sum --check --status
           printf '%s  %s\n' df0fd08281c900c233fc74da2372cda815f03045c9a0ee79e86838f4bc697f77 "$source/run_pure.py" | sha256sum --check --status
-          printf '%s  %s\n' c76ebe915de7c2d6cd136a0c4da0cc87e3c0cf75ea10a1f3a5a7adf3a3c8aef6 "$source/test_source.py" | sha256sum --check --status
+          printf '%s  %s\n' dcf7a9fc9708e2f7e8e4cc73e62be999c50ff209d56900924ea17e920eb8f5ed "$source/test_source.py" | sha256sum --check --status
           env -i PATH=/usr/bin:/bin HOME=/nonexistent LANG=C LC_ALL=C \
             /usr/bin/python3 -I -S -B "$source/run_pure.py" \
             "$RUNNER_TEMP/public-prerequisites-pure-${{ github.run_id }}-${{ github.run_attempt }}"
@@ -41,14 +41,14 @@ jobs:
           set -euo pipefail
           umask 077
           source="$GITHUB_WORKSPACE/qualification/public_prerequisites_dispatch"
-          printf '%s  %s\n' 8747afbc65ad43be1102d0a1f561dbb6515823b5d9d1a7ceef553a202604e6a6 "$source/quick.py" | sha256sum --check --status
+          printf '%s  %s\n' e62eb380308c5ef2d61848789e1aabbcc2bb1b38560dc92ef4009debfd0a4b54 "$source/quick.py" | sha256sum --check --status
           env -i PATH=/usr/bin:/bin HOME=/nonexistent LANG=C LC_ALL=C \
             GITHUB_ACTIONS=true CI=true RUNNER_ENVIRONMENT=github-hosted \
             RUNNER_TEMP="$RUNNER_TEMP" GITHUB_RUN_ID='${{ github.run_id }}' \
             GITHUB_RUN_ATTEMPT='${{ github.run_attempt }}' GITHUB_SHA='${{ github.sha }}' \
             GITHUB_REPOSITORY='${{ github.repository }}' GITHUB_EVENT_NAME='${{ github.event_name }}' GITHUB_REF='${{ github.ref }}' \
             GITHUB_JOB='${{ github.job }}' \
-            /usr/bin/python3 -I -S -B "$source/quick.py" --payload-sha 44705870c24ceffbcae99171d597f8f6a87f093db39c7cb51358b4413d0ee405 \
+            /usr/bin/python3 -I -S -B "$source/quick.py" --payload-sha a7fae3ad7a478d9bade36f5b56cf696836e85f4842d43cb597640150f1f80ac5 \
             --query-mode prerequisites-only --github-hosted-disposable-public-read
       - name: Retain only closed public DATA and lifecycle facts
         if: always()

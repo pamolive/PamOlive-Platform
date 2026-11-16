@@ -14,7 +14,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 BOUNDED_SHA = "98233b610f2d53dfd698d0d91f61f3d3ebcb1693a847983f0472f89a885f414f"
-PUSH_REF = "refs/heads/agent/ci-public-observer-diagnostics-ecfe"
+PUSH_REF = "refs/heads/agent/public-env-root-helper"
 PG_ASSETS_SHA = "44f70509317652dd1d042aedab0f4281cbd15037a707691e84de64f027f9a81f"
 PG_MANIFEST = (
     "docker.io/library/postgres@sha256:"

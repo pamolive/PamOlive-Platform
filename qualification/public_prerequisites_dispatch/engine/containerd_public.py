@@ -58,7 +58,8 @@ STAT_KEYS = {
     "available_blocks",
     "available_bytes",
 }
-TOOL_KEYS = {"path", "bytes", "sha256", "file_type", "uid", "gid", "mode"}
+ENV_TOOL = "/usr/lib/cargo/bin/coreutils/env"
+TOOL_KEYS = {"path", "bytes", "sha256", "file_type", "uid", "gid", "mode", "nlink"}
 
 
 def require(value):
@@ -121,7 +122,7 @@ def tool_record(path):
     path = Path(path)
     tool_need(
         str(path)
-        in {"/usr/bin/ctr", "/usr/lib/cargo/bin/sudo", "/usr/bin/env", "/usr/bin/python3.14"},
+        in {"/usr/bin/ctr", "/usr/lib/cargo/bin/sudo", ENV_TOOL, "/usr/bin/python3.14"},
         "PATH",
     )
     for parent in path.parents:
@@ -134,7 +135,11 @@ def tool_record(path):
         )
     before = tool_stat(path)
     tool_need(stat.S_ISREG(before.st_mode), "NOT_REGULAR")
-    tool_need(before.st_nlink == 1, "LINK_COUNT")
+    tool_need(
+        type(before.st_nlink) is int
+        and (before.st_nlink >= 1 if str(path) == ENV_TOOL else before.st_nlink == 1),
+        "LINK_COUNT",
+    )
     tool_need(before.st_uid == 0, "OWNER")
     tool_need(not before.st_mode & 0o022, "WRITABLE")
     tool_need(0 < before.st_size <= 128 * 1024**2, "SIZE")
@@ -162,6 +167,7 @@ def tool_record(path):
             "uid": before.st_uid,
             "gid": before.st_gid,
             "mode": stat.S_IMODE(before.st_mode),
+            "nlink": before.st_nlink,
         }
     finally:
         os.close(fd)
@@ -343,7 +349,7 @@ def public_facts(result):
 def inspect_roots(address, runner, measure=tool_record, statter=capacity):
     require(address in ENDPOINTS)
     packet = {
-        "schema": "public-containerd-roots/1",
+        "schema": "public-containerd-roots/2",
         "status": "UNKNOWN",
         "ctr_process": None,
         "tool": None,
@@ -423,6 +429,8 @@ def validate_tool(tool):
         and set(tool) == TOOL_KEYS
         and tool["path"] == "/usr/bin/ctr"
         and tool["file_type"] == "regular"
+        and type(tool["nlink"]) is int
+        and tool["nlink"] == 1
         and type(tool["uid"]) is int
         and tool["uid"] == 0
         and type(tool["gid"]) is int
@@ -439,7 +447,7 @@ def validate_tool(tool):
 
 
 def refusal_diagnostic(value):
-    require(type(value) is dict and value.get("schema") == "public-containerd-roots/1")
+    require(type(value) is dict and value.get("schema") == "public-containerd-roots/2")
     status = value.get("status")
     require(
         status
@@ -499,7 +507,7 @@ def validate_packet(value):
             "operational_GO",
         }
     )
-    require(value["schema"] == "public-containerd-roots/1")
+    require(value["schema"] == "public-containerd-roots/2")
     require(
         value["status"]
         in {
@@ -587,7 +595,7 @@ def root_main():
     except BaseException:
         # No traceback, exception text or path escapes this child. Incomplete
         # nested process facts cannot be repaired by reaping the sudo frontend.
-        packet = {"schema": "public-containerd-roots/1", "status": "UNKNOWN"}
+        packet = {"schema": "public-containerd-roots/2", "status": "UNKNOWN"}
     finally:
         if os.name == "posix":
             signal.setitimer(signal.ITIMER_REAL, 0)

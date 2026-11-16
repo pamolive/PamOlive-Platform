@@ -50,10 +50,40 @@ inspection is admitted. Environment, filters, caps and nested H1 are unchanged.
 36 local pure tests and six independent countercases pass; a new real trial
 remains necessary. No operating profile or image/PGDATA authority is learned.
 
+## Env hardlink policy and ROOT packet V2
+
+This candidate is based on commit 5c16fa8973b56a188a039f71d8fc797a622a1935.
+The exact env executable is `/usr/lib/cargo/bin/coreutils/env`; there is no
+PATH search, resolve, alternative path or fallback. Only this env role accepts
+an integer link count greater than one. Sudo, the fixed Python interpreter and
+ctr retain the one-link requirement. Every tool record now includes `nlink`
+in addition to its original seven fields. The full record, including that count,
+is compared before and after the relevant process; a changed count leaves
+UNKNOWN and cannot permit the later pull or PG phase.
+
+Root-owned regular type, nonwritable group/other mode, controlled parents,
+held-FD/path identity, bounded hash reads, environment and H1 checks remain.
+The nested child contract is now `public-containerd-roots/2`. Current packet
+and refusal validation accept only V2 and require all eight fields, including
+integer `nlink == 1` for ctr. V1 packets cannot be upgraded or admitted by
+adding a field. Historical V1 remains available at the explicit base Git blob
+`5c16fa8973b56a188a039f71d8fc797a622a1935:qualification/public_engine_measurement/containerd_public.py`
+for separate historical verification; the current code has no V1 fallback.
+
+The hardlink design relies on the existing trusted runner/root filesystem TCB.
+A writable alias directory does not grant write permission to a root-owned,
+nonwritable inode. POSIX ACL mask permissions are reflected in the mode group
+bits; this is not a claim about arbitrary filesystems, privileged root/mount
+replacement, an already open writable FD or transient changes between samples.
+Package source evidence does not establish this future VM's actual file type,
+link count, hash, ACL or ownership. The new tests use process and stat doubles.
+A real bounded public read is still required, and its receipt remains DATA
+with authority/profile acceptance/operational GO false.
+
 ## Closed root read
 
 Before sudo, the parent measures the actual regular root-owned nonwritable
-`/usr/lib/cargo/bin/sudo`, `/usr/bin/env`, `/usr/bin/python3.14`, then checks them again
+`/usr/lib/cargo/bin/sudo`, `/usr/lib/cargo/bin/coreutils/env`, `/usr/bin/python3.14`, then checks them again
 afterwards. The fixed 3.14 path matches the observed Ubuntu 26.04 job image
 and its [documented system Python](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2604-Readme.md);
 a missing or incompatible executable refuses the observation.

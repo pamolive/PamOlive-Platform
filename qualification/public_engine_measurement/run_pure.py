@@ -24,6 +24,7 @@ def main():
     sys.addaudithook(audit)
     import test_collector
     import test_containerd_public
+    import test_env_contract
     import test_runtime_compatibility
 
     suite = unittest.TestSuite(
@@ -34,6 +35,8 @@ def main():
             test_containerd_public.ParentTests,
             test_runtime_compatibility.ToolCompatibilityTests,
             test_runtime_compatibility.ParentDiagnosticTests,
+            test_env_contract.EnvToolTests,
+            test_env_contract.ParentEnvTests,
         )
     )
     result = unittest.TextTestRunner(stream=sys.stdout, verbosity=2).run(suite)
@@ -50,7 +53,7 @@ def main():
     print(json.dumps(row))
     return (
         0
-        if result.wasSuccessful() and result.testsRun == 36 and not result.skipped and not ATTEMPTS
+        if result.wasSuccessful() and result.testsRun == 46 and not result.skipped and not ATTEMPTS
         else 1
     )
 

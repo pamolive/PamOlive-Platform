@@ -74,6 +74,23 @@ réussie. La qualification navigateur/JavaScript reste distincte et non exécut�
 
 ## P2 — architecture hybride et domaines sensibles
 
+### Ubuntu public observer: source correction under review
+
+The bounded diagnostic on 5c16 refused `env_tool_before/NOT_REGULAR` before
+any privileged reader, pull or PG action. The independent branch
+`agent/public-env-root-helper` measures the explicit Cargo env executable,
+including its hardlink count. Multiple links are permitted only for that env
+role; root ownership, regular-file type, safe parents, hash/FD/path stability
+and all other tool guards remain required. Current receipts use ROOT/2;
+historical ROOT/1 evidence is preserved without current admission.
+
+Integration passes 46 standalone and 14 short pure tests, Ruff and seven
+independent adversarial cases. The two Docker queries, H1 process tracking,
+PG owner and its twelve buffers remain unchanged. These tests execute no
+Docker, sudo, ctr or SQL. Actual Linux tools/root/storage results are pending.
+The exact new branch has its own bounded DATA run; no product image or NAS
+change and no A1/W commissioning follows from these source checks.
+
 ### Reception ecfe : refus des observateurs et correction ciblee
 
 Les deux campagnes [push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43782571449)

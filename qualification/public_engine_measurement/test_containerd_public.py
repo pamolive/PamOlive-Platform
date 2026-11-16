@@ -41,6 +41,7 @@ def tool(path):
         "uid": 0,
         "gid": 0,
         "mode": 0o755,
+        "nlink": 1,
     }
 
 
@@ -299,7 +300,7 @@ class PublicTests(unittest.TestCase):
         self.assertEqual(timings, [(2, 25), (2, 0)])
         self.assertEqual(
             json.loads(output.getvalue()),
-            {"schema": "public-containerd-roots/1", "status": "UNKNOWN"},
+            {"schema": "public-containerd-roots/2", "status": "UNKNOWN"},
         )
         self.assertNotIn(b"PRIVATE", output.getvalue())
 
@@ -416,7 +417,8 @@ class ParentTests(unittest.TestCase):
             self.assertTrue((self.work / "root-read-intent.json").exists())
             self.assertFalse((self.work / "root-read-result.json").exists())
             self.assertEqual(
-                argv[:5], ["/usr/lib/cargo/bin/sudo", "-n", "--", "/usr/bin/env", "-i"]
+                argv[:5],
+                ["/usr/lib/cargo/bin/sudo", "-n", "--", "/usr/lib/cargo/bin/coreutils/env", "-i"],
             )
             self.assertEqual(set(options["env"]), {"PATH", "HOME", "LANG", "LC_ALL"})
             self.assertEqual(argv[-1], "/run/containerd/containerd.sock")
