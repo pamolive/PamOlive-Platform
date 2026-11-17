@@ -1,5 +1,36 @@
 # État réel de l’implémentation
 
+## Livraison du code de développement — 17 novembre 2026
+
+À la demande explicite du propriétaire, la capture Expat APT et ses diagnostics
+sont intégrés à main avec le contrat de contexte typé et le diagnostic navigateur.
+Cette livraison conserve les historiques et tous les gardes de publication.
+Elle ne qualifie ni une image, ni une installation, ni la plateforme complète.
+
+Le dernier main reçu, 7abcdae, a passé le probe Linux de contexte typé,
+les jobs Vault et vérificateur PAM installés. La suite PostgreSQL compte
+1 665 tests au total, dont 42 ignorés, sans échec ni erreur ; Directory compte
+130 tests sans skip. Les builds Docker aboutissent, puis le scan refuse
+110 correspondances High OS regroupées en 35 groupes ; le scan compiled
+ne trouve aucune correspondance. Aucun garde n'est désactivé et aucune image
+n'est publiée. Ces résultats appartiennent à ce SHA, pas à la fusion suivante.
+
+Sur la branche navigateur au même SHA, le bootstrap APT refuse encore rc100 ;
+aucun reçu installed/2 ni test UI n'est validé. Le job navigateur est ignoré
+sur main par sa restriction de branche existante. Les tests dédiés de modules
+signés et d'extension image ont chacun un skip supplémentaire ; ils ne sont
+pas présentés comme des suites entièrement réussies.
+
+La capture Expat a vérifié les trois signatures de dépôts, puis refusé la
+simulation APT sans approbation de matières ni installation. Ses diagnostics
+fermés passent 61 tests purs sans skip et une revue indépendante. Ils gardent
+le refus original et ne constituent pas une correction de la cause native.
+Le nouvel arbre doit refaire sa CI exacte. Les brouillons de recherche non
+intégrés, secrets et preuves privées restent hors publication. Aucun NAS ni
+système réel n'est contacté. Aucun déploiement n'accompagne ce push.
+
+## Notes historiques et détails des étapes précédentes
+
 ## Contrat de contexte typé en qualification — 17 novembre 2026
 
 Sur main ebc142c, les 1 646 tests PostgreSQL au total comprennent 42 ignorés,

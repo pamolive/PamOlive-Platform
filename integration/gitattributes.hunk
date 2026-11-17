@@ -1,0 +1,3 @@
+# Preserve the reused reviewed codec/H1 byte identities under Git on Windows.
+deploy/expat_apt/materials.py -text
+deploy/expat_apt/bounded_io.py -text

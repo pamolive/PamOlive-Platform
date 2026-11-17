@@ -1,0 +1,20 @@
+# ONLY AFTER current capture reception + external dependency review/approval.
+# Replace only original expat-prepared APT RUN, keep exact supplier FROM and every other stage.
+# This is the strict product gate, NOT the DATA-only supervisor whose exit0 permits export.
+COPY deploy/expat_apt/ /opt/expat-apt/
+ARG EXPAT_APT_CODE_PINS_SHA
+ARG EXPAT_APT_POLICY_SHA
+ARG EXPAT_APT_MATERIAL_SET_SHA
+RUN --network=none \
+    --mount=type=bind,from=c-base,target=/c-base,ro \
+    --mount=type=bind,from=c-input,target=/c-input,ro \
+    --mount=type=bind,from=c-bootstrap,target=/c-bootstrap,ro \
+    --mount=type=bind,from=c-authority,target=/c-authority,ro \
+    /usr/bin/timeout --signal=TERM --kill-after=15s 915s \
+    /usr/local/bin/python3.12 -I -B -S /opt/expat-apt/transaction.py \
+      --disposable-buildkit-ack expat-prepared-only-v1 \
+      --code-pins-sha "${EXPAT_APT_CODE_PINS_SHA}" \
+      --policy-sha "${EXPAT_APT_POLICY_SHA}" \
+      --approved-material-set-sha "${EXPAT_APT_MATERIAL_SET_SHA}" --apply
+# Do not insert a capture/supervisor DATA target as an ancestor of product compilation.
+# Explicitly commission new named contexts/args/profile + Dockerfile/product source repins.

@@ -62,3 +62,8 @@ qualification/p1g_headless/test_chrome_bootstrap.py -text whitespace=cr-at-eol
 qualification/p1g_headless/test_chrome_key_scope.py -text whitespace=cr-at-eol
 qualification/p1g_headless/chrome_scope_native_fixtures.json -text whitespace=cr-at-eol
 qualification/p1g_headless/chrome-bootstrap-pins.json -text whitespace=cr-at-eol
+
+# Preserve the reviewed APT codec and H1 bytes.
+deploy/expat_apt/materials.py -text
+deploy/expat_apt/bounded_io.py -text
+deploy/expat_apt/code-pins.json -text whitespace=cr-at-eol
