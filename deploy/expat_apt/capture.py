@@ -9,9 +9,7 @@ import time
 from pathlib import Path
 
 SQV_DEB = "41553e3ca006ed490692872a3e0009247bcfcee92f180f611559f6e8cd152210"
-SQV_URL = (
-    "https://deb.debian.org/debian/pool/main/r/rust-sequoia-sqv/sqv_1.5.0-1_amd64.deb"
-)
+SQV_URL = "https://deb.debian.org/debian/pool/main/r/rust-sequoia-sqv/sqv_1.5.0-1_amd64.deb"
 
 
 def need(value, code):
@@ -44,8 +42,7 @@ def worker_failure_diagnostic(result, codecs):
         value = codecs.json_data(result.stdout)
         if not (
             type(value) is dict
-            and set(value)
-            == {"schema", "state", "code_index", "phase", "kind", "operational_GO"}
+            and set(value) == {"schema", "state", "code_index", "phase", "kind", "operational_GO"}
             and value["schema"] == "pamolive.expat-C-worker-failure-DATA/1"
             and value["state"] == "REFUSED_OR_UNKNOWN"
             and type(value["code_index"]) is int
@@ -64,8 +61,7 @@ def worker_failure_diagnostic(result, codecs):
                 "write_output",
             )
             and type(value["kind"]) is str
-            and value["kind"]
-            in {"UNKNOWN", "TLS_CERTIFICATE", "TLS", "TIMEOUT", "OS", "CONTRACT"}
+            and value["kind"] in {"UNKNOWN", "TLS_CERTIFICATE", "TLS", "TIMEOUT", "OS", "CONTRACT"}
             and value["operational_GO"] is False
         ):
             return None
@@ -100,9 +96,7 @@ class Network:
 
     def perform(self, op, **fields):
         need(
-            not self.unknown
-            and self.count < 1024
-            and time.monotonic() + 20 < self.until,
+            not self.unknown and self.count < 1024 and time.monotonic() + 20 < self.until,
             "network_budget_or_UNKNOWN",
         )
         self.count += 1
@@ -129,8 +123,7 @@ class Network:
         )
         pin = self.tool()
         need(
-            self.t.sha(self.t.read_regular(self.t.HERE / "code-pins.json", 16384))
-            == self.code_sha,
+            self.t.sha(self.t.read_regular(self.t.HERE / "code-pins.json", 16384)) == self.code_sha,
             "external_worker_code_pin",
         )
         self.t.write_new(
@@ -179,9 +172,7 @@ class Network:
             try:
                 failure = worker_failure_diagnostic(result, self.m)
                 if failure is not None:
-                    self.t.write_new(
-                        proof / "worker-failure.json", json.dumps(failure).encode()
-                    )
+                    self.t.write_new(proof / "worker-failure.json", json.dumps(failure).encode())
             except Exception:
                 pass
             need(
@@ -191,19 +182,14 @@ class Network:
                 and result.pid > 0
                 and type(result.returncode) is int
                 and result.returncode == 0
-                and result.reason
-                is result.exception_type
-                is result.cleanup_exception_type
-                is None
+                and result.reason is result.exception_type is result.cleanup_exception_type is None
                 and result.owned_child_reaped is True
                 and result.drains_complete is True
                 and result.killed_owned_child is False
                 and result.stderr == b""
                 and self.tool() == pin
                 and self.t.read_regular(worker, 131072) == worker_raw
-                and self.t.sha(
-                    self.t.read_regular(self.t.HERE / "code-pins.json", 16384)
-                )
+                and self.t.sha(self.t.read_regular(self.t.HERE / "code-pins.json", 16384))
                 == self.code_sha,
                 "worker_unknown",
             )
@@ -243,9 +229,7 @@ class Network:
             raise
 
     def public(self, url, *, cap, sha=None, size=None):
-        return self.perform(
-            "public", url=url, cap=cap, expected_sha256=sha, expected_bytes=size
-        )
+        return self.perform("public", url=url, cap=cap, expected_sha256=sha, expected_bytes=size)
 
     def registry(self, digest, kind, maximum, size=None):
         return self.perform(
@@ -271,9 +255,7 @@ def parent(network, transaction, m, g, codec):
     index = codec.parse(save(g.BASE, "index", 1024**2), 1024**2)
     chosen = codec.select(index)
     need(chosen["digest"] == g.MANIFEST, "expected_platform_manifest")
-    manifest = codec.parse(
-        save(g.MANIFEST, "manifest", 1024**2, chosen["size"]), 1024**2
-    )
+    manifest = codec.parse(save(g.MANIFEST, "manifest", 1024**2, chosen["size"]), 1024**2)
     config = codec.descriptor(manifest["config"], codec.CONFIG_TYPES, 1024**2)
     need(config["digest"] == g.CONFIG, "expected_config")
     save(g.CONFIG, "config", 1024**2, config["size"])
@@ -310,9 +292,7 @@ def verifier(raw, m, g):
     result = None
     with m.decompressor(name, members[name]) as stream:
         bounded = m.PhysicalReader(stream, 512 * 1024**2)
-        with tarfile.open(
-            fileobj=bounded, mode="r|", tarinfo=m.LimitedTarInfo
-        ) as archive:
+        with tarfile.open(fileobj=bounded, mode="r|", tarinfo=m.LimitedTarInfo) as archive:
             for item in archive:
                 if m.tar_name(item.name) == "usr/bin/sqv":
                     need(
@@ -329,9 +309,7 @@ def verifier(raw, m, g):
 
 
 def authenticated_index(network, runner, m, g, suite, rule, root):
-    signed, _ = network.public(
-        rule["uri"] + "dists/" + suite + "/InRelease", cap=1024**2
-    )
+    signed, _ = network.public(rule["uri"] + "dists/" + suite + "/InRelease", cap=1024**2)
     clear, certs = runner.signature(signed, suite, rule)
     fields = m.one_control(clear)
     g.scalar_fields(fields, ("Origin", "Codename", "Date", "Valid-Until"))
@@ -356,13 +334,7 @@ def authenticated_index(network, runner, m, g, suite, rule, root):
         "metadata_aggregate_before_use",
     )
     runner.metadata_bytes = getattr(runner, "metadata_bytes", 0) + cost
-    uri = (
-        rule["uri"]
-        + "dists/"
-        + suite
-        + "/main/binary-amd64/by-hash/SHA256/"
-        + packed["sha256"]
-    )
+    uri = rule["uri"] + "dists/" + suite + "/main/binary-amd64/by-hash/SHA256/" + packed["sha256"]
     compressed, path = network.public(
         uri, cap=32 * 1024**2, sha=packed["sha256"], size=packed["size"]
     )
@@ -422,6 +394,12 @@ def run(args, pins, m, g, io_helper, t, *, deadline):
     codec = t.load("expat_oci_codec", "oci_codec.py", pins["oci_codec.py"])
     base = parent(network, t, m, g, codec)
     runner = t.Runner(io_helper, m, base, until=until)
+    fence = t.load("expat_solver_fence", "solver_fence.py", pins["solver_fence.py"])
+    native = m.json_data(t.read_regular("/c-fence-native/summary.json", 16384))
+    fence.validate_native_summary(native, args.code_pins_sha, pins)
+    runner.solver_fence_module = fence
+    runner.solver_fence_sha = pins["solver_fence.py"]
+    runner.solver_code_sha = args.code_pins_sha
     runner.t = t
     runner.verified_releases = {}
     # Tie the actual interpreter role to the same admitted base after its independent capture.
@@ -443,9 +421,7 @@ def run(args, pins, m, g, io_helper, t, *, deadline):
     need(out == t.VERSION and err == b"", "verifier_runtime_version")
     indices, signed_map = {}, {}
     for suite, rule in policy["repositories"].items():
-        signed, _, index, _ = authenticated_index(
-            network, runner, m, g, suite, rule, root
-        )
+        signed, _, index, _ = authenticated_index(network, runner, m, g, suite, rule, root)
         signed_map[suite] = signed
         indices[suite] = index
     solver = t.load("expat_solver", "solver.py", pins["solver.py"])

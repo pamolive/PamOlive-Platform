@@ -8,7 +8,92 @@ import time
 from pathlib import Path
 
 
+def native_fence_main():
+    if not (
+        len(sys.argv) == 3
+        and sys.argv[1] == "native-fence"
+        and sys.platform == "linux"
+        and os.getuid() == os.geteuid() == 0
+    ):
+        raise ValueError("native_fence_entry")
+    import hashlib
+    import stat
+
+    root = Path(__file__).parent
+
+    def capture(name, maximum):
+        path = root / name
+        for parent in (root, *root.parents):
+            row = parent.lstat()
+            if not (stat.S_ISDIR(row.st_mode) and row.st_uid == 0 and not row.st_mode & 0o022):
+                raise ValueError("native_fence_parent")
+        before = path.lstat()
+
+        def key(r):
+            return (
+                r.st_dev,
+                r.st_ino,
+                r.st_mode,
+                r.st_uid,
+                r.st_gid,
+                r.st_nlink,
+                r.st_size,
+                r.st_mtime_ns,
+                r.st_ctime_ns,
+            )
+
+        if not (
+            stat.S_ISREG(before.st_mode)
+            and before.st_uid == before.st_gid == 0
+            and before.st_nlink == 1
+            and not before.st_mode & 0o6022
+            and 0 < before.st_size <= maximum
+        ):
+            raise ValueError("native_fence_file")
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+        try:
+            if key(os.fstat(fd)) != key(before):
+                raise ValueError("native_fence_FD")
+            raw = b""
+            while len(raw) <= maximum:
+                chunk = os.read(fd, min(65536, maximum + 1 - len(raw)))
+                if not chunk:
+                    break
+                raw += chunk
+            if not (
+                len(raw) == before.st_size and key(os.fstat(fd)) == key(before) == key(path.lstat())
+            ):
+                raise ValueError("native_fence_changed")
+        finally:
+            os.close(fd)
+        return raw
+
+    raw = capture("code-pins.json", 16384)
+    if hashlib.sha256(raw).hexdigest() != sys.argv[2]:
+        raise ValueError("native_fence_code_pin")
+    pins = json.loads(raw)
+    payload = capture("transaction.py", 131072)
+    if not (
+        type(pins) is dict
+        and len(pins) == 11
+        and hashlib.sha256(capture("supervisor.py", 131072)).hexdigest() == pins["supervisor.py"]
+        and hashlib.sha256(payload).hexdigest() == pins["transaction.py"]
+    ):
+        raise ValueError("native_fence_source")
+    spec = importlib.util.spec_from_file_location("c_fence_transaction", root / "transaction.py")
+    transaction = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = transaction
+    exec(compile(payload, str(root / "transaction.py"), "exec"), transaction.__dict__)
+    native = transaction.load(
+        "c_fence_native", "native_fence_tests.py", pins["native_fence_tests.py"]
+    )
+    return native.run(sys.argv[2], pins, transaction)
+
+
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "native-fence":
+        return native_fence_main()
+
     def need(value):
         if not value:
             raise ValueError("supervisor_refused")
