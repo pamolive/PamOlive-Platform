@@ -1,0 +1,100 @@
+name: Read-only public runner metadata DATA
+on:
+  push:
+    branches: [agent/origin-egress-readonly]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  observe:
+    if: >-
+      github.repository == 'pamolive/PamOlive-Platform' &&
+      github.ref == 'refs/heads/agent/origin-egress-readonly' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CODE_REVISION: 35322327567f141c07fce29c1059bf019605ba48
+      READONLY_PINS_SHA: 75f743ce2fecd3c510d78215e6cedda066d8cff5e6d2b95c1c24648a84cade7a
+      PAMOLIVE_DISPOSABLE_ORIGIN_JOB: 'true'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ env.CODE_REVISION }}
+          persist-credentials: false
+      - name: Bind the immutable source before executing qualification code
+        id: bind
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$(git rev-parse HEAD)" = "$CODE_REVISION"
+          /usr/bin/python3.12 -I -B -S - <<'PY'
+          import hashlib,json,os,pathlib,re
+          root=pathlib.Path.cwd()
+          manifest=root/'qualification/build_origin/readonly-source-pins.json'
+          raw=manifest.read_bytes()
+          assert len(raw)<=16384 and hashlib.sha256(raw).hexdigest()==os.environ['READONLY_PINS_SHA']
+          pins=json.loads(raw)
+          expected={'qualification/build_origin/'+name for name in (
+              '__init__.py','bounded_io.py','commands.py','contract.py','files.py',
+              'preflight.py','profile.py','run_readonly_pure.py','test_preflight.py')}
+          expected.update({'qualification/public_fixture_parents.py',
+              'qualification/test_public_fixture_parents.py'})
+          assert type(pins) is dict and set(pins)==expected
+          for name,pin in pins.items():
+              assert type(pin) is str and re.fullmatch('[a-f0-9]{64}',pin)
+              data=(root/name).read_bytes()
+              assert len(data)<=131072 and hashlib.sha256(data).hexdigest()==pin
+          assert not (root/'qualification/__init__.py').exists()
+          fields={k:os.environ[k] for k in ('GITHUB_SHA','GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT','CODE_REVISION')}
+          assert re.fullmatch('[a-f0-9]{40}',fields['GITHUB_SHA'])
+          assert re.fullmatch('[a-f0-9]{40}',fields['CODE_REVISION'])
+          assert all(re.fullmatch('[1-9][0-9]{0,19}',fields[k]) for k in ('GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT'))
+          packet={'schema':'pamolive.readonly-source-binding/1',
+              'workflow_revision':fields['GITHUB_SHA'],'source_revision':fields['CODE_REVISION'],
+              'run_id':fields['GITHUB_RUN_ID'],'attempt':fields['GITHUB_RUN_ATTEMPT'],
+              'source_pins_sha256':os.environ['READONLY_PINS_SHA'],'source_files':len(pins),
+              'native_or_policy_qualification':False,'operational_GO':False}
+          with (pathlib.Path(os.environ['RUNNER_TEMP'])/'origin-readonly-source.json').open('x') as f:
+              json.dump(packet,f,separators=(',',':'))
+              f.write('\n')
+          PY
+      - name: Require fourteen pure contracts before measurement
+        id: pure
+        run: >-
+          /usr/bin/python3.12 -I -B -S qualification/build_origin/run_readonly_pure.py
+          "$RUNNER_TEMP/origin-readonly-pure.json"
+      - name: Measure fixed vendor versions without setup or policy changes
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          /usr/bin/python3.12 -I -B -S qualification/build_origin/preflight.py \
+            measure-vendor --ack-trusted-public-vendor-TCB --out "$RUNNER_TEMP/origin-readonly"
+      - name: Observe fixed public fixture parent metadata independently
+        if: always() && steps.bind.conclusion == 'success' && steps.pure.conclusion == 'success'
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          parents_dir="$RUNNER_TEMP/origin-parent-observation"
+          mkdir "$parents_dir"
+          RUNNER_TEMP="$parents_dir" /usr/bin/python3.12 -I -B -S qualification/public_fixture_parents.py \
+            --output "$parents_dir/public-fixture-parents.json" \
+            --disposable-ci-ack public-provider-metadata-only-v1
+      - name: Retain only bounded public DATA
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: origin-readonly-DATA-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/origin-readonly-source.json
+            ${{ runner.temp }}/origin-readonly-pure.json
+            ${{ runner.temp }}/origin-readonly/public/readonly-DATA.json
+            ${{ runner.temp }}/origin-readonly/public/failure.json
+            ${{ runner.temp }}/origin-parent-observation/public-fixture-parents.json
+          if-no-files-found: warn
+          retention-days: 7
