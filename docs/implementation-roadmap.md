@@ -1,5 +1,130 @@
 # Roadmap d’implémentation et qualification
 
+## Notes historiques conservées de la branche navigateur R7
+
+## État courant R7 — diagnostics publics à récupérer, 17 novembre 2026
+Les essais Linux du candidat 1564317 ont échoué : bootstrap EXIT42 puis
+upload EACCES/scandir sur le sous-répertoire public root. Aucun artefact
+navigateur ni reçu interpréteur/installation n'a pu être reçu ; la cause
+primaire du bootstrap reste inconnue. Les preuves R5 restent historiques.
+R7 donne explicitement0755 aux deux seules feuilles de journaux publics,
+via leur FD sans alias, avec propriétaire/dev/ino/mode vérifiés et fermeture.
+Les fichiers JSON sont déjà0444 ; umask077 et espaces privés restent inchangés.
+128 tests purs passent sans exclusion ni tentative externe, Ruff passe.
+Ces modèles ne prouvent ni les permissions sur la VM ni le bootstrap :
+nouvelle CI exacte et récupération des diagnostics obligatoires. Voir ADR034.
+Aucun main fusionné, image promue ou accès NAS par cette correction.
+
+## Témoin historique R6 avant réception — 16 novembre 2026
+
+Les deux essais Linux du candidat R5 `cd9b2fc`
+([push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43948941376),
+[PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/43948955828))
+ont réellement terminé le générateur GPG TEST et ses huit observations sudo/stat.
+Les six buffers publics, le nettoyage et les 17 catégories de contrôles natifs,
+de modèles et de gardes sont reçus ; ces catégories ne sont pas 17 signatures
+indépendantes. L'acquisition et la simulation APT sont passées. Le refus suivant
+sur tool_type_owner_mode intervient avant le lancement du superviseur root.
+Le chemin et les métadonnées de la feuille refusée n'ont pas été exportés :
+aucune cause précise UID/mode/nlink n'est déduite. Chrome n'a pas été installé.
+
+R6 choisit explicitement /usr/bin/python3.12 pour le superviseur privilégié,
+indépendamment du Python du venv. Le guard tool_pin reste inchangé. Le parent
+vérifie le pin et l'identité complète avant et après sudo ; le superviseur exige
+UID réel/effectif 0, image /proc/self/exe correspondante, CPython 3.12.x finale
+et flags -I/-B/-S. Le reçu installé /2 impose la preuve interpréteur /1 liée
+aux mêmes source, manifeste, contexte et révision. Un ancien reçu est refusé.
+La version système effectivement utilisée reste à mesurer, sans la confondre
+avec le Python 3.12.16 du venv. Aucun nouveau processus, privilège ou budget
+n'est ajouté : horizons 870/450 et appel sudo 480 secondes conservés.
+
+Sur le checkout intégré, 125 tests purs passent sans échec, exclusion ou
+tentative externe ; Ruff et format passent. Les 25 rôles Chrome et 24 pins UI
+doivent rester fermés depuis les octets Git. Ces modèles ne prouvent pas
+l'exécution du Python système, la réauthentification root, l'installation,
+Chrome ou le parcours navigateur : nouvelle CI exacte obligatoire.
+
+Le pin ELF ne prouve pas l'herméticité du loader et de la stdlib Ubuntu.
+L'entrée du script par pathname avant ses contrôles et la TCB coopérative
+root/même UID demeurent explicites. Un refus après installation n'est pas un
+retour arrière. GPG, producteur Owner/2/Observer/1 et ses six rôles TEST restent
+inchangés. P1-F/G et l'autorité complète ADR-021 demeurent incomplets.
+La branche runtime distincte bde355e teste son contexte scellé séparément ;
+aucune qualification ne passe d'une branche à l'autre. Le parent runtime 5d8f814
+reste refusé pour 98 High dans 31 groupes. Aucun merge main, nouvelle image
+promue ou accès NAS n'est réalisé par R6.
+
+## Témoin historique R4/R5 avant réception — 16 novembre 2026
+
+Le [candidat R4 `095d0eb`](https://github.com/pamolive/PamOlive-Platform/actions/runs/43929358076)
+a reçu un refus errno 13 lors de la lecture de `/proc/<PID possédé>/exe`, puis
+au précontrôle du nettoyage. Le processus TEST a été repris et drainé, mais le
+reçu demeure INCOMPLETE et le nettoyage non validé. Ce diagnostic ne démontre
+pas quelle règle du noyau a refusé la lecture. Aucun navigateur n'a été qualifié.
+
+La correction R5 conserve l'observation répétée de l'exécutable. Sur ce seul
+errno 13, un observateur fixe `sudo -n -u#0 -- /usr/bin/stat` lit ses métadonnées ;
+le générateur, les clés TEST et GPG restent non privilégiés. Les outils de
+l'observateur ont leurs propres gardes, sans exception SUID pour GPG ou Python.
+PID, parent, session et starttime encadrent chaque lecture. Un résultat incertain
+interdit tout nouvel observateur privilégié, y compris pendant le nettoyage.
+Le reçu propriétaire et son préflight changent de version et sont exigés par
+le consommateur ; les anciens reçus R4 ne sont pas requalifiés.
+
+Les bornes restent 40 frontends, 180/150/30 secondes et 15 secondes de readiness.
+Le majorant structurel de 34 compte les frontends ; il ne compte pas l'agent ni
+tous les descendants de sudo. Le succès normal repose sur le sudo foreground
+de la VM de test ; une fin incertaine reste UNKNOWN/resources_released:false.
+Les observations ne rendent pas les transitions d'exécutable atomiques.
+
+Dans le checkout intégré, 110 tests purs passent sans exclusion ni tentative
+externe ; la revue indépendante rejoue ces tests et six adverses supplémentaires.
+Ruff sur le dépôt passe. Ces modèles ne prouvent ni la nouvelle voie sudo réelle,
+ni les signatures GPG, l'installation ou une session navigateur. Une nouvelle
+CI Linux du nouveau commit demeure obligatoire avant toute réception native.
+
+La branche runtime distincte `5d8f814` a terminé sa
+[CI](https://github.com/pamolive/PamOlive-Platform/actions/runs/43937390888) :
+1 597 tests PostgreSQL (42 ignorés), 130 Directory, transports synthétiques,
+restauration et SBOM passent ; seul le scan d'image refuse les 98 High dans
+31 groupes. Cette preuve ne se transfère pas à la branche navigateur.
+Les matériaux et l'autorité de build ADR-021 restent incomplets. P1-G et les
+autres qualifications restent ouverts ; aucune nouvelle image n'est promue,
+aucune fusion main ni modification NAS n'est réalisée par ce correctif.
+Les sections suivantes conservent les états historiques des candidats.
+## P1-G — premier parcours JavaScript préparé
+
+Un [banc Chromium de CI](../qualification/p1g_headless/README.md) exerce les formulaires de connexion/MFA, WebAuthn, demande Identity360 et deux votes, sans contrôle du navigateur du PC. Les dix contrats purs passent ; le navigateur, PostgreSQL et les sélecteurs restent à qualifier réellement. Le job est limité à sa branche et audite ses outils supplémentaires. Les observations PC-483/PC-991 restent des fixtures historiques distinctes ; le retrait cliqué concerne un nouveau droit local, sans preuve fournisseur. Le [raccord SSH/RDP](../qualification/p1g_headless/NEXT-NATIVE.md) doit encore confirmer transport, expiration, révocation et capture avant de qualifier P1-G complet. Aucun changement des modèles ou contrôles P0.
+
+La garde de délais du témoin PostgreSQL conserve ses maxima stricts. Un contre-exemple flottant reproductible pouvait produire une réserve légèrement supérieure à trente secondes ; le constructeur arrondit maintenant vers le début et reste plafonné par les anciennes échéances. Aucun seuil ni comportement UNKNOWN n'est élargi. La reproduction et les parcours CLI sous horloge contrôlée sont conservés ; ce correctif arithmétique ne prouve pas la valeur d'horloge du run historique en échec.
+
+
+### Active qualification work: runtime composition and browser authentication
+
+The headless candidate incorporates PR #19's runtime fixes. Next gates are an
+actual successful image build and unchanged strict security scans, receipt of the
+bounded GPG authentication diagnostic, then actual portal and native-session
+assertions. Restore coverage must additionally exercise historical V7, Governance
+and independently anchored PAM trust data on synthetic PostgreSQL. Pure tests
+and a partial restore corpus do not close these gates.
+
+
+### Suite P1-G — intégration du 16 novembre 2026
+
+Le candidat de restauration 94064bc est intégré localement par merge 2836fd2.
+ADR-034 ajoute le contrôle borné de la lignée du certificat Google et les essais
+GPG synthétiques indépendants avant toute installation du navigateur. Les
+86 contrats purs passent ; la validation native reste à effectuer sur le SHA
+composé, avec les mêmes seuils, deadlines et secrets exclusivement synthétiques.
+
+Prochaines preuves : authentification Google, refus GPG avec processus terminés
+et sorties drainées, agent TEST nettoyé, revérification root, installation du
+paquet exact, puis parcours navigateur. Les futures sessions SSH/RDP réelles
+de laboratoire constituent encore des jalons distincts. La clôture des alertes
+d’image, la régression PostgreSQL/P0 et la restauration doivent être recevables
+sur la composition finale avant fusion ou publication. P2/P3 et le NAS ne sont
+pas déclarés qualifiés par ces seuls tests de source.
+
 ## Notes conservées de la branche Kerberos expérimentale
 
 
