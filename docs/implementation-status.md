@@ -1123,3 +1123,14 @@ Les quatorze nouveaux tests purs passent sans skip et disposent de leur job CI.
 Les résultats PostgreSQL et scans cités dans ce rapport sont liés à leur SHA ;
 la nouvelle fusion doit recevoir sa propre CI. Aucun déploiement ni image
 nouvelle qualifiée ne résulte de cette publication de code.
+
+
+## Validation exacte de main 3532232
+
+Le [rapport de validation](validation-main-3532232.md) recense l'erreur de
+fixture de la suite PostgreSQL (1 747 tests, une erreur, 42 skips), les suites
+dediees reussies et les etapes image non atteintes. Le correctif de fixture
+Python conserve la garde d'execution et ajoute deux regressions ; 84 tests purs
+passent sous les deux modes de lancement. Une nouvelle CI du commit corrige
+reste necessaire. Les observations du runner et l'essai Expat C4 sont presentes
+avec leurs identites distinctes, sans qualification ou image nouvelle induite.
