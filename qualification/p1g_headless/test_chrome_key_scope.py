@@ -60,6 +60,15 @@ class FakeCommands:
 
 
 class KeyScopeTests(unittest.TestCase):
+    def setUp(self):
+        # Filesystem permission semantics are exercised by PublicJournalTests.
+        # These crypto/H1 cases keep their existing synthetic filesystem seam.
+        self.enterContext(
+            patch.object(
+                boot, "public_journal_directory", side_effect=lambda path: path.mkdir(mode=0o700)
+            )
+        )
+
     def exercise(self, *args, **kwargs):
         # Existing orchestration tests model only their original seam, never native evidence.
         kwargs.update(producer=lambda: None, publish_fixture=lambda *a: None)
@@ -594,6 +603,15 @@ class KeyScopeTests(unittest.TestCase):
 
 
 class ConsumerR2Tests(unittest.TestCase):
+    def setUp(self):
+        # Filesystem permission semantics are exercised by PublicJournalTests.
+        # These crypto/H1 cases keep their existing synthetic filesystem seam.
+        self.enterContext(
+            patch.object(
+                boot, "public_journal_directory", side_effect=lambda path: path.mkdir(mode=0o700)
+            )
+        )
+
     def test_R2_export_filter_unavailable_blocks_scoped_import(self):
         commands = FakeCommands()
         original_run = commands.run

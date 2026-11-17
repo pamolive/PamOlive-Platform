@@ -642,6 +642,45 @@ def load(name, raw, path):
     return module
 
 
+def public_journal_directory(path):
+    """Only typed public journals: private creation, then explicit readable mode."""
+    path.mkdir(mode=0o700)
+    created = path.lstat()
+    need(
+        stat.S_ISDIR(created.st_mode)
+        and created.st_uid == os.geteuid()
+        and not created.st_mode & 0o022,
+        "public_journal_directory",
+    )
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        before = os.fstat(fd)
+        named = path.lstat()
+        need(
+            stat.S_ISDIR(before.st_mode)
+            and before.st_uid == os.geteuid()
+            and not before.st_mode & 0o022
+            and (created.st_dev, created.st_ino)
+            == (before.st_dev, before.st_ino)
+            == (named.st_dev, named.st_ino),
+            "public_journal_directory",
+        )
+        os.fchmod(fd, 0o755)
+        after = os.fstat(fd)
+        named = path.lstat()
+        need(
+            stat.S_ISDIR(after.st_mode)
+            and stat.S_IMODE(after.st_mode) == 0o755
+            and after.st_uid == before.st_uid
+            and (before.st_dev, before.st_ino)
+            == (after.st_dev, after.st_ino)
+            == (named.st_dev, named.st_ino),
+            "public_journal_directory",
+        )
+    finally:
+        os.close(fd)
+
+
 class Commands:
     def __init__(self, support, bounded, private, public, *, horizon=870):
         self.support, self.io, self.private, self.public = support, bounded, private, public
@@ -653,7 +692,7 @@ class Commands:
         need(time.monotonic() + seconds + 10 < self.until, "bootstrap_deadline")
         self.number += 1
         journal = self.public / ("command-" + str(self.number))
-        journal.mkdir(mode=0o755)
+        public_journal_directory(journal)
         tool = Path(argv[0])
         if sudo:
             info = tool.lstat()
@@ -992,7 +1031,7 @@ def main(argv=None):
         private = Path("/var/tmp") / ("pamolive-chrome-bootstrap-" + name)
         private.mkdir(mode=0o700)
     command_public = public / ("root" if args.root_install else "frontend")
-    command_public.mkdir(mode=0o755)
+    public_journal_directory(command_public)
     commands = Commands(
         support,
         support.bounded(root),

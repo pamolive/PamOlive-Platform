@@ -278,3 +278,30 @@ PRESERVE, -I/-B/-S, H1 et horizons870/450/appel480/réserves sont conservés ;
 aucun nouveau processus ni budget. La source R6 et ses purs ne qualifient ni
 l’interpréteur réel, ni installation, navigateur, PAM, produit ou CVE. Une
 nouvelle CI fraîche liée aux sources exactes est requise après contre-revue.
+
+## R7 — lisibilité des seuls journaux publics, 17 novembre 2026
+
+Les deux jobs 1564317 ont refusé le bootstrap avec EXIT42 puis échoué à
+exporter les diagnostics : EACCES/scandir sur le répertoire public root.
+Aucun reçu root-UNKNOWN, interpréteur/1 ou installé/2 n'a été reçu ; la cause
+du bootstrap reste inconnue. mkdir(mode0755) sous umask077 laisse normalement
+une feuille0700. Ce mécanisme est compatible avec la source et le symptôme,
+sans prétendre disposer d'un stat de la VM qui n'a pas été exporté.
+
+Créer explicitement les deux feuilles de journaux publics (command_public et
+command-N) en0700, ouvrir sans suivre les alias, vérifier propriétaire/dev/ino,
+puis fchmod0755 sur le même FD et revérifier mode/identité/nom avant fermeture.
+Les JSON publics sont déjà0444 et ne contiennent ni argv/env, ni sorties brutes.
+Le umask077, les homes GPG, DEB, stderr et tous répertoires privés restent
+inchangés. Aucune opération récursive, chown, commande, permission CI ou délai
+supplémentaire. La TCB coopérative root/même UID demeure ; ces vérifications
+n'établissent pas une atomicité contre un acteur hostile sur l'hôte.
+
+128 tests purs passent, dont trois nouveaux cas sur les modes sous umask,
+collisions/identité/propriétaire/erreurs et les deux sites publics. Les anciens
+tests crypto/H1 isolent cette couture de permissions par leur double de FS ;
+le nouveau helper est exercé séparément avec un modèle de FD. Aucun syscall
+POSIX privilégié n'est exécuté sur Windows. L'échec initial de six anciens
+tests, faute de O_DIRECTORY Windows, est conservé avant adaptation du double.
+L'upload réel et surtout la cause du bootstrap nécessitent une CI Linux fraîche.
+Aucun résultat R5 n'est transféré à 1564317 ou au candidat R7.

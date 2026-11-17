@@ -1,6 +1,21 @@
 # État réel de l’implémentation
 
-## État courant — interpréteur privilégié séparé, 16 novembre 2026
+## État courant R7 — diagnostics publics à récupérer, 17 novembre 2026
+
+Les essais Linux du candidat 1564317 ont échoué : bootstrap EXIT42 puis
+upload EACCES/scandir sur le sous-répertoire public root. Aucun artefact
+navigateur ni reçu interpréteur/installation n'a pu être reçu ; la cause
+primaire du bootstrap reste inconnue. Les preuves R5 restent historiques.
+
+R7 donne explicitement0755 aux deux seules feuilles de journaux publics,
+via leur FD sans alias, avec propriétaire/dev/ino/mode vérifiés et fermeture.
+Les fichiers JSON sont déjà0444 ; umask077 et espaces privés restent inchangés.
+128 tests purs passent sans exclusion ni tentative externe, Ruff passe.
+Ces modèles ne prouvent ni les permissions sur la VM ni le bootstrap :
+nouvelle CI exacte et récupération des diagnostics obligatoires. Voir ADR034.
+Aucun main fusionné, image promue ou accès NAS par cette correction.
+
+## Témoin historique R6 avant réception — 16 novembre 2026
 
 Les deux essais Linux du candidat R5 `cd9b2fc`
 ([push](https://github.com/pamolive/PamOlive-Platform/actions/runs/43948941376),

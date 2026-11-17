@@ -5,6 +5,7 @@ import copy
 import hashlib
 import io
 import json
+import stat
 import tarfile
 import tempfile
 import unittest
@@ -20,6 +21,83 @@ from qualification.p1g_headless import lab_support
 HERE = Path(__file__).resolve().parent
 PINS = json.loads((HERE / "chrome-bootstrap-pins.json").read_bytes())
 NOW = int(datetime(2026, 11, 16, 12, tzinfo=UTC).timestamp())
+
+
+class PublicJournalTests(unittest.TestCase):
+    def scenario(self, mask=0o077, *, swap=False, owner=0, chmod_error=False):
+        state = {"mode": 0, "uid": owner, "ino": 2, "closed": [], "chmods": []}
+
+        def row():
+            return SimpleNamespace(
+                st_mode=stat.S_IFDIR | state["mode"],
+                st_uid=state["uid"],
+                st_dev=1,
+                st_ino=state["ino"],
+            )
+
+        def mkdir(*, mode):
+            state["mode"] = mode & ~mask
+
+        def fchmod(fd, mode):
+            state["chmods"].append((fd, mode))
+            if chmod_error:
+                raise PermissionError("synthetic")
+            state["mode"] = mode
+
+        def opened(path, flags):
+            self.assertEqual(flags, 1 | 2 | 4 | 8)
+            if swap:
+                state["ino"] = 3
+            return 10
+
+        path = SimpleNamespace(mkdir=mkdir, lstat=row)
+        ops = SimpleNamespace(
+            O_RDONLY=1,
+            O_DIRECTORY=2,
+            O_NOFOLLOW=4,
+            O_CLOEXEC=8,
+            open=opened,
+            fstat=lambda fd: row(),
+            fchmod=fchmod,
+            close=lambda fd: state["closed"].append(fd),
+            geteuid=lambda: 0,
+        )
+        with patch.object(boot, "os", ops):
+            boot.public_journal_directory(path)
+        return state
+
+    def test_public_directory_explicit_mode_overcomes_private_umask(self):
+        for mask in (0o077, 0o027, 0o000):
+            state = self.scenario(mask)
+            self.assertEqual(state["mode"], 0o755)
+            self.assertEqual(state["closed"], [10])
+            self.assertEqual(state["chmods"], [(10, 0o755)])
+
+    def test_alias_owner_and_chmod_failure_refuse(self):
+        for options in ({"swap": True}, {"owner": 1000}, {"chmod_error": True}):
+            with self.subTest(options=options), self.assertRaises((ValueError, PermissionError)):
+                self.scenario(**options)
+        path = SimpleNamespace(mkdir=lambda **kw: (_ for _ in ()).throw(FileExistsError()))
+        with patch.object(boot.os, "open") as opened, self.assertRaises(FileExistsError):
+            boot.public_journal_directory(path)
+        opened.assert_not_called()
+
+    def test_only_two_public_journal_sites_use_the_mode_helper(self):
+        tree = ast.parse((HERE / "chrome_bootstrap.py").read_bytes())
+        calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "public_journal_directory"
+        ]
+        self.assertEqual(
+            sorted(ast.unparse(node.args[0]) for node in calls), ["command_public", "journal"]
+        )
+        main = next(
+            node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "main"
+        )
+        self.assertNotIn("chmod(0o755)", ast.unparse(main))
 
 
 class RootInterpreterTests(unittest.TestCase):
@@ -446,6 +524,15 @@ def tar_payload(entries):
 
 
 class ChromeBootstrapTests(unittest.TestCase):
+    def setUp(self):
+        # Filesystem permission semantics are exercised by PublicJournalTests.
+        # These crypto/H1 cases keep their existing synthetic filesystem seam.
+        self.enterContext(
+            patch.object(
+                boot, "public_journal_directory", side_effect=lambda path: path.mkdir(mode=0o700)
+            )
+        )
+
     def test_diagnostic_projects_only_known_BAD_names_not_arguments_or_UID(self):
         for code in gpg.BAD:
             raw = status() + ("[GNUPG:] " + code + " PRIVATE_UID_PRIVATE_PAYLOAD\n").encode()
