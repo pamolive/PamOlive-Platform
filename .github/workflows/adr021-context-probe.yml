@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      BUILD_CONTEXT_SHA256: 3ca5cf44efe96b937f30d7afa09fba4cb3054375c92579fdb22c94e6d52ce6a7
+      BUILD_CONTEXT_SHA256: c68aedbb20c76fa2e8637806e1bf7563df58cc83f0043467542e15429756b1c8
     steps:
       - name: Receive the exact source revision
         timeout-minutes: 1
@@ -41,7 +41,7 @@ jobs:
         run: |
           timeout --signal=TERM --kill-after=15s 75s bash -euo pipefail <<'SH'
           printf '%s  %s\n' "$BUILD_CONTEXT_SHA256" deploy/build_context.py | sha256sum --check --status
-          python -m unittest tests.test_context_probe_diagnostic
+          python -m unittest tests.test_context_probe_diagnostic tests.test_typed_context_directories
           SH
       - name: Prepare the same committed context and seal as Platform
         timeout-minutes: 2

@@ -108,6 +108,15 @@ def create(root, destination, revision, *, sealed_archive=None, sealed_receipt=N
         stream.seek(0)
         raw = stream.read(MAX_BYTES + 1)
     files = checked_members(raw)
+    if sealed_archive is not None:
+        # Git directory headers may be omitted, but may not introduce an empty
+        # tree that is absent from the unchanged FILE-only v1 representation.
+        _, represented = expected_nodes(files)
+        with tarfile.open(fileobj=io.BytesIO(raw), mode="r:") as archive:
+            require(
+                all(not item.isdir() or item.name.rstrip("/") in represented for item in archive),
+                "context_git_directory_unrepresented",
+            )
     destination.mkdir(mode=0o700)
     manifest, written = {}, {}
     for name, content, mode in files:
@@ -169,12 +178,12 @@ CANARIES = (
     "tests/.env.qualification",
     "tests/qualification.tar",
 )
-SEAL_SCHEMA = "pamolive.sealed-build-context/1"
+SEAL_SCHEMA = "pamolive.sealed-build-context/2"
 IDENTITY_FIELDS = ("dev", "ino", "mode", "uid", "gid", "nlink", "size", "mtime_ns", "ctime_ns")
 
 
 # Finite current-profile policy: never parse arbitrary future .dockerignore rules.
-PROFILE_ID = "pamolive-current-dockerignore-v1"
+PROFILE_ID = "pamolive-current-dockerignore-typed-dirs-v2"
 DOCKERIGNORE_SHA = "5ae994f8624c68308c7b6070364db7371c63a719fd1efe818f891624ae387d87"
 DOCKERFILE_SHA = "618bad8a36158bfecff7df0f1a5039d89904e18881c41cd12553b9b45aa2c01c"
 ROOT_FILES = frozenset(
@@ -274,6 +283,70 @@ def profile():
     }
 
 
+def directory_selection(file_names):
+    """Finite DIR policy on known source paths, never on an observed export."""
+    require(
+        type(file_names) in (set, frozenset) and 1 <= len(file_names) <= MAX_FILES,
+        "context_directory_contract",
+    )
+    directories = set()
+    for name in file_names:
+        require(
+            type(name) is str and 0 < len(name) <= 512 and len(PurePosixPath(name).parts) <= 32,
+            "context_directory_path",
+        )
+        directories.update(
+            str(parent) for parent in PurePosixPath(name).parents if str(parent) != "."
+        )
+        require(len(file_names) + len(directories) <= MAX_FILES, "context_seal_members_budget")
+    require(
+        not directories & (set(ROOT_FILES) | set(CONTROLS) | {".env.example"}),
+        "context_directory_role",
+    )
+    expected_nodes([(name, b"", 0o644) for name in file_names])
+    selected = {
+        name
+        for name in directories
+        if PurePosixPath(name).parts[0] in ROOT_DIRS
+        and not any(
+            fnmatchcase(part, pattern)
+            for part in PurePosixPath(name).parts
+            for pattern in EXCLUDED_COMPONENTS
+        )
+        and not any(name == path or name.startswith(path + "/") for path in EXCLUDED_PATHS)
+    }
+    require(
+        all(
+            str(parent) in selected
+            for name in selected
+            for parent in PurePosixPath(name).parents
+            if str(parent) != "."
+        ),
+        "context_directory_ancestors",
+    )
+    return directories, selected
+
+
+def directory_summary(file_names):
+    directories, selected = directory_selection(file_names)
+    return {
+        "input_directories": len(directories),
+        "input_directories_sha256": hashlib.sha256(canonical(sorted(directories))).hexdigest(),
+        "selected_directories": len(selected),
+        "selected_directories_sha256": hashlib.sha256(canonical(sorted(selected))).hexdigest(),
+    }
+
+
+def typed_nodes_digest(files, directories):
+    expected_nodes(files, explicit_directories=directories)
+    rows = [
+        (name, "FILE", mode, len(data), hashlib.sha256(data).hexdigest())
+        for name, data, mode in files
+    ]
+    rows += [(name, "DIR", 0o755, 0, None) for name in directories]
+    return hashlib.sha256(canonical(sorted(rows))).hexdigest()
+
+
 def selection(files):
     table = {name: data for name, data, _ in files}
     require(
@@ -293,6 +366,7 @@ def selection(files):
         "omitted_git_paths_sha256": hashlib.sha256(canonical(omitted)).hexdigest(),
         "control_files": list(CONTROLS),
         "synthetic_in_tar": 0,
+        **directory_summary(set(table) | set(CANARIES)),
     }
 
 
@@ -347,7 +421,13 @@ def source_manifest(path, receipt, revision):
         type(receipt["selection"]) is dict
         and all(
             type(receipt["selection"].get(key)) is int
-            for key in ("git_files_in_tar", "omitted_git_files", "synthetic_in_tar")
+            for key in (
+                "git_files_in_tar",
+                "omitted_git_files",
+                "synthetic_in_tar",
+                "input_directories",
+                "selected_directories",
+            )
         )
         and receipt["selection"]
         == {
@@ -357,6 +437,7 @@ def source_manifest(path, receipt, revision):
             "omitted_git_paths_sha256": hashlib.sha256(canonical(omitted)).hexdigest(),
             "control_files": list(CONTROLS),
             "synthetic_in_tar": 0,
+            **directory_summary(set(files) | set(CANARIES)),
         },
         "context_selection_changed",
     )
@@ -413,7 +494,7 @@ def exclusive(path, mode=0o600):
             )
 
 
-def expected_nodes(files):
+def expected_nodes(files, *, explicit_directories=None):
     names, directories, folded = {}, set(), set()
     total = 0
     for name, data, mode in files:
@@ -445,14 +526,54 @@ def expected_nodes(files):
         and total <= MAX_BYTES,
         "context_seal_members_budget",
     )
+    if explicit_directories is not None:
+        require(type(explicit_directories) in (set, frozenset), "context_directory_contract")
+        checked = set()
+        for name in explicit_directories:
+            require(type(name) is str, "context_directory_contract")
+            path = PurePosixPath(name)
+            require(
+                0 < len(name) <= 512
+                and bool(path.parts)
+                and str(path) == name
+                and not path.is_absolute()
+                and ".." not in path.parts
+                and len(path.parts) <= 32
+                and "\\" not in name
+                and "\0" not in name
+                and all(
+                    ":" not in part
+                    and part == part.rstrip(" .")
+                    and not re.fullmatch(
+                        r"(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?", part, re.IGNORECASE
+                    )
+                    for part in path.parts
+                )
+                and ".git" not in path.parts,
+                "context_directory_path",
+            )
+            checked.add(name)
+        require(
+            directories <= checked
+            and not set(names) & checked
+            and all(
+                str(parent) in checked
+                for name in checked
+                for parent in PurePosixPath(name).parents
+                if str(parent) != "."
+            )
+            and len(names) + len(checked) <= MAX_FILES,
+            "context_directory_contract",
+        )
+        directories = checked
     all_names = set(names) | directories
     require(len({name.casefold() for name in all_names}) == len(all_names), "context_seal_alias")
     return names, directories
 
 
-def metadata_tree(root, files, written):
+def metadata_tree(root, files, written, *, explicit_directories=None):
     """Metadata only: no filesystem file content is opened or read here."""
-    names, directories = expected_nodes(files)
+    names, directories = expected_nodes(files, explicit_directories=explicit_directories)
     expected = set(names) | directories
     found, aliases = {}, set()
     with directory(root) as root_fd:
@@ -523,9 +644,9 @@ class BoundedWriter:
         return len(data)
 
 
-def write_tar(stream, files):
+def write_tar(stream, files, *, directories=None):
     """Use only original Git buffers and constant public canary buffers."""
-    _, directories = expected_nodes(files)
+    _, directories = expected_nodes(files, explicit_directories=directories)
     writer = BoundedWriter(stream)
     with tarfile.open(fileobj=writer, mode="w:", format=tarfile.PAX_FORMAT) as archive:
         for name in sorted(directories):
@@ -553,6 +674,9 @@ def seal_context(destination, files, written, report, archive_path, receipt_path
         "context_output_inside_input",
     )
     selected, selected_report = selection(files)
+    input_directories, selected_directories = directory_selection(
+        set(report["files"]) | set(CANARIES)
+    )
     original = metadata_tree(destination, files, written)
     require(not set(CANARIES) & set(report["files"]), "context_canary_collision")
     all_files = [*files, *((name, CANARY, 0o644) for name in CANARIES)]
@@ -575,7 +699,9 @@ def seal_context(destination, files, written, report, archive_path, receipt_path
                 require(stream.write(CANARY) == len(CANARY), "context_canary_short_write")
                 os.fchmod(stream.fileno(), 0o644)
                 written[name] = identity(os.fstat(stream.fileno()))
-    captured = metadata_tree(destination, all_files, written)
+    captured = metadata_tree(
+        destination, all_files, written, explicit_directories=input_directories
+    )
     for name in ["root", *original["nodes"]]:
         before = original["root"] if name == "root" else original["nodes"][name]
         after = captured["root"] if name == "root" else captured["nodes"][name]
@@ -585,13 +711,15 @@ def seal_context(destination, files, written, report, archive_path, receipt_path
         )
     # Both files remain local. Only the finite receipt is a public diagnostic.
     with exclusive(archive_path) as stream:
-        count = write_tar(stream, selected)
+        count = write_tar(stream, selected, directories=selected_directories)
         stream.flush()
         os.fsync(stream.fileno())
         os.fchmod(stream.fileno(), 0o400)
         archive_identity = identity(os.fstat(stream.fileno()))
     require(
-        metadata_tree(destination, all_files, written) == captured, "context_changed_during_seal"
+        metadata_tree(destination, all_files, written, explicit_directories=input_directories)
+        == captured,
+        "context_changed_during_seal",
     )
     # Hash this exact descriptor, checked against the identity captured while writing.
     with bound_archive(archive_path, archive_identity) as stream:
@@ -605,10 +733,11 @@ def seal_context(destination, files, written, report, archive_path, receipt_path
         "git_archive_sha256": report["archive_sha256"],
         "source_files": len(files),
         "selection": selected_report,
+        "typed_nodes_sha256": typed_nodes_digest(selected, selected_directories),
         "synthetic_files": list(CANARIES),
         "synthetic_sha256": hashlib.sha256(CANARY).hexdigest(),
         "archive": {"sha256": digest, "bytes": count, "identity": archive_identity},
-        "tar_policy": "sorted-pax-source-modes-uid0-gid0-mtime0-v1",
+        "tar_policy": "sorted-pax-explicit-dirs-source-modes-uid0-gid0-mtime0-v2",
         "recipe_bound": False,
         "build_verified": False,
         "cryptographic_build_attestation_verified": False,
@@ -749,7 +878,26 @@ PROBE_COUNTERS = (
     ("deploy/Dockerfile.partition-probe", False),
     ("deploy/check_image_scan_ci.sh", False),
 )
-PROBE_SCHEMA = "pamolive.context-selection-parity/1"
+PROBE_SCHEMA = "pamolive.context-selection-parity/2"
+PROBE_SCOPE = "typed-selection-and-public-marker-modes-0644-v2"
+
+
+def parity_directories(manifest):
+    git_files = set(manifest["files"])
+    real_input = git_files | set(CANARIES)
+    probe_input = real_input | {name for name, _ in PROBE_COUNTERS}
+    real_dirs, real_selected = directory_selection(real_input)
+    probe_dirs, probe_selected = directory_selection(probe_input)
+    require(
+        probe_selected & real_dirs == real_selected
+        and {name for name in probe_input if copy_selected(name)} & real_input
+        == {name for name in real_input if copy_selected(name)},
+        "context_directory_projection",
+    )
+    return probe_selected, {
+        "real": directory_summary(real_input),
+        "probe": directory_summary(probe_input),
+    }
 
 
 def probe_files(manifest, dockerignore):
@@ -788,9 +936,9 @@ def make_probe_tree(destination, files):
     return metadata_tree(destination, files, written), written
 
 
-def exported_probe(root, files):
+def exported_probe(root, files, *, directories=None):
     # Complete membership/type/size/mode/owner pass BEFORE any output content read.
-    captured = metadata_tree(root, files, None)
+    captured = metadata_tree(root, files, None, explicit_directories=directories)
     for name, data, _ in files:
         path = root / name
         before = captured["nodes"][name]
@@ -811,7 +959,12 @@ def exported_probe(root, files):
                     == before,
                     "context_probe_output_changed",
                 )
-    require(metadata_tree(root, files, None) == captured, "context_probe_output_changed")
+    require(
+        metadata_tree(root, files, None, explicit_directories=directories) == captured,
+        "context_probe_output_changed",
+    )
+    if directories is not None:
+        return typed_nodes_digest(files, directories)
     return hashlib.sha256(
         canonical(
             [
@@ -822,6 +975,95 @@ def exported_probe(root, files):
     ).hexdigest()
 
 
+def checked_typed_members(raw, file_hashes, directories, *, expected_typed_sha):
+    # Validate normalized TarInfo metadata, not physical PAX framing/duplicate records.
+    # The private producer TAR remains bound by its same-FD byte hash under the runner TCB.
+    require(type(raw) is bytes and 0 < len(raw) <= MAX_BYTES, "context_archive_budget")
+    require(
+        type(expected_typed_sha) is str and re.fullmatch(r"[a-f0-9]{64}", expected_typed_sha),
+        "context_tar_contract",
+    )
+    require(
+        type(file_hashes) is dict
+        and all(
+            type(name) is str and type(digest) is str and re.fullmatch(r"[a-f0-9]{64}", digest)
+            for name, digest in file_hashes.items()
+        ),
+        "context_tar_contract",
+    )
+    expected_nodes([(name, b"", 0o644) for name in file_hashes], explicit_directories=directories)
+    expected = set(file_hashes) | directories
+    require(len(expected) <= MAX_FILES and not set(file_hashes) & directories, "context_tar_nodes")
+    headers, seen, folded, total = [], set(), set(), 0
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:") as archive:
+        for member in archive:
+            name = member.name.rstrip("/") if member.isdir() else member.name
+            require(
+                name in expected and name not in seen and name.casefold() not in folded,
+                "context_tar_nodes",
+            )
+            seen.add(name)
+            folded.add(name.casefold())
+            require(len(seen) <= MAX_FILES, "context_file_count")
+            wire_path = name + "/" if name in directories else name
+            path_header_required = len(wire_path) > tarfile.LENGTH_NAME or not wire_path.isascii()
+            require(
+                member.uid == 0
+                and member.gid == 0
+                and member.mtime == 0
+                and member.uname == ""
+                and member.gname == ""
+                and member.linkname == ""
+                and set(member.pax_headers) == ({"path"} if path_header_required else set())
+                and (not path_header_required or member.pax_headers["path"] == wire_path),
+                "context_tar_metadata",
+            )
+            if name in directories:
+                require(
+                    member.type == tarfile.DIRTYPE
+                    and member.mode == 0o755
+                    and member.size == 0
+                    and member.name in {name, name + "/"},
+                    "context_tar_directory",
+                )
+            else:
+                require(
+                    member.type == tarfile.REGTYPE
+                    and member.mode in (0o644, 0o755)
+                    and member.name == name
+                    and 0 <= member.size <= MAX_FILE,
+                    "context_tar_file",
+                )
+                total += member.size
+                require(total <= MAX_BYTES, "context_total_budget")
+                headers.append(member)
+        require(seen == expected, "context_tar_nodes")
+        # Expected content hashes come from the independently checked v1 FILE map,
+        # never from reading candidate member payloads. This binds exact sizes and
+        # modes to the producer's typed digest BEFORE the first extractfile/read.
+        header_rows = [
+            (member.name, "FILE", member.mode, member.size, file_hashes[member.name])
+            for member in headers
+        ]
+        header_rows += [(name, "DIR", 0o755, 0, None) for name in directories]
+        require(
+            hashlib.sha256(canonical(sorted(header_rows))).hexdigest() == expected_typed_sha,
+            "context_tar_typed_digest",
+        )
+        # All names/types/owners/modes/counts/sizes are closed BEFORE the first member read.
+        files = []
+        for member in headers:
+            with archive.extractfile(member) as stream:
+                data = stream.read(member.size + 1)
+            require(
+                len(data) == member.size
+                and hashlib.sha256(data).hexdigest() == file_hashes[member.name],
+                "context_tar_manifest",
+            )
+            files.append((member.name, data, member.mode))
+    return files
+
+
 def verified_tar(stream, receipt, manifest):
     stream.seek(0)
     raw = stream.read(MAX_BYTES + 1)
@@ -830,27 +1072,38 @@ def verified_tar(stream, receipt, manifest):
         and hashlib.sha256(raw).hexdigest() == receipt["archive"]["sha256"],
         "context_archive_hash",
     )
-    rows = checked_members(raw)
-    actual = {name: data for name, data, _ in rows}
     expected = {
         name: digest
         for name, digest in manifest["files"].items()
         if name in CONTROLS or copy_selected(name)
     }
-    require(
-        set(actual) == set(expected)
-        and all(
-            hashlib.sha256(actual[name]).hexdigest() == digest for name, digest in expected.items()
-        ),
-        "context_tar_manifest",
+    _, directories = directory_selection(set(manifest["files"]) | set(CANARIES))
+    files = checked_typed_members(
+        raw, expected, directories, expected_typed_sha=receipt["typed_nodes_sha256"]
     )
-    require(not set(CANARIES) & set(actual), "context_canary_in_tar")
+    require(
+        typed_nodes_digest(files, directories) == receipt["typed_nodes_sha256"],
+        "context_tar_typed_digest",
+    )
+    require(not set(CANARIES) & {row[0] for row in files}, "context_canary_in_tar")
     stream.seek(0)
-    return actual[".dockerignore"]
+    return dict((name, data) for name, data, _ in files)[".dockerignore"]
 
 
 PROBE_DIAGNOSTIC_CODES = frozenset(
     {
+        "context_tar_contract",
+        "context_git_directory_unrepresented",
+        "context_directory_role",
+        "context_directory_ancestors",
+        "context_directory_contract",
+        "context_directory_path",
+        "context_tar_nodes",
+        "context_tar_metadata",
+        "context_tar_directory",
+        "context_tar_file",
+        "context_tar_typed_digest",
+        "context_directory_projection",
         "context_archive_budget",
         "context_archive_changed",
         "context_archive_fd_changed",
@@ -992,6 +1245,8 @@ def probe(archive_path, receipt_path, source_path, probe_path, revision, *, diag
     with bound_archive(archive_path, receipt["archive"]["identity"]) as stream:
         dockerignore = verified_tar(stream, receipt, manifest)
         files = probe_files(manifest, dockerignore)
+        selected_probe_directories, directory_contract = parity_directories(manifest)
+        expected_directories = {"proof"} | {"proof/" + name for name in selected_probe_directories}
         if diagnostic is not None:
             diagnostic["phase"] = "source_create"
         captured, written = make_probe_tree(source, files)
@@ -1021,7 +1276,7 @@ def probe(archive_path, receipt_path, source_path, probe_path, revision, *, diag
         ]
         if diagnostic is not None:
             diagnostic["phase"] = "export_check"
-        digest = exported_probe(exported, expected)
+        digest = exported_probe(exported, expected, directories=expected_directories)
         if diagnostic is not None:
             diagnostic["phase"] = "archive_recheck"
         require(
@@ -1032,6 +1287,9 @@ def probe(archive_path, receipt_path, source_path, probe_path, revision, *, diag
         diagnostic["phase"] = "receipt"
     value = {
         "schema": PROBE_SCHEMA,
+        "probe_scope": PROBE_SCOPE,
+        "marker_file_mode": 0o644,
+        "git_modes_native_observed": False,
         "revision": revision,
         "profile": profile(),
         "status": "PASS",
@@ -1041,7 +1299,10 @@ def probe(archive_path, receipt_path, source_path, probe_path, revision, *, diag
         "source_files": receipt["source_files"],
         "probe_files": len(files),
         "exported_files": len(expected),
+        "exported_directories": len(expected_directories),
         "exported_public_markers_sha256": digest,
+        "directory_contract": directory_contract,
+        "typed_nodes_sha256": receipt["typed_nodes_sha256"],
         "docker_returncode": result.returncode,
         "H1_qualified": False,
         "global_cleanup_qualified": False,
@@ -1059,19 +1320,17 @@ def require_probe(path, receipt, manifest):
     value = read_receipt(path)
     files = marker_files(manifest, b"")
     expected = [("proof/" + name, data, mode) for name, data, mode in files if copy_selected(name)]
-    expected_digest = hashlib.sha256(
-        canonical(
-            [
-                (name, len(data), mode, hashlib.sha256(data).hexdigest())
-                for name, data, mode in sorted(expected)
-            ]
-        )
-    ).hexdigest()
+    selected_directories, directory_contract = parity_directories(manifest)
+    expected_directories = {"proof"} | {"proof/" + name for name in selected_directories}
+    expected_digest = typed_nodes_digest(expected, expected_directories)
     require(
         type(value) is dict
         and set(value)
         == {
             "schema",
+            "probe_scope",
+            "marker_file_mode",
+            "git_modes_native_observed",
             "revision",
             "profile",
             "status",
@@ -1081,13 +1340,20 @@ def require_probe(path, receipt, manifest):
             "source_files",
             "probe_files",
             "exported_files",
+            "exported_directories",
             "exported_public_markers_sha256",
+            "directory_contract",
+            "typed_nodes_sha256",
             "docker_returncode",
             "H1_qualified",
             "global_cleanup_qualified",
             "authority",
         }
         and value["schema"] == PROBE_SCHEMA
+        and value["probe_scope"] == PROBE_SCOPE
+        and type(value["marker_file_mode"]) is int
+        and value["marker_file_mode"] == 0o644
+        and value["git_modes_native_observed"] is False
         and value["status"] == "PASS"
         and value["profile"] == profile()
         and all(
@@ -1102,10 +1368,27 @@ def require_probe(path, receipt, manifest):
         and value["archive_sha256"] == receipt["archive"]["sha256"]
         and value["probe_files"] == len(files)
         and value["exported_files"] == len(expected)
+        and value["exported_directories"] == len(expected_directories)
         and value["exported_public_markers_sha256"] == expected_digest
+        and type(value["directory_contract"]) is dict
+        and set(value["directory_contract"]) == {"real", "probe"}
+        and all(
+            type(row) is dict
+            and set(row)
+            == {
+                "input_directories",
+                "input_directories_sha256",
+                "selected_directories",
+                "selected_directories_sha256",
+            }
+            and all(type(row[key]) is int for key in ("input_directories", "selected_directories"))
+            for row in value["directory_contract"].values()
+        )
+        and value["directory_contract"] == directory_contract
+        and value["typed_nodes_sha256"] == receipt["typed_nodes_sha256"]
         and all(
             type(value[key]) is int and 1 <= value[key] <= MAX_FILES
-            for key in ("source_files", "probe_files", "exported_files")
+            for key in ("source_files", "probe_files", "exported_files", "exported_directories")
         )
         and type(value["docker_returncode"]) is int
         and value["docker_returncode"] == 0
@@ -1130,6 +1413,7 @@ def checked_seal(receipt_path, source_path, revision):
             "git_archive_sha256",
             "source_files",
             "selection",
+            "typed_nodes_sha256",
             "synthetic_files",
             "synthetic_sha256",
             "archive",
@@ -1156,7 +1440,7 @@ def checked_seal(receipt_path, source_path, revision):
         )
         and receipt["synthetic_files"] == list(CANARIES)
         and receipt["synthetic_sha256"] == hashlib.sha256(CANARY).hexdigest()
-        and receipt["tar_policy"] == "sorted-pax-source-modes-uid0-gid0-mtime0-v1"
+        and receipt["tar_policy"] == "sorted-pax-explicit-dirs-source-modes-uid0-gid0-mtime0-v2"
         and type(receipt["source_files"]) is int
         and 1 <= receipt["source_files"] <= MAX_FILES,
         "context_receipt_contract",
@@ -1173,7 +1457,7 @@ def checked_seal(receipt_path, source_path, revision):
         and archive["bytes"] == archive["identity"].get("size")
         and all(
             type(receipt[key]) is str and re.fullmatch(r"[a-f0-9]{64}", receipt[key])
-            for key in ("committed_manifest_sha256", "git_archive_sha256")
+            for key in ("committed_manifest_sha256", "git_archive_sha256", "typed_nodes_sha256")
         )
         and type(archive["sha256"]) is str
         and re.fullmatch(r"[a-f0-9]{64}", archive["sha256"]),

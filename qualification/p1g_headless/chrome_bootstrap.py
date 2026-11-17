@@ -681,6 +681,30 @@ def public_journal_directory(path):
         os.close(fd)
 
 
+def apt_line_projection(body):
+    """Exact raw LF lines, no decoding or normalization; caller gates complete H1."""
+    need(type(body) is bytes and len(body) <= 262144, "command_UNKNOWN")
+    offset, count, rows = 0, 0, []
+    while offset < len(body):
+        stop = body.find(b"\n", offset)
+        end = len(body) if stop < 0 else stop + 1
+        count += 1
+        if count <= 16:
+            line = body[offset:end]
+            severity = next(
+                (
+                    label
+                    for prefix, label in ((b"E:", "E"), (b"W:", "W"), (b"N:", "N"))
+                    if line.startswith(prefix)
+                ),
+                "OTHER",
+            )
+            rows.append({"bytes": len(line), "sha256": sha(line), "severity_enum": severity})
+        offset = end
+    need(count <= 262144, "command_UNKNOWN")
+    return {"total_lines": count, "truncated": count > 16, "lines": rows}
+
+
 def apt_failure_diagnostic(result):
     """Marker observations from the same bounded buffers; never an APT success predicate."""
     boolean_names = (
@@ -768,6 +792,57 @@ def apt_failure_diagnostic(result):
         "dpkg-lock": (b"Unable to acquire the dpkg frontend lock", b"Could not open lock file "),
         "dpkg-maintainer": (b"script subprocess returned error exit status",),
         "interrupted": (b"dpkg was interrupted, you must manually",),
+        "authconsent": (
+            b"There were unauthenticated packages and -y was used without --allow-unauthenticated",
+            b"Some packages could not be authenticated",
+        ),
+        "heldconsent": (
+            b"Held packages were changed and -y was used without --allow-change-held-packages.",
+        ),
+        "essentialconsent": (
+            b"Essential packages were removed and -y was used without --allow-remove-essential.",
+        ),
+        "sourcewarnings": (
+            b"Unable to read ",
+            b"Malformed entry ",
+        ),
+        "internal-install": (
+            b"Internal error, InstallPackages was called with broken packages!",
+            b"Internal error, Ordering didn't finish",
+        ),
+        "internal-source": (
+            b"Internal Error, No file name for ",
+            b"Internal ordering error",
+        ),
+        "archivesnofile": (b"No file name for ",),
+        "space": (
+            b"You don't have enough free space in ",
+            b"Couldn't determine free space in ",
+        ),
+        "exec-hooks": (
+            b"Problem executing scripts ",
+            b"Failed to exec compressor ",
+        ),
+        "size-hash": (
+            b"Hash Sum mismatch",
+            b"Size mismatch",
+        ),
+        "errno-site": (
+            b"Failed to create subprocess IPC",
+            b"Failed to fork",
+            b"Failed to create IPC pipe to subprocess",
+            b"Failed to setgroups",
+            b"Failed to set new user ids",
+            b"Failed to set new group ids",
+        ),
+        "acquire-failed": (
+            b"Failed to fetch ",
+            b"Some files failed to download",
+        ),
+        "configured-state": (
+            b"Internal error, packages left unconfigured.",
+            b"Could not configure ",
+        ),
     }
     counts = {
         kind: sum(body.count(marker) for body in bodies for marker in fragments) if examined else 0
@@ -775,7 +850,18 @@ def apt_failure_diagnostic(result):
     }
     counts["unknown"] = int(not examined or not any(counts.values()))
     return {
-        "schema": "pamolive.chrome-apt-failure-DATA/1",
+        "schema": "pamolive.chrome-apt-failure-DATA/2",
+        "diagnostic_only": True,
+        "line_projection": {
+            "state": "AVAILABLE" if examined else "UNAVAILABLE",
+            "format": "raw-LF-including-terminator/1",
+            **{
+                name: apt_line_projection(getattr(result, name))
+                if examined
+                else {"total_lines": None, "truncated": None, "lines": []}
+                for name in ("stdout", "stderr")
+            },
+        },
         "role": "root-local-exact-install",
         "phase": "install_local_exact",
         "state": "UNKNOWN",

@@ -220,3 +220,29 @@ Le job de reproduction est main seulement, read-only contents/actions,5min,
 sans OIDC ni image produit ; quatre JSON finis sont conservés. Le probe60+15,
 les trois consommateurs TAR et leurs contrôles demeurent inchangés.
 Cette observation ne corrige pas un écart fonctionnel non encore identifié.
+
+### Contrat FILE/DIR et refus avant lecture — 17 novembre 2026
+
+La sélection v2 est calculée sur les chemins Git et les seuls canaries/contre-cas
+constants, avant Docker. FILE et DIR ont des contrats séparés et une projection
+explicite du probe vers le contexte réel ; aucun DIR appris depuis l'export
+ne devient admis. Le TAR consommé conserve les DIR sélectionnés connus, même
+vides. Les contrôles Dockerfile/.dockerignore restent des FILE du frontend.
+Le même FD, les mêmes octets et les trois consommateurs restent liés.
+
+L'empreinte typée des en-têtes utilise les tailles et modes déclarés, les hashes
+de contenu déjà attendus et les DIR connus ; elle doit correspondre au reçu
+avant tout extractfile. Les hashes des vrais contenus sont ensuite contrôlés.
+Cette séparation corrige l'écart de validation de la proposition initiale,
+qui refusait encore après lecture un mode0644 remplacé par0755 ou une taille
+différente. Aucun contournement d'autorité de reçu ni accès à un secret n'a
+été démontré par ces contre-cas synthétiques ; le problème est l'ordre promis.
+
+Les contraintes PAX portent sur les métadonnées sémantiques retournées par
+tarfile, y compris le seul path canonique nécessaire aux noms longs/nonASCII.
+Elles ne prétendent pas analyser les frames PAX physiques déjà fusionnées par
+tarfile. Le writer déterministe, le Git archive capturé, le SHA et le FD privé
+restent dans le modèle de confiance coopératif. Le probe natif exerce la
+sélection FILE/DIR et le mode0644 actuel ;0755 demeure source/TAR/purs, pas une
+preuve générale de propagation Docker pour une future entrée exécutable.
+Ni ces contrôles ni les diagnostics APT /2 ne ferment à eux seuls ADR-021 A–F.

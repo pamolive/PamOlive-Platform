@@ -1290,3 +1290,142 @@ class AptFailureDiagnosticTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AptProjection2Tests(unittest.TestCase):
+    result = AptFailureDiagnosticTests.result
+
+    def test_raw_LF_CRLF_final_segment_empty_and_severity_are_not_normalized(self):
+        cases = [
+            (b"", []),
+            (b"E: one\n", [b"E: one\n"]),
+            (b"W: two\r\nN: three", [b"W: two\r\n", b"N: three"]),
+            (b"\n\xff\x00\r", [b"\n", b"\xff\x00\r"]),
+        ]
+        for raw, lines in cases:
+            with self.subTest(raw=raw):
+                packet = boot.apt_failure_diagnostic(self.result(stdout=b"", stderr=raw))
+                self.assertEqual(packet["schema"], "pamolive.chrome-apt-failure-DATA/2")
+                projection = packet["line_projection"]["stderr"]
+                self.assertEqual(projection["total_lines"], len(lines))
+                self.assertFalse(projection["truncated"])
+                self.assertEqual([r["bytes"] for r in projection["lines"]], [len(r) for r in lines])
+                self.assertEqual(
+                    [r["sha256"] for r in projection["lines"]], [boot.sha(r) for r in lines]
+                )
+                for row, line in zip(projection["lines"], lines):
+                    expected = chr(line[0]) if line.startswith((b"E:", b"W:", b"N:")) else "OTHER"
+                    self.assertEqual(row["severity_enum"], expected)
+
+    def test_sixteen_first_lines_exact_total_and_absolute_byte_cap(self):
+        for raw, count in (
+            (b"X\n" * 16, 16),
+            (b"X\n" * 17, 17),
+            (b"\n" * 262144, 262144),
+            (b"X" * 262144, 1),
+        ):
+            packet = boot.apt_failure_diagnostic(self.result(stdout=raw, stderr=raw))
+            for name in ("stdout", "stderr"):
+                value = packet["line_projection"][name]
+                self.assertEqual(value["total_lines"], count)
+                self.assertEqual(len(value["lines"]), min(16, count))
+                self.assertEqual(value["truncated"], count > 16)
+            self.assertLessEqual(len(json.dumps(packet).encode()), 8192)
+
+    def test_unknown_H1_or_one_invalid_buffer_never_hashes_partial_lines(self):
+        cases = (
+            {"reason": "timeout"},
+            {"returncode": True},
+            {"owned_child_reaped": False},
+            {"drains_complete": False},
+            {"killed_owned_child": True},
+            {"stderr": b"X" * 262145},
+            {"stderr": "PRIVATE"},
+            {"stdout": bytearray(b"PRIVATE")},
+        )
+        for changes in cases:
+            with (
+                self.subTest(changes=list(changes)),
+                patch.object(
+                    boot,
+                    "apt_line_projection",
+                    side_effect=AssertionError("no partial line projection"),
+                ),
+            ):
+                packet = boot.apt_failure_diagnostic(self.result(**changes))
+                self.assertEqual(packet["line_projection"]["state"], "UNAVAILABLE")
+                for name in ("stdout", "stderr"):
+                    self.assertEqual(
+                        packet["line_projection"][name],
+                        {"total_lines": None, "truncated": None, "lines": []},
+                    )
+                self.assertEqual(packet["root_cause"], "UNKNOWN")
+
+    def test_new_primary_fragment_observations_never_become_consent_or_cause(self):
+        samples = {
+            "authconsent": (
+                b"There were unauthenticated packages and -y was used "
+                b"without --allow-unauthenticated"
+            ),
+            "heldconsent": (
+                b"Held packages were changed and -y was used without --allow-change-held-packages."
+            ),
+            "essentialconsent": (
+                b"Essential packages were removed and -y was used without --allow-remove-essential."
+            ),
+            "sourcewarnings": b"Unable to read ",
+            "internal-install": b"Internal error, Ordering didn't finish",
+            "internal-source": b"Internal ordering error",
+            "archivesnofile": b"No file name for ",
+            "space": b"You don't have enough free space in ",
+            "exec-hooks": b"Problem executing scripts ",
+            "size-hash": b"Hash Sum mismatch",
+            "errno-site": b"Failed to fork",
+            "acquire-failed": b"Failed to fetch ",
+            "configured-state": b"Could not configure ",
+        }
+        for kind, fragment in samples.items():
+            with self.subTest(kind=kind):
+                packet = boot.apt_failure_diagnostic(
+                    self.result(stderr=b"E: " + fragment + b"PRIVATE\n")
+                )
+                self.assertGreater(packet["marker_counts"][kind], 0)
+                self.assertEqual(packet["root_cause"], "UNKNOWN")
+                self.assertEqual(packet["state"], "UNKNOWN")
+                self.assertFalse(packet["installation_verified"])
+                self.assertFalse(packet["operational_GO"])
+                self.assertNotIn("PRIVATE", json.dumps(packet))
+
+    def test_private_control_bytes_and_terminal_sequences_never_leave_projection(self):
+        secret = b"PRIVATE ::error:: token=synthetic-secret UID=nominal /private/path"
+        raw = b"E: " + secret + b"\x00\xff\x1b[31m\r\nN: " + secret
+        packet = boot.apt_failure_diagnostic(self.result(stdout=raw, stderr=raw))
+        encoded = json.dumps(packet).encode()
+        for private in (
+            b"PRIVATE",
+            b"::error::",
+            b"synthetic-secret",
+            b"nominal",
+            b"/private/path",
+            b"31m",
+        ):
+            self.assertNotIn(private, encoded)
+        self.assertEqual(packet["streams"]["stdout"]["sha256"], boot.sha(raw))
+        self.assertEqual(
+            packet["line_projection"]["stdout"]["lines"][0]["bytes"], len(raw.split(b"\n")[0]) + 1
+        )
+
+    def test_composed_failed_APT_command_still_refuses_after_projection2_sink_failure(self):
+        old = AptFailureDiagnosticTests()
+        command, error, writes, calls = old.command(
+            self.result(stderr=b"E: Some packages could not be authenticated\n")
+        )
+        self.assertIsInstance(error, ValueError)
+        self.assertTrue(command.unknown)
+        packet = json.loads(next(raw for name, raw, _ in writes if name == "apt-failure.json"))
+        self.assertEqual(packet["schema"], "pamolive.chrome-apt-failure-DATA/2")
+        self.assertEqual(packet["line_projection"]["stderr"]["lines"][0]["severity_enum"], "E")
+        command, error, _, _ = old.command(self.result(), failures=("apt-failure.json",))
+        self.assertIsInstance(error, ValueError)
+        self.assertTrue(command.unknown)
+        self.assertEqual(len(calls), 1)

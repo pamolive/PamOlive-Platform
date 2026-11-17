@@ -250,6 +250,17 @@ class SealedContextTests(TestCase):
         destination = destinations[body]
         exported = argv[argv.index("--output") + 1].removeprefix("type=local,dest=")
         self.fs.add(exported, None, 0o700)
+        # Model directory entries independently of surviving files. In particular,
+        # a selected known parent remains when its only child is excluded.
+        for path, node in list(self.fs.nodes.items()):
+            if path.startswith(source + "/") and node["data"] is None:
+                name = path[len(source) + 1 :]
+                if PurePosixPath(name).parts[0] in gate.ROOT_DIRS and gate.copy_selected(name):
+                    target = PurePosixPath(exported) / destination / name
+                    for parent in reversed(target.parents):
+                        if str(parent) not in self.fs.nodes:
+                            self.fs.add(str(parent), None, 0o755)
+                    self.fs.add(str(target), None, 0o755)
         for path, node in list(self.fs.nodes.items()):
             if path.startswith(source + "/") and node["data"] is not None:
                 name = path[len(source) + 1 :]
@@ -758,8 +769,8 @@ class SealedContextTests(TestCase):
         original = gate.write_tar
         with self.fs.install():
 
-            def changed(stream, files):
-                count = original(stream, files)
+            def changed(stream, files, **kwargs):
+                count = original(stream, files, **kwargs)
                 self.fs.changed(self.fs.nodes["/ctx/config/public.py"])
                 return count
 
@@ -884,6 +895,19 @@ class SealedContextTests(TestCase):
             receipt = self.seal()
             manifest = json.loads(self.fs.nodes["/sealed/manifest.json"]["data"])
             manifest["files"]["config/public.py"] = "e" * 64
+            # Keep the forged expected header contract coherent so this old case
+            # still reaches the independent payload-v1 hash guard, rather than
+            # stopping at the stronger R2 pre-read metadata digest.
+            _, directories = gate.directory_selection(set(manifest["files"]) | set(gate.CANARIES))
+            header_rows = [
+                (name, "FILE", mode, len(body), manifest["files"][name])
+                for name, body, mode in self.files
+                if name in gate.CONTROLS or gate.copy_selected(name)
+            ]
+            header_rows += [(name, "DIR", 0o755, 0, None) for name in directories]
+            receipt["typed_nodes_sha256"] = hashlib.sha256(
+                gate.canonical(sorted(header_rows))
+            ).hexdigest()
             receipt["committed_manifest_sha256"] = hashlib.sha256(
                 gate.canonical(manifest)
             ).hexdigest()
@@ -891,6 +915,7 @@ class SealedContextTests(TestCase):
             self.replace_json("/sealed/receipt.json", receipt)
             parity = json.loads(self.fs.nodes["/sealed/probe.json"]["data"])
             parity["committed_manifest_sha256"] = receipt["committed_manifest_sha256"]
+            parity["typed_nodes_sha256"] = receipt["typed_nodes_sha256"]
             self.replace_json("/sealed/probe.json", parity)
             with patch.object(gate.subprocess, "run") as run:
                 with self.assertRaisesRegex(ValueError, "context_tar_manifest"):

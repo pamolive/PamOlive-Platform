@@ -1,5 +1,39 @@
 # P1-F — qualification de sécurité de l’image
 
+## Contrat de contexte typé en qualification — 17 novembre 2026
+
+Sur main ebc142c, les 1 646 tests PostgreSQL au total comprennent 42 ignorés,
+sans échec ni erreur. Le contrôle Docker refuse ensuite pendant export_check
+avec context_unknown_entry : le garde couvre un nom hors ensemble ou rencontré
+deux fois. Le type et le nom historiques ne sont pas reçus ; aucun répertoire
+vide particulier n'est présenté comme la cause prouvée. Les trois builds
+suivants et le scan d'image restent sautés, sans image nouvelle qualifiée.
+
+Le contrat v2 distingue les FILE et DIR connus avant Docker. Les répertoires
+sélectionnés, y compris les vides connus, appartiennent au TAR réel ; ceux
+propres aux contre-cas du probe n'y entrent pas. Les en-têtes et leur empreinte
+typée exacte doivent être contrôlés avant la première lecture de contenu.
+Une revue adverse a conservé deux contre-cas (mode autorisé différent et taille
+différente) : la première proposition refusait finalement après trois lectures.
+Cette proposition n'a pas été publiée et le contrôle est avancé avant lecture.
+Les modes, propriétaires, liens, alias, limites et racines privées restent
+stricts. Les reçus scellés et de parité v1 ne sont pas réutilisables en v2 ;
+la création Git v1 sans scellement garde son interface. L'oracle Linux reste
+obligatoire. Les FILE Git actuels sont tous0644 ; le mode0755 est contrôlé
+dans le TAR et les tests purs, sans preuve native générale pour des FILE futurs.
+
+Le diagnostic APT du navigateur passe à /2 : compteurs finis et au plus16
+empreintes de lignes par flux, sans texte brut. Ces observations ne prouvent
+ni une cause, ni une installation ; les reçus /1 historiques restent lisibles.
+Aucune option APT, autorité, permission ou durée d'installation n'est élargie.
+Les preuves GPG et les validations de l'interpréteur et installé/2 sont préservées.
+
+La branche séparée de capture Expat APT (PR22 en brouillon) a atteint les trois
+vérifications de dépôts puis refusé la simulation APT. Elle n'a ni approuvé un
+jeu de dépendances, ni installé de paquet dans le produit. Les frontières de
+provenance, matières, compilation et qualification ADR-021 restent ouvertes.
+Aucun tag d'image, déploiement ou accès NAS n'est effectué pour ces essais.
+
 Comptage : les totaux unittest incluent les cas ignorés ; un test ignoré ne constitue pas une validation.
 
 Le diagnostic navigateur R8 ajoute une projection fermée des mêmes buffers
