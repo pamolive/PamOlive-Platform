@@ -1271,9 +1271,7 @@ class WorkerFailureDiagnosticTests(unittest.TestCase):
         self,
     ):
         valid = self.completed_refusal()
-        self.assertEqual(
-            cap.worker_failure_diagnostic(valid, m), json.loads(valid.stdout)
-        )
+        self.assertEqual(cap.worker_failure_diagnostic(valid, m), json.loads(valid.stdout))
         for changes in (
             {"ok": True},
             {"spawn_attempted": 1},
@@ -1315,9 +1313,7 @@ class WorkerFailureDiagnosticTests(unittest.TestCase):
                 )
             )
         for raw in (b"PRIVATE", b"{}", b'{"schema":1,"schema":2}', b'{"x":NaN}'):
-            self.assertIsNone(
-                cap.worker_failure_diagnostic(self.completed_refusal(stdout=raw), m)
-            )
+            self.assertIsNone(cap.worker_failure_diagnostic(self.completed_refusal(stdout=raw), m))
 
     def test_46_literal_tables_are_finite_and_match_parent_integer_bound(self):
         import ast
@@ -1337,13 +1333,9 @@ class WorkerFailureDiagnosticTests(unittest.TestCase):
         import ast
 
         tree = ast.parse((CODE / "capture.py").read_bytes())
-        network = next(
-            n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "Network"
-        )
+        network = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "Network")
         function = next(
-            n
-            for n in network.body
-            if isinstance(n, ast.FunctionDef) and n.name == "perform"
+            n for n in network.body if isinstance(n, ast.FunctionDef) and n.name == "perform"
         )
         text = ast.unparse(function)
         self.assertLess(
@@ -1404,12 +1396,334 @@ class WorkerFailureDiagnosticTests(unittest.TestCase):
                     net.public("https://deb.debian.org/fixed", cap=1)
             self.assertEqual(len(calls), 1)
             self.assertIn("/proof/network/1/UNKNOWN.json", writes)
-            self.assertEqual(
-                "/proof/network/1/worker-failure.json" in writes, not fail_write
-            )
-            self.assertNotIn(
-                "PRIVATE", json.dumps({p: r.decode() for p, r in writes.items()})
-            )
+            self.assertEqual("/proof/network/1/worker-failure.json" in writes, not fail_write)
+            self.assertNotIn("PRIVATE", json.dumps({p: r.decode() for p, r in writes.items()}))
+
+
+class AptSimulationDiagnosticTests(unittest.TestCase):
+    def result(self, **changes):
+        fields = dict(
+            ok=False,
+            spawn_attempted=True,
+            pid=123,
+            returncode=100,
+            reason="nonzero_exit",
+            exception_type=None,
+            cleanup_exception_type=None,
+            owned_child_reaped=True,
+            drains_complete=True,
+            killed_owned_child=False,
+            stdout=b"Reading package lists...\n",
+            stderr=t.APT_ARCHIVES_ERROR + b"\n",
+        )
+        fields.update(changes)
+        return SimpleNamespace(**fields, facts=lambda: {"returncode": fields["returncode"]})
+
+    def packet(self, **changes):
+        return t.apt_failure_diagnostic(self.result(**changes), "a" * 64, "a" * 64)
+
+    def test_49_full_stdout_progress_does_not_hide_complete_stderr_error(self):
+        packet = self.packet(stdout=b"PUBLIC_PROGRESS\n" * 200)
+        self.assertTrue(packet["normal_rc100"])
+        self.assertEqual(packet["state"], "REFUSED")
+        self.assertTrue(packet["archives_missing_message_observed"])
+        self.assertEqual(packet["exported_lines"][0]["stream"], "stderr")
+        self.assertEqual(packet["exported_lines"][0]["class"], "archives_missing_no_download")
+        self.assertEqual(packet["omitted_lines"], 200)
+        self.assertTrue(packet["input_valid"])
+
+    def test_50_priority_and_output_omissions_are_not_input_truncation(self):
+        packet = self.packet(
+            stdout=b"E: PUBLIC_OTHER\n" * 100,
+            stderr=b"W: PUBLIC_WARNING\n" * 100 + t.APT_ARCHIVES_ERROR + b"\n",
+        )
+        self.assertEqual(len(packet["exported_lines"]), 32)
+        self.assertEqual(packet["exported_lines"][0]["class"], "archives_missing_no_download")
+        self.assertEqual(packet["omitted_message_lines"], 169)
+        self.assertEqual(packet["invalid_lines"], 0)
+        self.assertTrue(packet["input_valid"])
+        self.assertTrue(packet["archives_missing_message_observed"])
+        # Even the 40th error must be scanned, not prefix-truncated by export cap.
+        late = self.packet(stderr=b"E: PUBLIC_OTHER\n" * 39 + t.APT_ARCHIVES_ERROR + b"\n")
+        self.assertTrue(late["archives_missing_message_observed"])
+        self.assertIn("archives_missing_no_download", [r["class"] for r in late["exported_lines"]])
+
+    def test_51_canary_text_unknown_error_and_exception_never_leave_as_raw(self):
+        secret = b"PRIVATE_CANARY_PATH_URL_AND_TOKEN"
+        packet = self.packet(stderr=b"E: " + secret + b"\n")
+        self.assertEqual(packet["exported_lines"][0]["class"], "apt_error_other")
+        self.assertEqual(packet["exported_lines"][0]["sha256"], g.sha(b"E: " + secret))
+        self.assertNotIn(secret.decode(), json.dumps(packet))
+        self.assertFalse(packet["archives_missing_message_observed"])
+        unknown = self.packet(exception_type=secret.decode())
+        self.assertEqual(unknown["state"], "UNKNOWN")
+        self.assertEqual(unknown["exported_lines"], [])
+        self.assertNotIn(secret.decode(), json.dumps(unknown))
+
+    def test_52_rc0_rc1_bool_signal_and_uncertain_lifecycle_never_classify100(self):
+        for changes in (
+            {"ok": True},
+            {"ok": 0},
+            {"returncode": 0},
+            {"returncode": 1},
+            {"returncode": True},
+            {"returncode": -15},
+            {"returncode": None},
+            {"spawn_attempted": 1},
+            {"pid": True},
+            {"pid": 0},
+            {"reason": "timeout"},
+            {"reason": None},
+            {"exception_type": "PRIVATE"},
+            {"cleanup_exception_type": "PRIVATE"},
+            {"owned_child_reaped": False},
+            {"owned_child_reaped": 1},
+            {"drains_complete": False},
+            {"killed_owned_child": True},
+        ):
+            with self.subTest(fields=tuple(changes)):
+                packet = self.packet(**changes)
+                self.assertFalse(packet["normal_rc100"])
+                self.assertEqual(packet["state"], "UNKNOWN")
+                self.assertEqual(packet["exported_lines"], [])
+                self.assertFalse(packet["archives_missing_message_observed"])
+
+    def test_53_invalid_entire_input_cannot_match_valid_prefix_or_other_stream(self):
+        for raw in (
+            t.APT_ARCHIVES_ERROR,
+            t.APT_ARCHIVES_ERROR + b"\r\n",
+            t.APT_ARCHIVES_ERROR + b"\x00\n",
+            t.APT_ARCHIVES_ERROR + b"\xff\n",
+            t.APT_ARCHIVES_ERROR + b" " * 4097 + b"\n",
+        ):
+            for stream in ("stderr", "stdout"):
+                with self.subTest(stream=stream, raw_length=len(raw)):
+                    packet = self.packet(**{stream: raw})
+                    self.assertEqual(packet["state"], "UNKNOWN")
+                    self.assertFalse(packet["input_valid"])
+                    self.assertFalse(packet["archives_missing_message_observed"])
+                    self.assertEqual(packet["exported_lines"], [])
+        packet = self.packet(stdout=b"\xff\n")
+        self.assertEqual(packet["encoding_invalid_streams"], 1)
+        self.assertEqual(packet["invalid_lines"], 0)
+
+    def test_54_input_caps_types_and_tool_changes_remain_unknown(self):
+        for changes in (
+            {"stdout": b"x" * (1024**2 + 1)},
+            {"stderr": b"x" * 262145},
+            {"stdout": bytearray(b"PUBLIC\n")},
+            {"stderr": None},
+        ):
+            packet = self.packet(**changes)
+            self.assertEqual(packet["state"], "UNKNOWN")
+            self.assertGreater(packet["unbounded_streams"], 0)
+        for after in (None, "b" * 64, False):
+            packet = t.apt_failure_diagnostic(self.result(), "a" * 64, after)
+            self.assertEqual(packet["state"], "UNKNOWN")
+            self.assertFalse(packet["tool_stable"])
+            self.assertFalse(packet["archives_missing_message_observed"])
+
+    def test_55_envelope_stays_bounded_and_authority_flags_always_false(self):
+        packet = self.packet(stdout=b"E: X\n" * 200000)
+        self.assertTrue(packet["input_valid"])
+        self.assertEqual(len(packet["exported_lines"]), 32)
+        self.assertLessEqual(len(json.dumps(packet).encode()), 16384)
+        for name in (
+            "operational_GO",
+            "build_verified",
+            "materials_complete",
+            "all_OS_descendants_released",
+        ):
+            self.assertIs(packet[name], False)
+        none = self.packet(stdout=b"", stderr=b"")
+        self.assertFalse(none["archives_missing_message_observed"])
+        self.assertEqual(none["exported_lines"], [])
+
+    def run_failure(self, *, result=None, fail_write=False, after=None, role="apt_simulate"):
+        writes, events = {}, []
+        result = result or self.result()
+
+        def run(argv, **kwargs):
+            events.append(("spawn", tuple(argv), kwargs))
+            kwargs["on_spawn"](123)
+            return result
+
+        def tool(path):
+            events.append(("tool", path))
+            if len([e for e in events if e[0] == "tool"]) == 1:
+                return "a" * 64, (1,)
+            if after == "RAISE":
+                raise ValueError("PRIVATE_TOOL_ERROR")
+            if after == "IDENTITY":
+                return "a" * 64, (2,)
+            return after or "a" * 64, (1,)
+
+        def write(path, raw, *args):
+            events.append(("write", str(path)))
+            if fail_write and str(path).endswith("-apt-diagnostic.json"):
+                raise OSError("PRIVATE_WRITE_ERROR")
+            writes[str(path)] = raw
+
+        runner = t.Runner(SimpleNamespace(run_capped=run), m, {}, until=1000)
+        runner.tool_pin = tool
+        env = {
+            "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+            "LANG": "C",
+            "LC_ALL": "C",
+            "HOME": "/expat-apt-work",
+            "APT_CONFIG": "/expat-apt-work/solver.conf",
+            "DEBIAN_FRONTEND": "noninteractive",
+        }
+        with (
+            patch.object(t, "write_new", write),
+            patch.object(t, "PROOF", PurePosixPath("/expat-apt-proof")),
+            patch.object(t.time, "monotonic", return_value=0),
+        ):
+            with self.assertRaisesRegex(ValueError, "^client_failed_or_UNKNOWN$"):
+                runner.call(
+                    list(t.APT_SIMULATE_ARGV),
+                    seconds=90,
+                    cap=1024**2,
+                    env=env,
+                    diagnostic_role=role,
+                )
+            self.assertTrue(runner.unknown)
+            self.assertEqual(runner.records, [])
+            with self.assertRaisesRegex(ValueError, "^client_budget_or_UNKNOWN$"):
+                runner.call(
+                    list(t.APT_SIMULATE_ARGV),
+                    seconds=90,
+                    cap=1024**2,
+                    env=env,
+                    diagnostic_role=role,
+                )
+        return writes, events
+
+    def test_56_real_runner_failure_diagnoses_before_original_refusal_without_extra_spawn(self):
+        writes, events = self.run_failure()
+        packet = json.loads(writes["/expat-apt-proof/command-1-apt-diagnostic.json"])
+        self.assertEqual(packet["state"], "REFUSED")
+        self.assertTrue(packet["archives_missing_message_observed"])
+        self.assertIn("/expat-apt-proof/command-1-UNKNOWN.json", writes)
+        self.assertEqual(len([e for e in events if e[0] == "spawn"]), 1)
+        self.assertEqual(len([e for e in events if e[0] == "tool"]), 2)
+        spawn = next(e for e in events if e[0] == "spawn")
+        self.assertEqual(spawn[2]["work_timeout"], 90)
+        self.assertEqual(spawn[2]["timeout"], 100)
+        self.assertEqual(spawn[2]["stdout_cap"], 1024**2)
+        self.assertEqual(spawn[2]["stderr_cap"], 262144)
+
+    def test_57_projection_write_failure_and_tool_failure_preserve_primary_unknown(self):
+        writes, _ = self.run_failure(fail_write=True)
+        self.assertNotIn("/expat-apt-proof/command-1-apt-diagnostic.json", writes)
+        self.assertIn("/expat-apt-proof/command-1-UNKNOWN.json", writes)
+        for after in ("RAISE", "IDENTITY", "b" * 64):
+            writes, _ = self.run_failure(after=after)
+            packet = json.loads(writes["/expat-apt-proof/command-1-apt-diagnostic.json"])
+            self.assertEqual(packet["state"], "UNKNOWN")
+            self.assertFalse(packet["tool_stable"])
+            self.assertFalse(packet["archives_missing_message_observed"])
+            self.assertNotIn("PRIVATE", json.dumps(packet))
+        with patch.object(
+            t, "apt_failure_diagnostic", side_effect=RuntimeError("PRIVATE_CALLBACK")
+        ):
+            writes, _ = self.run_failure()
+        self.assertIn("/expat-apt-proof/command-1-UNKNOWN.json", writes)
+
+    def test_58_closed_role_rejects_other_argv_env_budgets_before_tool_or_spawn(self):
+        self.assertEqual(tuple(t.APT_SIMULATE_ARGV[6:]), g.REQUESTS)
+        base = dict(
+            argv=list(t.APT_SIMULATE_ARGV),
+            seconds=90,
+            cap=1024**2,
+            env={
+                "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+                "LANG": "C",
+                "LC_ALL": "C",
+                "HOME": "/expat-apt-work",
+                "APT_CONFIG": "/expat-apt-work/solver.conf",
+                "DEBIAN_FRONTEND": "noninteractive",
+            },
+            diagnostic_role="apt_simulate",
+        )
+        for changes in (
+            {"diagnostic_role": True},
+            {"diagnostic_role": "PRIVATE"},
+            {"argv": ["/usr/bin/apt-get", "install", "private"]},
+            {"argv": list(t.APT_SIMULATE_ARGV) + ["--fix-missing"]},
+            {"env": {**base["env"], "PRIVATE": "SECRET"}},
+            {"seconds": 91},
+            {"seconds": True},
+            {"cap": 1024**2 + 1},
+            {"post_expected": {}},
+        ):
+            runner = t.Runner(None, m, {}, until=1000)
+            runner.tool_pin = lambda _: self.fail("tool must not be read")
+            with self.assertRaisesRegex(ValueError, "^apt_diagnostic_role$"):
+                runner.call(**{**base, **changes})
+            self.assertEqual(runner.ordinal, 0)
+
+    def test_59_real_solver_failure_stops_before_plan_and_material_payloads(self):
+        solver = module("c_diagnostic_solver", "solver.py")
+        events = []
+
+        class MP(PurePosixPath):
+            def mkdir(self, **kwargs):
+                events.append(("mkdir", str(self)))
+
+        def call(argv, **kwargs):
+            self.assertEqual(tuple(argv), t.APT_SIMULATE_ARGV)
+            self.assertEqual(kwargs["diagnostic_role"], "apt_simulate")
+            self.assertEqual(kwargs["seconds"], 90)
+            self.assertEqual(kwargs["cap"], 1024**2)
+            raise ValueError("client_failed_or_UNKNOWN")
+
+        tx = SimpleNamespace(
+            WORK=MP("/expat-apt-work"),
+            apt_configuration=t.apt_configuration,
+            write_new=lambda p, raw, *a: events.append(("write", str(p))),
+        )
+        runner = SimpleNamespace(call=call)
+        with patch.object(
+            solver, "parse_plan", side_effect=AssertionError("no plan after failure")
+        ):
+            with self.assertRaisesRegex(ValueError, "^client_failed_or_UNKNOWN$"):
+                simulation = solver.configure(
+                    runner,
+                    g,
+                    {s: b"PUBLIC" for s in g.REPOSITORIES},
+                    {s: b"PUBLIC" for s in g.REPOSITORIES},
+                    tx,
+                )
+                solver.parse_plan(simulation, {}, {}, m)
+        self.assertFalse(any(p.endswith(".deb") for _, p in events))
+
+    def test_60_legacy_calls_do_not_project_or_postcheck_nonzero_as_success(self):
+        writes, events = self.run_failure(role=None)
+        self.assertFalse(any(p.endswith("-apt-diagnostic.json") for p in writes))
+        self.assertEqual(len([e for e in events if e[0] == "tool"]), 1)
+
+    def test_61_success_keeps_old_postcheck_and_returns_buffers_without_diagnostic(self):
+        writes = {}
+        result = self.result(ok=True, returncode=0, reason=None, stderr=b"")
+
+        def run(argv, **kwargs):
+            kwargs["on_spawn"](123)
+            return result
+
+        runner = t.Runner(SimpleNamespace(run_capped=run), m, {}, until=1000)
+        runner.tool_pin = lambda _: ("a" * 64, (1,))
+        with (
+            patch.object(t.time, "monotonic", return_value=0),
+            patch.object(t, "write_new", lambda p, b: writes.update({str(p): b})),
+            patch.object(
+                t, "apt_failure_diagnostic", side_effect=AssertionError("no success diagnostic")
+            ),
+        ):
+            self.assertEqual(runner.call(["/usr/bin/apt-get"], seconds=30), (result.stdout, b""))
+        self.assertFalse(runner.unknown)
+        self.assertEqual(len(runner.records), 1)
+        self.assertFalse(any(p.endswith("-apt-diagnostic.json") for p in writes))
 
 
 if __name__ == "__main__":

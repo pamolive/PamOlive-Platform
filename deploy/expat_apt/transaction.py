@@ -16,6 +16,162 @@ WORK = Path("/expat-apt-work")
 PROOF = Path("/expat-apt-proof")
 VERSION = b"sqv 1.5.0 (sequoia-openpgp 2.4.1, using Nettle 3.10 (Cv448: true, OCB: true))\n"
 IDENTITY = ("dev", "ino", "mode", "uid", "gid", "nlink", "size", "mtime_ns", "ctime_ns")
+APT_SIMULATE_ARGV = (
+    "/usr/bin/apt-get",
+    "--simulate",
+    "--no-download",
+    "--no-remove",
+    "--no-install-recommends",
+    "install",
+    "build-essential",
+    "binutils",
+    "patch",
+    "gpg=2.4.7-21+deb13u1+b5",
+    "dpkg-dev",
+    "debhelper",
+    "autoconf",
+    "automake",
+    "libtool",
+    "pkg-config",
+    "docbook-to-man",
+    "docbook2x",
+    "libexpat1-dev=2.9.0-1~deb13u1",
+    "ca-certificates",
+)
+APT_ARCHIVES_ERROR = (
+    b"E: Unable to fetch some archives, maybe run apt-get update or try with --fix-missing?"
+)
+
+
+def apt_failure_diagnostic(result, before_sha, after_sha):
+    """Messages only, never solver authority; no buffer fragments leave this function."""
+    stable = (
+        type(before_sha) is str
+        and re.fullmatch("[a-f0-9]{64}", before_sha) is not None
+        and type(after_sha) is str
+        and after_sha == before_sha
+    )
+    normal = (
+        result.ok is False
+        and result.spawn_attempted is True
+        and type(result.pid) is int
+        and result.pid > 0
+        and type(result.returncode) is int
+        and result.returncode == 100
+        and result.reason == "nonzero_exit"
+        and result.exception_type is result.cleanup_exception_type is None
+        and result.owned_child_reaped is True
+        and result.drains_complete is True
+        and result.killed_owned_child is False
+    )
+    buffers = (("stderr", result.stderr, 262144), ("stdout", result.stdout, 1024**2))
+    valid = True
+    streams = {}
+    # At most 32 hashes per finite severity/stream bucket, even for huge line counts.
+    buckets = {(stream, prefix): [] for stream, _, _ in buffers for prefix in (b"E:", b"W:", b"N:")}
+    eligible = total_lines = invalid_lines = encoding_invalid_streams = unbounded_streams = 0
+    seen_archives_message = False
+    for stream, raw, cap in buffers:
+        bounded = type(raw) is bytes and len(raw) <= cap
+        streams[stream] = {
+            "bytes": len(raw) if type(raw) is bytes else None,
+            "sha256": sha(raw) if bounded else None,
+            "bounded": bounded,
+        }
+        if not bounded:
+            valid = False
+            unbounded_streams += 1
+            continue
+        try:
+            raw.decode("utf8")
+            encoding = True
+        except UnicodeDecodeError:
+            encoding = False
+            encoding_invalid_streams += 1
+        valid = valid and encoding
+        start = 0
+        while start < len(raw):
+            end = raw.find(b"\n", start)
+            complete = end >= 0
+            if not complete:
+                end = len(raw)
+            line = raw[start:end]
+            start = end + 1
+            total_lines += 1
+            line_valid = (
+                complete and len(line) <= 4096 and b"\r" not in line and b"\x00" not in line
+            )
+            if not line_valid:
+                invalid_lines += 1
+                valid = False
+                continue
+            prefix = line[:2]
+            if prefix not in (b"E:", b"W:", b"N:"):
+                continue
+            eligible += 1
+            exact = line == APT_ARCHIVES_ERROR
+            seen_archives_message = seen_archives_message or exact
+            bucket = buckets[stream, prefix]
+            if len(bucket) < 32:
+                bucket.append(
+                    {
+                        "stream": stream,
+                        "class": (
+                            "archives_missing_no_download"
+                            if exact
+                            else {
+                                b"E:": "apt_error_other",
+                                b"W:": "apt_warning_other",
+                                b"N:": "apt_notice_other",
+                            }[prefix]
+                        ),
+                        "sha256": sha(line),
+                    }
+                )
+            elif exact and not any(
+                row["class"] == "archives_missing_no_download" for row in bucket
+            ):
+                bucket[-1] = {
+                    "stream": stream,
+                    "class": "archives_missing_no_download",
+                    "sha256": sha(line),
+                }
+    qualified_message = normal and stable and valid
+    selected = []
+    if qualified_message:
+        # Error stderr first, then other errors, then warnings/notices; not progress.
+        for prefix in (b"E:", b"W:", b"N:"):
+            for stream, _, _ in buffers:
+                selected.extend(buckets[stream, prefix][: 32 - len(selected)])
+    return {
+        "schema": "pamolive.expat-apt-solver-diagnostic/1",
+        "phase": "apt_simulate",
+        "state": "REFUSED" if qualified_message else "UNKNOWN",
+        "normal_rc100": normal,
+        "tool_stable": stable,
+        "tool_before_sha256": (
+            before_sha
+            if type(before_sha) is str and re.fullmatch("[a-f0-9]{64}", before_sha)
+            else None
+        ),
+        "tool_after_sha256": after_sha if stable else None,
+        "buffers": streams,
+        "input_valid": valid,
+        "encoding_invalid_streams": encoding_invalid_streams,
+        "unbounded_streams": unbounded_streams,
+        "invalid_lines": invalid_lines,
+        "total_lines": total_lines,
+        "omitted_lines": total_lines - len(selected),
+        "eligible_message_lines": eligible,
+        "omitted_message_lines": eligible - len(selected),
+        "exported_lines": selected,
+        "archives_missing_message_observed": qualified_message and seen_archives_message,
+        "message_scope_only": True,
+        "build_verified": False,
+        "materials_complete": False,
+        "all_OS_descendants_released": False,
+        "operational_GO": False,
+    }
 
 
 def need(value, code):
@@ -135,7 +291,34 @@ class Runner:
         )
         return sha(raw), identity(row)
 
-    def call(self, argv, *, seconds, cap=262144, env=None, post_expected=None):
+    def call(
+        self, argv, *, seconds, cap=262144, env=None, post_expected=None, diagnostic_role=None
+    ):
+        need(
+            diagnostic_role is None
+            or (
+                type(diagnostic_role) is str
+                and diagnostic_role == "apt_simulate"
+                and type(argv) is list
+                and tuple(argv) == APT_SIMULATE_ARGV
+                and type(seconds) is int
+                and seconds == 90
+                and type(cap) is int
+                and cap == 1024**2
+                and post_expected is None
+                and type(env) is dict
+                and env
+                == {
+                    "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+                    "LANG": "C",
+                    "LC_ALL": "C",
+                    "HOME": "/expat-apt-work",
+                    "APT_CONFIG": "/expat-apt-work/solver.conf",
+                    "DEBIAN_FRONTEND": "noninteractive",
+                }
+            ),
+            "apt_diagnostic_role",
+        )
         need(
             not self.unknown
             and type(seconds) is int
@@ -169,6 +352,20 @@ class Runner:
             )
             facts = result.facts()
             write_new(str(prefix) + "-result.json", json.dumps(facts).encode())
+            if diagnostic_role == "apt_simulate" and not result.ok:
+                try:
+                    try:
+                        post = self.tool_pin(argv[0])
+                        after = post[0] if post == pin else None
+                    except Exception:
+                        after = None
+                    packet = apt_failure_diagnostic(result, pin[0], after)
+                    raw = (json.dumps(packet, separators=(",", ":")) + "\n").encode()
+                    need(len(raw) <= 16384, "apt_diagnostic_output_cap")
+                    write_new(str(prefix) + "-apt-diagnostic.json", raw)
+                except Exception:
+                    # Best effort only; preserve the original fatal guard and UNKNOWN.
+                    pass
             need(
                 result.ok
                 and result.spawn_attempted is True

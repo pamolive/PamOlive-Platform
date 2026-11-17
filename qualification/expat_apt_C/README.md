@@ -1,5 +1,33 @@
 # ADR-021 C: authenticated package capture, separate approval
 
+## Refusing solver diagnostic (source candidate)
+
+The b9 capture's APT command 5 returned normal rc100; its original 6970/183-byte
+stdout/stderr buffers were not received. Its cause remains UNKNOWN. The received
+dpkg status identifies APT 3.0.4. The official source permits a no-download refusal
+before simulation, but that condition has not been established for this run.
+
+The diagnostic is restricted to the existing exact fourteen-request simulation,
+its fixed environment and 90/10-second bounds. It scans both complete existing
+bounded buffers, prioritizes stderr errors, and exports at most 32 line hashes
+inside 16KiB. Export omissions do not invalidate an otherwise complete input.
+Invalid encoding, CR/NUL, unterminated or oversized lines invalidate specific
+message classification; no matching is performed on truncated prefixes. A finite
+literal message can identify an observed APT message, not prove the full solver
+cause. Other severity lines export only a finite class and SHA256.
+
+Normal rc100 plus complete H1 and the same post-checked tool identity/SHA are
+required for a REFUSED message packet. Uncertain lifecycle or tool checks remain
+UNKNOWN. Reading the already measured tool again adds no process or authority.
+The original fatal guard still runs: no plan parsing, material approval or
+installation follows an error. A failed diagnostic writer/callback cannot replace
+that refusal. No raw text, exception, argv, environment, URL or path is exported.
+The packet is linked to the current code-pins and run by the existing independent
+artifact/source reception; its presence alone is not evidence of success.
+
+APT flags, authentication, sources, sandbox, caps and deadlines are unchanged.
+Native behavior and the actual error class await a fresh reviewed Linux run.
+
 This development laboratory captures the exact `expat-prepared` APT boundary.
 It does not install packages during capture, modify the product Dockerfile,
 publish an image, or qualify a compiler or the finished product.

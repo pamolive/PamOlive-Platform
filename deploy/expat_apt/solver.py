@@ -126,5 +126,6 @@ def configure(runner, gate, indices, signed, transaction):
         seconds=90,
         cap=1024**2,
         env=env,
+        diagnostic_role="apt_simulate",
     )
     return stdout
