@@ -19,6 +19,7 @@ ROOT = HERE.parents[1]
 TARGET = Path("/opt/google/chrome/chrome")
 PIN_PATH = "qualification/p1g_headless/chrome-bootstrap-pins.json"
 ROOT_INTERPRETER = "/usr/bin/python3.12"
+ROOT_CACHE_BASENAME = "google-chrome-stable_157.0.8103.78-1_amd64.deb"
 ROOT_INTERPRETER_SCHEMA = "pamolive.chrome-root-interpreter/1"
 INSTALLED_SCHEMA = "pamolive.chrome-bootstrap/2"
 ROOT_FLAGS = {
@@ -63,6 +64,10 @@ MATERIALS = {"google-key.asc", "Release", "Release.gpg", "Packages"}
 BASE_URL = "https://dl.google.com/linux/chrome/deb/"
 ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C", "LC_ALL": "C"}
 DIAGNOSTICS = {
+    "apt_cache_path",
+    "apt_cache_metadata",
+    "apt_cache_changed",
+    "apt_cache_package",
     "bootstrap_deadline",
     "command_UNKNOWN",
     "consumer_key_state_changed",
@@ -251,6 +256,157 @@ def interpreter_identity(row):
         "root_interpreter_identity",
     )
     return values
+
+
+def cache_identity(row):
+    values = tuple(
+        getattr(row, "st_" + key)
+        for key in ("dev", "ino", "mode", "uid", "gid", "nlink", "size", "mtime_ns", "ctime_ns")
+    )
+    need(all(type(value) is int and 0 <= value < 2**64 for value in values), "apt_cache_metadata")
+    return values
+
+
+def root_cache_paths(private):
+    need(
+        private.is_absolute()
+        and private.parent.as_posix() == "/var/tmp"
+        and re.fullmatch(r"pamolive-chrome-bootstrap-[0-9]+-[0-9]+", private.name),
+        "apt_cache_path",
+    )
+    cache = private / "apt-archives"
+    return cache, cache / ROOT_CACHE_BASENAME
+
+
+def root_apt_argv(private, *, action):
+    need(type(action) is str and action in ("--simulate", "--assume-yes"), "apt_cache_path")
+    cache, package = root_cache_paths(private)
+    return [
+        *APT,
+        "-o",
+        "Dir::Cache::Archives=" + cache.as_posix() + "/",
+        action,
+        "install",
+        package.as_posix(),
+    ]
+
+
+def cache_directory(path, expected=None):
+    row = path.lstat()
+    need(
+        stat.S_ISDIR(row.st_mode)
+        and row.st_uid == row.st_gid == 0
+        and stat.S_IMODE(row.st_mode) == 0o700,
+        "apt_cache_metadata",
+    )
+    # APT may create partial/auxfiles/lock; directory mtime/nlink may change.
+    identity = (row.st_dev, row.st_ino, row.st_mode, row.st_uid, row.st_gid)
+    need(expected is None or identity == expected, "apt_cache_changed")
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        for observed in (os.fstat(fd), path.lstat()):
+            need(
+                (
+                    observed.st_dev,
+                    observed.st_ino,
+                    observed.st_mode,
+                    observed.st_uid,
+                    observed.st_gid,
+                )
+                == identity,
+                "apt_cache_changed",
+            )
+    finally:
+        os.close(fd)
+    return identity
+
+
+def cache_file(path, expected, *, uid, gid=None, identity=None, retain=False):
+    row = path.lstat()
+    need(
+        stat.S_ISREG(row.st_mode)
+        and row.st_uid == uid
+        and (gid is None or row.st_gid == gid)
+        and row.st_nlink == 1
+        and stat.S_IMODE(row.st_mode) == 0o400
+        and row.st_size == int(expected["Size"])
+        and 0 < row.st_size <= 256 * 1024**2,
+        "apt_cache_metadata",
+    )
+    before = cache_identity(row)
+    need(identity is None or before == identity, "apt_cache_changed")
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    total, digest, chunks = 0, hashlib.sha256(), []
+    with os.fdopen(fd, "rb", buffering=0) as stream:
+        need(cache_identity(os.fstat(fd)) == before, "apt_cache_changed")
+        while block := stream.read(65536):
+            total += len(block)
+            need(total <= row.st_size, "apt_cache_changed")
+            digest.update(block)
+            if retain:
+                chunks.append(block)
+        need(
+            total == row.st_size
+            and digest.hexdigest() == expected["SHA256"]
+            and cache_identity(os.fstat(fd)) == before
+            and cache_identity(path.lstat()) == before,
+            "apt_cache_changed",
+        )
+    return before, b"".join(chunks) if retain else None
+
+
+def root_cache_copy(private, source, expected):
+    need(
+        os.getuid() == os.geteuid() == 0
+        and expected["Package"] == "google-chrome-stable"
+        and expected["Version"] == "157.0.8103.78-1"
+        and expected["Architecture"] == "amd64"
+        and expected["Filename"] == "pool/main/g/google-chrome-stable/" + ROOT_CACHE_BASENAME
+        and expected["Size"] == "147497676"
+        and expected["SHA256"]
+        == "4d740636b5c96f687798602c5aad6a5a270f44dd02e48db0638ae77aa4867b1b",
+        "apt_cache_package",
+    )
+    cache, package = root_cache_paths(private)
+    parent = cache_directory(private)
+    source_uid = os.environ.get("SUDO_UID", "")
+    need(re.fullmatch(r"[1-9][0-9]*", source_uid), "apt_cache_metadata")
+    _, raw = cache_file(source, expected, uid=int(source_uid), retain=True)
+    cache.mkdir(mode=0o700)  # Exclusive; never adopt or repair an existing directory.
+    directory = cache_directory(cache)
+    fd = os.open(
+        package, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600
+    )
+    with os.fdopen(fd, "wb", buffering=0) as target:
+        need(target.write(raw) == len(raw), "apt_cache_changed")
+        os.fsync(fd)
+        os.fchmod(fd, 0o400)
+        row = os.fstat(fd)
+        need(
+            stat.S_ISREG(row.st_mode)
+            and row.st_uid == row.st_gid == 0
+            and row.st_nlink == 1
+            and stat.S_IMODE(row.st_mode) == 0o400
+            and row.st_size == len(raw),
+            "apt_cache_metadata",
+        )
+        identity = cache_identity(row)
+        need(cache_identity(package.lstat()) == identity, "apt_cache_changed")
+    del raw
+    cache_directory(private, parent)
+    cache_directory(cache, directory)
+    cache_file(package, expected, uid=0, gid=0, identity=identity)
+    return package, (parent, directory, identity)
+
+
+def root_cache_check(private, binding, expected):
+    cache, package = root_cache_paths(private)
+    parent, directory, identity = binding
+    cache_directory(private, parent)
+    cache_directory(cache, directory)
+    cache_file(package, expected, uid=0, gid=0, identity=identity)
+    cache_directory(cache, directory)
+    cache_directory(private, parent)
 
 
 def root_interpreter_pin(support):
@@ -889,8 +1045,8 @@ class Commands:
             or (
                 type(diagnostic_role) is str
                 and diagnostic_role == "root-local-exact-install"
-                and argv[:-1] == [*APT, "--assume-yes", "install"]
-                and type(argv[-1]) is str
+                and type(argv) is list
+                and argv == root_apt_argv(self.private, action="--assume-yes")
                 and type(seconds) is int
                 and seconds == 180
                 and type(cap) is int
@@ -1506,18 +1662,14 @@ def main(argv=None):
                     sink=sink,
                 )
             package.chmod(0o400)
-        need(
-            package.stat().st_size == int(pins["package"]["Size"])
-            and sha(read(package, 256 * 1024**2)) == pins["package"]["SHA256"],
-            "package_bytes",
-        )
         if args.root_install:
-            # Place verified bytes in a fresh root-owned directory before package tools.
-            raw = read(package, 256 * 1024**2)
-            need(sha(raw) == pins["package"]["SHA256"], "package_changed")
-            package = private / "chrome.deb"
-            support.fresh_write(package, raw, mode=0o400)
-            del raw
+            package, cache_binding = root_cache_copy(private, package, pins["package"])
+        else:
+            need(
+                package.stat().st_size == int(pins["package"]["Size"])
+                and sha(read(package, 256 * 1024**2)) == pins["package"]["SHA256"],
+                "package_bytes",
+            )
         control_check(
             commands.run(
                 [
@@ -1544,7 +1696,12 @@ def main(argv=None):
             )
             target = payload_target(stream)
         phase = "dependencies"
-        apt_plan(commands.run([*APT, "--simulate", "install", str(package)], seconds=30))
+        if args.root_install:
+            root_cache_check(private, cache_binding, pins["package"])
+            apt_plan(commands.run(root_apt_argv(private, action="--simulate"), seconds=30))
+            root_cache_check(private, cache_binding, pins["package"])
+        else:
+            apt_plan(commands.run([*APT, "--simulate", "install", str(package)], seconds=30))
         if not args.root_install:
             phase = "root_supervisor"
             root_supervisor(
@@ -1562,12 +1719,13 @@ def main(argv=None):
             phase = "install_local_exact"
             release_check(captured["Release"], captured["Packages"], int(time.time()))
             # No remote source, dependency fetching/fix, downgrade consent or mode repair.
-            need(sha(read(package, 256 * 1024**2)) == pins["package"]["SHA256"], "package_changed")
+            root_cache_check(private, cache_binding, pins["package"])
             commands.run(
-                [*APT, "--assume-yes", "install", str(package)],
+                root_apt_argv(private, action="--assume-yes"),
                 seconds=180,
                 diagnostic_role="root-local-exact-install",
             )
+            root_cache_check(private, cache_binding, pins["package"])
             phase = "unchanged_Chrome_guard"
             installed = commands.run(
                 [

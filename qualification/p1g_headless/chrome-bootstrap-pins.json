@@ -35,7 +35,7 @@
   "signer": "0E225917414670F4442C250DFD533C07C264648F",
   "source_files": {
     "deploy/expat-remediation/bounded_io.py": "72b778ad6e441744e8bd9ac84ba7f47b1f6b577b7885a2e0daf3b4584cc0150a",
-    "qualification/p1g_headless/chrome_bootstrap.py": "3beec84fcc4c99bcd30c1fc65fdabb1b8d213a9fa36cbfec458ef07dd0f630a7",
+    "qualification/p1g_headless/chrome_bootstrap.py": "2a17131188edcff621d5555208d8e0eedfc3b0f16522ef5c59931d05ae786aca",
     "qualification/p1g_headless/chrome_gpg.py": "001d178e5876df97156bf2061df19a51fc56bbf5b9bfa102098999bc10357512",
     "qualification/p1g_headless/chrome_key_scope.py": "1ee01826ddd241e5bde35a98363b1c1d36f59946e44cf552b370f82b80bbad1c",
     "qualification/p1g_headless/chrome_key_scope_native.py": "9541a7c6ed9ec068fe86bae1e50c299f740dea30bd984eff0b7385688b47afff",
@@ -54,7 +54,7 @@
     "qualification/p1g_headless/gpg_fixture/source-pins.json": "90d74d4bfdf2ffb76b4bb93157339906cc07d2594de2715972b88a3f9b75ef04",
     "qualification/p1g_headless/gpg_fixture/test_fixture.py": "7f0800d1c9f9b74eb9b043c727fb7455223c704fe7bd9df75e45811ab8df986c",
     "qualification/p1g_headless/run_chrome_pure.py": "f99155a607c5d638bc7c7fab4987bf534615f9821cd57299629b52c8f2940d48",
-    "qualification/p1g_headless/test_chrome_bootstrap.py": "eb8d29bc3f7242d8169e9d332e3ed2a64e61353bceea684cc9edc501a4097165",
+    "qualification/p1g_headless/test_chrome_bootstrap.py": "b3798e4dc204db3446d232c3042acb381242d94994fbcfa1ecb30b3b8a8e56ae",
     "qualification/p1g_headless/test_chrome_key_scope.py": "322a7683e0e5434aa16bfaa2ae64e450c0c13d93336755ae62c57b822ecc289e"
   }
 }

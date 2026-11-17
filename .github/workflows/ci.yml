@@ -808,6 +808,288 @@ jobs:
           "$RUNNER_TEMP/p1g-venv/bin/python" -m pip check
       - name: Check only source contracts without opening a browser or database
         run: 'python -I -B -S "$RUNNER_TEMP/p1g-source/qualification/p1g_headless/run_pure.py"'
+      - name: Probe absolute local APT cache with a public scriptless fixture
+        timeout-minutes: 3
+        env:
+          DATABASE_URL: postgresql://p1g:p1g-synthetic-disposable-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/pamolive_p1g
+          PAMOLIVE_TEST_DATABASE_NAME: test_pamolive_p1g_browser
+          PAMOLIVE_P1G_DISPOSABLE: '1'
+          P1G_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          P1G_CHROME_PINS_SHA: 697e5e6275f110c3bbc635559ff02ae546a187acb64e4f2ec3ddc21b609375e7
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          /usr/bin/timeout --signal=TERM --kill-after=10s 150s /usr/bin/sudo -n \
+            --preserve-env=GITHUB_ACTIONS,GITHUB_REPOSITORY,GITHUB_EVENT_NAME,GITHUB_REF,GITHUB_HEAD_REF,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,RUNNER_TEMP,P1G_HEAD_REPOSITORY,PAMOLIVE_P1G_DISPOSABLE,DATABASE_URL,PAMOLIVE_TEST_DATABASE_NAME \
+            -- /usr/bin/python3.12 -I -B -S - "$RUNNER_TEMP/p1g-source" "$RUNNER_TEMP/p1g-source.json" "$GITHUB_SHA" "$P1G_CHROME_PINS_SHA" <<'PY'
+          """Dedicated disposable Linux CI fixture; not run during source preparation."""
+
+          import hashlib
+          import importlib.util
+          import json
+          import os
+          import stat
+          import sys
+          import time
+          from pathlib import Path
+
+          root, context_path, revision, pins_sha = (
+              Path(sys.argv[1]),
+              Path(sys.argv[2]),
+              sys.argv[3],
+              sys.argv[4],
+          )
+          assert os.getuid() == os.geteuid() == 0 and sys.platform == "linux"
+          assert os.environ["GITHUB_ACTIONS"] == "true" and os.environ["PAMOLIVE_P1G_DISPOSABLE"] == "1"
+
+
+          def read(path, cap):
+              def identity(row):
+                  return tuple(
+                      getattr(row, "st_" + key)
+                      for key in ("dev", "ino", "mode", "uid", "gid", "nlink", "size", "mtime_ns", "ctime_ns")
+                  )
+
+              assert path.is_absolute() and ".." not in path.parts
+              row = path.lstat()
+              assert type(cap) is int and stat.S_ISREG(row.st_mode) and row.st_nlink == 1
+              assert 0 < row.st_size <= cap
+              before = identity(row)
+              fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC)
+              with os.fdopen(fd, "rb", buffering=0) as source:
+                  assert identity(os.fstat(fd)) == before
+                  data = source.read(cap + 1)
+                  assert len(data) == row.st_size
+                  assert identity(os.fstat(fd)) == before and identity(path.lstat()) == before
+              return data
+
+
+          pin_raw = read(root / "qualification/p1g_headless/chrome-bootstrap-pins.json", 131072)
+          assert hashlib.sha256(pin_raw).hexdigest() == pins_sha
+          pins = json.loads(pin_raw)
+          name = "qualification/p1g_headless/chrome_bootstrap.py"
+          raw = read(root / name, 131072)
+          assert hashlib.sha256(raw).hexdigest() == pins["source_files"][name]
+          spec = importlib.util.spec_from_file_location("r10_reviewed_bootstrap", root / name)
+          boot = importlib.util.module_from_spec(spec)
+          sys.modules[spec.name] = boot
+          exec(compile(raw, str(root / name), "exec"), boot.__dict__)
+          pins, captured = boot.context(root, context_path, pins_sha, revision)
+          support = boot.load(
+              "r10_reviewed_support",
+              captured["qualification/p1g_headless/lab_support.py"],
+              root / "qualification/p1g_headless/lab_support.py",
+          )
+          support.guard(os.environ, uid=int(os.environ["SUDO_UID"]))
+          io = support.bounded(root)
+          before_python = boot.root_interpreter_runtime(
+              support,
+              context_sha=boot.sha(read(context_path, 4 * 1024**2)),
+              pins_sha=pins_sha,
+              source_sha=boot.sha(raw),
+              revision=revision,
+          )
+          name = os.environ["GITHUB_RUN_ID"] + "-" + os.environ["GITHUB_RUN_ATTEMPT"]
+          private = Path("/var/tmp") / ("pamolive-chrome-apt-probe-" + name)
+          private.mkdir(mode=0o700)
+          boot.cache_directory(private)
+          public = Path(os.environ["RUNNER_TEMP"]) / ("p1g-apt-cache-probe-" + name + ".json")
+          packet = {
+              "schema": "pamolive.chrome-apt-cache-TEST/1",
+              "revision": revision,
+              "pins_manifest_sha256": pins_sha,
+              "state": "UNKNOWN",
+              "complete": False,
+              "raw_logs_exported": False,
+              "all_OS_descendants_released": False,
+              "operational_GO": False,
+              "commands": [],
+          }
+          until = time.monotonic() + 130
+
+
+          def run(argv, seconds, rc=0):
+              assert argv[0] in {"/usr/bin/dpkg-deb", "/usr/bin/apt-get", "/usr/bin/dpkg-query"}
+              assert time.monotonic() + seconds + 10 < until
+              pin = support.tool_pin(Path(argv[0]))
+              prefix = private / ("command-" + str(len(packet["commands"]) + 1))
+              support.fresh_write(Path(str(prefix) + "-intent.json"), b'{"state":"PENDING"}\n', mode=0o400)
+              result = io.run_capped(
+                  argv,
+                  env=boot.ENV | {"HOME": str(private), "SOURCE_DATE_EPOCH": "1"},
+                  cwd=str(private),
+                  timeout=seconds + 10,
+                  work_timeout=seconds,
+                  deadline=until,
+                  stdout_cap=65536,
+                  stderr_cap=65536,
+                  total_cap=131072,
+                  owned_session=True,
+                  on_spawn=lambda pid: support.fresh_write(
+                      Path(str(prefix) + "-pid.json"), json.dumps({"pid": pid}).encode(), mode=0o400
+                  ),
+              )
+              facts = result.facts()
+              support.fresh_write(Path(str(prefix) + "-result.json"), json.dumps(facts).encode(), mode=0o400)
+              normal = (
+                  result.spawn_attempted is True
+                  and type(result.pid) is int
+                  and result.pid > 0
+                  and type(result.returncode) is int
+                  and result.returncode == rc
+                  and result.owned_child_reaped is True
+                  and result.drains_complete is True
+                  and result.killed_owned_child is False
+                  and result.exception_type is result.cleanup_exception_type is None
+                  and result.reason == (None if rc == 0 else "nonzero_exit")
+                  and result.ok is (rc == 0)
+                  and support.tool_pin(Path(argv[0])) == pin
+              )
+              packet["commands"].append(
+                  {
+                      "expected_rc": rc,
+                      "normal_H1_tool_stable": normal,
+                      "returncode": result.returncode,
+                      "stdout_sha256": boot.sha(result.stdout),
+                      "stderr_sha256": boot.sha(result.stderr),
+                      "stdout_bytes": len(result.stdout),
+                      "stderr_bytes": len(result.stderr),
+                  }
+              )
+              assert normal
+              return result.stdout, result.stderr
+
+
+          primary_failure = False
+          try:
+              package = "pamolive-apt-cache-probe"
+              version, arch = "1.0-1", "amd64"
+              marker_path = Path("/usr/share/pamolive-apt-cache-probe/marker")
+              assert not marker_path.parent.exists() and not marker_path.parent.is_symlink()
+              status_before = boot.read(Path("/var/lib/dpkg/status"), 16 * 1024**2)
+              assert not any(
+                  boot.fields(part).get("Package") == package
+                  for part in status_before.split(b"\n\n")
+                  if part.strip()
+              )
+              tree = private / "tree"
+              for path in (
+                  tree,
+                  tree / "DEBIAN",
+                  tree / "usr",
+                  tree / "usr/share",
+                  tree / "usr/share/pamolive-apt-cache-probe",
+              ):
+                  path.mkdir(mode=0o755)
+                  fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+                  try:
+                      row = os.fstat(fd)
+                      assert stat.S_ISDIR(row.st_mode) and row.st_uid == row.st_gid == 0
+                      os.fchmod(fd, 0o755)  # Only these fresh synthetic tree directories.
+                  finally:
+                      os.close(fd)
+              marker = b"PAMOLIVE_PUBLIC_APT_CACHE_PROBE_V1\n"
+              support.fresh_write(tree / "usr/share/pamolive-apt-cache-probe/marker", marker, mode=0o644)
+              control = (
+                  b"Package: pamolive-apt-cache-probe\nVersion: 1.0-1\nArchitecture: amd64\n"
+                  b"Maintainer: PamOlive synthetic CI <ci@example.invalid>\n"
+                  b"Description: public cache contract fixture\n"
+              )
+              support.fresh_write(tree / "DEBIAN/control", control, mode=0o644)
+              incoming = private / "incoming.deb"
+              run(["/usr/bin/dpkg-deb", "--root-owner-group", "--build", str(tree), str(incoming)], 20)
+              row = incoming.lstat()
+              assert (
+                  stat.S_ISREG(row.st_mode)
+                  and row.st_uid == row.st_gid == 0
+                  and row.st_nlink == 1
+                  and row.st_size <= 1024**2
+              )
+              fd = os.open(incoming, os.O_RDONLY | os.O_NOFOLLOW)
+              try:
+                  assert boot.cache_identity(os.fstat(fd)) == boot.cache_identity(row)
+                  os.fchmod(fd, 0o400)
+              finally:
+                  os.close(fd)
+              fixture = read(incoming, 1024**2)
+              expected = {"Size": str(len(fixture)), "SHA256": boot.sha(fixture)}
+              boot.cache_file(incoming, expected, uid=0, gid=0)
+              assert (
+                  run(
+                      ["/usr/bin/dpkg-deb", "--field", str(incoming), "Package", "Version", "Architecture"], 5
+                  )[0]
+                  == b"Package: pamolive-apt-cache-probe\nVersion: 1.0-1\nArchitecture: amd64\n"
+              )
+              base = [*boot.APT]
+              _, negative = run([*base, "--assume-yes", "install", str(incoming)], 20, rc=100)
+              canonical = package + "_" + version + "_" + arch + ".deb"
+              exact_error = (
+                  "E: Internal Error, Pathname to install is not absolute '" + canonical + "'\n"
+              ).encode()
+              assert exact_error in negative.splitlines(keepends=True)
+              assert boot.read(Path("/var/lib/dpkg/status"), 16 * 1024**2) == status_before
+              packet["old_normal100_exact_message_and_dpkg_unchanged"] = True
+              cache = private / "apt-archives"
+              cache.mkdir(mode=0o700)
+              directory = boot.cache_directory(cache)
+              cached = cache / canonical
+              support.fresh_write(cached, fixture, mode=0o400)
+              identity, _ = boot.cache_file(cached, expected, uid=0, gid=0)
+              argv = [*base, "-o", "Dir::Cache::Archives=" + str(cache) + "/"]
+              simulation, _ = run([*argv, "--simulate", "install", str(cached)], 10)
+              actions = [
+                  line.split()[:2]
+                  for line in simulation.decode("utf8").splitlines()
+                  if line.startswith(("Inst ", "Conf ", "Remv "))
+              ]
+              assert actions == [["Inst", package], ["Conf", package]]
+              boot.cache_file(cached, expected, uid=0, gid=0, identity=identity)
+              run([*argv, "--assume-yes", "install", str(cached)], 30)
+              boot.cache_directory(cache, directory)
+              boot.cache_file(cached, expected, uid=0, gid=0, identity=identity)
+              output, _ = run(
+                  [
+                      "/usr/bin/dpkg-query",
+                      "--show",
+                      "--showformat=${Package}\n${Version}\n${Architecture}\n${Status}\n",
+                      package,
+                  ],
+                  5,
+              )
+              assert output == b"pamolive-apt-cache-probe\n1.0-1\namd64\ninstall ok installed\n"
+              assert boot.read(marker_path, 1024) == marker
+              assert (
+                  boot.root_interpreter_runtime(
+                      support,
+                      context_sha=boot.sha(read(context_path, 4 * 1024**2)),
+                      pins_sha=pins_sha,
+                      source_sha=boot.sha(raw),
+                      revision=revision,
+                  )
+                  == before_python
+              )
+              assert time.monotonic() < until
+              packet.update(
+                  state="SYNTHETIC_CACHE_CONTRACT_ONLY",
+                  complete=True,
+                  fixture_sha256=expected["SHA256"],
+                  fixture_bytes=len(fixture),
+                  installed_browser=False,
+                  synthetic_package_retained_in_disposable_VM=True,
+              )
+          except BaseException:
+              primary_failure = True
+              raise
+          finally:
+              try:
+                  encoded = (json.dumps(packet, separators=(",", ":")) + "\n").encode()
+                  assert len(encoded) <= 16384
+                  support.fresh_write(public, encoded, mode=0o444)
+              except BaseException:
+                  if not primary_failure:
+                      raise
+          PY
       - name: Authenticate scoped certificate, require native negatives, reinstall reviewed Chrome
         timeout-minutes: 15
         env:
@@ -832,7 +1114,7 @@ jobs:
               assert len(raw) == row.st_size and len(raw) <= cap
               return raw
           name = "qualification/p1g_headless/chrome-bootstrap-pins.json"
-          expected = "f59277b1d751f29e666785f6e62bba158862d73cfdad1c6570ce7e96e6e1e6e9"
+          expected = "697e5e6275f110c3bbc635559ff02ae546a187acb64e4f2ec3ddc21b609375e7"
           raw = read(root / name, 131072)
           assert len(raw) <= 131072 and hashlib.sha256(raw).hexdigest() == expected
           receipt = json.loads(read(receipt_path, 4 * 1024**2))
@@ -848,7 +1130,7 @@ jobs:
               assert hashlib.sha256(raw).hexdigest() == expected == receipt["files"][name]
           PY
           python -I -B -S "$source/qualification/p1g_headless/run_chrome_pure.py"
-          "$RUNNER_TEMP/p1g-venv/bin/python" -I -B -S "$source/qualification/p1g_headless/chrome_bootstrap.py" --pins-sha f59277b1d751f29e666785f6e62bba158862d73cfdad1c6570ce7e96e6e1e6e9 --native-scope-preflight-required
+          "$RUNNER_TEMP/p1g-venv/bin/python" -I -B -S "$source/qualification/p1g_headless/chrome_bootstrap.py" --pins-sha 697e5e6275f110c3bbc635559ff02ae546a187acb64e4f2ec3ddc21b609375e7 --native-scope-preflight-required
       - name: Exercise the synthetic P1-G JavaScript increment
         timeout-minutes: 12
         env:
@@ -863,6 +1145,7 @@ jobs:
         with:
           name: p1g-headless-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
+            ${{ runner.temp }}/p1g-apt-cache-probe-${{ github.run_id }}-${{ github.run_attempt }}.json
             ${{ runner.temp }}/p1g-headless-${{ github.run_id }}-${{ github.run_attempt }}/*.json
             ${{ runner.temp }}/p1g-headless-${{ github.run_id }}-${{ github.run_attempt }}-chrome/**/*.json
             ${{ runner.temp }}/p1g-headless-${{ github.run_id }}-${{ github.run_attempt }}-chrome/frontend/TEST-fixture-public/certificate-before.pgp

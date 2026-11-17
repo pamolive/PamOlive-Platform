@@ -10,7 +10,7 @@ import tarfile
 import tempfile
 import unittest
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -1081,7 +1081,8 @@ class AptFailureDiagnosticTests(unittest.TestCase):
 
     def command(self, result, *, failures=(), role="root-local-exact-install", argv=None):
         writes, calls = [], []
-        private, public = Path("private-synthetic"), Path("public-synthetic")
+        private = PurePosixPath("/var/tmp/pamolive-chrome-bootstrap-123-1")
+        public = Path("public-synthetic")
 
         def write(path, body, **kwargs):
             writes.append((path.name, body, kwargs.get("mode")))
@@ -1093,9 +1094,7 @@ class AptFailureDiagnosticTests(unittest.TestCase):
             return result
 
         support = SimpleNamespace(tool_pin=lambda path: {"sha256": "a" * 64}, fresh_write=write)
-        args = (
-            argv if argv is not None else [*boot.APT, "--assume-yes", "install", "/private/pkg.deb"]
-        )
+        args = argv if argv is not None else boot.root_apt_argv(private, action="--assume-yes")
         with (
             patch.object(boot, "public_journal_directory"),
             patch.object(boot.os, "getuid", return_value=0, create=True),
@@ -1429,3 +1428,563 @@ class AptProjection2Tests(unittest.TestCase):
         self.assertIsInstance(error, ValueError)
         self.assertTrue(command.unknown)
         self.assertEqual(len(calls), 1)
+
+
+class CacheMemory:
+    """POSIX operations are memory doubles, never Windows syscalls."""
+
+    def __init__(self):
+        self.nodes, self.fds, self.events = {}, {}, []
+        self.serial = 10
+        self.after_read = None
+        model = self
+
+        class MP(PurePosixPath):
+            def lstat(self):
+                return SimpleNamespace(**model.nodes[str(self)][0])
+
+            def mkdir(self, *, mode):
+                if str(self) in model.nodes:
+                    raise FileExistsError("public collision")
+                model.add(str(self), stat.S_IFDIR | mode)
+
+        self.Path = MP
+        self.private = MP("/var/tmp/pamolive-chrome-bootstrap-123-1")
+        self.source = MP("/public-input/chrome.deb")
+        self.add(str(self.private), stat.S_IFDIR | 0o700)
+        self.raw = b"PUBLIC_SYNTHETIC_DEB_BYTES_NOT_A_REAL_DEB"
+        self.add(str(self.source), stat.S_IFREG | 0o400, self.raw, uid=1001, gid=1001)
+
+    def add(self, name, mode, raw=b"", *, uid=0, gid=0):
+        self.serial += 1
+        self.nodes[name] = [
+            dict(
+                st_dev=1,
+                st_ino=self.serial,
+                st_mode=mode,
+                st_uid=uid,
+                st_gid=gid,
+                st_nlink=2 if stat.S_ISDIR(mode) else 1,
+                st_size=len(raw),
+                st_mtime_ns=3,
+                st_ctime_ns=4,
+            ),
+            raw,
+        ]
+
+    def open(self, path, flags, mode=None):
+        name = str(path)
+        self.events.append(("open", name, flags))
+        assert flags & 8, "NOFOLLOW required"
+        if flags & 64:
+            assert flags & 128 and mode == 0o600
+            if name in self.nodes:
+                raise FileExistsError("public leaf collision")
+            self.add(name, stat.S_IFREG | mode)
+        self.serial += 1
+        self.fds[self.serial] = name
+        return self.serial
+
+    def fdopen(self, fd, mode, *, buffering):
+        name = self.fds[fd]
+        model = self
+
+        class Stream(io.BytesIO):
+            def write(self, raw):
+                count = super().write(raw)
+                model.nodes[name][1] = self.getvalue()
+                model.nodes[name][0]["st_size"] = len(self.getvalue())
+                return count
+
+            def read(self, count):
+                model.events.append(("read", name, count))
+                raw = super().read(count)
+                if model.after_read:
+                    callback, model.after_read = model.after_read, None
+                    callback(model.nodes[name][0])
+                return raw
+
+            def close(self):
+                model.events.append(("close", name))
+                super().close()
+
+        return Stream(b"" if "w" in mode else self.nodes[name][1])
+
+    def ops(self):
+        def fchmod(fd, mode):
+            self.nodes[self.fds[fd]][0]["st_mode"] = stat.S_IFREG | mode
+            self.events.append(("fchmod", self.fds[fd], mode))
+
+        return SimpleNamespace(
+            O_RDONLY=1,
+            O_WRONLY=2,
+            O_DIRECTORY=4,
+            O_NOFOLLOW=8,
+            O_CLOEXEC=16,
+            O_NONBLOCK=32,
+            O_CREAT=64,
+            O_EXCL=128,
+            open=self.open,
+            fdopen=self.fdopen,
+            getuid=lambda: 0,
+            geteuid=lambda: 0,
+            environ={"SUDO_UID": "1001"},
+            fstat=lambda fd: SimpleNamespace(**self.nodes[self.fds[fd]][0]),
+            close=lambda fd: self.events.append(("close-dir", self.fds[fd])),
+            fchmod=fchmod,
+            fsync=lambda fd: self.events.append(("fsync", self.fds[fd])),
+        )
+
+
+class RootAptCacheTests(unittest.TestCase):
+    def tiny_expected(self, model):
+        return {"Size": str(len(model.raw)), "SHA256": boot.sha(model.raw)}
+
+    def copy(self, model):
+        real = boot.cache_file
+
+        def synthetic_bytes(path, expected, **kwargs):
+            # The role pins remain the real package pins; only DATA bodies in this
+            # writer model are tiny. Actual cache_file is independently exercised.
+            self.assertEqual(expected, PINS["package"])
+            return real(path, self.tiny_expected(model), **kwargs)
+
+        with (
+            patch.object(boot, "os", model.ops()),
+            patch.object(boot, "cache_file", synthetic_bytes),
+        ):
+            return boot.root_cache_copy(model.private, model.source, PINS["package"])
+
+    def test_R10_closed_absolute_cache_argv_preserves_all_original_flags(self):
+        model = CacheMemory()
+        for action in ("--simulate", "--assume-yes"):
+            argv = boot.root_apt_argv(model.private, action=action)
+            self.assertEqual(argv[: len(boot.APT)], boot.APT)
+            self.assertEqual(
+                argv[len(boot.APT) : -2],
+                ["-o", "Dir::Cache::Archives=" + str(model.private / "apt-archives") + "/", action],
+            )
+            self.assertEqual(
+                argv[-2:],
+                ["install", str(model.private / "apt-archives" / boot.ROOT_CACHE_BASENAME)],
+            )
+        for private in (
+            PurePosixPath("relative"),
+            PurePosixPath("/tmp/other"),
+            PurePosixPath("/var/tmp/pamolive-chrome-bootstrap-../1"),
+        ):
+            with self.assertRaises(ValueError):
+                boot.root_apt_argv(private, action="--assume-yes")
+        for action in (True, "--fix-broken", "install"):
+            with self.assertRaises(ValueError):
+                boot.root_apt_argv(model.private, action=action)
+
+    def test_R10_known_file_metadata_precedes_any_content_read(self):
+        for changes in (
+            {"st_mode": stat.S_IFLNK | 0o777},
+            {"st_uid": 0},
+            {"st_nlink": 2},
+            {"st_mode": stat.S_IFREG | 0o644},
+            {"st_size": 1},
+        ):
+            model = CacheMemory()
+            model.nodes[str(model.source)][0].update(changes)
+            with patch.object(boot, "os", model.ops()):
+                with self.assertRaises(ValueError):
+                    boot.cache_file(model.source, self.tiny_expected(model), uid=1001)
+            self.assertFalse(model.events)
+
+    def test_R10_real_file_FD_hash_and_post_read_identity_are_both_required(self):
+        model = CacheMemory()
+        with patch.object(boot, "os", model.ops()):
+            identity, raw = boot.cache_file(
+                model.source, self.tiny_expected(model), uid=1001, retain=True
+            )
+            self.assertEqual(raw, model.raw)
+            self.assertEqual(identity, boot.cache_identity(model.source.lstat()))
+            model.after_read = lambda row: row.update(st_ino=999)
+            with self.assertRaisesRegex(ValueError, "apt_cache_changed"):
+                boot.cache_file(model.source, self.tiny_expected(model), uid=1001)
+        model = CacheMemory()
+        wrong = {**self.tiny_expected(model), "SHA256": "f" * 64}
+        with patch.object(boot, "os", model.ops()):
+            with self.assertRaisesRegex(ValueError, "apt_cache_changed"):
+                boot.cache_file(model.source, wrong, uid=1001)
+        model = CacheMemory()
+        ops = model.ops()
+        real_stat = ops.fstat
+
+        def changed_fd(fd):
+            row = real_stat(fd)
+            row.st_ino += 1
+            return row
+
+        ops.fstat = changed_fd
+        with patch.object(boot, "os", ops):
+            with self.assertRaisesRegex(ValueError, "apt_cache_changed"):
+                boot.cache_file(model.source, self.tiny_expected(model), uid=1001)
+        self.assertFalse(any(e[0] == "read" for e in model.events))
+
+    def test_R10_exclusive_copy_uses_known_bytes_fsync_sameFD_0400_and_binding(self):
+        model = CacheMemory()
+        package, binding = self.copy(model)
+        self.assertEqual(model.nodes[str(package)][1], model.raw)
+        self.assertEqual(package.name, boot.ROOT_CACHE_BASENAME)
+        self.assertEqual(model.nodes[str(package)][0]["st_nlink"], 1)
+        self.assertEqual(model.nodes[str(package)][0]["st_mode"], stat.S_IFREG | 0o400)
+        events = [e[0] for e in model.events]
+        self.assertLess(events.index("fsync"), events.index("fchmod"))
+        with patch.object(boot, "os", model.ops()):
+            boot.root_cache_check(model.private, binding, self.tiny_expected(model))
+            model.nodes[str(package)][0]["st_nlink"] = 2
+            before_reads = len([e for e in model.events if e[0] == "read"])
+            with self.assertRaises(ValueError):
+                boot.root_cache_check(model.private, binding, self.tiny_expected(model))
+            self.assertEqual(before_reads, len([e for e in model.events if e[0] == "read"]))
+
+    def test_R10_collision_or_wrong_parent_is_not_adopted_or_repaired(self):
+        model = CacheMemory()
+        cache, _ = boot.root_cache_paths(model.private)
+        model.add(str(cache), stat.S_IFLNK | 0o777, b"UNKNOWN_NEVER_READ")
+        with self.assertRaises(FileExistsError):
+            self.copy(model)
+        self.assertEqual(model.nodes[str(cache)][1], b"UNKNOWN_NEVER_READ")
+        self.assertFalse(any(e[:2] == ("read", str(cache)) for e in model.events))
+        model = CacheMemory()
+        model.nodes[str(model.private)][0]["st_mode"] = stat.S_IFDIR | 0o755
+        with self.assertRaises(ValueError):
+            self.copy(model)
+        self.assertFalse(any(e[0] == "read" for e in model.events))
+
+    def test_R10_no_other_package_version_sha_size_or_missing_frontend_owner(self):
+        model = CacheMemory()
+        for field, wrong in (
+            ("Package", "other"),
+            ("Version", "158.0.0.0-1"),
+            ("Architecture", "arm64"),
+            ("Filename", "../foreign.deb"),
+            ("Size", "1"),
+            ("SHA256", "f" * 64),
+        ):
+            with patch.object(boot, "os", model.ops()):
+                with self.assertRaisesRegex(ValueError, "apt_cache_package"):
+                    boot.root_cache_copy(
+                        model.private, model.source, {**PINS["package"], field: wrong}
+                    )
+        self.assertFalse(model.events)
+        ops = model.ops()
+        ops.environ = {}
+        with patch.object(boot, "os", ops):
+            with self.assertRaisesRegex(ValueError, "apt_cache_metadata"):
+                boot.root_cache_copy(model.private, model.source, PINS["package"])
+
+    def test_R10_directory_auxiliary_changes_do_not_relax_parent_or_DEB(self):
+        model = CacheMemory()
+        package, binding = self.copy(model)
+        cache, _ = boot.root_cache_paths(model.private)
+        model.nodes[str(cache)][0].update(st_nlink=4, st_mtime_ns=20, st_ctime_ns=20)
+        with patch.object(boot, "os", model.ops()):
+            boot.root_cache_check(model.private, binding, self.tiny_expected(model))
+            model.nodes[str(cache)][0]["st_uid"] = 1001
+            with self.assertRaises(ValueError):
+                boot.root_cache_check(model.private, binding, self.tiny_expected(model))
+        self.assertEqual(model.nodes[str(package)][0]["st_uid"], 0)
+
+    def test_R10_upstream_model_reproduces_basename_then_binds_existing_absolute_cache(self):
+        model = CacheMemory()
+        cache, package = boot.root_cache_paths(model.private)
+
+        def getarchives(existing_size):
+            # Explicit model of source branches, never a claim of executing APT C++.
+            stored = boot.ROOT_CACHE_BASENAME
+            if existing_size == 123:
+                return str(package), True, True
+            return stored, False, True  # LocalOnly queued but Done not received.
+
+        for size in (None, 122):
+            stored, complete, local = getarchives(size)
+            self.assertTrue(local)  # no-download's Local skip does not run Done.
+            self.assertFalse(complete)
+            self.assertFalse(PurePosixPath(stored).is_absolute())
+        stored, complete, local = getarchives(123)
+        self.assertTrue(complete and local)
+        self.assertEqual(stored, str(cache / boot.ROOT_CACHE_BASENAME))
+        self.assertTrue(PurePosixPath(stored).is_absolute())
+
+    def controller(self, failure=None):
+        events, writes = [], {}
+        required = {"synthetic-row"}
+        native = SimpleNamespace(
+            MATRIX_REQUIRED=required,
+            SOURCE_MATRIX_IMPLEMENTED=required,
+            REQUIRED=required,
+            LIFECYCLE=required,
+            RECEIPT_SCHEMA="SYNTHETIC",
+            PRODUCER_CONTRACT={"purpose": "TEST"},
+        )
+        tested = dict(
+            schema="SYNTHETIC",
+            ADR_evidence_matrix_complete=True,
+            all_rows_are_native_crypto=False,
+            producer_contract="TEST",
+            producer_source_connected=True,
+            matrix_required=list(required),
+            matrix_completed=list(required),
+            matrix_missing=[],
+            source_unimplemented=[],
+            other_expired_keys_freshly_observed=5,
+            state="COMPLETE",
+            missing=[],
+            cases={"synthetic-row": {"refused": True, "complete_H1": True}},
+            purpose=PINS["purpose"],
+            operational_GO=False,
+            revision="a" * 40,
+            pins_manifest_sha256="f" * 64,
+            run="123",
+            attempt="1",
+            scoped_sha256="b" * 64,
+        )
+        captured = {name: b"SYNTHETIC_SOURCE_NOT_EXECUTED" for name in boot.SOURCE_PATHS}
+        captured.update(
+            {name: (HERE / "chrome_materials" / name).read_bytes() for name in boot.MATERIALS}
+        )
+        captured["qualification/p1g_headless/chrome_scope_native_fixtures.json"] = json.dumps(
+            {"cases": {"synthetic-row": {}}}
+        ).encode()
+        created = set()
+
+        class MP(PurePosixPath):
+            def resolve(self, **kwargs):
+                return self
+
+            def mkdir(self, **kwargs):
+                if str(self) in created:
+                    raise FileExistsError("synthetic")
+                created.add(str(self))
+
+            def open(self, *args, **kwargs):
+                return io.BytesIO()
+
+            def lstat(self):
+                return SimpleNamespace(st_gid=0)
+
+        def authenticate(*args, **kwargs):
+            events.append("auth")
+            return {}, {"scoped_sha256": "b" * 64}, b"", b""
+
+        target = {"sha256": "c" * 64, "bytes": 4, "uid": 0, "mode": 0o755}
+        support = SimpleNamespace(
+            guard=lambda *a, **k: None,
+            source_binding=lambda *a: {},
+            resources=lambda p: {},
+            bounded=lambda p: None,
+            tool_pin=lambda p: target,
+            fresh_write=lambda p, raw, **kw: writes.update({str(p): raw}),
+        )
+        scope_model = SimpleNamespace(PURPOSE=PINS["purpose"], authenticate=authenticate)
+
+        class Commands:
+            def __init__(self, *args, **kwargs):
+                self.until = 1000
+
+            def run(self, argv, **kwargs):
+                if argv[0] == "/usr/bin/dpkg-deb":
+                    events.append(argv[1])
+                    if argv[1] == "--field":
+                        return "".join(
+                            k + ": " + PINS["package"][k] + "\n"
+                            for k in ("Package", "Version", "Architecture", "Depends")
+                        ).encode()
+                    return b""
+                if argv[0] == "/usr/bin/apt-get":
+                    events.append(tuple(argv))
+                    self_action = "--simulate" if "--simulate" in argv else "--assume-yes"
+                    if self_action == "--simulate":
+                        if failure == "simulation":
+                            raise ValueError("command_UNKNOWN")
+                        return (
+                            b"Inst google-chrome-stable (157.0.8103.78-1)\n"
+                            b"Conf google-chrome-stable (157.0.8103.78-1)\n"
+                        )
+                    return b""
+                events.append("query")
+                return b"google-chrome-stable\n157.0.8103.78-1\namd64\ninstall ok installed\n"
+
+        def copy(private, source, expected):
+            events.append("copy")
+            self.assertIn("auth", events)
+            self.assertEqual(str(source), "/runner/p1g-chrome-private-123-1/chrome.deb")
+            if failure == "copy":
+                raise ValueError("apt_cache_changed")
+            return boot.root_cache_paths(private)[1], ("SYNTHETIC_BINDING",)
+
+        def check(*args):
+            events.append("cache-check")
+            if failure == "post_install" and events.count("cache-check") == 4:
+                raise ValueError("apt_cache_changed")
+
+        def read(path, cap):
+            return (
+                json.dumps(tested).encode()
+                if path.name == "scope-native-preflight.json"
+                else b"CONTEXT"
+            )
+
+        env = {
+            "GITHUB_ACTIONS": "true",
+            "RUNNER_TEMP": "/runner",
+            "GITHUB_SHA": "a" * 40,
+            "GITHUB_RUN_ID": "123",
+            "GITHUB_RUN_ATTEMPT": "1",
+            "SUDO_UID": "1001",
+        }
+        with (
+            patch.object(boot, "Path", MP),
+            patch.object(boot, "ROOT", MP("/runner/p1g-source")),
+            patch.object(boot, "TARGET", MP("/opt/google/chrome/chrome")),
+            patch.object(boot.sys, "platform", "linux"),
+            patch.dict(boot.os.environ, env),
+            patch.object(boot.os, "getuid", return_value=0, create=True),
+            patch.object(boot.os, "umask", return_value=0),
+            patch.object(boot.time, "time", return_value=NOW),
+            patch.object(boot.time, "monotonic", return_value=0),
+            patch.object(boot, "context", return_value=(PINS, captured)),
+            patch.object(boot, "load", side_effect=[support, gpg, scope_model, native]),
+            patch.object(boot, "read", read),
+            patch.object(boot, "Commands", Commands),
+            patch.object(boot, "public_journal_directory"),
+            patch.object(boot, "root_interpreter_runtime", return_value={"SYNTHETIC": True}),
+            patch.object(boot, "root_cache_copy", copy),
+            patch.object(boot, "root_cache_check", check),
+            patch.object(boot, "payload_target", return_value=target),
+        ):
+            rc = boot.main(
+                ["--pins-sha", "f" * 64, "--root-install", "--native-scope-preflight-required"]
+            )
+        return rc, events, writes
+
+    def test_R10_actual_root_main_wires_same_cache_after_auth_control_payload_and_before_receipt(
+        self,
+    ):
+        rc, events, writes = self.controller()
+        self.assertEqual(rc, 0)
+        apt = [e for e in events if isinstance(e, tuple)]
+        private = PurePosixPath("/var/tmp/pamolive-chrome-bootstrap-123-1")
+        self.assertEqual(
+            apt,
+            [
+                tuple(boot.root_apt_argv(private, action=action))
+                for action in ("--simulate", "--assume-yes")
+            ],
+        )
+        self.assertLess(events.index("auth"), events.index("copy"))
+        self.assertLess(events.index("copy"), events.index("--field"))
+        self.assertLess(events.index("--fsys-tarfile"), events.index(apt[0]))
+        self.assertEqual(events.count("cache-check"), 4)
+        receipt = json.loads(writes["/runner/p1g-headless-123-1-chrome/installed.json"])
+        self.assertEqual(receipt["schema"], boot.INSTALLED_SCHEMA)
+        self.assertIs(receipt["operational_GO"], False)
+
+    def test_R10_actual_main_failure_never_makes_installed_or_undoes_late_install(self):
+        for failure in ("copy", "simulation", "post_install"):
+            rc, events, writes = self.controller(failure)
+            self.assertEqual(rc, 42)
+            self.assertNotIn("/runner/p1g-headless-123-1-chrome/installed.json", writes)
+            self.assertIn("/runner/p1g-headless-123-1-chrome/root-UNKNOWN.json", writes)
+            apt = [e for e in events if isinstance(e, tuple)]
+            self.assertEqual(len(apt), {"copy": 0, "simulation": 1, "post_install": 2}[failure])
+
+    def test_R10_real_workflow_recipe_keeps_negative_first_closed_tools_and_public_leaf(self):
+        workflow = (HERE.parents[1] / ".github/workflows/ci.yml").read_text(encoding="utf8")
+        step = workflow.split("      - name: Probe absolute local APT cache", 1)[1]
+        step = step.split("      - name: Authenticate scoped certificate", 1)[0]
+        self.assertIn("timeout-minutes: 3", step)
+        self.assertIn("/usr/bin/python3.12 -I -B -S -", step)
+        script = step.split("<<'PY'\n", 1)[1].rsplit("          PY\n", 1)[0]
+        script = "".join(line[10:] + "\n" for line in script.splitlines())
+        tree = ast.parse(script)  # No module/native recipe execution.
+        self.assertLess(script.index("rc=100"), script.index("cache.mkdir(mode=0o700)"))
+        self.assertIn("assert exact_error in negative.splitlines(keepends=True)", script)
+        self.assertIn("== status_before", script)
+        self.assertIn('"--simulate"', script)
+        self.assertIn('"--assume-yes"', script)
+        self.assertIn("assert normal", script)
+        self.assertIn('"complete": False', script)
+        self.assertIn('"all_OS_descendants_released": False', script)
+        self.assertNotIn('"/usr/bin/dpkg"', script)
+        self.assertNotIn('"--fix-broken"', script)
+        self.assertIn(
+            "p1g-apt-cache-probe-${{ github.run_id }}-${{ github.run_attempt }}.json", workflow
+        )
+        # Exercise the real existing guard through the workflow's sudo whitelist.
+        preserved = set(step.split("--preserve-env=", 1)[1].split()[0].split(","))
+        self.assertTrue({"DATABASE_URL", "PAMOLIVE_TEST_DATABASE_NAME"} <= preserved)
+        url_line = next(
+            line for line in step.splitlines() if line.startswith("          DATABASE_URL: ")
+        )
+        name_line = next(
+            line
+            for line in step.splitlines()
+            if line.startswith("          PAMOLIVE_TEST_DATABASE_NAME: ")
+        )
+        database_url = url_line.split(": ", 1)[1].replace(
+            "${{ job.services.postgres.ports[5432] }}", "55432"
+        )
+        environment = {
+            "GITHUB_ACTIONS": "true",
+            "GITHUB_REPOSITORY": "pamolive/PamOlive-Platform",
+            "GITHUB_EVENT_NAME": "push",
+            "GITHUB_REF": "refs/heads/agent/p1-g-headless",
+            "GITHUB_SHA": "a" * 40,
+            "GITHUB_RUN_ID": "123",
+            "GITHUB_RUN_ATTEMPT": "1",
+            "PAMOLIVE_P1G_DISPOSABLE": "1",
+            "DATABASE_URL": database_url,
+            "PAMOLIVE_TEST_DATABASE_NAME": name_line.split(": ", 1)[1],
+        }
+        handed_off = {key: value for key, value in environment.items() if key in preserved}
+        support = boot.load(
+            "r10_existing_guard_regression",
+            (HERE / "lab_support.py").read_bytes(),
+            HERE / "lab_support.py",
+        )
+        support.guard(handed_off, platform="linux", uid=1001)
+        for key, code in (
+            ("DATABASE_URL", "loopback_disposable_database_required"),
+            ("PAMOLIVE_TEST_DATABASE_NAME", "fresh_test_database_required"),
+        ):
+            missing = dict(handed_off)
+            del missing[key]
+            with self.assertRaisesRegex(ValueError, code):
+                support.guard(missing, platform="linux", uid=1001)
+        # Execute only the isolated DATA reader with memory OS/FD doubles.
+        reader = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "read")
+        model = CacheMemory()
+        namespace = {"os": model.ops(), "stat": stat}
+        exec(
+            compile(ast.Module(body=[reader], type_ignores=[]), "<public-read-memory>", "exec"),
+            namespace,
+        )
+        self.assertEqual(namespace["read"](model.source, 128), model.raw)
+        model.after_read = lambda row: row.update(st_ino=999)
+        with self.assertRaises(AssertionError):
+            namespace["read"](model.source, 128)
+        model = CacheMemory()
+        ops = model.ops()
+        original_stat = ops.fstat
+
+        def swapped(fd):
+            row = original_stat(fd)
+            row.st_ino += 1
+            return row
+
+        ops.fstat = swapped
+        namespace["os"] = ops
+        with self.assertRaises(AssertionError):
+            namespace["read"](model.source, 128)
+        self.assertFalse(any(e[0] == "read" for e in model.events))
+        model.nodes[str(model.source)][0]["st_mode"] = stat.S_IFIFO | 0o600
+        before = len(model.events)
+        with self.assertRaises(AssertionError):
+            namespace["read"](model.source, 128)
+        self.assertEqual(len(model.events), before)
