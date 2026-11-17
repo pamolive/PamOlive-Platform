@@ -47,13 +47,30 @@ jobs:
           sources=(transaction.py gate.py materials.py bounded_io.py capture.py network_worker.py solver.py oci_codec.py supervisor.py solver_fence.py native_fence_tests.py code-pins.json)
           paths=()
           for name in "${sources[@]}"; do paths+=("deploy/expat_apt/$name"); done
-          git archive --format=tar "$GITHUB_SHA" "${paths[@]}" qualification/expat_apt_C/Dockerfile > "$RUNNER_TEMP/C-context.tar"
+          git -c tar.umask=0022 archive --format=tar "$GITHUB_SHA" "${paths[@]}" qualification/expat_apt_C/Dockerfile > "$RUNNER_TEMP/C-context.tar"
           /usr/bin/python3.12 -I -B -S - "$RUNNER_TEMP/C-context.tar" "$GITHUB_SHA" "$RUNNER_TEMP/C-source.json" <<'PY'
-          import hashlib,json,pathlib,sys
+          import hashlib,io,json,pathlib,sys,tarfile
           p=pathlib.Path(sys.argv[1]);b=p.read_bytes();assert len(b)<=2*1024**2
+          expected={'deploy/expat_apt/'+n for n in (
+              'transaction.py','gate.py','materials.py','bounded_io.py','capture.py',
+              'network_worker.py','solver.py','oci_codec.py','supervisor.py',
+              'native_fence_tests.py','solver_fence.py','code-pins.json')}
+          expected.add('qualification/expat_apt_C/Dockerfile')
+          directories={'deploy','deploy/expat_apt','qualification','qualification/expat_apt_C'}
+          with tarfile.open(fileobj=io.BytesIO(b),mode='r:') as archive:
+              rows=archive.getmembers()
+              assert len(rows)<=64 and len({r.name for r in rows})==len(rows)
+              assert {r.name for r in rows if r.isfile()}==expected
+              assert archive.pax_headers.get('comment')==sys.argv[2]
+              assert set(archive.pax_headers)<={'comment'}
+              for row in rows:
+                  assert row.uid==row.gid==0 and not row.linkname
+                  assert (row.isfile() and row.mode==0o644 and row.name in expected) or (
+                      row.isdir() and row.mode==0o755 and row.name.rstrip('/') in directories)
           pathlib.Path(sys.argv[3]).write_text(json.dumps({'revision':sys.argv[2],
               'context_sha256':hashlib.sha256(b).hexdigest(),'build_verified':False,
-              'materials_complete':False})+'\n')
+              'materials_complete':False,'source_TAR_modes_validated':True,
+              'source_regular_files':len(expected)})+'\n')
           PY
           env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP/C-docker-config" \
             DOCKER_CONFIG="$RUNNER_TEMP/C-docker-config" DOCKER_BUILDKIT=1 \
