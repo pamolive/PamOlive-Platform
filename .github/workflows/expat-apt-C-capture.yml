@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
-      CODE_PINS_SHA: 67764c5397382ff39d6ae8af0168908eb5f60bcd9a992608acd790b703168f6b
+      CODE_PINS_SHA: 9ee2a881d4f59db8f448bfa707598531cc73efa0987a25480276ba526c9e2104
       POLICY_SHA: 3bab6351fe8cb82cb557fe6d334cc2e386e05a2a6c19cd7cf6613a015b7323f4
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
@@ -44,7 +44,7 @@ jobs:
           assert int(info['MemAvailable'].split()[0])>=4*1024**2
           assert shutil.disk_usage(sys.argv[1]).free>=10*1024**3
           PY
-          sources=(transaction.py gate.py materials.py bounded_io.py capture.py network_worker.py solver.py oci_codec.py supervisor.py code-pins.json)
+          sources=(transaction.py gate.py materials.py bounded_io.py capture.py network_worker.py solver.py oci_codec.py supervisor.py solver_fence.py native_fence_tests.py code-pins.json)
           paths=()
           for name in "${sources[@]}"; do paths+=("deploy/expat_apt/$name"); done
           git archive --format=tar "$GITHUB_SHA" "${paths[@]}" qualification/expat_apt_C/Dockerfile > "$RUNNER_TEMP/C-context.tar"
@@ -58,7 +58,7 @@ jobs:
           env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP/C-docker-config" \
             DOCKER_CONFIG="$RUNNER_TEMP/C-docker-config" DOCKER_BUILDKIT=1 \
             /usr/bin/timeout --signal=TERM --kill-after=15s 2050s \
-            /usr/bin/docker build --platform linux/amd64 --file qualification/expat_apt_C/Dockerfile \
+            /usr/bin/docker build --no-cache --platform linux/amd64 --file qualification/expat_apt_C/Dockerfile \
             --build-context c-authority="$RUNNER_TEMP/C-authority" \
             --build-arg CODE_PINS_SHA="$CODE_PINS_SHA" --build-arg POLICY_SHA="$POLICY_SHA" \
             --target capture-data --output "type=local,dest=$RUNNER_TEMP/C-data" - < "$RUNNER_TEMP/C-context.tar"
@@ -78,5 +78,6 @@ jobs:
             ${{ runner.temp }}/C-data/supervisor.json
             ${{ runner.temp }}/C-data/supervisor/*.json
             ${{ runner.temp }}/C-data/commands/**/*.json
+            ${{ runner.temp }}/C-data/fence-native/*.json
             ${{ runner.temp }}/C-data/inputs/**
             ${{ runner.temp }}/C-data/base/blobs/sha256/*

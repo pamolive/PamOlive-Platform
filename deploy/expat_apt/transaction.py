@@ -404,6 +404,156 @@ class Runner:
             )
             raise
 
+    def simulate(self, argv, *, seconds, cap, env):
+        """One H1 frontend becomes APT in the same PID only after a kernel fence."""
+        f = self.solver_fence_module
+        need(
+            type(argv) is list
+            and tuple(argv) == f.APT_ARGV
+            and type(seconds) is int
+            and seconds == 90
+            and type(cap) is int
+            and cap == 1024**2
+            and type(env) is dict
+            and env == f.ENV,
+            "fenced_solver_role",
+        )
+        need(
+            not self.unknown and self.ordinal < 16 and time.monotonic() + seconds + 10 < self.until,
+            "client_budget_or_UNKNOWN",
+        )
+        self.ordinal += 1
+        prefix = PROOF / ("command-" + str(self.ordinal))
+        apt = self.tool_pin(f.APT)
+
+        def python_pin():
+            raw = self.live(f.PYTHON.lstrip("/"))
+            need(raw.startswith(b"\x7fELF"), "solver_python_ELF")
+            return sha(raw), identity(Path(f.PYTHON).lstat())
+
+        python = python_pin()
+        helper_path = HERE / "solver_fence.py"
+        helper_raw = read_regular(helper_path, 131072)
+        helper_identity = identity(helper_path.lstat())
+        need(
+            sha(helper_raw) == self.solver_fence_sha
+            and sha(read_regular(HERE / "code-pins.json", 16384)) == self.solver_code_sha,
+            "solver_fence_source",
+        )
+        config = sha(read_regular(f.CONFIG, 16384))
+        need(config == f.SOLVER_CONFIG_SHA, "solver_configuration_role")
+        outer = f.launch_argv(
+            self.solver_fence_sha, self.solver_code_sha, apt[0], python[0], config, self.ordinal
+        )
+        write_new(
+            str(prefix) + "-intent.json",
+            json.dumps(
+                {
+                    "state": "PENDING",
+                    "role": f.ROLE,
+                    "frontend_python_sha256": python[0],
+                    "helper_sha256": self.solver_fence_sha,
+                    "payload_APT_sha256": apt[0],
+                    "code_pins_sha256": self.solver_code_sha,
+                }
+            ).encode(),
+        )
+        try:
+            result = self.io.run_capped(
+                outer,
+                env=env,
+                cwd=str(WORK),
+                timeout=seconds + 10,
+                work_timeout=seconds,
+                deadline=self.until,
+                stdout_cap=cap,
+                stderr_cap=262144,
+                total_cap=cap + 262144,
+                owned_session=True,
+                on_spawn=lambda pid: write_new(
+                    str(prefix) + "-pid.json", json.dumps({"pid": pid}).encode()
+                ),
+            )
+            facts = result.facts()
+            write_new(str(prefix) + "-result.json", json.dumps(facts).encode())
+            lifecycle = (
+                result.spawn_attempted is True
+                and type(result.pid) is int
+                and result.pid > 0
+                and type(result.returncode) is int
+                and result.owned_child_reaped is True
+                and result.drains_complete is True
+                and result.killed_owned_child is False
+                and result.exception_type is result.cleanup_exception_type is None
+                and (
+                    (result.returncode == 0 and result.ok is True and result.reason is None)
+                    or (
+                        result.returncode != 0
+                        and result.ok is False
+                        and result.reason == "nonzero_exit"
+                    )
+                )
+            )
+            observed = False
+            if lifecycle:
+                try:
+                    need(
+                        self.tool_pin(f.APT) == apt
+                        and python_pin() == python
+                        and sha(read_regular(helper_path, 131072)) == self.solver_fence_sha
+                        and identity(helper_path.lstat()) == helper_identity
+                        and sha(read_regular(HERE / "code-pins.json", 16384))
+                        == self.solver_code_sha
+                        and sha(read_regular(f.CONFIG, 16384)) == config,
+                        "solver_post_tools_or_context",
+                    )
+                    packet = self.m.json_data(read_regular(str(prefix) + "-fence.json", 4096))
+                    f.validate_packet(
+                        packet,
+                        pid=result.pid,
+                        code_sha=self.solver_code_sha,
+                        helper_sha=self.solver_fence_sha,
+                        python_pin=python,
+                        apt_pin=apt,
+                        ordinal=self.ordinal,
+                    )
+                    observed = True
+                except Exception:
+                    observed = False
+            if not result.ok:
+                try:
+                    packet = apt_failure_diagnostic(result, apt[0], apt[0] if observed else None)
+                    raw = (json.dumps(packet, separators=(",", ":")) + "\n").encode()
+                    need(len(raw) <= 16384, "apt_diagnostic_output_cap")
+                    write_new(str(prefix) + "-apt-diagnostic.json", raw)
+                except Exception:
+                    pass
+            need(lifecycle and result.returncode == 0 and observed, "client_failed_or_UNKNOWN")
+            write_new(
+                str(prefix) + "-tool.json",
+                json.dumps(
+                    {
+                        "frontend_python_unchanged": True,
+                        "helper_source_unchanged": True,
+                        "payload_APT_unchanged": True,
+                        "fence_observation_received": True,
+                        "operational_GO": False,
+                    }
+                ).encode(),
+            )
+            self.records.append(facts)
+            return result.stdout, result.stderr
+        except BaseException:
+            self.unknown = True
+            try:
+                write_new(
+                    str(prefix) + "-UNKNOWN.json",
+                    b'{"state":"UNKNOWN","all_OS_descendants_released":false}',
+                )
+            except Exception:
+                pass
+            raise
+
     def signature(self, signed, suite, rule):
         source, output = WORK / (suite + ".InRelease"), WORK / (suite + ".Release")
         write_new(source, signed)
@@ -579,6 +729,8 @@ def main():
             "solver.py",
             "oci_codec.py",
             "supervisor.py",
+            "solver_fence.py",
+            "native_fence_tests.py",
         }
         and sha(read_regular(HERE / "transaction.py", 131072)) == pins["transaction.py"],
         "code_closure",
