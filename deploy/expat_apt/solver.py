@@ -103,6 +103,8 @@ def configure(runner, gate, indices, signed, transaction):
             b'Dir::State::lists "/expat-apt-work/solver-lists";',
         )
     )
+    need(config.count(b'APT::Get::Download "false";') == 1, "solver_configuration_role")
+    config = config.replace(b'APT::Get::Download "false";', b'APT::Get::Download "true";')
     config += b'APT::Color "false";\nAPT::Get::Show-Versions "true";\n'
     transaction.write_new(root / "solver.conf", config, 0o644)
     env = {
@@ -113,11 +115,10 @@ def configure(runner, gate, indices, signed, transaction):
         "APT_CONFIG": str(root / "solver.conf"),
         "DEBIAN_FRONTEND": "noninteractive",
     }
-    stdout, _ = runner.call(
+    stdout, _ = runner.simulate(
         [
             "/usr/bin/apt-get",
             "--simulate",
-            "--no-download",
             "--no-remove",
             "--no-install-recommends",
             "install",
@@ -126,6 +127,5 @@ def configure(runner, gate, indices, signed, transaction):
         seconds=90,
         cap=1024**2,
         env=env,
-        diagnostic_role="apt_simulate",
     )
     return stdout

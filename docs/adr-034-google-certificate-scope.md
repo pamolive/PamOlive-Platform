@@ -321,3 +321,59 @@ La preuve interpréteur/1 déjà validée est observée publiquement avant auth 
 installation. installed/2 et ses contrôles après installation restent exigés,
 sans fallback depuis cette observation. 136 purs passent, aucune crypto/APT ou
 session navigateur native n'est déduite des modèles. Nouvelle CI obligatoire.
+
+## R10 — nom APT absolu via un cache root privé
+
+Le reçu R9 projette une ligne E de104octets. Le template public APT2.8.3
+`Internal Error, Pathname to install is not absolute` et le basename public
+`google-chrome-stable_157.0.8103.78-1_amd64.deb` produisent exactement son SHA,
+ainsi que celui du stderr259 avec les deux warnings publics. C'est une
+comparaison publique, sans réception du stderr brut ni mesure de version APT
+du runner. L'origine dynamique du basename n'est pas établie par cette égalité.
+
+La source GetArchives/acquire-item permet un chemin conditionnel : le nom de
+stockage est d'abord package_version_arch.deb ; une acquisition LocalOnly peut
+être en attente, et no-download saute les items Local. Un fichier canonique du
+cache déjà présent de la bonne taille prend en revanche la voie Complete/Local,
+avec StoreFilename absolu avant QueueURI. Le guard dpkgpm sur les chemins
+d'installation est conservé. [APT2.8.3 acquire-item](https://salsa.debian.org/apt-team/apt/-/blob/2.8.3/apt-pkg/acquire-item.cc),
+[dpkgpm](https://salsa.debian.org/apt-team/apt/-/blob/2.8.3/apt-pkg/deb/dpkgpm.cc).
+
+R10 remplace la copie root chrome.deb par une seule copie canonique sous le
+nouveau private/apt-archives0700 root:root, créé exclusivement. Le paquet157,
+sa taille147497676, son SHA4d740636 et son Filename signé restent exacts et
+fermés. La source frontend0400/nlink1/UIDSUDO_UID et la destination root0400/
+nlink1 sont contrôlées par FD/path sans alias ; création O_EXCL, fsync et
+fchmod sur le même FD. Pas de hardlink, adoption, réparation globale ou chown.
+Contrôle et inspection du payload opèrent sur cette copie, puis le même -o
+Dir::Cache::Archives absolu et le même DEB absolu sont passés aux deux appels
+APT root. Simulation frontend, auth, sources exclusives, no-download,
+no-remove, reinstall, H1 et délais870/450/480/180 restent inchangés.
+
+Parent/cache/feuille et les octets attendus sont revérifiés autour des deux
+consommations. Les auxiliaires APT partial/auxfiles/lock n'imposent pas une
+invariance de mtime/nlink du répertoire ; le parent reste0700/UIDGID0. Aucun
+contenu auxiliaire inconnu n'est lu. Ces checks n'établissent pas une atomicité
+contre root ou un writer même UID hostile. Un refus après installation ne
+l'annule pas : UNKNOWN et absence installed/2 restent obligatoires.
+
+Le rôle du diagnostic exige le nouvel argv complet fermé, sans option libre.
+Une recette native TEST distincte est préparée dans le même job Ubuntu24,
+step3min sous job40min, horizon130s et timeout extérieur150+10s. Elle construit
+un minuscule DEB public sans scripts/dépendances ; l'ancien cas doit produire
+normal100, son message exact et un status dpkg inchangé. Sinon aucun PASS.
+La même fixture copiée dans un cache privé absolu doit ensuite être simulée,
+installée et contrôlée par état/marqueur exact. Les commandes internes sont
+mesurées/H1 via le helper72b ; le frontend timeout/sudo n'est pas une preuve
+exhaustive des descendants. Ni .deb/cache ni sorties brutes ne sont publiés,
+seul un JSON TEST fini. Le paquet synthétique reste dans la VM jetable ; aucun
+cleanup global ou resources_released n'est inféré du teardown.
+
+Les142anciens tests gardent leurs assertions ; seule la prémisse d'argv/cache
+du double R8 est mise au nouveau contrat. Onze nouveaux modèles couvrent les
+FD/collisions/bytes et le vrai contrôleur main sous doubles, dont échec tardif
+après installation.153purs passent sans tentative externe, mais ne prouvent
+ni APT réel ni navigateur. Les quatre matériaux Google,001d,25liaisons,
+installed/2, le guard Chrome et la matrice17 ne sont pas requalifiés par cette
+recette. La prochaine CI fraîche et sa réception doivent encore prouver le
+cache réel, puis le bootstrap Google et le navigateur/UI exacts.

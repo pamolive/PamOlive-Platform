@@ -3,6 +3,10 @@ FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194
 COPY deploy/expat_apt/ /opt/expat-apt/
 ARG CODE_PINS_SHA
 ARG POLICY_SHA
+# Real kernel negatives run in a disposable network-none stage before capture.
+# Transport-only summary: the driver itself requires COMPLETE_DATA_ONLY.
+RUN --network=none /usr/bin/timeout --signal=TERM --kill-after=5s 45s \
+    /usr/local/bin/python3.12 -I -B -S /opt/expat-apt/supervisor.py native-fence "${CODE_PINS_SHA}"
 RUN --mount=type=bind,from=c-authority,target=/c-authority,ro \
     /usr/bin/timeout --signal=TERM --kill-after=15s 1850s \
     /usr/local/bin/python3.12 -I -B -S /opt/expat-apt/supervisor.py \
@@ -13,6 +17,7 @@ COPY --from=capture /c-supervisor/ /supervisor/
 COPY --from=capture /c-capture/ /inputs/
 COPY --from=capture /c-base/ /base/
 COPY --from=capture /expat-apt-proof/ /commands/
+COPY --from=capture /c-fence-native/ /fence-native/
 
 FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS apply
 COPY deploy/expat_apt/ /opt/expat-apt/

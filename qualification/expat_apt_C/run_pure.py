@@ -31,9 +31,19 @@ module = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = module
 spec.loader.exec_module(module)
 log = io.StringIO()
-result = unittest.TextTestRunner(stream=log, verbosity=2).run(
-    unittest.defaultTestLoader.loadTestsFromModule(module)
+extra_spec = importlib.util.spec_from_file_location(
+    "c_fence_tests", HERE / "tests/test_expat_apt_fence.py"
 )
+extra = importlib.util.module_from_spec(extra_spec)
+sys.modules[extra_spec.name] = extra
+extra_spec.loader.exec_module(extra)
+suite = unittest.TestSuite(
+    [
+        unittest.defaultTestLoader.loadTestsFromModule(module),
+        unittest.defaultTestLoader.loadTestsFromModule(extra),
+    ]
+)
+result = unittest.TextTestRunner(stream=log, verbosity=2).run(suite)
 value = {
     "tests": result.testsRun,
     "failures": len(result.failures),

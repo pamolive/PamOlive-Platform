@@ -30,6 +30,7 @@ def module(name, file):
 m = module("c_reviewed_materials", "materials.py")
 g = module("c_gate", "gate.py")
 t = module("c_transaction", "transaction.py")
+fence = module("c_solver_fence", "solver_fence.py")
 NOW = int(datetime(2026, 11, 16, 12, tzinfo=UTC).timestamp())
 CERT = "04B54C3CDCA79751B16BC6B5225629DF75B188BD"
 
@@ -603,6 +604,8 @@ class IntegrationDataTests(unittest.TestCase):
                 "solver.py",
                 "oci_codec.py",
                 "supervisor.py",
+                "solver_fence.py",
+                "native_fence_tests.py",
             },
         )
         for name, digest in pins.items():
@@ -859,13 +862,15 @@ class AcquisitionTests(unittest.TestCase):
             write_new=lambda p, r, *a: writes.update({str(p): r}),
         )
         runner = SimpleNamespace(
-            call=lambda argv, **kwargs: (calls.append((argv, kwargs)) or (b"plan", b""))
+            simulate=lambda argv, **kwargs: (calls.append((argv, kwargs)) or (b"plan", b""))
         )
         solver.configure(runner, g, self.indices(f), {s: b"SIGNED" for s in g.REPOSITORIES}, fake)
         self.assertEqual(len(calls), 1)
         argv, options = calls[0]
         self.assertIn("--simulate", argv)
-        self.assertIn("--no-download", argv)
+        self.assertNotIn("--no-download", argv)
+        self.assertIn(b'APT::Get::Download "true";', writes["/expat-apt-work/solver.conf"])
+        self.assertEqual(g.sha(writes["/expat-apt-work/solver.conf"]), fence.SOLVER_CONFIG_SHA)
         self.assertNotIn("update", argv)
         self.assertNotIn("upgrade", argv)
         self.assertEqual(argv[-14:], list(g.REQUESTS))
@@ -930,7 +935,14 @@ class AcquisitionTests(unittest.TestCase):
 
     def test_37_real_capture_pipeline_composes_auth_solver_fetch_and_no_status_mutation(self):
         f = Fixture()
-        stored = {}
+        source_pins = {
+            "solver.py": "x",
+            "oci_codec.py": "x",
+            "solver_fence.py": "b" * 64,
+            "native_fence_tests.py": "c" * 64,
+        }
+        native = positive_native_summary("a" * 64, source_pins)
+        stored = {"/c-fence-native/summary.json": g.canonical(native)}
         events = []
         raw_indices = self.indices(f)
         packed = {suite: lzma.compress(raw) for suite, raw in raw_indices.items()}
@@ -987,6 +999,8 @@ class AcquisitionTests(unittest.TestCase):
                 test.assertEqual(sum(e.startswith("signature:") for e in events), 3)
                 return test.simulated(f), b""
 
+            simulate = call
+
             def signature(self, raw, suite, rule):
                 self.ordinal += 1
                 events.append("signature:" + suite)
@@ -1036,7 +1050,11 @@ class AcquisitionTests(unittest.TestCase):
             Runner=FakeRunner,
             VERSION=t.VERSION,
             apt_configuration=t.apt_configuration,
-            load=lambda name, *args: solver if "solver" in name else oci,
+            load=lambda name, *args: fence
+            if name == "expat_solver_fence"
+            else solver
+            if "solver" in name
+            else oci,
         )
         args = SimpleNamespace(policy_sha=g.sha(g.canonical(f.policy)), code_pins_sha="a" * 64)
         with (
@@ -1051,9 +1069,7 @@ class AcquisitionTests(unittest.TestCase):
             patch.object(cap.time, "monotonic", return_value=0),
         ):
             self.assertEqual(
-                cap.run(
-                    args, {"solver.py": "x", "oci_codec.py": "x"}, m, g, None, proxy, deadline=1800
-                ),
+                cap.run(args, source_pins, m, g, None, proxy, deadline=1800),
                 0,
             )
         result = m.json_data(stored["/c-capture/result.json"])
@@ -1672,8 +1688,8 @@ class AptSimulationDiagnosticTests(unittest.TestCase):
                 events.append(("mkdir", str(self)))
 
         def call(argv, **kwargs):
-            self.assertEqual(tuple(argv), t.APT_SIMULATE_ARGV)
-            self.assertEqual(kwargs["diagnostic_role"], "apt_simulate")
+            self.assertEqual(tuple(argv), fence.APT_ARGV)
+            self.assertNotIn("diagnostic_role", kwargs)
             self.assertEqual(kwargs["seconds"], 90)
             self.assertEqual(kwargs["cap"], 1024**2)
             raise ValueError("client_failed_or_UNKNOWN")
@@ -1683,7 +1699,7 @@ class AptSimulationDiagnosticTests(unittest.TestCase):
             apt_configuration=t.apt_configuration,
             write_new=lambda p, raw, *a: events.append(("write", str(p))),
         )
-        runner = SimpleNamespace(call=call)
+        runner = SimpleNamespace(simulate=call)
         with patch.object(
             solver, "parse_plan", side_effect=AssertionError("no plan after failure")
         ):
@@ -1728,3 +1744,33 @@ class AptSimulationDiagnosticTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def positive_native_summary(code_sha, pins):
+    facts = {
+        "spawn_attempted": True,
+        "pid": 321,
+        "returncode": 0,
+        "reason": None,
+        "exception_type": None,
+        "killed_owned_child": False,
+        "owned_child_reaped": True,
+        "drains_complete": True,
+        "cleanup_exception_type": None,
+        "stdout_bytes": 200,
+        "stderr_bytes": 0,
+    }
+    return {
+        "schema": "pamolive.expat-solver-fence-native-DATA/1",
+        "state": "COMPLETE_DATA_ONLY",
+        "code_pins_sha256": code_sha,
+        "helper_sha256": pins["solver_fence.py"],
+        "native_source_sha256": pins["native_fence_tests.py"],
+        "filter_sha256": fence.filter_sha(),
+        "cases": ["syscalls", "exec"],
+        "H1": [dict(facts), dict(facts)],
+        "build_verified": False,
+        "materials_complete": False,
+        "all_OS_descendants_released": False,
+        "operational_GO": False,
+    }
