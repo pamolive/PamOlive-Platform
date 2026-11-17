@@ -206,3 +206,17 @@ Sources primaires : [mode TAR stdin](https://docs.docker.com/build/concepts/cont
 [Docker CLI v29.4.2, sélection de contexte](https://github.com/docker/cli/blob/v29.4.2/cli/command/image/build.go),
 [BuildKit v0.28.0, MainContext et DockerIgnorePatterns](https://github.com/moby/buildkit/blob/v0.28.0/frontend/dockerui/config.go),
 [BuildKit, création/export local 0700 et UID/GID client](https://github.com/moby/buildkit/blob/v0.28.0/session/filesync/diffcopy.go).
+
+### Observation fermée des refus du probe — 17 novembre 2026
+
+Le vrai essai main c752cd1 a terminé COPY scratch et l'export, puis refusé
+sans exposer la cause interne. Les codes/phases du diagnostic sont un jeu
+littéral fini ; seuls les ValueError exacts à argument unique connu sont
+classés, tout autre cas devient UNKNOWN. Aucune chaîne d'exception libre,
+aucun contenu ou chemin inconnu n'est publié. Le diagnostic exclusif0600
+est borné à2048B ; une collision/erreur de projection conserve le refus initial
+et n'écrit jamais un PASS. Les diagnostics ne sont pas une entrée d'autorité.
+Le job de reproduction est main seulement, read-only contents/actions,5min,
+sans OIDC ni image produit ; quatre JSON finis sont conservés. Le probe60+15,
+les trois consommateurs TAR et leurs contrôles demeurent inchangés.
+Cette observation ne corrige pas un écart fonctionnel non encore identifié.

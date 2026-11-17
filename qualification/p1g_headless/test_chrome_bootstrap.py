@@ -1059,5 +1059,234 @@ class ChromeBootstrapTests(unittest.TestCase):
         self.assertIn("support.tool_pin(TARGET)", body)
 
 
+class AptFailureDiagnosticTests(unittest.TestCase):
+    def result(self, **changes):
+        row = dict(
+            ok=False,
+            spawn_attempted=True,
+            pid=123,
+            returncode=100,
+            reason="nonzero_exit",
+            owned_child_reaped=True,
+            drains_complete=True,
+            killed_owned_child=False,
+            exception_type=None,
+            cleanup_exception_type=None,
+            stdout=b"PRIVATE stdout",
+            stderr=b"PRIVATE stderr",
+            facts=lambda: {"returncode": 100, "reason": "nonzero_exit"},
+        )
+        row.update(changes)
+        return SimpleNamespace(**row)
+
+    def command(self, result, *, failures=(), role="root-local-exact-install", argv=None):
+        writes, calls = [], []
+        private, public = Path("private-synthetic"), Path("public-synthetic")
+
+        def write(path, body, **kwargs):
+            writes.append((path.name, body, kwargs.get("mode")))
+            if path.name in failures:
+                raise PermissionError("PRIVATE SECONDARY WRITE")
+
+        def runner(argv, **kwargs):
+            calls.append((argv, kwargs))
+            return result
+
+        support = SimpleNamespace(tool_pin=lambda path: {"sha256": "a" * 64}, fresh_write=write)
+        args = (
+            argv if argv is not None else [*boot.APT, "--assume-yes", "install", "/private/pkg.deb"]
+        )
+        with (
+            patch.object(boot, "public_journal_directory"),
+            patch.object(boot.os, "getuid", return_value=0, create=True),
+            patch.object(boot.os, "geteuid", return_value=0, create=True),
+        ):
+            command = boot.Commands(support, SimpleNamespace(run_capped=runner), private, public)
+            try:
+                command.run(args, seconds=180, diagnostic_role=role)
+            except BaseException as error:
+                caught = error
+            else:
+                caught = None
+            return command, caught, writes, calls
+
+    def test_R8_finite_markers_counts_hashes_never_export_private_bytes(self):
+        samples = {
+            "no-download": b"Unable to fetch some archives",
+            "cache": b"The package lists or status file could not be parsed or opened.",
+            "localaccess": b"Could not open file PRIVATE/path",
+            "missingdeps": b"Unmet dependencies.",
+            "downgrade": b"Packages were downgraded and -y was used",
+            "dpkg-lock": b"Unable to acquire the dpkg frontend lock PRIVATE",
+            "dpkg-maintainer": b"script subprocess returned error exit status 1",
+            "interrupted": b"dpkg was interrupted, you must manually",
+        }
+        for kind, sample in samples.items():
+            with self.subTest(kind=kind):
+                data = sample + b" PRIVATE ::error::token=secret\x00\xff\n"
+                packet = boot.apt_failure_diagnostic(self.result(stderr=data))
+                self.assertEqual(packet["completion"], "NORMAL_NONZERO100")
+                self.assertEqual(packet["marker_counts"][kind], 1)
+                self.assertEqual(packet["streams"]["stderr"]["sha256"], boot.sha(data))
+                self.assertEqual(packet["streams"]["stderr"]["bytes"], len(data))
+                self.assertEqual(packet["root_cause"], "UNKNOWN")
+                self.assertFalse(packet["installation_verified"])
+                self.assertNotIn("PRIVATE", json.dumps(packet))
+                self.assertNotIn("::error::", json.dumps(packet))
+                self.assertFalse(packet["operational_GO"])
+
+    def test_R8_unknown_H1_and_typed_buffer_limits_never_classify_as_normal(self):
+        for changes in (
+            {"returncode": True},
+            {"pid": True},
+            {"reason": "PRIVATE"},
+            {"reason": "timeout"},
+            {"owned_child_reaped": False},
+            {"drains_complete": False},
+            {"killed_owned_child": True},
+            {"exception_type": "PRIVATE"},
+            {"cleanup_exception_type": "PRIVATE"},
+            {"ok": True},
+            {"spawn_attempted": 1},
+        ):
+            with self.subTest(changes=changes):
+                packet = boot.apt_failure_diagnostic(self.result(**changes))
+                self.assertEqual(packet["completion"], "UNKNOWN")
+                self.assertFalse(packet["markers_examined"])
+                self.assertEqual(packet["marker_counts"]["unknown"], 1)
+                self.assertNotIn("PRIVATE", json.dumps(packet))
+        for body in (bytearray(b"PRIVATE"), "PRIVATE", b"a" * 262145):
+            packet = boot.apt_failure_diagnostic(self.result(stderr=body))
+            self.assertFalse(packet["streams"]["stderr"]["buffer_valid"])
+            self.assertIsNone(packet["streams"]["stderr"]["sha256"])
+            self.assertFalse(packet["markers_examined"])
+        self.assertTrue(
+            boot.apt_failure_diagnostic(self.result(stderr=b"x" * 262144))["streams"]["stderr"][
+                "buffer_valid"
+            ]
+        )
+
+    def test_R8_real_command_projects_same_buffers_then_sticky_refusal(self):
+        result = self.result(stderr=b"Unable to fetch some archives PRIVATE")
+        command, caught, writes, calls = self.command(result)
+        self.assertIs(type(caught), ValueError)
+        self.assertEqual(caught.args, ("command_UNKNOWN",))
+        self.assertTrue(command.unknown)
+        self.assertEqual(len(calls), 1)
+        packet = json.loads(next(body for name, body, _ in writes if name == "apt-failure.json"))
+        self.assertEqual(packet["streams"]["stderr"]["sha256"], boot.sha(result.stderr))
+        self.assertEqual(
+            [name for name, _, _ in writes],
+            ["intent.json", "apt-failure.json", "process.json", "UNKNOWN.json"],
+        )
+        self.assertTrue(all(mode == 0o444 for _, _, mode in writes))
+        self.assertNotIn(b"PRIVATE", b"".join(body for _, body, _ in writes))
+        with self.assertRaisesRegex(ValueError, "previous_UNKNOWN"):
+            command.run(["/usr/bin/gpg", "next"])
+        self.assertEqual(len(calls), 1)
+        options = calls[0][1]
+        self.assertEqual((options["timeout"], options["work_timeout"]), (190, 180))
+        self.assertEqual(
+            (options["stdout_cap"], options["stderr_cap"], options["total_cap"]),
+            (262144, 262144, 524288),
+        )
+
+    def test_R8_secondary_publication_failures_preserve_original_refusal(self):
+        for failures in (
+            ("apt-failure.json",),
+            ("UNKNOWN.json",),
+            ("process.json",),
+            ("apt-failure.json", "process.json", "UNKNOWN.json"),
+        ):
+            command, caught, _, calls = self.command(self.result(), failures=failures)
+            self.assertIs(type(caught), ValueError)
+            self.assertEqual(caught.args, ("command_UNKNOWN",))
+            self.assertTrue(command.unknown)
+            self.assertEqual(len(calls), 1)
+
+    def test_R8_role_closed_to_exact_APT_install_no_extra_tool_or_success_diagnostic(self):
+        for role, argv in (
+            ("PRIVATE", None),
+            (True, None),
+            ("root-local-exact-install", ["/usr/bin/gpg", "PRIVATE"]),
+            ("root-local-exact-install", [*boot.APT, "--assume-yes", "install", "x", "extra"]),
+        ):
+            _, caught, _, calls = self.command(self.result(), role=role, argv=argv)
+            self.assertIs(type(caught), ValueError)
+            self.assertFalse(calls)
+        result = self.result(ok=True, returncode=0, reason=None, stdout=b"ok")
+        command, caught, writes, calls = self.command(result)
+        self.assertIsNone(caught)
+        self.assertFalse(command.unknown)
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn("apt-failure.json", [name for name, _, _ in writes])
+
+    def test_R8_projection_exception_never_masks_refusal_or_emits_private_exception(self):
+        original = ValueError("PRIVATE projection exception")
+        with patch.object(boot, "apt_failure_diagnostic", side_effect=original):
+            command, caught, writes, calls = self.command(self.result())
+        self.assertIs(type(caught), ValueError)
+        self.assertEqual(caught.args, ("command_UNKNOWN",))
+        self.assertIsNot(caught, original)
+        self.assertTrue(command.unknown)
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn(b"PRIVATE", b"".join(body for _, body, _ in writes))
+        self.assertNotIn("apt-failure.json", [name for name, _, _ in writes])
+
+    def test_R8_missing_markers_are_unknown_and_counters_are_bounded_no_text(self):
+        packet = boot.apt_failure_diagnostic(self.result())
+        self.assertTrue(packet["markers_examined"])
+        self.assertEqual(packet["marker_counts"]["unknown"], 1)
+        self.assertEqual(sum(packet["marker_counts"].values()), 1)
+        packet = boot.apt_failure_diagnostic(
+            self.result(stdout=b"Broken packages " * 1000, stderr=b"Broken packages " * 1000)
+        )
+        self.assertEqual(packet["marker_counts"]["missingdeps"], 2000)
+        self.assertEqual(packet["marker_counts"]["unknown"], 0)
+        self.assertLess(len(json.dumps(packet).encode()), 8192)
+
+    def test_R8_source_observation_before_auth_install_installed2_still_required(self):
+        tree = ast.parse((HERE / "chrome_bootstrap.py").read_bytes())
+        main = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "main")
+        observe = next(
+            n
+            for n in ast.walk(main)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "fresh_write"
+            and "root-interpreter-observation.json" in ast.unparse(n)
+        )
+        self.assertEqual(ast.unparse(observe.args[1]), "json.dumps(root_runtime).encode()")
+        self.assertEqual(next(k.value.value for k in observe.keywords if k.arg == "mode"), 0o444)
+        first_runtime = min(
+            n.lineno
+            for n in ast.walk(main)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Name)
+            and n.func.id == "root_interpreter_runtime"
+        )
+        first_auth = min(
+            n.lineno
+            for n in ast.walk(main)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "authenticate"
+        )
+        self.assertLess(first_runtime, observe.lineno)
+        self.assertLess(observe.lineno, first_auth)
+        role_calls = [
+            n
+            for n in ast.walk(main)
+            if isinstance(n, ast.Call) and any(k.arg == "diagnostic_role" for k in n.keywords)
+        ]
+        self.assertEqual(len(role_calls), 1)
+        self.assertIn("--assume-yes", ast.unparse(role_calls[0]))
+        self.assertEqual(boot.INSTALLED_SCHEMA, "pamolive.chrome-bootstrap/2")
+        parent = next(
+            n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "root_supervisor"
+        )
+        self.assertIn("result['schema'] == INSTALLED_SCHEMA", ast.unparse(parent))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -849,8 +849,133 @@ def verified_tar(stream, receipt, manifest):
     return actual[".dockerignore"]
 
 
-def probe(archive_path, receipt_path, source_path, probe_path, revision):
+PROBE_DIAGNOSTIC_CODES = frozenset(
+    {
+        "context_archive_budget",
+        "context_archive_changed",
+        "context_archive_fd_changed",
+        "context_archive_growth",
+        "context_archive_hash",
+        "context_archive_identity",
+        "context_archive_path_changed",
+        "context_archive_size",
+        "context_canary_in_tar",
+        "context_directory_changed",
+        "context_directory_mode",
+        "context_duplicate",
+        "context_entry_owner",
+        "context_file_budget",
+        "context_file_changed",
+        "context_file_count",
+        "context_file_size",
+        "context_file_type",
+        "context_inode_alias",
+        "context_members_changed",
+        "context_output_changed",
+        "context_parent_depth",
+        "context_parent_path",
+        "context_path",
+        "context_path_collision",
+        "context_private_output_parent",
+        "context_private_path",
+        "context_probe_arguments",
+        "context_probe_bytes",
+        "context_probe_case_policy",
+        "context_probe_control",
+        "context_probe_destination_exists",
+        "context_probe_docker_exit",
+        "context_probe_output_bytes",
+        "context_probe_output_changed",
+        "context_probe_receipt_budget",
+        "context_probe_receipt_path",
+        "context_probe_receipt_short_write",
+        "context_probe_short_write",
+        "context_probe_source_changed",
+        "context_receipt_changed",
+        "context_receipt_contract",
+        "context_receipt_duplicate",
+        "context_receipt_file",
+        "context_receipt_hash",
+        "context_receipt_schema",
+        "context_required_inputs",
+        "context_root_metadata",
+        "context_seal_alias",
+        "context_seal_duplicate",
+        "context_seal_file",
+        "context_seal_members_budget",
+        "context_seal_path",
+        "context_selection_changed",
+        "context_selection_profile",
+        "context_source_files",
+        "context_source_manifest",
+        "context_source_manifest_required",
+        "context_source_path",
+        "context_special_mode",
+        "context_tar_manifest",
+        "context_total_budget",
+        "context_unknown_entry",
+        "context_windows_alias",
+        "sealed_context_linux_required",
+    }
+)
+PROBE_DIAGNOSTIC_PHASES = frozenset(
+    {
+        "arguments",
+        "seal",
+        "destinations",
+        "archive",
+        "source_create",
+        "docker",
+        "source_recheck",
+        "export_check",
+        "archive_recheck",
+        "receipt",
+    }
+)
+
+
+def publish_probe_diagnostic(exception, phase, receipt_path):
+    """Finite public cause only; never inspect exception text or filesystem contents."""
+    code = "UNKNOWN"
+    if type(exception) is ValueError and len(exception.args) == 1:
+        candidate = exception.args[0]
+        if type(candidate) is str and candidate in PROBE_DIAGNOSTIC_CODES:
+            code = candidate
+    value = {
+        "schema": "pamolive.context-probe-diagnostic/1",
+        "phase": phase if type(phase) is str and phase in PROBE_DIAGNOSTIC_PHASES else "UNKNOWN",
+        "code": code,
+        "parity_probe": False,
+        "diagnostic_only": True,
+        "H1_qualified": False,
+        "global_cleanup_qualified": False,
+        "authority": False,
+    }
+    raw = canonical(value)
+    print(raw.decode("ascii"), end="")
+    # One fixed leaf in the already private protocol parent; no path resolution,
+    # overwrite, mkdir, listing or content read is added for diagnostics.
+    if receipt_path is None:
+        return
+    path = Path(receipt_path)
+    if not path.is_absolute() or ".." in path.parts or path.name != "receipt.json":
+        return
+    try:
+        with exclusive(path.parent / "diagnostic.json") as output:
+            require(
+                len(raw) <= 2048 and output.write(raw) == len(raw), "context_receipt_short_write"
+            )
+    except (OSError, ValueError, TypeError):
+        # A partial diagnostic never turns the original probe refusal into success.
+        print('{"probe_diagnostic_export":false,"error":"diagnostic_export_refused"}')
+
+
+def probe(archive_path, receipt_path, source_path, probe_path, revision, *, diagnostic=None):
+    if diagnostic is not None:
+        diagnostic["phase"] = "seal"
     receipt, manifest = checked_seal(receipt_path, source_path, revision)
+    if diagnostic is not None:
+        diagnostic["phase"] = "destinations"
     parent = Path(receipt_path).absolute().parent
     require(Path(probe_path).absolute() == parent / "probe.json", "context_probe_receipt_path")
     source, exported = parent / "probe-source", parent / "probe-export"
@@ -862,9 +987,13 @@ def probe(archive_path, receipt_path, source_path, probe_path, revision):
             except FileNotFoundError:
                 continue
             raise ValueError("context_probe_destination_exists")
+    if diagnostic is not None:
+        diagnostic["phase"] = "archive"
     with bound_archive(archive_path, receipt["archive"]["identity"]) as stream:
         dockerignore = verified_tar(stream, receipt, manifest)
         files = probe_files(manifest, dockerignore)
+        if diagnostic is not None:
+            diagnostic["phase"] = "source_create"
         captured, written = make_probe_tree(source, files)
         argv = [
             "docker",
@@ -878,19 +1007,29 @@ def probe(archive_path, receipt_path, source_path, probe_path, revision):
             "type=local,dest=" + str(exported),
             str(source),
         ]
+        if diagnostic is not None:
+            diagnostic["phase"] = "docker"
         result = subprocess.run(argv, check=False)
         require(
             type(result.returncode) is int and result.returncode == 0, "context_probe_docker_exit"
         )
+        if diagnostic is not None:
+            diagnostic["phase"] = "source_recheck"
         require(metadata_tree(source, files, written) == captured, "context_probe_source_changed")
         expected = [
             ("proof/" + name, data, mode) for name, data, mode in files if copy_selected(name)
         ]
+        if diagnostic is not None:
+            diagnostic["phase"] = "export_check"
         digest = exported_probe(exported, expected)
+        if diagnostic is not None:
+            diagnostic["phase"] = "archive_recheck"
         require(
             stream_hash(stream, receipt["archive"]["bytes"]) == receipt["archive"]["sha256"],
             "context_archive_hash",
         )
+    if diagnostic is not None:
+        diagnostic["phase"] = "receipt"
     value = {
         "schema": PROBE_SCHEMA,
         "revision": revision,
@@ -1122,6 +1261,7 @@ def main():
     parser.add_argument("--probe", action="store_true")
     args = parser.parse_args()
     if args.probe:
+        diagnostic = {"phase": "arguments"}
         try:
             require(
                 args.build_target is None
@@ -1141,6 +1281,7 @@ def main():
                 args.source_manifest,
                 args.probe_receipt,
                 args.revision,
+                diagnostic=diagnostic,
             )
         except (
             OSError,
@@ -1150,7 +1291,8 @@ def main():
             RecursionError,
             tarfile.TarError,
             subprocess.SubprocessError,
-        ):
+        ) as exception:
+            publish_probe_diagnostic(exception, diagnostic["phase"], args.sealed_receipt)
             print(
                 '{"parity_probe":false,"error":"context_parity_refused","global_cleanup_qualified":false}'
             )

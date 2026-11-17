@@ -1,0 +1,83 @@
+name: ADR021 finite context probe DATA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - deploy/build_context.py
+      - tests/test_context_probe_diagnostic.py
+      - .github/workflows/adr021-context-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  context-probe:
+    if: >-
+      github.repository == 'pamolive/PamOlive-Platform' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BUILD_CONTEXT_SHA256: 3ca5cf44efe96b937f30d7afa09fba4cb3054375c92579fdb22c94e6d52ce6a7
+    steps:
+      - name: Receive the exact source revision
+        timeout-minutes: 1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Receive the existing Python runtime
+        timeout-minutes: 1
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Check the pinned helper and pure diagnostic boundary
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          timeout --signal=TERM --kill-after=15s 75s bash -euo pipefail <<'SH'
+          printf '%s  %s\n' "$BUILD_CONTEXT_SHA256" deploy/build_context.py | sha256sum --check --status
+          python -m unittest tests.test_context_probe_diagnostic
+          SH
+      - name: Prepare the same committed context and seal as Platform
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          timeout --signal=TERM --kill-after=15s 75s bash -euo pipefail <<'SH'
+          printf '%s  %s\n' "$BUILD_CONTEXT_SHA256" deploy/build_context.py | sha256sum --check --status
+          umask 022
+          mkdir -m 700 "$RUNNER_TEMP/pamolive-context-input"
+          python -m deploy.build_context --revision "$GITHUB_SHA" \
+            --destination "$RUNNER_TEMP/pamolive-committed-context" \
+            --output "$RUNNER_TEMP/pamolive-committed-context.json" \
+            --sealed-archive "$RUNNER_TEMP/pamolive-context-input/context.tar" \
+            --sealed-receipt "$RUNNER_TEMP/pamolive-context-input/receipt.json"
+          SH
+      - name: Observe finite parity and retain every existing refusal
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          printf '%s  %s\n' "$BUILD_CONTEXT_SHA256" deploy/build_context.py | sha256sum --check --status
+          timeout --signal=TERM --kill-after=15s 60s python -m deploy.build_context \
+            --revision "$GITHUB_SHA" --probe \
+            --sealed-archive "$RUNNER_TEMP/pamolive-context-input/context.tar" \
+            --sealed-receipt "$RUNNER_TEMP/pamolive-context-input/receipt.json" \
+            --source-manifest "$RUNNER_TEMP/pamolive-committed-context.json" \
+            --probe-receipt "$RUNNER_TEMP/pamolive-context-input/probe.json"
+      - name: Retain only finite context DATA JSON
+        if: always()
+        timeout-minutes: 1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: pamolive-context-probe-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/pamolive-committed-context.json
+            ${{ runner.temp }}/pamolive-context-input/receipt.json
+            ${{ runner.temp }}/pamolive-context-input/probe.json
+            ${{ runner.temp }}/pamolive-context-input/diagnostic.json
+          if-no-files-found: warn
+          retention-days: 7

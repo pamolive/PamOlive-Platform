@@ -1,5 +1,33 @@
 # État réel de l’implémentation
 
+Comptage : les totaux unittest incluent les cas ignorés ; un test ignoré ne constitue pas une validation.
+
+Le diagnostic navigateur R8 ajoute une projection fermée des mêmes buffers
+APT sous H1 normal rc100 et une observation interpréteur/1 avant installation.
+Les arguments, options, sources, timeouts et conditions de succès ne changent
+pas ; ni une observation ni un marqueur ne remplace installed/2 ou la cause
+réelle encore inconnue. Les 136 tests purs passent sans skip ; réception Linux
+du nouvel essai requise. Les quatre seuls deltas R8 préservent le helper et
+les pins du diagnostic Docker A composé dans ce même candidat.
+
+## Diagnostic du probe en cours — 17 novembre 2026
+
+La CI main c752cd1 a réussi les contrôles de sécurité et Directory.
+PostgreSQL annonce 1 632 tests au total, dont 42 ignorés, sans échec ni erreur. Le probe a construit le bon scratch
+et terminé son export local, puis refusé sa vérification interne sans détail.
+Les trois builds produit/native-test/json-reference et le scan ont été sautés.
+Ce n'est ni une parité réussie ni une image qualifiée.
+
+Le nouveau diagnostic conserve rc1 et tous les gardes : seuls 65 codes et
+10 phases littéraux sont publiables, jamais le texte d'exception, un chemin
+inconnu ou un contenu. Un job Linux distinct, borné à cinq minutes, exerce
+la même préparation et le probe60+15 ; il ne lance ni PostgreSQL, ni APT,
+ni construction produit et ne conserve que quatre feuilles JSON explicites.
+Sur le checkout intégré, 69 tests purs passent sans skip ni tentative externe.
+Les deux cas créant réellement un Git ne sont pas exécutés sous Windows et
+restent en CI. La cause native précise reste à recevoir ; aucun mode ou
+contrôle de l'export n'est modifié pour transformer le refus en succès.
+
 ## Intégration du code de développement dans main — 17 novembre 2026
 
 À la demande explicite du propriétaire, les vingt PR ouvertes sont réunies

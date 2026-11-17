@@ -305,3 +305,19 @@ POSIX privilégié n'est exécuté sur Windows. L'échec initial de six anciens
 tests, faute de O_DIRECTORY Windows, est conservé avant adaptation du double.
 L'upload réel et surtout la cause du bootstrap nécessitent une CI Linux fraîche.
 Aucun résultat R5 n'est transféré à 1564317 ou au candidat R7.
+
+## R8 — observation fermée avant refus APT, 17 novembre 2026
+
+R7 a rendu les journaux lisibles : simulation APT réussie puis installation
+locale rc100 avec H1 repris/drainé. Ses buffers n'étaient pas exportés ; aucune
+cause textuelle ne peut être reconstituée rétroactivement. R8 projette les mêmes
+buffers bornés vers tailles/hashes/compteurs de marqueurs finis, jamais leurs
+lignes, chemins, argv/env ou exceptions. Les marqueurs ne prouvent pas la cause
+et root_cause reste UNKNOWN ; une absence de marqueur n'exclut aucune classe.
+Le rôle est réservé à l'unique appel root APT local avec les options et budgets
+existants. Les erreurs secondaires de diagnostic/process/UNKNOWN ne masquent
+pas command_UNKNOWN et ne permettent aucune commande suivante.
+La preuve interpréteur/1 déjà validée est observée publiquement avant auth et
+installation. installed/2 et ses contrôles après installation restent exigés,
+sans fallback depuis cette observation. 136 purs passent, aucune crypto/APT ou
+session navigateur native n'est déduite des modèles. Nouvelle CI obligatoire.

@@ -681,13 +681,143 @@ def public_journal_directory(path):
         os.close(fd)
 
 
+def apt_failure_diagnostic(result):
+    """Marker observations from the same bounded buffers; never an APT success predicate."""
+    boolean_names = (
+        "spawn_attempted",
+        "owned_child_reaped",
+        "drains_complete",
+        "killed_owned_child",
+    )
+    facts = {
+        name: value if type(value := getattr(result, name, None)) is bool else None
+        for name in boolean_names
+    }
+    rc = getattr(result, "returncode", None)
+    facts["returncode"] = rc if type(rc) is int and -(2**31) <= rc < 2**31 else None
+    reason = getattr(result, "reason", None)
+    reasons = {
+        "nonzero_exit",
+        "timeout",
+        "deadline_before_spawn",
+        "absolute_deadline_exceeded",
+        "stdout_overflow",
+        "stderr_overflow",
+        "combined_overflow",
+        "stdout_read_contract",
+        "stderr_read_contract",
+        "stdout_drain_error",
+        "stderr_drain_error",
+        "reap_error",
+        "drain_incomplete",
+        "group_cleanup_error",
+        "pipe_close_error",
+        "spawn_error",
+        "controller_error",
+    }
+    facts["reason"] = reason if type(reason) is str and reason in reasons else "unknown"
+    facts["exception_present"] = getattr(result, "exception_type", None) is not None
+    facts["cleanup_exception_present"] = getattr(result, "cleanup_exception_type", None) is not None
+    pid = getattr(result, "pid", None)
+    normal = (
+        result.ok is False
+        and facts["spawn_attempted"] is True
+        and type(pid) is int
+        and pid > 0
+        and type(rc) is int
+        and rc == 100
+        and type(reason) is str
+        and reason == "nonzero_exit"
+        and facts["owned_child_reaped"] is True
+        and facts["drains_complete"] is True
+        and facts["killed_owned_child"] is False
+        and not facts["exception_present"]
+        and not facts["cleanup_exception_present"]
+    )
+    streams = {}
+    bodies = []
+    for name in ("stdout", "stderr"):
+        body = getattr(result, name, None)
+        valid = type(body) is bytes and len(body) <= 262144
+        streams[name] = {
+            "buffer_valid": valid,
+            "bytes": len(body) if valid else None,
+            "sha256": sha(body) if valid else None,
+        }
+        if valid:
+            bodies.append(body)
+    examined = normal and len(bodies) == 2
+    # LC_ALL=C is unchanged. These finite upstream-message fragments never leave here.
+    markers = {
+        "no-download": (b"Unable to fetch some archives", b"it cannot be downloaded."),
+        "cache": (
+            b"The package lists or status file could not be parsed or opened.",
+            b"Archives directory ",
+        ),
+        "localaccess": (
+            b"Could not open file ",
+            b"Unsupported file ",
+            b"couldn't be accessed by user",
+        ),
+        "missingdeps": (
+            b"Unmet dependencies.",
+            b"Broken packages",
+            b"Unable to correct dependencies",
+        ),
+        "downgrade": (b"Packages were downgraded and -y was used",),
+        "dpkg-lock": (b"Unable to acquire the dpkg frontend lock", b"Could not open lock file "),
+        "dpkg-maintainer": (b"script subprocess returned error exit status",),
+        "interrupted": (b"dpkg was interrupted, you must manually",),
+    }
+    counts = {
+        kind: sum(body.count(marker) for body in bodies for marker in fragments) if examined else 0
+        for kind, fragments in markers.items()
+    }
+    counts["unknown"] = int(not examined or not any(counts.values()))
+    return {
+        "schema": "pamolive.chrome-apt-failure-DATA/1",
+        "role": "root-local-exact-install",
+        "phase": "install_local_exact",
+        "state": "UNKNOWN",
+        "completion": "NORMAL_NONZERO100" if normal else "UNKNOWN",
+        "H1": facts,
+        "streams": streams,
+        "markers_examined": examined,
+        "marker_counts": counts,
+        "root_cause": "UNKNOWN",
+        "tool_postcheck_observed": False,
+        "installation_verified": False,
+        "operational_GO": False,
+    }
+
+
 class Commands:
     def __init__(self, support, bounded, private, public, *, horizon=870):
         self.support, self.io, self.private, self.public = support, bounded, private, public
         self.number, self.unknown = 0, False
         self.until = time.monotonic() + horizon
 
-    def run(self, argv, *, seconds=30, cap=262144, sink=None, sudo=False):
+    def run(self, argv, *, seconds=30, cap=262144, sink=None, sudo=False, diagnostic_role=None):
+        need(
+            diagnostic_role is None
+            or (
+                type(diagnostic_role) is str
+                and diagnostic_role == "root-local-exact-install"
+                and argv[:-1] == [*APT, "--assume-yes", "install"]
+                and type(argv[-1]) is str
+                and type(seconds) is int
+                and seconds == 180
+                and type(cap) is int
+                and cap == 262144
+                and sink is None
+                and sudo is False
+                and type(os.getuid()) is int
+                and os.getuid() == 0
+                and type(os.geteuid()) is int
+                and os.geteuid() == 0
+            ),
+            "command_UNKNOWN",
+        )
         need(not self.unknown, "previous_UNKNOWN")
         need(time.monotonic() + seconds + 10 < self.until, "bootstrap_deadline")
         self.number += 1
@@ -755,9 +885,22 @@ class Commands:
                     journal / "pid.json", json.dumps({"pid": pid}).encode(), mode=0o444
                 ),
             )
-            self.support.fresh_write(
-                journal / "process.json", json.dumps(result.facts()).encode(), mode=0o444
-            )
+            if diagnostic_role is not None and result.ok is not True:
+                # Same result buffers, before strict refusal. Publication cannot replace it.
+                try:
+                    diagnostic = json.dumps(apt_failure_diagnostic(result)).encode()
+                    need(len(diagnostic) <= 8192, "command_UNKNOWN")
+                    self.support.fresh_write(journal / "apt-failure.json", diagnostic, mode=0o444)
+                except BaseException:
+                    pass  # Refusal below remains primary, even if the public destination failed.
+            try:
+                self.support.fresh_write(
+                    journal / "process.json", json.dumps(result.facts()).encode(), mode=0o444
+                )
+            except BaseException:
+                if diagnostic_role is None or result.ok is True:
+                    raise
+                # The failed root APT result still reaches its strict refusal below.
             need(
                 result.ok
                 and result.spawn_attempted is True
@@ -785,7 +928,12 @@ class Commands:
             return result.stdout
         except BaseException:
             self.unknown = True
-            self.support.fresh_write(journal / "UNKNOWN.json", b'{"state":"UNKNOWN"}\n', mode=0o444)
+            try:
+                self.support.fresh_write(
+                    journal / "UNKNOWN.json", b'{"state":"UNKNOWN"}\n', mode=0o444
+                )
+            except BaseException:
+                pass  # Preserve the original refusal; UNKNOWN is already sticky in memory.
             raise
 
 
@@ -1052,6 +1200,12 @@ def main(argv=None):
                 revision=os.environ["GITHUB_SHA"],
             )
             need(time.monotonic() < commands.until, "bootstrap_deadline")
+            # Observation only: installed/2 and its post-install proof remain mandatory.
+            support.fresh_write(
+                command_public / "root-interpreter-observation.json",
+                json.dumps(root_runtime).encode(),
+                mode=0o444,
+            )
             phase = "authenticate"
         support.fresh_write(
             command_public / "resources.json",
@@ -1323,7 +1477,11 @@ def main(argv=None):
             release_check(captured["Release"], captured["Packages"], int(time.time()))
             # No remote source, dependency fetching/fix, downgrade consent or mode repair.
             need(sha(read(package, 256 * 1024**2)) == pins["package"]["SHA256"], "package_changed")
-            commands.run([*APT, "--assume-yes", "install", str(package)], seconds=180)
+            commands.run(
+                [*APT, "--assume-yes", "install", str(package)],
+                seconds=180,
+                diagnostic_role="root-local-exact-install",
+            )
             phase = "unchanged_Chrome_guard"
             installed = commands.run(
                 [

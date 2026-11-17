@@ -832,7 +832,7 @@ jobs:
               assert len(raw) == row.st_size and len(raw) <= cap
               return raw
           name = "qualification/p1g_headless/chrome-bootstrap-pins.json"
-          expected = "0a71ef6e41e442a9b38d9a2943312fbd6ebcd46c453700b0189ff0cb26553d0a"
+          expected = "fb821c980496cf0416281178b952412be46f3cae567a294ac19dca75b36bf585"
           raw = read(root / name, 131072)
           assert len(raw) <= 131072 and hashlib.sha256(raw).hexdigest() == expected
           receipt = json.loads(read(receipt_path, 4 * 1024**2))
@@ -848,7 +848,7 @@ jobs:
               assert hashlib.sha256(raw).hexdigest() == expected == receipt["files"][name]
           PY
           python -I -B -S "$source/qualification/p1g_headless/run_chrome_pure.py"
-          "$RUNNER_TEMP/p1g-venv/bin/python" -I -B -S "$source/qualification/p1g_headless/chrome_bootstrap.py" --pins-sha 0a71ef6e41e442a9b38d9a2943312fbd6ebcd46c453700b0189ff0cb26553d0a --native-scope-preflight-required
+          "$RUNNER_TEMP/p1g-venv/bin/python" -I -B -S "$source/qualification/p1g_headless/chrome_bootstrap.py" --pins-sha fb821c980496cf0416281178b952412be46f3cae567a294ac19dca75b36bf585 --native-scope-preflight-required
       - name: Exercise the synthetic P1-G JavaScript increment
         timeout-minutes: 12
         env:
