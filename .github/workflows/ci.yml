@@ -1157,3 +1157,21 @@ jobs:
             ${{ runner.temp }}/p1g-source.json
           if-no-files-found: warn
           retention-days: 7
+
+  readonly-source-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Test read-only qualification contracts without native tools or network
+        run: python3 -I -S -B qualification/build_origin/run_readonly_pure.py "$RUNNER_TEMP/origin-readonly-pure.json"
+      - name: Retain only the pure contract test result
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: readonly-source-contracts-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/origin-readonly-pure.json
+          if-no-files-found: warn
+          retention-days: 7

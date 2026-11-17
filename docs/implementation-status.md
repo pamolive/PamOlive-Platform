@@ -1111,3 +1111,15 @@ scan strict de la nouvelle image restent à recevoir. Le chiffre de 5 340 vérif
 par largeur est une prévision, pas un résultat mesuré. Les reçus V1 restent
 historiques et ne qualifient pas un paquet V2. Aucun avis CVE n’est fermé,
 aucune image promue et aucune modification NAS effectuée par cette étape.
+
+
+## Actualisation de livraison main — 17 novembre 2026
+
+Les PR #23 et #24 sont fusionnées à la demande du propriétaire. Le rapport
+[de livraison](main-delivery-2026-11-17.md) complète les notes historiques
+ci-dessus : cache Chrome corrigé mais refus de garde restant, capture Expat
+refusée sur SIGILL, et sous-ensemble de qualification en lecture seule revu.
+Les quatorze nouveaux tests purs passent sans skip et disposent de leur job CI.
+Les résultats PostgreSQL et scans cités dans ce rapport sont liés à leur SHA ;
+la nouvelle fusion doit recevoir sa propre CI. Aucun déploiement ni image
+nouvelle qualifiée ne résulte de cette publication de code.

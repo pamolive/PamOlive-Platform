@@ -843,3 +843,15 @@ UBSan, les contrôles ABI et Python, puis Platform/PostgreSQL/P0/restauration
 et un nouveau scan d’image. Préserver les anciens reçus comme preuves liées
 à leurs versions ; ne pas les transférer aux nouvelles sources. Le scan
 bloquant et les autres remédiations natives restent des travaux distincts.
+
+
+## Actualisation de livraison main — 17 novembre 2026
+
+Les PR #23 et #24 sont fusionnées à la demande du propriétaire. Le rapport
+[de livraison](main-delivery-2026-11-17.md) complète les notes historiques
+ci-dessus : cache Chrome corrigé mais refus de garde restant, capture Expat
+refusée sur SIGILL, et sous-ensemble de qualification en lecture seule revu.
+Les quatorze nouveaux tests purs passent sans skip et disposent de leur job CI.
+Les résultats PostgreSQL et scans cités dans ce rapport sont liés à leur SHA ;
+la nouvelle fusion doit recevoir sa propre CI. Aucun déploiement ni image
+nouvelle qualifiée ne résulte de cette publication de code.
