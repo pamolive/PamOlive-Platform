@@ -1,0 +1,13 @@
+{
+  "qualification/build_origin/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "qualification/build_origin/bounded_io.py": "72b778ad6e441744e8bd9ac84ba7f47b1f6b577b7885a2e0daf3b4584cc0150a",
+  "qualification/build_origin/commands.py": "240d514059b16649d9f3c4bbfc1a9ec3e30d0bfcbd8d8da979b5dd7335618562",
+  "qualification/build_origin/contract.py": "7fcc259fca4857888e8caca2352c5004fde3791cf70e081da73e5328448fad23",
+  "qualification/build_origin/files.py": "30b889dd2af65b1ded9c7ec4144e1623d9e91f1ad2543b790f58d9a34c3a7aa4",
+  "qualification/build_origin/preflight.py": "7455db03777969f9bfa929e74ec423dd566d213e159a9db0dc78e62a4d0209cc",
+  "qualification/build_origin/profile.py": "2b2c4dc91edd48a3c164f2e157745890bc322629835114f1a4253e8adb701f3f",
+  "qualification/build_origin/run_readonly_pure.py": "b5f98a280d40bd4226f1848f73d5963ee8d00a223d445bd420478011f06a1ae8",
+  "qualification/build_origin/test_preflight.py": "cad092fd23544e5e681bc439ff25baf76a7168731bb7cb292a681b6331d916ff",
+  "qualification/public_fixture_parents.py": "be8c4d322647d46b12a9cc4acfe69377b5ebfab4896ad53e91427aa6d1f48966",
+  "qualification/test_public_fixture_parents.py": "743d512a49006098df63e245e6a596dd1ff586faf9015081e956fe1f4e57e9f3"
+}

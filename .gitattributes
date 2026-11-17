@@ -67,3 +67,6 @@ qualification/p1g_headless/chrome-bootstrap-pins.json -text whitespace=cr-at-eol
 deploy/expat_apt/materials.py -text
 deploy/expat_apt/bounded_io.py -text
 deploy/expat_apt/code-pins.json -text whitespace=cr-at-eol
+
+# Preserve the reviewed read-only origin helper source and its exact pins.
+qualification/build_origin/** -text whitespace=cr-at-eol
