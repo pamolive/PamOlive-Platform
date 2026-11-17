@@ -14,6 +14,8 @@ from unittest.mock import patch
 
 from deploy import build_context as gate
 
+FOREIGN_PROBE_DOCKERFILE = b"FROM scratch\nCOPY . /foreign\n"
+
 
 class MemoryPath(PurePosixPath):
     @classmethod
@@ -214,6 +216,7 @@ class SealedContextTests(TestCase):
             ("tests/public.py", b"PASS=1\n", 0o644),
         ]
         self.fs = MemoryFS(self.files)
+        self.probe_recipe_reads = []
         self.written = {
             name: gate.identity(self.fs.value(self.fs.nodes["/ctx/" + name]))
             for name, _, _ in self.files
@@ -233,13 +236,25 @@ class SealedContextTests(TestCase):
     def probe_run(self, argv, *, check):
         assert not check and argv[:3] == ["docker", "build", "--file"]
         source = argv[-1]
+        # Docker local-directory -f paths are relative to the caller's cwd,
+        # not the context. Model that resolution before interpreting either
+        # of these two finite public scratch/COPY recipes; never run Docker.
+        recipe = PurePosixPath(argv[argv.index("--file") + 1])
+        if not recipe.is_absolute():
+            recipe = MemoryPath.cwd() / recipe
+        body = self.fs.nodes[str(recipe)]["data"]
+        self.fs.reads.append(str(recipe))
+        self.probe_recipe_reads.append((str(recipe), hashlib.sha256(body).hexdigest()))
+        destinations = {gate.PROBE_DOCKERFILE: "proof", FOREIGN_PROBE_DOCKERFILE: "foreign"}
+        self.assertIn(body, destinations)
+        destination = destinations[body]
         exported = argv[argv.index("--output") + 1].removeprefix("type=local,dest=")
         self.fs.add(exported, None, 0o700)
         for path, node in list(self.fs.nodes.items()):
             if path.startswith(source + "/") and node["data"] is not None:
                 name = path[len(source) + 1 :]
                 if gate.copy_selected(name):
-                    target = PurePosixPath(exported) / "proof" / name
+                    target = PurePosixPath(exported) / destination / name
                     for parent in reversed(target.parents):
                         if str(parent) not in self.fs.nodes:
                             self.fs.add(str(parent), None, 0o755)
@@ -1038,3 +1053,37 @@ class SealedContextTests(TestCase):
                         "/sealed/context.tar", "/sealed/receipt.json", "a" * 40, "production"
                     )
                 call.assert_not_called()
+
+    def test_probe_selects_its_fixture_from_another_cwd_with_a_foreign_Dockerfile(self):
+        # Both recipes are public DATA. Their different COPY destinations make
+        # choosing the wrong file observable without a Dockerfile interpreter.
+        self.fs.add("/repo", None, 0o755)
+        self.fs.add("/repo/Dockerfile", FOREIGN_PROBE_DOCKERFILE, 0o644)
+        with self.fs.install():
+            self.seal(parity=False)
+            with patch.object(gate.subprocess, "run", self.probe_run):
+                self.assertEqual(
+                    gate.probe(
+                        "/sealed/context.tar",
+                        "/sealed/receipt.json",
+                        "/sealed/manifest.json",
+                        "/sealed/probe.json",
+                        "a" * 40,
+                    ),
+                    0,
+                )
+            self.assertEqual(
+                self.probe_recipe_reads,
+                [
+                    (
+                        "/sealed/probe-source/Dockerfile",
+                        hashlib.sha256(gate.PROBE_DOCKERFILE).hexdigest(),
+                    )
+                ],
+            )
+            self.assertNotIn("/repo/Dockerfile", self.fs.reads)
+            self.assertIn("/sealed/probe-export/proof/config/public.py", self.fs.nodes)
+            self.assertNotIn("/sealed/probe-export/foreign/config/public.py", self.fs.nodes)
+            self.assertEqual(
+                json.loads(self.fs.nodes["/sealed/probe.json"]["data"])["status"], "PASS"
+            )

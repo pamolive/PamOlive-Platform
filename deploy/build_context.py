@@ -870,7 +870,7 @@ def probe(archive_path, receipt_path, source_path, probe_path, revision):
             "docker",
             "build",
             "--file",
-            "Dockerfile",
+            str(source / "Dockerfile"),
             "--network=none",
             "--provenance=false",
             "--sbom=false",

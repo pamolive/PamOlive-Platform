@@ -1,5 +1,37 @@
 # P1-F — qualification de sécurité de l’image
 
+## Intégration du code de développement dans main — 17 novembre 2026
+
+À la demande explicite du propriétaire, les vingt PR ouvertes sont réunies
+par des fusions conservant leur historique. Les quatre têtes finales étaient
+bde355e (runtime/contexte), e4dfb9f (laboratoire Kerberos), 1564317 puis 5583daf
+(navigateur/journaux publics) et 9b7e866 (diagnostics publics navigateur).
+Cette intégration du code ne constitue ni une validation de toutes les PR,
+ni une publication d'image qualifiée ou un déploiement. Les contrôles CI,
+les refus ADR021 et le workflow manuel de publication restent actifs.
+
+Les essais bde ont passé 455 tests de sécurité et 1 631 tests PostgreSQL,
+avec 42 tests PostgreSQL ignorés dans chacun des deux runs. Le probe Docker
+a ensuite échoué en sélectionnant le Dockerfile produit depuis le cwd ;
+le correctif ici impose le chemin absolu de sa fixture scratch et conserve
+les trois consommateurs TAR. Ancien défaut reproduit, 55 tests purs passent.
+La parité moteur et les trois constructions réelles doivent être requalifiées.
+
+Les deux essais 1564317 ont refusé le bootstrap puis l'upload public root
+(EACCES), sans reçu interpréteur ou installation. 5583daf corrige uniquement
+les permissions des deux feuilles de journaux publics par FD ; 128 tests purs
+passent. La cause primaire EXIT42 reste inconnue jusqu'à réception réelle.
+Le job navigateur reste restreint à sa branche/PR de laboratoire ; son absence
+sur un push main n'est pas une qualification du navigateur sur main.
+
+Le dernier scan runtime reçu (parent5d8f814) reste à 98 High/31 groupes.
+Le laboratoire Kerberos conserve son refus ABI et ses profils non admis.
+Les bibliothèques/contrats P2 installés et leurs tests ne suffisent pas à
+qualifier tout P2/P3. Les notes suivantes sont des témoins historiques de
+branches, conservés sans transfert automatique de preuve vers cette fusion.
+Aucun NAS ou compte réel n'est utilisé. Une CI du SHA main exact est requise
+avant toute conclusion nouvelle ; aucune image Docker n'est publiée ici.
+
 ## Notes historiques conservées de la branche navigateur R7
 
 ## État courant R7 — diagnostics publics à récupérer, 17 novembre 2026
