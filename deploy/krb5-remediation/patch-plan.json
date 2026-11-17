@@ -1,0 +1,315 @@
+{
+  "schema": "pamolive.krb5-packaging-adaptation/1",
+  "upstream": "1.22.3",
+  "packaging": "1.22.1-3",
+  "series_sha256": "8ebbf356caf0cf55056b89c37546abc84ff79f23fdaa213edd8e8c9502be66b9",
+  "series": [
+    {
+      "name": "debian-local/0001-Debian-HURD-compatibility.patch",
+      "original_sha256": "5ee36ecd5a65c36dfd7725e2c5966dd4864e20c392bdf7639750d9ce6a514c6b",
+      "action": "apply",
+      "reason": "Exact unique full hunk contexts, rebased coordinates.",
+      "before": {
+        "src/clients/ksu/ksu.h": "85cfca1d5c358aed08ed54103e69498370ff89d0b1edd6ee543755697bf8ff01",
+        "src/include/k5-int.h": "bf399de7f3b195dc6de297493d507f39e4cc3a57fdbd4a95f3d9823c3fa22c87",
+        "src/kadmin/ktutil/ktutil_funcs.c": "9dad5adce089dab17269e44084aa203b86a9105a8bcee3d49958c2d1c0d77006",
+        "src/plugins/kdb/db2/libdb2/include/db-int.h": "ea620d965ddb95f0108d04e341b55ad29afd0165394f550902ba4035ce40a447"
+      },
+      "after": {
+        "src/clients/ksu/ksu.h": "c075e3944c3773ca00079ad0fe81492d569ae3e1dfca2b528ff6c43cd137aec6",
+        "src/include/k5-int.h": "a0807d72dbb0b0e05fab6e86c89bc5fe618fcc5cd4dcb19eea04134cdcf262ac",
+        "src/kadmin/ktutil/ktutil_funcs.c": "edb20131a0f146e99b5680c0be7e0c12603533ae4bab09b70c3b51c3f2f32051",
+        "src/plugins/kdb/db2/libdb2/include/db-int.h": "0daa9ab940812dd4fc8060097d716daa23fe33dabecabe62109192d20ef66ca3"
+      },
+      "rebased": "01.patch",
+      "rebased_sha256": "2fb5d866d4e268a40ade3aeabadca5e68ac46494c80f27f0b17658c48fe9467c"
+    },
+    {
+      "name": "debian-local/0002-debian-Handle-multi-arch-paths-in-krb5-config.patch",
+      "original_sha256": "ee785085befb52ac7826d899516f7eafaee9f58ab7b8104d264891b1ccd2c976",
+      "action": "apply",
+      "reason": "Exact unique full hunk contexts, rebased coordinates.",
+      "before": {
+        "src/build-tools/krb5-config.in": "97e1e772a6310a345ead8dcd06badf3caaddb285083d51cb2b5cdd8ce0b927c4"
+      },
+      "after": {
+        "src/build-tools/krb5-config.in": "db6c912ee4f0916ea0d0f31bcf9da7eecb154142f2975a32026d4d9f23567d5e"
+      },
+      "rebased": "02.patch",
+      "rebased_sha256": "9f4b7a3b162bd7ffb98080f427af06defa58d50d69e21eab263f39a5c7c4da6b"
+    },
+    {
+      "name": "debian-local/0003-debian-osconf.hin-path-changes.patch",
+      "original_sha256": "0e922fd9230dfa2467cf606336ab7b6a9ec1277f2c9116a708ee6fe673ca6cb2",
+      "action": "apply",
+      "reason": "Exact unique full hunk contexts, rebased coordinates.",
+      "before": {
+        "src/include/osconf.hin": "dd02e8dd9f0948c8e735f65d3cc262857790e33b8c51d6ab955898af410fe4d1"
+      },
+      "after": {
+        "src/include/osconf.hin": "795adb2c0b80cd52a5d6d3c1fac0583d18e4b2b6ed3581072f6957de9b4b7e0e"
+      },
+      "rebased": "03.patch",
+      "rebased_sha256": "d4ed9f52e2468b4135a61873ed3d336e32f786be358acc01209d05ecea1b8551"
+    },
+    {
+      "name": "debian-local/0004-debian-install-ldap-library-in-subdirectory.patch",
+      "original_sha256": "700d7dc6fe9f616dfd859c77268172fe569993d31acf1e91cdb03b49aaf954ef",
+      "action": "apply",
+      "reason": "Exact unique full hunk contexts, rebased coordinates.",
+      "before": {
+        "src/plugins/kdb/ldap/Makefile.in": "fbaa9c6c0c04bb569ceea5ce4147151b24a9f117bd0912cdbd282080904747f6",
+        "src/plugins/kdb/ldap/ldap_util/Makefile.in": "8fc9cbbfee20aca2e6fc57b0197ed6712839169b609b7037a6b841c37e8f8321"
+      },
+      "after": {
+        "src/plugins/kdb/ldap/Makefile.in": "0e5ae8277c3d1210ceb87d7c7f244e4f2dd115c65e18e95af7a691e908aa4127",
+        "src/plugins/kdb/ldap/ldap_util/Makefile.in": "2623705f46c7cb5c6e82f56cc0c12c892395b2845a8fcef51f52dc856dfc2948"
+      },
+      "rebased": "04.patch",
+      "rebased_sha256": "ee561b196ec33383a52d9c30dfbe1f0d78c1d5a37bf1ca6bc401afd3ef43a126"
+    },
+    {
+      "name": "debian-local/0005-gssapi-never-unload-mechanisms.patch",
+      "original_sha256": "9f72cb6e1a5bd4f9867e00f49707e441b897b3ed70f771b0aee2be4faa0d8194",
+      "action": "apply",
+      "reason": "Exact unique full hunk contexts, rebased coordinates.",
+      "before": {
+        "src/lib/gssapi/mechglue/g_initialize.c": "95316aec3de3c3de87f07121e936dd37abd430dca2cd7b30e181b624009726c4"
+      },
+      "after": {
+        "src/lib/gssapi/mechglue/g_initialize.c": "3a553a66b31dce2763d847699650c6baa1624045a4d60ca04bbae171750b5311"
+      },
+      "rebased": "05.patch",
+      "rebased_sha256": "0763d3e9f9bcafd71b5da47a45afb838bfe07028e503537c0c4cf44824f8643e"
+    },
+    {
+      "name": "debian-local/0006-Add-substpdf-target.patch",
+      "original_sha256": "1bcf9e5f68e4fcddd3a6523cb467ee1066e30b90e1a6a562df8158c035f24f95",
+      "action": "apply",
+      "reason": "Exact unique full hunk contexts, rebased coordinates.",
+      "before": {
+        "src/doc/Makefile.in": "5d274ff8f90bf2017afe0a7dac47325d836eb166ff24927183b84d1c227f5757"
+      },
+      "after": {
+        "src/doc/Makefile.in": "6241759c12631d2423749b5bcb6cce97058da6365c383f1512546799b80ee830"
+      },
+      "rebased": "06.patch",
+      "rebased_sha256": "533c70ce3f24ca0b9a636d3eadd98adb8ac780bc1aaf1b5ae0b108a4be7be43c"
+    },
+    {
+      "name": "debian-local/0007-Fix-pkg-config-library-include-paths.patch",
+      "original_sha256": "684bbfd01e6dbe15c41573da821fd583334183187c1c435d29425993d6f2b268",
+      "action": "apply",
+      "reason": "Exact unique full hunk contexts, rebased coordinates.",
+      "before": {
+        "src/build-tools/gssrpc.pc.in": "fd26b1d0d7c681e451e49609bc49c32b4066bde84ff0a4299351a03879c81144",
+        "src/build-tools/kadm-client.pc.in": "0a33c222568b5cda082e846cfb72017a274183d7c58541177f7f61b4422209aa",
+        "src/build-tools/kadm-server.pc.in": "9ddb340c91bc4f26af6f6f5529b1f200f3ea23f088fafd8c7b646e9e879ff7ed",
+        "src/build-tools/kdb.pc.in": "1bbb229c8058f472dab48efcd41e019b9825c0a11e4c2ce25fe5035c4027e4b2",
+        "src/build-tools/mit-krb5-gssapi.pc.in": "a803d6f49cdf3f48903d87c2bbc494d7bf6f579f8502bae462fc9cfe65e12671",
+        "src/build-tools/mit-krb5.pc.in": "d8a158b4c1a383314c3deabb6784840f1b8c59ea5eae452cf647a287baa96183"
+      },
+      "after": {
+        "src/build-tools/gssrpc.pc.in": "1fcea961e78fbeae11b943d19e060d0bbf0d2d504e5879f813a5637f90ecf510",
+        "src/build-tools/kadm-client.pc.in": "1b0e0cdcb4d33b2605560864b6a63999cf4b0446c8f7e7b850a97d642173bba7",
+        "src/build-tools/kadm-server.pc.in": "b5cd1dc36994036553eb1fdc37d732158b50395f6a7399f5835eb4e59b8344a5",
+        "src/build-tools/kdb.pc.in": "4c44e2898502ff69da4484ff5ee82f058e2474c6876c69985df03b40cd6a8b88",
+        "src/build-tools/mit-krb5-gssapi.pc.in": "a8b77523d323e2f18543f56b7edb2494944cb93fd6a6a7ca0440d408f89dcf26",
+        "src/build-tools/mit-krb5.pc.in": "e030a3d083d71e1b6d4f0b1b81786628c180f30f1b4c23873afde3da2e2a158f"
+      },
+      "rebased": "07.patch",
+      "rebased_sha256": "f5fc1e23fa7c7f045b4ed590b7de84941b2869e09ddea20e67e330a3c2df722e"
+    },
+    {
+      "name": "debian-local/0008-Use-isystem-for-include-paths.patch",
+      "original_sha256": "e3eeebbc65268a0f7c8fe65445458182d8c3329eb4c162b4f906218489e53aa0",
+      "action": "apply",
+      "reason": "Exact unique full hunk contexts, rebased coordinates.",
+      "before": {
+        "src/build-tools/gssrpc.pc.in": "1fcea961e78fbeae11b943d19e060d0bbf0d2d504e5879f813a5637f90ecf510",
+        "src/build-tools/kadm-client.pc.in": "1b0e0cdcb4d33b2605560864b6a63999cf4b0446c8f7e7b850a97d642173bba7",
+        "src/build-tools/kadm-server.pc.in": "b5cd1dc36994036553eb1fdc37d732158b50395f6a7399f5835eb4e59b8344a5",
+        "src/build-tools/kdb.pc.in": "4c44e2898502ff69da4484ff5ee82f058e2474c6876c69985df03b40cd6a8b88",
+        "src/build-tools/krb5-config.in": "db6c912ee4f0916ea0d0f31bcf9da7eecb154142f2975a32026d4d9f23567d5e",
+        "src/build-tools/mit-krb5-gssapi.pc.in": "a8b77523d323e2f18543f56b7edb2494944cb93fd6a6a7ca0440d408f89dcf26",
+        "src/build-tools/mit-krb5.pc.in": "e030a3d083d71e1b6d4f0b1b81786628c180f30f1b4c23873afde3da2e2a158f"
+      },
+      "after": {
+        "src/build-tools/gssrpc.pc.in": "7dc3f44690e6d958b30391a8e34af6b82e7bb95aff7e611b7347a533cd8ffc49",
+        "src/build-tools/kadm-client.pc.in": "513d1d6cf0bca75ac9afb3e6b08a72f4873b27e4a071d301ffaad0ce6377ef90",
+        "src/build-tools/kadm-server.pc.in": "f8df330cbae1b093313355a020cb4fce37b8a4bd067aa2720fc52276cb033510",
+        "src/build-tools/kdb.pc.in": "0a2c81c14a44082bf7ee4c7182b29982585a5b399c3a229c2ac6642989e61854",
+        "src/build-tools/krb5-config.in": "1657bdf5fbb5fb0b54be960ce69ea545e201c9f5410ad7f4bb22669a4cc03d41",
+        "src/build-tools/mit-krb5-gssapi.pc.in": "d64957304c3cfc00e4b9b691eda376974bb6a4cef0251975693ad609a12daabc",
+        "src/build-tools/mit-krb5.pc.in": "d9df717d115d949816a87b034f5d67a0f8e030dc450f6867a0218b69f0e17997"
+      },
+      "rebased": "08.patch",
+      "rebased_sha256": "0b89f300511852c5939dd844ddff3521d82758dd688c7c6d4756ac52e9ef9959"
+    },
+    {
+      "name": "0009-Add-.gitignore.patch",
+      "original_sha256": "64cccf3f87bdf63f39ae1e5b30b6f9d6b4ca263191d7206741426241099e7363",
+      "action": "omit_development_ignore_file",
+      "reason": "Adds only .gitignore; no Git checkout or compiler/runtime semantics.",
+      "before": {},
+      "after": {}
+    },
+    {
+      "name": "0011-Allow-kpropd-to-bind-even-if-only-loopback-is-config.patch",
+      "original_sha256": "dda2b7df77a48381192124e191ca894257bfccffbd226fbe9593f1b78fefdf92",
+      "action": "apply",
+      "reason": "Exact unique full hunk contexts, rebased coordinates.",
+      "before": {
+        "src/kprop/kpropd.c": "cf8171dd1813a19207301c51ac04afc00ce70aefa40f53c1fb77b4061072f276"
+      },
+      "after": {
+        "src/kprop/kpropd.c": "415d7ecf1e9e62e5a2381d034f9da8aa06d7c47ea4804220b22aff9870164a46"
+      },
+      "rebased": "10.patch",
+      "rebased_sha256": "250ce99a1b474cacbbd082f664ad4afbccc0b2d4e4185a0e29d64f69c5005dfe"
+    },
+    {
+      "name": "0012-Skip-keyring-tests-if-keyring-blocked-by-seccomp.patch",
+      "original_sha256": "1564cab6d72fc49c6bf792e74bc520f76826c3627d4813c399d65c52eab825a1",
+      "action": "apply",
+      "reason": "Exact unique full hunk contexts, rebased coordinates.",
+      "before": {
+        "src/lib/krb5/ccache/t_cccol.py": "15770643dd9a36c625cd0e303479864d5e69c3bddefeb7a4bac948495d9f6709",
+        "src/tests/t_ccache.py": "1c7420dcc9fd9212b48e06defd45d2e1e6a2ed7834d10ef1e3bbea4332bb4cb5",
+        "src/util/k5test.py": "3218496f83936c644068bfedba940f4bac20c392725447db14ee007d3f71f377"
+      },
+      "after": {
+        "src/lib/krb5/ccache/t_cccol.py": "ebd29bf40ce21c07d370a344d4086111782cf7b0c4bfadc616118af099b8ba71",
+        "src/tests/t_ccache.py": "aad3a3ba39cf59cc517c8f6d3a395b011bb61716b1fb21f7246d3276325c013c",
+        "src/util/k5test.py": "f76ea3fb4ae38d58ac70a08d56b5539a1a22924e2fbe7bce4e53faa580a1b4fc"
+      },
+      "rebased": "11.patch",
+      "rebased_sha256": "8ba735ddb851d6f01d2907bd1342a1a49354b269388139d74ef04b746743dc9f"
+    },
+    {
+      "name": "0013-Fix-two-NegoEx-parsing-vulnerabilities.patch",
+      "original_sha256": "78e63f664120c16a28c4ba22ce550c1be0d2cb050cad5912227b301927382d2a",
+      "action": "already_upstream",
+      "reason": "Exact reverse-hunk preimages already present in upstream release.",
+      "before": {
+        "src/lib/gssapi/spnego/negoex_util.c": "93bd813018af8dfd56a7634c43aceb0902f3716cd2d1a8d242da4a6c05877e47"
+      },
+      "after": {
+        "src/lib/gssapi/spnego/negoex_util.c": "93bd813018af8dfd56a7634c43aceb0902f3716cd2d1a8d242da4a6c05877e47"
+      }
+    },
+    {
+      "name": "0013-Fix-strchr-conformance-to-C23.patch",
+      "original_sha256": "f26ad1c26baa33e9c1ad7390f6037d9e7fc5c65d9fb2aca3879a7b0cb84a9159",
+      "action": "already_upstream",
+      "reason": "Exact reverse-hunk preimages already present in upstream release.",
+      "before": {
+        "src/lib/krb5/ccache/ccbase.c": "de102208bceda5459a7c8178b13352a127a3b3d6aafdffe112eea4f89d07b1e1",
+        "src/lib/krb5/os/expand_path.c": "445e0f6e4adab3ded41c155e31ca15e61ef8a45749887507befd1999ac13615b",
+        "src/lib/krb5/os/locate_kdc.c": "73683576371a6eb5213d249fe568d791d328ed9776413cd6fab28c7f4b34afb2",
+        "src/plugins/preauth/pkinit/pkinit_crypto.h": "62b41b4677a542fc8a59be2278c2929c96ec04e7902a7c7e9094563b0a61f6be",
+        "src/plugins/preauth/pkinit/pkinit_crypto_openssl.c": "389dcf792f7b9ad92d367220c0f8e8be71f6a9dbd9ba8f7a56e77a7eda638218",
+        "src/plugins/preauth/pkinit/pkinit_identity.c": "0b70f2ac415ac0c47f35a0ba10441c254cd8160820c1cbc37bec3139a573bfb2",
+        "src/plugins/preauth/pkinit/pkinit_matching.c": "37837d823f96a196a297cfcd6c8dc33b113e69e627360d0491480fb591b428cc",
+        "src/tests/responder.c": "423cbc6fb692f543fff57cab35aa0517c37cab585a0136fce7e7ae4db8bf3b94"
+      },
+      "after": {
+        "src/lib/krb5/ccache/ccbase.c": "de102208bceda5459a7c8178b13352a127a3b3d6aafdffe112eea4f89d07b1e1",
+        "src/lib/krb5/os/expand_path.c": "445e0f6e4adab3ded41c155e31ca15e61ef8a45749887507befd1999ac13615b",
+        "src/lib/krb5/os/locate_kdc.c": "73683576371a6eb5213d249fe568d791d328ed9776413cd6fab28c7f4b34afb2",
+        "src/plugins/preauth/pkinit/pkinit_crypto.h": "62b41b4677a542fc8a59be2278c2929c96ec04e7902a7c7e9094563b0a61f6be",
+        "src/plugins/preauth/pkinit/pkinit_crypto_openssl.c": "389dcf792f7b9ad92d367220c0f8e8be71f6a9dbd9ba8f7a56e77a7eda638218",
+        "src/plugins/preauth/pkinit/pkinit_identity.c": "0b70f2ac415ac0c47f35a0ba10441c254cd8160820c1cbc37bec3139a573bfb2",
+        "src/plugins/preauth/pkinit/pkinit_matching.c": "37837d823f96a196a297cfcd6c8dc33b113e69e627360d0491480fb591b428cc",
+        "src/tests/responder.c": "423cbc6fb692f543fff57cab35aa0517c37cab585a0136fce7e7ae4db8bf3b94"
+      }
+    },
+    {
+      "name": "0014-Improve-future-OpenSSL-compatibility.patch",
+      "original_sha256": "340fca481162409f8865098556772084be597745e8db4c0cbadb4a1c97e642e1",
+      "action": "already_upstream_with_later_context_changes",
+      "reason": "OpenSSL accessor/const compatibility present; exact three upstream file hashes bound.",
+      "before": {
+        ".github/workflows/build.yml": "ea032ac55a98f0ffd963926d886ee615bcb48d00dbd4022a6786ad92ff1b7f24",
+        "src/plugins/preauth/pkinit/pkinit_crypto_openssl.c": "389dcf792f7b9ad92d367220c0f8e8be71f6a9dbd9ba8f7a56e77a7eda638218",
+        "src/plugins/tls/k5tls/openssl.c": "22a69e5caca629281e1ea4754c4538d67a414f68781c7a13801254ca620d21dd"
+      },
+      "after": {
+        ".github/workflows/build.yml": "ea032ac55a98f0ffd963926d886ee615bcb48d00dbd4022a6786ad92ff1b7f24",
+        "src/plugins/preauth/pkinit/pkinit_crypto_openssl.c": "389dcf792f7b9ad92d367220c0f8e8be71f6a9dbd9ba8f7a56e77a7eda638218",
+        "src/plugins/tls/k5tls/openssl.c": "22a69e5caca629281e1ea4754c4538d67a414f68781c7a13801254ca620d21dd"
+      }
+    },
+    {
+      "name": "0015-Use-X509_check_host-to-verify-KKDCP-server-cert.patch",
+      "original_sha256": "696d560e000493bbf0e32939de45ff348e5e7fb36f35c7f808e34101b01e5831",
+      "action": "omit_preserve_current_strict_hostname_policy",
+      "reason": "Old product packaging02b873 has no k5tls patch; old/new hostname helpers differ only by five const qualifiers. Do not introduce partial-label wildcards.",
+      "before": {
+        "src/plugins/tls/k5tls/openssl.c": "22a69e5caca629281e1ea4754c4538d67a414f68781c7a13801254ca620d21dd"
+      },
+      "after": {
+        "src/plugins/tls/k5tls/openssl.c": "22a69e5caca629281e1ea4754c4538d67a414f68781c7a13801254ca620d21dd"
+      }
+    },
+    {
+      "name": "0016-PATCH-Prevent-read-overrun-in-libkdb_lda.patch",
+      "original_sha256": "84778ba5a35aa13de45f6c32ce8935b54f8570c8d1033ffce663ad68f705edd8",
+      "action": "already_upstream",
+      "reason": "Exact reverse-hunk preimages already present in upstream release.",
+      "before": {
+        "src/plugins/kdb/ldap/libkdb_ldap/ldap_principal2.c": "d0ddfcc238bc665472ca336ff88543a272c13cd822ec4c771cf479369198b8fe"
+      },
+      "after": {
+        "src/plugins/kdb/ldap/libkdb_ldap/ldap_principal2.c": "d0ddfcc238bc665472ca336ff88543a272c13cd822ec4c771cf479369198b8fe"
+      }
+    }
+  ],
+  "test_compatibility": {
+    "name": "17-keyring-EPERM.patch",
+    "sha256": "32aa319b4c71580e40cf545073906d3d554ffda98f5ab76fdb014df69054f3b8",
+    "before": {
+      "src/util/k5test.py": "f76ea3fb4ae38d58ac70a08d56b5539a1a22924e2fbe7bce4e53faa580a1b4fc"
+    },
+    "after": {
+      "src/util/k5test.py": "8901a70a16fa856af1946e76b976d72b7210ece03472724f3a1d3e584289e9c5"
+    },
+    "policy": "same two errno messages as old reviewed sandbox compatibility"
+  },
+  "original_upstream_source_pins": {
+    "src/clients/ksu/ksu.h": "85cfca1d5c358aed08ed54103e69498370ff89d0b1edd6ee543755697bf8ff01",
+    "src/include/k5-int.h": "bf399de7f3b195dc6de297493d507f39e4cc3a57fdbd4a95f3d9823c3fa22c87",
+    "src/kadmin/ktutil/ktutil_funcs.c": "9dad5adce089dab17269e44084aa203b86a9105a8bcee3d49958c2d1c0d77006",
+    "src/plugins/kdb/db2/libdb2/include/db-int.h": "ea620d965ddb95f0108d04e341b55ad29afd0165394f550902ba4035ce40a447",
+    "src/build-tools/krb5-config.in": "97e1e772a6310a345ead8dcd06badf3caaddb285083d51cb2b5cdd8ce0b927c4",
+    "src/include/osconf.hin": "dd02e8dd9f0948c8e735f65d3cc262857790e33b8c51d6ab955898af410fe4d1",
+    "src/plugins/kdb/ldap/Makefile.in": "fbaa9c6c0c04bb569ceea5ce4147151b24a9f117bd0912cdbd282080904747f6",
+    "src/plugins/kdb/ldap/ldap_util/Makefile.in": "8fc9cbbfee20aca2e6fc57b0197ed6712839169b609b7037a6b841c37e8f8321",
+    "src/lib/gssapi/mechglue/g_initialize.c": "95316aec3de3c3de87f07121e936dd37abd430dca2cd7b30e181b624009726c4",
+    "src/doc/Makefile.in": "5d274ff8f90bf2017afe0a7dac47325d836eb166ff24927183b84d1c227f5757",
+    "src/build-tools/gssrpc.pc.in": "fd26b1d0d7c681e451e49609bc49c32b4066bde84ff0a4299351a03879c81144",
+    "src/build-tools/kadm-client.pc.in": "0a33c222568b5cda082e846cfb72017a274183d7c58541177f7f61b4422209aa",
+    "src/build-tools/kadm-server.pc.in": "9ddb340c91bc4f26af6f6f5529b1f200f3ea23f088fafd8c7b646e9e879ff7ed",
+    "src/build-tools/kdb.pc.in": "1bbb229c8058f472dab48efcd41e019b9825c0a11e4c2ce25fe5035c4027e4b2",
+    "src/build-tools/mit-krb5-gssapi.pc.in": "a803d6f49cdf3f48903d87c2bbc494d7bf6f579f8502bae462fc9cfe65e12671",
+    "src/build-tools/mit-krb5.pc.in": "d8a158b4c1a383314c3deabb6784840f1b8c59ea5eae452cf647a287baa96183",
+    "src/kprop/kpropd.c": "cf8171dd1813a19207301c51ac04afc00ce70aefa40f53c1fb77b4061072f276",
+    "src/lib/krb5/ccache/t_cccol.py": "15770643dd9a36c625cd0e303479864d5e69c3bddefeb7a4bac948495d9f6709",
+    "src/tests/t_ccache.py": "1c7420dcc9fd9212b48e06defd45d2e1e6a2ed7834d10ef1e3bbea4332bb4cb5",
+    "src/util/k5test.py": "3218496f83936c644068bfedba940f4bac20c392725447db14ee007d3f71f377",
+    "src/lib/gssapi/spnego/negoex_util.c": "93bd813018af8dfd56a7634c43aceb0902f3716cd2d1a8d242da4a6c05877e47",
+    "src/lib/krb5/ccache/ccbase.c": "de102208bceda5459a7c8178b13352a127a3b3d6aafdffe112eea4f89d07b1e1",
+    "src/lib/krb5/os/expand_path.c": "445e0f6e4adab3ded41c155e31ca15e61ef8a45749887507befd1999ac13615b",
+    "src/lib/krb5/os/locate_kdc.c": "73683576371a6eb5213d249fe568d791d328ed9776413cd6fab28c7f4b34afb2",
+    "src/plugins/preauth/pkinit/pkinit_crypto.h": "62b41b4677a542fc8a59be2278c2929c96ec04e7902a7c7e9094563b0a61f6be",
+    "src/plugins/preauth/pkinit/pkinit_crypto_openssl.c": "389dcf792f7b9ad92d367220c0f8e8be71f6a9dbd9ba8f7a56e77a7eda638218",
+    "src/plugins/preauth/pkinit/pkinit_identity.c": "0b70f2ac415ac0c47f35a0ba10441c254cd8160820c1cbc37bec3139a573bfb2",
+    "src/plugins/preauth/pkinit/pkinit_matching.c": "37837d823f96a196a297cfcd6c8dc33b113e69e627360d0491480fb591b428cc",
+    "src/tests/responder.c": "423cbc6fb692f543fff57cab35aa0517c37cab585a0136fce7e7ae4db8bf3b94",
+    ".github/workflows/build.yml": "ea032ac55a98f0ffd963926d886ee615bcb48d00dbd4022a6786ad92ff1b7f24",
+    "src/plugins/tls/k5tls/openssl.c": "22a69e5caca629281e1ea4754c4538d67a414f68781c7a13801254ca620d21dd",
+    "src/plugins/kdb/ldap/libkdb_ldap/ldap_principal2.c": "d0ddfcc238bc665472ca336ff88543a272c13cd822ec4c771cf479369198b8fe"
+  },
+  "fuzz": 0,
+  "native_patch_application_received": false
+}

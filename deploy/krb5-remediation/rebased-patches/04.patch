@@ -1,0 +1,20 @@
+--- a/src/plugins/kdb/ldap/Makefile.in
++++ b/src/plugins/kdb/ldap/Makefile.in
+@@ -20,6 +20,7 @@
+ 	$(TOPLIBD)/libkrb5$(SHLIBEXT) \
+ 	$(TOPLIBD)/lib$(SUPPORT_LIBNAME)$(SHLIBEXT)
+ SHLIB_EXPLIBS= -lkdb_ldap $(GSSRPC_LIBS) -lkrb5 $(COM_ERR_LIB) -lk5crypto -lkrb5support $(LIBS)
++SHLIB_DIRS=-L$(TOPLIBD) -Wl,-rpath,$(KRB5_LIBDIR)/krb5
+ 
+ SRCS= 	$(srcdir)/ldap_exp.c
+ 
+--- a/src/plugins/kdb/ldap/ldap_util/Makefile.in
++++ b/src/plugins/kdb/ldap/ldap_util/Makefile.in
+@@ -2,6 +2,7 @@
+ BUILDTOP=$(REL)..$(S)..$(S)..$(S)..
+ DEFINES = -DKDB4_DISABLE
+ LOCALINCLUDES = -I. -I$(srcdir)/../libkdb_ldap -I$(top_srcdir)/lib/kdb
++PROG_LIBPATH=-L$(TOPLIBD) $(KRB4_LIBPATH)  -Wl,-rpath,$(KRB5_LIBDIR)/krb5
+ #KDB_DEP_LIB=$(DL_LIB) $(THREAD_LINKOPTS)
+ KDB_DEP_LIB=$(DL_LIB) -lkdb_ldap $(THREAD_LINKOPTS)
+ 

@@ -1,0 +1,25 @@
+# DATA source/ABI qualification only. This is not the product recipe.
+FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS krb5-prepared
+# Trixie binaries/dependencies only; unstable is never added to any APT source.
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential binutils curl ca-certificates gpg gpgv debian-archive-keyring dpkg-dev debhelper quilt byacc comerr-dev docbook-to-man keyutils libkeyutils-dev libldap2-dev liblmdb-dev libnss-myhostname libsasl2-dev libssl-dev libverto-dev pkgconf ss-dev libcmocka-dev python3-kdcproxy python3-pyrad libkrb5-3 libk5crypto3 libkrb5support0 libgssapi-krb5-2 && rm -rf /var/lib/apt/lists/*
+COPY deploy/krb5-remediation/ /opt/krb5-upgrade/
+# Authenticate signed source metadata before selecting any Debian payload tuple.
+RUN python -I -B -S /opt/krb5-upgrade/acquire.py /krb5-materials
+
+FROM krb5-prepared AS krb5-data-builder
+# Repeat archive authentication, verify MIT, then and only then parse payload TARs.
+RUN --network=none python -I -B -S /opt/krb5-upgrade/build_upgrade.py /krb5-materials /packages
+RUN --network=none python -I -B -S /opt/krb5-upgrade/export_evidence.py /packages /krb5-public-evidence
+
+FROM krb5-prepared AS krb5-data-consumer
+COPY --from=krb5-data-builder /packages/runtime/ /tmp/krb5-runtime/
+COPY --from=krb5-data-builder /packages/sdk/ /tmp/krb5-sdk/
+COPY --from=krb5-data-builder /packages/ABI-candidate.json /krb5-build/ABI-candidate.json
+COPY --from=krb5-data-builder /packages/ABI-comparison-DATA.json /krb5-build/ABI-comparison-DATA.json
+RUN --network=none python -I -B -S /opt/krb5-upgrade/qualify_candidate.py /krb5-build /krb5-qualification /tmp/krb5-runtime /tmp/krb5-sdk
+RUN --network=none python -I -B -S /opt/krb5-upgrade/export_evidence.py /krb5-qualification /consumer-public-evidence --consumer
+
+FROM scratch AS krb5-candidate-DATA
+# Deliberate DATA export, not ELF absence proof or qualified product image.
+COPY --from=krb5-data-builder /krb5-public-evidence/ /source-build/
+COPY --from=krb5-data-consumer /consumer-public-evidence/ /candidate-consumer/

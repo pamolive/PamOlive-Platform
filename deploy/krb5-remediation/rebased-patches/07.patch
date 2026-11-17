@@ -1,0 +1,72 @@
+--- a/src/build-tools/gssrpc.pc.in
++++ b/src/build-tools/gssrpc.pc.in
+@@ -1,7 +1,7 @@
+ prefix=@prefix@
+ exec_prefix=@exec_prefix@
+-libdir=@libdir@
+-includedir=@includedir@
++libdir=@libdir@/mit-krb5
++includedir=@includedir@/mit-krb5
+ vendor=MIT
+ 
+ Name: gssrpc
+--- a/src/build-tools/kadm-client.pc.in
++++ b/src/build-tools/kadm-client.pc.in
+@@ -1,7 +1,7 @@
+ prefix=@prefix@
+ exec_prefix=@exec_prefix@
+-libdir=@libdir@
+-includedir=@includedir@
++libdir=@libdir@/mit-krb5
++includedir=@includedir@/mit-krb5
+ 
+ Name: kadm-client
+ Description: Kerberos administration client library
+--- a/src/build-tools/kadm-server.pc.in
++++ b/src/build-tools/kadm-server.pc.in
+@@ -1,7 +1,7 @@
+ prefix=@prefix@
+ exec_prefix=@exec_prefix@
+-libdir=@libdir@
+-includedir=@includedir@
++libdir=@libdir@/mit-krb5
++includedir=@includedir@/mit-krb5
+ 
+ Name: kadm-server
+ Description: Kerberos administration server library
+--- a/src/build-tools/kdb.pc.in
++++ b/src/build-tools/kdb.pc.in
+@@ -1,7 +1,7 @@
+ prefix=@prefix@
+ exec_prefix=@exec_prefix@
+-libdir=@libdir@
+-includedir=@includedir@
++libdir=@libdir@/mit-krb5
++includedir=@includedir@/mit-krb5
+ 
+ KDB5_DB_LIB=@KDB5_DB_LIB@
+ 
+--- a/src/build-tools/mit-krb5-gssapi.pc.in
++++ b/src/build-tools/mit-krb5-gssapi.pc.in
+@@ -1,7 +1,7 @@
+ prefix=@prefix@
+ exec_prefix=@exec_prefix@
+-libdir=@libdir@
+-includedir=@includedir@
++libdir=@libdir@/mit-krb5
++includedir=@includedir@/mit-krb5
+ 
+ Name: mit-krb5-gssapi
+ Description: Kerberos implementation of the GSSAPI
+--- a/src/build-tools/mit-krb5.pc.in
++++ b/src/build-tools/mit-krb5.pc.in
+@@ -1,7 +1,7 @@
+ prefix=@prefix@
+ exec_prefix=@exec_prefix@
+-libdir=@libdir@
+-includedir=@includedir@
++libdir=@libdir@/mit-krb5
++includedir=@includedir@/mit-krb5
+ 
+ defccname=@DEFCCNAME@
+ defktname=@DEFKTNAME@

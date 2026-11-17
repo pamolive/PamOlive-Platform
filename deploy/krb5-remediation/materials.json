@@ -1,0 +1,30 @@
+{
+  "schema": "pamolive.krb5-upgrade-materials/1",
+  "files": [
+    {
+      "name": "krb5-1.22.3.tar.gz",
+      "bytes": 8758584,
+      "sha256": "fe90af8441ad9fa9b064b8e53077cefb782a96f8a68276b031dc54af1789ff0b"
+    },
+    {
+      "name": "krb5-1.22.3.tar.gz.asc",
+      "bytes": 833,
+      "sha256": "818d8e52d8602c6fb2a53b4d456fdb7caf217aab89f917a3a3d014610fcba193"
+    },
+    {
+      "name": "MIT-C449-keyserver-untrusted.asc",
+      "bytes": 6717,
+      "sha256": "ec0471ac4181d5f063028831411a31cf31bfe94bdcd6c78baf57dadcb24f2167"
+    },
+    {
+      "name": "krb5_1.22.1-3.dsc",
+      "bytes": 3397,
+      "sha256": "b619af9a52f00c4888e1f53f38d5e147e8c518d1c5b0cda120873fa4ebd4ea77"
+    },
+    {
+      "name": "krb5_1.22.1-3.debian.tar.xz",
+      "bytes": 111476,
+      "sha256": "519ad7537260ebc450a678b38f00c8deaf0e05d848d0e5cfeef1ddb154663ba8"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+--- a/src/clients/ksu/ksu.h
++++ b/src/clients/ksu/ksu.h
+@@ -56,6 +56,10 @@
+ #define MAX_CMD 2048 /* this is temp, should use realloc instead,
+                         as done in most of the code */
+ 
++#ifndef MAXPATHLEN
++# define MAXPATHLEN 4096
++#endif
++
+ 
+ extern int optind;
+ extern char * optarg;
+--- a/src/include/k5-int.h
++++ b/src/include/k5-int.h
+@@ -601,6 +601,12 @@
+ #ifdef HAVE_SYS_PARAM_H
+ #include <sys/param.h>                  /* MAXPATHLEN */
+ #endif
++#ifndef MAXPATHLEN
++# define MAXPATHLEN 4096
++#endif
++#ifndef MAXHOSTNAMELEN
++# define MAXHOSTNAMELEN 256
++#endif
+ 
+ #ifdef HAVE_SYS_FILE_H
+ #include <sys/file.h>                   /* prototypes for file-related
+--- a/src/kadmin/ktutil/ktutil_funcs.c
++++ b/src/kadmin/ktutil/ktutil_funcs.c
+@@ -34,6 +34,10 @@
+ #include <string.h>
+ #include <ctype.h>
+ 
++#ifndef MAXPATHLEN
++# define MAXPATHLEN 4096
++#endif
++
+ /*
+  * Free a kt_list
+  */
+--- a/src/plugins/kdb/db2/libdb2/include/db-int.h
++++ b/src/plugins/kdb/db2/libdb2/include/db-int.h
+@@ -280,4 +280,8 @@
+ #ifndef O_BINARY
+ #define O_BINARY	0		/* Needed for Win32 compiles */
+ #endif
++
++#ifndef MAXPATHLEN
++# define MAXPATHLEN 4096
++#endif
+ #endif /* _DB_INT_H_ */

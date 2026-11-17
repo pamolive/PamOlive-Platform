@@ -1,5 +1,16 @@
 # État réel de l’implémentation
 
+## Notes conservées de la branche Kerberos expérimentale
+
+
+### Laboratoire Kerberos1.22.3 en préparation
+
+ADR033 accepte uniquement une collecte Linux source/ABI/GSS isolée. Les hunks
+produit ne sont pas appliqués et le profilv2 reste admitted:false. Les37 tests
+N0 et la revue indépendante ferment deux défauts de contrat avant la collecte ;
+GPG, compilation, ABI, skips, GSS/KDC et scans doivent encore être reçus.
+Aucune correction de CVE n'est déclarée depuis la seule version amont.
+
 ## État courant — contexte scellé en qualification, 16 novembre 2026
 
 Le parent assemblé `5d8f814` a terminé sa
