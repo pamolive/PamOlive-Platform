@@ -1,0 +1,93 @@
+name: B0 public image material facts
+on:
+  push:
+    branches: [agent/p1g-browser-stage0]
+permissions:
+  contents: read
+concurrency:
+  group: b0-public-facts-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  public-file-facts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      B0_FACTS_SOURCES_SHA: c6fec3c2a7dfde395c0bc1ca73f1400d3091c4e6596c7f8f305a5eba48a0e2bf
+      B0_FACTS_MANIFEST_SHA: 2253243042643e471c6cfa8206d90d9f79c84e3627fc91de7be53968fe1f60e1
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Initialize a fresh work path using assigned runner variables
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'B0_WORK=%s/pamolive-b0-pre-d0-%s-%s\n' "$RUNNER_TEMP" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+      - name: Verify exact reviewed sources before tool or controller execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' "$B0_FACTS_SOURCES_SHA" qualification/b0_facts/review-sources.sha256 | sha256sum --check --strict
+          (cd qualification/b0_facts && sha256sum --check --strict review-sources.sha256)
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: 3.12.16
+      - name: Install the existing project security tools and declared Ruff version
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --only-binary=:all: --no-deps --require-hashes -r requirements-bootstrap.lock
+          python -m pip install -r requirements-security.lock
+          python -m pip install --only-binary=:all: --no-deps ruff==0.14.3
+          python -m pip check
+      - name: Run guarded Python and FakeFS Node tests before any pull
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -I -B qualification/b0_facts/run_pure.py
+          node --version
+          node --check qualification/b0_facts/facts.cjs
+          node --test qualification/b0_facts/test_facts.cjs qualification/b0_facts/test_directory_diagnostic.cjs qualification/b0_facts/test_cdimage_inventory.cjs
+          python -m ruff check --no-cache qualification/b0_facts
+          python -m ruff format --check --no-cache qualification/b0_facts
+          python -m bandit -r qualification/b0_facts -lll
+      - name: Observe resource margins and create a closed public-facts spool
+        run: >-
+          python -I -B qualification/b0_facts/adapter.py prepare
+          --work-dir "$B0_WORK" --manifest-sha256 "$B0_FACTS_MANIFEST_SHA"
+      - name: Acquire the exact public MCR image once without fallback or retry
+        run: >-
+          python -I -B qualification/b0_facts/adapter.py pull
+          --work-dir "$B0_WORK" --manifest-sha256 "$B0_FACTS_MANIFEST_SHA"
+      - name: Read fixed public files with network none and no package tool execution
+        run: >-
+          python -I -B qualification/b0_facts/adapter.py facts
+          --work-dir "$B0_WORK" --manifest-sha256 "$B0_FACTS_MANIFEST_SHA"
+      - name: Reconcile only reserved ownership and preserve any earlier refusal
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$B0_WORK/state.json" ]; then
+            python -I -B qualification/b0_facts/adapter.py cleanup --work-dir "$B0_WORK" --manifest-sha256 "$B0_FACTS_MANIFEST_SHA"
+          fi
+      - name: Retain a typed unknown state if publication did not complete
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$B0_WORK"
+          if [ ! -f "$B0_WORK/public-facts-report.json" ]; then
+            fallback_code=B0_FACTS_NOT_STARTED
+            if [ -e "$B0_WORK/state.json" ] || [ -L "$B0_WORK/state.json" ]; then
+              fallback_code=B0_FACTS_REPORT_UNAVAILABLE_OR_UNKNOWN
+            fi
+            printf '{"schema":"pamolive.b0-d0-report/1","phase":"public_file_inventory_only","code":"%s","ok":false,"inventory_completed":false,"resources_released":null,"facts":null,"stage0_passed":false,"certutil_functional":null,"nss_empty":null,"primary_fingerprints":null,"subkey_fingerprints":null,"repository_authorized":false,"Release_signatures_verified":false,"archives_verified":false,"TLS_observed":false,"sandbox_observed":false,"CDP_observed":false,"authority":false,"build_verified":false,"attestation_verified":false,"release_qualified":false}\n' "$fallback_code" >"$B0_WORK/public-facts-report.json"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: b0-public-file-facts-only
+          path: ${{ env.B0_WORK }}/public-facts-report.json
+          if-no-files-found: error
+          retention-days: 7

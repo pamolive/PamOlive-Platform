@@ -1,0 +1,9 @@
+{
+  "schema": "pamolive.b0-d0-pins/1",
+  "image": "mcr.microsoft.com/playwright@sha256:ee15712262f017b8157421b212b12099146645f44b1bc5c0514cbbe6a229b1d0",
+  "image_config": "sha256:a0d7b2b49ffa0e99787a00b7ec2af46eca58020082713f002ca9f0f1cfd1a017",
+  "node_entrypoint": "/usr/bin/node",
+  "node_min_major": 20,
+  "max_output_bytes": 716800,
+  "authority": false
+}

@@ -1,0 +1,14 @@
+{
+  "schema": "pamolive.b0-stage0-assets/2",
+  "assets": {
+    "stage0.cjs": {
+      "bytes": 4689,
+      "sha256": "b9a91608eac1ae724fc6367588813e729a49bc4598cc227d60a13486ffcbd400"
+    },
+    "pins-stage0.json": {
+      "bytes": 644,
+      "sha256": "62a37d816b3dbdf7de4ad657e38537f58d684dbab6b6bf5339f35f5328f2801e"
+    }
+  },
+  "authority": false
+}
