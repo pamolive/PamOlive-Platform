@@ -12,6 +12,115 @@ import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
+FAILURE_CODES = (
+    "HTTP_body_cap",
+    "HTTP_encoding",
+    "HTTP_length",
+    "HTTP_non200",
+    "HTTP_short_read",
+    "HTTP_transfer_framing",
+    "Linux_build_worker",
+    "TLS",
+    "amd64_not_unique",
+    "anonymous_token",
+    "auth_redirect",
+    "code_pin",
+    "compressed_signed_binding",
+    "decode_deadline",
+    "decode_must_have_signed_binding",
+    "decode_request",
+    "descriptor_type_or_external_urls",
+    "download_cap_type",
+    "download_hash",
+    "download_size",
+    "duplicate_HTTP_header",
+    "duplicate_JSON",
+    "duplicate_json_key",
+    "expected_SHA_type",
+    "expected_size_type",
+    "fetch_budget",
+    "header_budget",
+    "index_count",
+    "index_schema",
+    "invalid_digest",
+    "json_budget",
+    "metadata_redirect",
+    "module_pin",
+    "nonfinite_JSON",
+    "nonfinite_json",
+    "public_URL",
+    "public_origin",
+    "public_path",
+    "public_redirect_forbidden",
+    "raw_cap",
+    "raw_signed_binding",
+    "redirect_blob_path",
+    "redirect_origin_unapproved",
+    "redirect_path",
+    "redirect_url",
+    "registry_digest_header",
+    "registry_expected_digest",
+    "registry_request",
+    "registry_shape",
+    "second_redirect",
+    "size_budget",
+    "worker_deadline",
+    "worker_deadline_type",
+    "worker_fields",
+    "worker_output_scope",
+    "worker_private_path",
+    "worker_schema",
+)
+FAILURE_PHASES = (
+    "UNKNOWN",
+    "bootstrap",
+    "request",
+    "acquire",
+    "connect",
+    "headers",
+    "body",
+    "decode",
+    "write_output",
+)
+_phase = "UNKNOWN"
+_codec_error = None
+
+
+def failure_packet(error, phase):
+    # This is a closed observation, never a causal or authentication decision.
+    code = None
+    if type(error) is ValueError or (
+        _codec_error is not None and type(error) is _codec_error
+    ):
+        args = BaseException.args.__get__(error, BaseException)
+        if (
+            type(args) is tuple
+            and len(args) == 1
+            and type(args[0]) is str
+            and args[0] in FAILURE_CODES
+        ):
+            code = args[0]
+    if type(error) is ssl.SSLCertVerificationError:
+        kind = "TLS_CERTIFICATE"
+    elif type(error) is ssl.SSLError:
+        kind = "TLS"
+    elif type(error) is TimeoutError:
+        kind = "TIMEOUT"
+    elif type(error) is OSError:
+        kind = "OS"
+    elif code is not None:
+        kind = "CONTRACT"
+    else:
+        kind = "UNKNOWN"
+    return {
+        "schema": "pamolive.expat-C-worker-failure-DATA/1",
+        "state": "REFUSED_OR_UNKNOWN",
+        "code_index": FAILURE_CODES.index(code) + 1 if code is not None else 0,
+        "phase": phase if type(phase) is str and phase in FAILURE_PHASES else "UNKNOWN",
+        "kind": kind,
+        "operational_GO": False,
+    }
+
 
 def need(value, code):
     if not value:
@@ -28,7 +137,9 @@ def pairs(rows):
 
 def data(raw):
     return json.loads(
-        raw, object_pairs_hook=pairs, parse_constant=lambda value: need(False, "nonfinite_JSON")
+        raw,
+        object_pairs_hook=pairs,
+        parse_constant=lambda value: need(False, "nonfinite_JSON"),
     )
 
 
@@ -75,6 +186,8 @@ def public_url(url):
 
 
 def fetch(host, path, headers, cap, until):
+    global _phase
+    _phase = "connect"
     # These globals are private to this worker. Actual aggregate headers <=16KiB below.
     http.client._MAXLINE = 8192
     http.client._MAXHEADERS = 32
@@ -83,8 +196,11 @@ def fetch(host, path, headers, cap, until):
     need(context.check_hostname and context.verify_mode == ssl.CERT_REQUIRED, "TLS")
     connection = http.client.HTTPSConnection(host, timeout=15, context=context)
     try:
-        connection.request("GET", path, headers={"Accept-Encoding": "identity", **headers})
+        connection.request(
+            "GET", path, headers={"Accept-Encoding": "identity", **headers}
+        )
         response = connection.getresponse()
+        _phase = "headers"
         rows = response.getheaders()
         need(sum(len(n) + len(v) + 4 for n, v in rows) <= 16384, "header_budget")
         names = [n.lower() for n, _ in rows]
@@ -96,17 +212,25 @@ def fetch(host, path, headers, cap, until):
             "transfer-encoding",
         ):
             need(names.count(n) <= 1, "duplicate_HTTP_header")
-        need(response.getheader("Content-Encoding", "identity") == "identity", "HTTP_encoding")
+        need(
+            response.getheader("Content-Encoding", "identity") == "identity",
+            "HTTP_encoding",
+        )
         transfer = response.getheader("Transfer-Encoding")
         need(
-            transfer is None or (transfer == "chunked" and "content-length" not in names),
+            transfer is None
+            or (transfer == "chunked" and "content-length" not in names),
             "HTTP_transfer_framing",
         )
         if response.status in (301, 302, 303, 307, 308):
             return response.status, response.getheader("Location"), b"", None
         need(response.status == 200, "HTTP_non200")
         declared = response.getheader("Content-Length")
-        need(declared is None or (declared.isdecimal() and int(declared) <= cap), "HTTP_length")
+        need(
+            declared is None or (declared.isdecimal() and int(declared) <= cap),
+            "HTTP_length",
+        )
+        _phase = "body"
         raw = bytearray()
         while True:
             need(time.monotonic() < until, "worker_deadline")
@@ -153,7 +277,9 @@ def acquire(request, until, codec):
             "anonymous_token",
         )
         del auth, token_raw
-        endpoint = "manifests/" if request["kind"] in {"index", "manifest"} else "blobs/"
+        endpoint = (
+            "manifests/" if request["kind"] in {"index", "manifest"} else "blobs/"
+        )
         accept = ",".join(sorted(codec.INDEX_TYPES | codec.MANIFEST_TYPES))
         status, location, raw, header = fetch(
             codec.REGISTRY,
@@ -174,7 +300,8 @@ def acquire(request, until, codec):
         "download_hash",
     )
     need(
-        request["expected_bytes"] is None or len(raw) == request["expected_bytes"], "download_size"
+        request["expected_bytes"] is None or len(raw) == request["expected_bytes"],
+        "download_size",
     )
     return raw
 
@@ -188,11 +315,23 @@ def request_shape(request, request_path):
     fields = {
         "public": {"url", "cap", "expected_sha256", "expected_bytes"},
         "registry": {"digest", "kind", "cap", "expected_sha256", "expected_bytes"},
-        "xz": {"source", "expected_sha256", "expected_bytes", "raw_bytes", "raw_sha256"},
+        "xz": {
+            "source",
+            "expected_sha256",
+            "expected_bytes",
+            "raw_bytes",
+            "raw_sha256",
+        },
     }
     op = request.get("op")
-    need(type(op) is str and op in fields and set(request) == common | fields[op], "worker_fields")
-    need(type(request["until"]) in (int, float) and request["until"] > 0, "worker_deadline_type")
+    need(
+        type(op) is str and op in fields and set(request) == common | fields[op],
+        "worker_fields",
+    )
+    need(
+        type(request["until"]) in (int, float) and request["until"] > 0,
+        "worker_deadline_type",
+    )
     prefix = r"/expat-apt-work/network/[1-9][0-9]{0,3}/"
     need(
         re.fullmatch(prefix + r"request\.json", str(request_path))
@@ -211,7 +350,8 @@ def request_shape(request, request_path):
         )
     else:
         need(
-            type(request["cap"]) is int and 0 < request["cap"] <= 128 * 1024**2, "download_cap_type"
+            type(request["cap"]) is int and 0 < request["cap"] <= 128 * 1024**2,
+            "download_cap_type",
         )
         if op == "public":
             public_url(request["url"])
@@ -239,22 +379,31 @@ def request_shape(request, request_path):
         "expected_size_type",
     )
     if op == "registry":
-        need(request["expected_sha256"] == request["digest"][7:], "registry_expected_digest")
+        need(
+            request["expected_sha256"] == request["digest"][7:],
+            "registry_expected_digest",
+        )
     if op == "xz":
         need(
-            request["expected_sha256"] is not None and request["expected_bytes"] is not None,
+            request["expected_sha256"] is not None
+            and request["expected_bytes"] is not None,
             "decode_must_have_signed_binding",
         )
 
 
 def main():
+    global _phase, _codec_error
+    _phase = "bootstrap"
     need(sys.platform == "linux" and os.geteuid() == 0, "Linux_build_worker")
     transaction = loaded("transaction.py")
     codec = loaded("oci_codec.py")
+    _codec_error = getattr(codec, "CapsuleError", None)
+    _phase = "request"
     request = data(transaction.read_regular(sys.argv[1], 65536))
     request_shape(request, sys.argv[1])
     until = min(request["until"], time.monotonic() + 180)
     if request["op"] == "xz":
+        _phase = "decode"
         m = loaded("materials.py")
         compressed = transaction.read_regular(request["source"], 32 * 1024**2)
         need(
@@ -274,7 +423,9 @@ def main():
             "raw_signed_binding",
         )
     else:
+        _phase = "acquire"
         raw = acquire(request, until, codec)
+    _phase = "write_output"
     destination = Path(request["destination"])
     need(
         destination.is_absolute() and destination.parent == Path(sys.argv[1]).parent,
@@ -297,6 +448,9 @@ def main():
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except Exception:
-        print('{"state":"REFUSED_OR_UNKNOWN"}')
+    except Exception as error:
+        try:
+            print(json.dumps(failure_packet(error, _phase)))
+        except Exception:
+            print('{"state":"REFUSED_OR_UNKNOWN"}')
         raise SystemExit(42) from None

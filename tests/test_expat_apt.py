@@ -1213,5 +1213,204 @@ class AcquisitionTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
 
 
+class WorkerFailureDiagnosticTests(unittest.TestCase):
+    def completed_refusal(self, **changes):
+        packet = worker.failure_packet(ValueError("HTTP_non200"), "headers")
+        fields = dict(
+            ok=False,
+            spawn_attempted=True,
+            pid=123,
+            returncode=42,
+            reason="nonzero_exit",
+            exception_type=None,
+            cleanup_exception_type=None,
+            owned_child_reaped=True,
+            drains_complete=True,
+            killed_owned_child=False,
+            stdout=json.dumps(packet).encode(),
+            stderr=b"",
+        )
+        fields.update(changes)
+        return SimpleNamespace(**fields)
+
+    def test_42_closed_error_code_phase_and_kind_never_render_exception_text(self):
+        class Private(ValueError):
+            def __str__(self):
+                raise AssertionError("must_not_render_exception")
+
+        for error in (
+            Private("PRIVATE_TEXT"),
+            ValueError("PRIVATE_TEXT"),
+            ValueError("HTTP_non200", "PRIVATE_TEXT"),
+            RuntimeError("PRIVATE_TEXT"),
+        ):
+            packet = worker.failure_packet(error, "PRIVATE_PHASE")
+            self.assertEqual(packet["code_index"], 0)
+            self.assertEqual(packet["phase"], "UNKNOWN")
+            self.assertEqual(packet["kind"], "UNKNOWN")
+            self.assertNotIn("PRIVATE", json.dumps(packet))
+            self.assertFalse(packet["operational_GO"])
+        packet = worker.failure_packet(ValueError("HTTP_non200"), "headers")
+        self.assertEqual(worker.FAILURE_CODES[packet["code_index"] - 1], "HTTP_non200")
+        self.assertEqual(packet["kind"], "CONTRACT")
+
+    def test_43_actual_reviewed_codec_class_can_publish_only_known_code(self):
+        with patch.object(worker, "_codec_error", oci.CapsuleError):
+            packet = worker.failure_packet(
+                oci.CapsuleError("redirect_origin_unapproved"), "acquire"
+            )
+            self.assertEqual(
+                worker.FAILURE_CODES[packet["code_index"] - 1],
+                "redirect_origin_unapproved",
+            )
+            self.assertEqual(packet["kind"], "CONTRACT")
+            unknown = worker.failure_packet(oci.CapsuleError("PRIVATE_TEXT"), "acquire")
+            self.assertEqual(unknown["code_index"], 0)
+
+    def test_44_parent_projects_only_complete_normal42_not_partial_or_uncertain_buffers(
+        self,
+    ):
+        valid = self.completed_refusal()
+        self.assertEqual(
+            cap.worker_failure_diagnostic(valid, m), json.loads(valid.stdout)
+        )
+        for changes in (
+            {"ok": True},
+            {"spawn_attempted": 1},
+            {"pid": True},
+            {"returncode": 0},
+            {"returncode": True},
+            {"reason": None},
+            {"exception_type": "PRIVATE"},
+            {"cleanup_exception_type": "PRIVATE"},
+            {"owned_child_reaped": False},
+            {"drains_complete": False},
+            {"killed_owned_child": True},
+            {"stdout": bytearray(valid.stdout)},
+            {"stdout": b"x" * 2049},
+            {"stderr": b"PRIVATE"},
+        ):
+            with self.subTest(changes=tuple(changes)):
+                self.assertIsNone(
+                    cap.worker_failure_diagnostic(self.completed_refusal(**changes), m)
+                )
+
+    def test_45_arbitrary_fields_bool_aliases_and_indices_refuse_without_echo(self):
+        packet = json.loads(self.completed_refusal().stdout)
+        for key, value in (
+            ("extra", "PRIVATE"),
+            ("schema", "PRIVATE"),
+            ("state", "COMPLETE"),
+            ("code_index", True),
+            ("code_index", 58),
+            ("code_index", -1),
+            ("phase", "PRIVATE"),
+            ("kind", "PRIVATE"),
+            ("operational_GO", 0),
+        ):
+            altered = dict(packet, **{key: value})
+            self.assertIsNone(
+                cap.worker_failure_diagnostic(
+                    self.completed_refusal(stdout=json.dumps(altered).encode()), m
+                )
+            )
+        for raw in (b"PRIVATE", b"{}", b'{"schema":1,"schema":2}', b'{"x":NaN}'):
+            self.assertIsNone(
+                cap.worker_failure_diagnostic(self.completed_refusal(stdout=raw), m)
+            )
+
+    def test_46_literal_tables_are_finite_and_match_parent_integer_bound(self):
+        import ast
+
+        self.assertEqual(len(worker.FAILURE_CODES), 57)
+        self.assertEqual(len(set(worker.FAILURE_CODES)), 57)
+        self.assertEqual(len(worker.FAILURE_PHASES), 9)
+        tree = ast.parse((CODE / "capture.py").read_bytes())
+        function = next(
+            n
+            for n in tree.body
+            if isinstance(n, ast.FunctionDef) and n.name == "worker_failure_diagnostic"
+        )
+        self.assertIn("<= 57", ast.unparse(function))
+
+    def test_47_projection_remains_best_effort_before_original_fatal_guard(self):
+        import ast
+
+        tree = ast.parse((CODE / "capture.py").read_bytes())
+        network = next(
+            n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "Network"
+        )
+        function = next(
+            n
+            for n in network.body
+            if isinstance(n, ast.FunctionDef) and n.name == "perform"
+        )
+        text = ast.unparse(function)
+        self.assertLess(
+            text.index("worker_failure_diagnostic(result"),
+            text.index("'worker_unknown'"),
+        )
+        self.assertIn("self.unknown = True", text)
+        self.assertIn("except Exception:", text)
+        self.assertIn("result.returncode == 0", text)
+        self.assertIn("raise", text)
+
+    def test_48_real_network_wrapper_keeps_original_refusal_when_projection_write_fails(
+        self,
+    ):
+        for fail_write in (False, True):
+            writes = {}
+            calls = []
+
+            class MP(PurePosixPath):
+                def mkdir(self, **kwargs):
+                    pass
+
+            def write(path, raw, *args):
+                if fail_write and str(path).endswith("worker-failure.json"):
+                    raise OSError("PRIVATE_WRITE_ERROR")
+                writes[str(path)] = raw
+
+            result = self.completed_refusal()
+            result.facts = lambda: {"returncode": 42}
+
+            def run(argv, **kwargs):
+                calls.append(argv)
+                kwargs["on_spawn"](123)
+                return result
+
+            fake = SimpleNamespace(
+                WORK=MP("/work"),
+                PROOF=MP("/proof"),
+                HERE=MP("/code"),
+                write_new=write,
+                read_regular=lambda *a, **k: b"SOURCE",
+                sha=g.sha,
+            )
+            net = cap.Network(
+                SimpleNamespace(run_capped=run),
+                fake,
+                {"network_worker.py": g.sha(b"SOURCE")},
+                1000,
+                m,
+                g.sha(b"SOURCE"),
+            )
+            net.tool = lambda: ("fixed", (1,))
+            with patch.object(cap.time, "monotonic", return_value=0):
+                with self.assertRaisesRegex(ValueError, "^worker_unknown$"):
+                    net.public("https://deb.debian.org/fixed", cap=1)
+                self.assertTrue(net.unknown)
+                with self.assertRaises(ValueError):
+                    net.public("https://deb.debian.org/fixed", cap=1)
+            self.assertEqual(len(calls), 1)
+            self.assertIn("/proof/network/1/UNKNOWN.json", writes)
+            self.assertEqual(
+                "/proof/network/1/worker-failure.json" in writes, not fail_write
+            )
+            self.assertNotIn(
+                "PRIVATE", json.dumps({p: r.decode() for p, r in writes.items()})
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

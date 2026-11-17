@@ -71,7 +71,7 @@ Build verification, complete materials and operational approval remain false.
 
 ## Tests and independent review
 
-The 41 source/data tests pass on the actual checkout with zero skips and an
+The 48 source/data tests pass on the actual checkout with zero skips and an
 empty external-I/O audit. Native boundaries are fakes in those tests. Independent
 source review added six targeted adverse cases; the policy review exercised
 30 combinations of purposes, dates and expiry. These are not native crypto,
@@ -83,3 +83,20 @@ and signatures, bounded network-worker completion, APT cache and Inst/Conf
 framing, dependency retention and unchanged dpkg state. Exact offline apply,
 tamper, unavailable-pin, timeout and package-state drift cases remain mandatory
 before applying this boundary to the product.
+
+## First native capture and closed failure observation
+
+Commit d1d357b reached two verified OCI metadata downloads on a fresh Linux VM,
+then refused during the config-blob worker. The strict DATA gate failed and no
+SQV, repository signature, APT solver or installation was reached. Its internal
+cause was not received; no HTTP, TLS, CDN or hash cause is inferred.
+
+The next worker revision retains only a closed diagnostic: a numeric index into
+57 literal source-bound error codes, nine literal phases and six error kinds.
+The parent accepts that projection only after complete normal exit42, drained
+streams, no kill/exception and exact bounded fields. No raw exception, URI,
+anonymous token, response body or header leaves the worker through this channel.
+Projection failure preserves the original fatal guard and sticky UNKNOWN.
+No TLS, origin, redirect, size, hash, timeout or package consent is relaxed.
+Seven added pure cases preserve all 41 earlier test methods; they do not prove
+the historical cause or any native success.

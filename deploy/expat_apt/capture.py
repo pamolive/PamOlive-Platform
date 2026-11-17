@@ -9,12 +9,69 @@ import time
 from pathlib import Path
 
 SQV_DEB = "41553e3ca006ed490692872a3e0009247bcfcee92f180f611559f6e8cd152210"
-SQV_URL = "https://deb.debian.org/debian/pool/main/r/rust-sequoia-sqv/sqv_1.5.0-1_amd64.deb"
+SQV_URL = (
+    "https://deb.debian.org/debian/pool/main/r/rust-sequoia-sqv/sqv_1.5.0-1_amd64.deb"
+)
 
 
 def need(value, code):
     if not value:
         raise ValueError(code)
+
+
+def worker_failure_diagnostic(result, codecs):
+    # Never inspect partial buffers, timeouts, kills or uncertain completion.
+    if not (
+        result.ok is False
+        and result.spawn_attempted is True
+        and type(result.pid) is int
+        and result.pid > 0
+        and type(result.returncode) is int
+        and result.returncode == 42
+        and type(result.reason) is str
+        and result.reason == "nonzero_exit"
+        and result.exception_type is result.cleanup_exception_type is None
+        and result.owned_child_reaped is True
+        and result.drains_complete is True
+        and result.killed_owned_child is False
+        and type(result.stdout) is bytes
+        and 0 < len(result.stdout) <= 2048
+        and type(result.stderr) is bytes
+        and result.stderr == b""
+    ):
+        return None
+    try:
+        value = codecs.json_data(result.stdout)
+        if not (
+            type(value) is dict
+            and set(value)
+            == {"schema", "state", "code_index", "phase", "kind", "operational_GO"}
+            and value["schema"] == "pamolive.expat-C-worker-failure-DATA/1"
+            and value["state"] == "REFUSED_OR_UNKNOWN"
+            and type(value["code_index"]) is int
+            and 0 <= value["code_index"] <= 57
+            and type(value["phase"]) is str
+            and value["phase"]
+            in (
+                "UNKNOWN",
+                "bootstrap",
+                "request",
+                "acquire",
+                "connect",
+                "headers",
+                "body",
+                "decode",
+                "write_output",
+            )
+            and type(value["kind"]) is str
+            and value["kind"]
+            in {"UNKNOWN", "TLS_CERTIFICATE", "TLS", "TIMEOUT", "OS", "CONTRACT"}
+            and value["operational_GO"] is False
+        ):
+            return None
+        return value
+    except Exception:
+        return None
 
 
 class Network:
@@ -43,7 +100,9 @@ class Network:
 
     def perform(self, op, **fields):
         need(
-            not self.unknown and self.count < 1024 and time.monotonic() + 20 < self.until,
+            not self.unknown
+            and self.count < 1024
+            and time.monotonic() + 20 < self.until,
             "network_budget_or_UNKNOWN",
         )
         self.count += 1
@@ -64,10 +123,14 @@ class Network:
         self.t.write_new(proof / "intent.json", b'{"state":"PENDING"}')
         worker = self.t.HERE / "network_worker.py"
         worker_raw = self.t.read_regular(worker, 131072)
-        need(self.t.sha(worker_raw) == self.pins["network_worker.py"], "worker_source_pin")
+        need(
+            self.t.sha(worker_raw) == self.pins["network_worker.py"],
+            "worker_source_pin",
+        )
         pin = self.tool()
         need(
-            self.t.sha(self.t.read_regular(self.t.HERE / "code-pins.json", 16384)) == self.code_sha,
+            self.t.sha(self.t.read_regular(self.t.HERE / "code-pins.json", 16384))
+            == self.code_sha,
             "external_worker_code_pin",
         )
         self.t.write_new(
@@ -92,7 +155,12 @@ class Network:
                     str(request_path),
                     self.code_sha,
                 ],
-                env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C", "HOME": str(folder)},
+                env={
+                    "PATH": "/usr/bin:/bin",
+                    "LANG": "C",
+                    "LC_ALL": "C",
+                    "HOME": str(folder),
+                },
                 cwd=str(folder),
                 timeout=work + 10,
                 work_timeout=work,
@@ -107,6 +175,15 @@ class Network:
             )
             facts = result.facts()
             self.t.write_new(proof / "result.json", json.dumps(facts).encode())
+            # Best effort closed DATA projection; the original strict refusal still follows.
+            try:
+                failure = worker_failure_diagnostic(result, self.m)
+                if failure is not None:
+                    self.t.write_new(
+                        proof / "worker-failure.json", json.dumps(failure).encode()
+                    )
+            except Exception:
+                pass
             need(
                 result.ok
                 and result.spawn_attempted is True
@@ -114,14 +191,19 @@ class Network:
                 and result.pid > 0
                 and type(result.returncode) is int
                 and result.returncode == 0
-                and result.reason is result.exception_type is result.cleanup_exception_type is None
+                and result.reason
+                is result.exception_type
+                is result.cleanup_exception_type
+                is None
                 and result.owned_child_reaped is True
                 and result.drains_complete is True
                 and result.killed_owned_child is False
                 and result.stderr == b""
                 and self.tool() == pin
                 and self.t.read_regular(worker, 131072) == worker_raw
-                and self.t.sha(self.t.read_regular(self.t.HERE / "code-pins.json", 16384))
+                and self.t.sha(
+                    self.t.read_regular(self.t.HERE / "code-pins.json", 16384)
+                )
                 == self.code_sha,
                 "worker_unknown",
             )
@@ -137,7 +219,8 @@ class Network:
             )
             raw = self.t.read_regular(destination, 128 * 1024**2, allow_empty=True)
             need(
-                len(raw) == packet["bytes"] and self.t.sha(raw) == packet["sha256"], "worker_bytes"
+                len(raw) == packet["bytes"] and self.t.sha(raw) == packet["sha256"],
+                "worker_bytes",
             )
             self.total += len(raw)
             need(self.total <= 2 * 1024**3, "aggregate_public_bytes")
@@ -154,12 +237,15 @@ class Network:
         except BaseException:
             self.unknown = True
             self.t.write_new(
-                proof / "UNKNOWN.json", b'{"state":"UNKNOWN","resources_released":false}'
+                proof / "UNKNOWN.json",
+                b'{"state":"UNKNOWN","resources_released":false}',
             )
             raise
 
     def public(self, url, *, cap, sha=None, size=None):
-        return self.perform("public", url=url, cap=cap, expected_sha256=sha, expected_bytes=size)
+        return self.perform(
+            "public", url=url, cap=cap, expected_sha256=sha, expected_bytes=size
+        )
 
     def registry(self, digest, kind, maximum, size=None):
         return self.perform(
@@ -185,7 +271,9 @@ def parent(network, transaction, m, g, codec):
     index = codec.parse(save(g.BASE, "index", 1024**2), 1024**2)
     chosen = codec.select(index)
     need(chosen["digest"] == g.MANIFEST, "expected_platform_manifest")
-    manifest = codec.parse(save(g.MANIFEST, "manifest", 1024**2, chosen["size"]), 1024**2)
+    manifest = codec.parse(
+        save(g.MANIFEST, "manifest", 1024**2, chosen["size"]), 1024**2
+    )
     config = codec.descriptor(manifest["config"], codec.CONFIG_TYPES, 1024**2)
     need(config["digest"] == g.CONFIG, "expected_config")
     save(g.CONFIG, "config", 1024**2, config["size"])
@@ -193,7 +281,10 @@ def parent(network, transaction, m, g, codec):
         codec.descriptor(r, codec.GZIP_TYPES | codec.RAW_TYPES, 64 * 1024**2)
         for r in manifest["layers"]
     ]
-    need(len(layers) == 4 and sum(r["size"] for r in layers) <= 256 * 1024**2, "parent_layers")
+    need(
+        len(layers) == 4 and sum(r["size"] for r in layers) <= 256 * 1024**2,
+        "parent_layers",
+    )
     for row in layers:
         save(row["digest"], "layer", 64 * 1024**2, row["size"])
     value = m.base_inventory(layout)
@@ -219,7 +310,9 @@ def verifier(raw, m, g):
     result = None
     with m.decompressor(name, members[name]) as stream:
         bounded = m.PhysicalReader(stream, 512 * 1024**2)
-        with tarfile.open(fileobj=bounded, mode="r|", tarinfo=m.LimitedTarInfo) as archive:
+        with tarfile.open(
+            fileobj=bounded, mode="r|", tarinfo=m.LimitedTarInfo
+        ) as archive:
             for item in archive:
                 if m.tar_name(item.name) == "usr/bin/sqv":
                     need(
@@ -236,7 +329,9 @@ def verifier(raw, m, g):
 
 
 def authenticated_index(network, runner, m, g, suite, rule, root):
-    signed, _ = network.public(rule["uri"] + "dists/" + suite + "/InRelease", cap=1024**2)
+    signed, _ = network.public(
+        rule["uri"] + "dists/" + suite + "/InRelease", cap=1024**2
+    )
     clear, certs = runner.signature(signed, suite, rule)
     fields = m.one_control(clear)
     g.scalar_fields(fields, ("Origin", "Codename", "Date", "Valid-Until"))
@@ -251,11 +346,23 @@ def authenticated_index(network, runner, m, g, suite, rule, root):
     raw_key = "main/binary-amd64/Packages"
     need(compressed_key in checks and raw_key in checks, "signed_raw_and_XZ_required")
     packed, raw_entry = checks[compressed_key], checks[raw_key]
-    need(0 < packed["size"] <= 32 * 1024**2 and 0 <= raw_entry["size"] <= m.MAX_INDEX, "index_caps")
+    need(
+        0 < packed["size"] <= 32 * 1024**2 and 0 <= raw_entry["size"] <= m.MAX_INDEX,
+        "index_caps",
+    )
     cost = len(signed) + len(clear) + packed["size"] + raw_entry["size"]
-    need(getattr(runner, "metadata_bytes", 0) + cost <= m.MAX_META, "metadata_aggregate_before_use")
+    need(
+        getattr(runner, "metadata_bytes", 0) + cost <= m.MAX_META,
+        "metadata_aggregate_before_use",
+    )
     runner.metadata_bytes = getattr(runner, "metadata_bytes", 0) + cost
-    uri = rule["uri"] + "dists/" + suite + "/main/binary-amd64/by-hash/SHA256/" + packed["sha256"]
+    uri = (
+        rule["uri"]
+        + "dists/"
+        + suite
+        + "/main/binary-amd64/by-hash/SHA256/"
+        + packed["sha256"]
+    )
     compressed, path = network.public(
         uri, cap=32 * 1024**2, sha=packed["sha256"], size=packed["size"]
     )
@@ -273,7 +380,16 @@ def authenticated_index(network, runner, m, g, suite, rule, root):
         count += 1
         need(count <= 300000, "index_stanza_cap")
         g.scalar_fields(
-            row, ("Package", "Version", "Architecture", "Filename", "Size", "SHA256", "Source")
+            row,
+            (
+                "Package",
+                "Version",
+                "Architecture",
+                "Filename",
+                "Size",
+                "SHA256",
+                "Source",
+            ),
         )
         m.package_identity(row)
     runner.verified_releases[suite] = (clear, certs)
@@ -288,7 +404,10 @@ def authenticated_index(network, runner, m, g, suite, rule, root):
 
 
 def run(args, pins, m, g, io_helper, t, *, deadline):
-    need(sys.platform == "linux" and os.getuid() == os.geteuid() == 0, "disposable_Linux_builder")
+    need(
+        sys.platform == "linux" and os.getuid() == os.geteuid() == 0,
+        "disposable_Linux_builder",
+    )
     until = deadline
     policy_raw = t.read_regular("/c-authority/policy.json", 1024**2)
     gate = g.Gate(m)
@@ -324,7 +443,9 @@ def run(args, pins, m, g, io_helper, t, *, deadline):
     need(out == t.VERSION and err == b"", "verifier_runtime_version")
     indices, signed_map = {}, {}
     for suite, rule in policy["repositories"].items():
-        signed, _, index, _ = authenticated_index(network, runner, m, g, suite, rule, root)
+        signed, _, index, _ = authenticated_index(
+            network, runner, m, g, suite, rule, root
+        )
         signed_map[suite] = signed
         indices[suite] = index
     solver = t.load("expat_solver", "solver.py", pins["solver.py"])
@@ -334,7 +455,10 @@ def run(args, pins, m, g, io_helper, t, *, deadline):
     spec = {
         "schema": "pamolive.expat-prepared.spool/1",
         "metadata": {
-            s: {"inrelease": "metadata/" + s + ".InRelease", "index": "metadata/" + s + ".Packages"}
+            s: {
+                "inrelease": "metadata/" + s + ".InRelease",
+                "index": "metadata/" + s + ".Packages",
+            }
             for s in g.REPOSITORIES
         },
         "selection": [],
