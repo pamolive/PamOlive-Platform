@@ -88,23 +88,175 @@ def subject_pins(code_sha):
     return pins
 
 
+CAPTURE_PHASES = (
+    "code_capture_before",
+    "code_capture_after",
+    "helper_capture_before",
+    "helper_capture_after",
+    "API_before",
+    "API_after",
+)
+CHECK_PHASES = (
+    "GET_before",
+    "GET_after",
+    "socket_pairs_before",
+    "socket_pairs_after",
+    "network_escape_before",
+    "network_escape_after",
+    "holes_before",
+    "holes_after",
+    "emit_before",
+    "emit_after",
+)
+CHECKPOINT_PHASES = {
+    "syscalls": CAPTURE_PHASES
+    + ("prepare_before", "prepare_after", "install_before", "install_after")
+    + CHECK_PHASES,
+    "exec": CAPTURE_PHASES
+    + (
+        "prepare_before",
+        "prepare_after",
+        "Python_capture_before",
+        "Python_capture_after",
+        "install_before",
+        "install_after",
+        "exec_before",
+    ),
+    "inherited": CAPTURE_PHASES + CHECK_PHASES,
+}
+MAX_CHECKPOINTS = 32
+MAX_CHECKPOINT_BYTES = 1024
+MAX_CASE_CHECKPOINT_BYTES = MAX_CHECKPOINTS * MAX_CHECKPOINT_BYTES
+
+
+class Checkpoints:
+    """Finite diagnostic-only records; no signal handler, PASS or authority."""
+
+    def __init__(self, mode, native_sha, code_sha):
+        need(mode in CHECKPOINT_PHASES)
+        need(
+            all(
+                type(value) is str
+                and len(value) == 64
+                and all(c in "0123456789abcdef" for c in value)
+                for value in (native_sha, code_sha)
+            )
+        )
+        self.mode = mode
+        self.case = "exec" if mode == "inherited" else mode
+        self.native_sha = native_sha
+        self.code_sha = code_sha
+        self.pid = os.getpid()
+        need(type(self.pid) is int and self.pid > 0)
+        self.offset = len(CHECKPOINT_PHASES["exec"]) if mode == "inherited" else 0
+        self.index = 0
+
+    def __call__(self, phase):
+        import stat
+
+        stages = CHECKPOINT_PHASES[self.mode]
+        need(self.index < len(stages) and phase == stages[self.index])
+        ordinal = self.offset + self.index + 1
+        need(1 <= ordinal <= MAX_CHECKPOINTS)
+        raw = (
+            json.dumps(
+                {
+                    "schema": "pamolive.fence-native-checkpoint/1",
+                    "case": self.case,
+                    "mode": self.mode,
+                    "ordinal": ordinal,
+                    "phase": phase,
+                    "pid": self.pid,
+                    "code_pins_sha256": self.code_sha,
+                    "native_source_sha256": self.native_sha,
+                    "diagnostic_only": True,
+                    "operational_GO": False,
+                },
+                separators=(",", ":"),
+            )
+            + "\n"
+        ).encode()
+        need(
+            len(raw) <= MAX_CHECKPOINT_BYTES
+            and ordinal * MAX_CHECKPOINT_BYTES <= MAX_CASE_CHECKPOINT_BYTES
+        )
+        parent = OUT.lstat()
+        need(
+            stat.S_ISDIR(parent.st_mode)
+            and parent.st_uid == parent.st_gid == 0
+            and not parent.st_mode & 0o077
+        )
+        path = OUT / (self.case + "-checkpoint-" + str(ordinal).zfill(2) + ".json")
+        fd = os.open(
+            path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+            0o400,
+        )
+        try:
+            row = os.fstat(fd)
+            need(
+                stat.S_ISREG(row.st_mode)
+                and row.st_uid == row.st_gid == 0
+                and row.st_nlink == 1
+                and stat.S_IMODE(row.st_mode) == 0o400
+                and row.st_size == 0
+            )
+            need(os.write(fd, raw) == len(raw))
+            os.fsync(fd)
+            after = os.fstat(fd)
+            named = path.lstat()
+            need(
+                after == named
+                and after.st_dev == row.st_dev
+                and after.st_ino == row.st_ino
+                and after.st_mode == row.st_mode
+                and after.st_uid == after.st_gid == 0
+                and after.st_nlink == 1
+                and after.st_size == len(raw)
+            )
+            current = OUT.lstat()
+            need(
+                current.st_dev == parent.st_dev
+                and current.st_ino == parent.st_ino
+                and current.st_mode == parent.st_mode
+                and current.st_uid == current.st_gid == 0
+            )
+        finally:
+            os.close(fd)
+        self.index += 1
+
+
 def child():
     need(len(sys.argv) == 4 and sys.argv[3] in {"syscalls", "exec", "inherited"})
     native_sha, code_sha, mode = sys.argv[1:]
     need(globals().get("CAPTURED_NATIVE_SHA") == native_sha)
+    checkpoint = Checkpoints(mode, native_sha, code_sha)
+    checkpoint("code_capture_before")
     pins = subject_pins(code_sha)
+    checkpoint("code_capture_after")
     need(pins["native_fence_tests.py"] == native_sha)
+    checkpoint("helper_capture_before")
     f = captured("solver_fence.py", pins["solver_fence.py"])
+    checkpoint("helper_capture_after")
+    checkpoint("API_before")
     api = f["LinuxAPI"]()
+    checkpoint("API_after")
     if mode != "inherited":
+        checkpoint("prepare_before")
         f["prepare_kernel"](api)
+        checkpoint("prepare_after")
         if mode == "exec":
+            checkpoint("Python_capture_before")
             fd, raw, _identity = f["captured_file"](
                 PYTHON, 64 * 1024**2, keep=True, executable=True
             )
             try:
+                checkpoint("Python_capture_after")
                 need(fd == 3 and not os.get_inheritable(fd))
+                checkpoint("install_before")
                 api.install(f["program"]())
+                checkpoint("install_after")
+                checkpoint("exec_before")
                 api.execfd(
                     fd,
                     [PYTHON, "-I", "-B", "-S", "-c", LOADER, native_sha, code_sha, "inherited"],
@@ -113,15 +265,24 @@ def child():
                 raise ValueError("native_fence_exec_returned")
             finally:
                 os.close(fd)
+        checkpoint("install_before")
         api.install(f["program"]())
+        checkpoint("install_after")
+    checkpoint("GET_before")
     need(api.libc.prctl(39, 0, 0, 0, 0) == 1 and api.libc.prctl(21, 0, 0, 0, 0) == 2)
+    checkpoint("GET_after")
+    checkpoint("socket_pairs_before")
     # No connection is ever attempted. Even a broken socket filter can only create
     # an unconnected descriptor in this short-lived, network-none test container.
     for domain in (1, 2, 10):
         need(api.denied(41, domain, 1, 0))
         need(api.denied(53, domain, 1, 0, 0))
+    checkpoint("socket_pairs_after")
+    checkpoint("network_escape_before")
     for nr in sorted(f["NETWORK_DENIED"] - {41, 53} | f["ESCAPE_DENIED"]):
         need(api.denied(nr, 0, 0, 0, 0, 0, 0))
+    checkpoint("network_escape_after")
+    checkpoint("holes_before")
     holes = sorted(set(range(max(f["KNOWN_SYSCALLS"]) + 1)) - set(f["KNOWN_SYSCALLS"]))
     need(
         holes
@@ -129,6 +290,8 @@ def child():
         and api.denied(9999, 0)
         and api.denied(f["X32_BIT"] | 39, 0)
     )
+    checkpoint("holes_after")
+    checkpoint("emit_before")
     packet = {
         "schema": "pamolive.fence-native-case/1",
         "case": "exec" if mode == "inherited" else mode,
@@ -140,6 +303,7 @@ def child():
         "operational_GO": False,
     }
     sys.stdout.write(json.dumps(packet, separators=(",", ":")) + "\n")
+    checkpoint("emit_after")
 
 
 def run(code_sha, pins, transaction):

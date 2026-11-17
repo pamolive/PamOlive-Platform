@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
-      CODE_PINS_SHA: 9ee2a881d4f59db8f448bfa707598531cc73efa0987a25480276ba526c9e2104
+      CODE_PINS_SHA: 96ffd065d4e34a42426c6ba2ef0fdc6ed69c2e645732e4d58578da354992f500
       POLICY_SHA: 3bab6351fe8cb82cb557fe6d334cc2e386e05a2a6c19cd7cf6613a015b7323f4
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0

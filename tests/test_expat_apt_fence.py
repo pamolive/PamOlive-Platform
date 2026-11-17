@@ -593,3 +593,253 @@ class FenceTests(unittest.TestCase):
         )
         self.assertIn("CAPTURED_HELPER_SHA", f.LOADER)
         self.assertIn("CAPTURED_NATIVE_SHA", native.LOADER)
+
+
+class NativeCheckpointTests(unittest.TestCase):
+    def native(self):
+        return old.module("c_native_checkpoint_tests", "native_fence_tests.py")
+
+    def memory(self, native, *, bad_parent=False, short=False, fsync_error=False):
+        state = SimpleNamespace(
+            files={}, open_fds={}, closed=[], opened=[], syncs=[], bad_parent=bad_parent
+        )
+
+        def parent():
+            return SimpleNamespace(
+                st_dev=1,
+                st_ino=1,
+                st_mode=stat.S_IFDIR | (0o755 if state.bad_parent else 0o700),
+                st_uid=0,
+                st_gid=0,
+            )
+
+        def metadata(name):
+            return SimpleNamespace(
+                st_dev=1,
+                st_ino=10,
+                st_mode=stat.S_IFREG | 0o400,
+                st_uid=0,
+                st_gid=0,
+                st_nlink=1,
+                st_size=len(state.files[name]),
+                st_mtime_ns=1,
+                st_ctime_ns=1,
+            )
+
+        class Leaf:
+            def __init__(self, name):
+                self.name = name
+
+            def lstat(self):
+                return metadata(self.name)
+
+        class Root:
+            def lstat(self):
+                return parent()
+
+            def __truediv__(self, name):
+                return Leaf(name)
+
+        def opened(path, flags, mode):
+            self.assertEqual(mode, 0o400)
+            self.assertEqual(
+                flags,
+                native.os.O_WRONLY
+                | native.os.O_CREAT
+                | native.os.O_EXCL
+                | native.os.O_NOFOLLOW
+                | native.os.O_NONBLOCK
+                | native.os.O_CLOEXEC,
+            )
+            if path.name in state.files:
+                raise FileExistsError("SYNTHETIC_PRIVATE_CANARY")
+            state.files[path.name] = b""
+            state.open_fds[4] = path.name
+            state.opened.append(path.name)
+            return 4
+
+        def written(fd, raw):
+            count = len(raw) - 1 if short else len(raw)
+            state.files[state.open_fds[fd]] += raw[:count]
+            return count
+
+        def synced(fd):
+            state.syncs.append(fd)
+            if fsync_error:
+                raise OSError("SYNTHETIC_PRIVATE_CANARY")
+
+        def closed(fd):
+            state.closed.append(fd)
+            del state.open_fds[fd]
+
+        contexts = (
+            patch.object(native.os, "O_NOFOLLOW", 0x20000, create=True),
+            patch.object(native.os, "O_NONBLOCK", 0x800, create=True),
+            patch.object(native.os, "O_CLOEXEC", 0x80000, create=True),
+            patch.object(native, "OUT", Root()),
+            patch.object(native.os, "getpid", lambda: 123),
+            patch.object(native.os, "open", opened),
+            patch.object(native.os, "write", written),
+            patch.object(native.os, "fstat", lambda fd: metadata(state.open_fds[fd])),
+            patch.object(native.os, "fsync", synced),
+            patch.object(native.os, "close", closed),
+        )
+        return state, contexts
+
+    def entered(self, contexts):
+        from contextlib import ExitStack
+
+        stack = ExitStack()
+        for context in contexts:
+            stack.enter_context(context)
+        self.addCleanup(stack.close)
+        return stack
+
+    def test_83_actual_checkpoint_files_are_exclusive_closed_bound_and_finite(self):
+        native = self.native()
+        state, contexts = self.memory(native)
+        with self.entered(contexts):
+            for mode in ("exec", "inherited"):
+                checkpoint = native.Checkpoints(mode, "a" * 64, "b" * 64)
+                for phase in native.CHECKPOINT_PHASES[mode]:
+                    checkpoint(phase)
+                    self.assertFalse(state.open_fds)
+        self.assertEqual(len(state.files), 29)
+        self.assertEqual(len(state.closed), 29)
+        self.assertEqual(len(state.syncs), 29)
+        self.assertLessEqual(sum(map(len, state.files.values())), native.MAX_CASE_CHECKPOINT_BYTES)
+        rows = [json.loads(raw) for raw in state.files.values()]
+        self.assertEqual([r["ordinal"] for r in rows], list(range(1, 30)))
+        for row in rows:
+            self.assertEqual(row["pid"], 123)
+            self.assertEqual(row["code_pins_sha256"], "b" * 64)
+            self.assertEqual(row["native_source_sha256"], "a" * 64)
+            self.assertTrue(row["diagnostic_only"])
+            self.assertFalse(row["operational_GO"])
+            self.assertNotIn("PASS", row)
+            self.assertNotIn("SYNTHETIC_PRIVATE_CANARY", json.dumps(row))
+
+    def test_84_unknown_phase_wrong_order_and_unbound_source_refuse_before_open(self):
+        native = self.native()
+        state, contexts = self.memory(native)
+        with self.entered(contexts):
+            for mode, native_sha, code_sha in (
+                ("evil", "a" * 64, "b" * 64),
+                ("syscalls", "A" * 64, "b" * 64),
+                ("syscalls", "a" * 64, True),
+            ):
+                with self.assertRaises(ValueError):
+                    native.Checkpoints(mode, native_sha, code_sha)
+            checkpoint = native.Checkpoints("syscalls", "a" * 64, "b" * 64)
+            for phase in ("SYNTHETIC_PRIVATE_CANARY", "code_capture_after"):
+                with self.assertRaises(ValueError):
+                    checkpoint(phase)
+        self.assertEqual(state.opened, [])
+
+    def test_85_public_parent_is_refused_before_new_file(self):
+        native = self.native()
+        state, contexts = self.memory(native, bad_parent=True)
+        with self.entered(contexts), self.assertRaises(ValueError):
+            native.Checkpoints("syscalls", "a" * 64, "b" * 64)("code_capture_before")
+        self.assertEqual(state.opened, [])
+
+    def test_86_collision_and_short_or_fsync_failure_are_fatal_closed_no_advance(self):
+        for option in ({"short": True}, {"fsync_error": True}, {}):
+            native = self.native()
+            state, contexts = self.memory(native, **option)
+            with self.entered(contexts):
+                checkpoint = native.Checkpoints("syscalls", "a" * 64, "b" * 64)
+                if not option:
+                    state.files["syscalls-checkpoint-01.json"] = b"EXISTING"
+                with self.assertRaises((ValueError, OSError)):
+                    checkpoint("code_capture_before")
+                self.assertEqual(checkpoint.index, 0)
+                self.assertFalse(state.open_fds)
+                if not option:
+                    self.assertEqual(state.files["syscalls-checkpoint-01.json"], b"EXISTING")
+
+    def child_model(self, *, failure=None, case="syscalls"):
+        native = self.native()
+        trace, closed = [], []
+        pins = {"native_fence_tests.py": "a" * 64, "solver_fence.py": "c" * 64}
+
+        class API:
+            libc = SimpleNamespace(prctl=lambda code, *args: 1 if code == 39 else 2)
+
+            def install(self, rows):
+                trace.append("INSTALL_CALL")
+                if failure is not None:
+                    raise failure
+
+            def denied(self, *args):
+                return True
+
+            def execfd(self, *args):
+                raise RuntimeError("EXEC_NONRETURN_MODEL")
+
+        subject = {
+            "LinuxAPI": lambda: API(),
+            "prepare_kernel": lambda api: trace.append("PREPARE_CALL"),
+            "program": lambda: (),
+            "NETWORK_DENIED": frozenset((41, 42, 53)),
+            "ESCAPE_DENIED": frozenset((101,)),
+            "KNOWN_SYSCALLS": (0, 2),
+            "X32_BIT": 0x40000000,
+            "filter_sha": lambda: "f" * 64,
+            "captured_file": lambda *args, **kwargs: (3, b"PUBLIC", ()),
+        }
+        output = io.StringIO()
+        with (
+            patch.object(native, "CAPTURED_NATIVE_SHA", "a" * 64, create=True),
+            patch.object(native.sys, "argv", ["model", "a" * 64, "b" * 64, case]),
+            patch.object(native, "subject_pins", lambda digest: pins),
+            patch.object(native, "captured", lambda *args: subject),
+            patch.object(native, "Checkpoints", lambda *args: trace.append),
+            patch.object(native.os, "getpid", lambda: 123),
+            patch.object(native.os, "get_inheritable", lambda fd: False),
+            patch.object(native.os, "close", closed.append),
+            patch.object(native.sys, "stdout", output),
+        ):
+            error = None
+            try:
+                native.child()
+            except BaseException as caught:
+                error = caught
+        return native, trace, output.getvalue(), error, closed
+
+    def test_87_actual_child_keeps_positive_predicates_and_checkpoint_order(self):
+        native, trace, output, error, closed = self.child_model()
+        self.assertIsNone(error)
+        self.assertEqual(
+            [p for p in trace if p not in {"PREPARE_CALL", "INSTALL_CALL"}],
+            list(native.CHECKPOINT_PHASES["syscalls"]),
+        )
+        self.assertLess(trace.index("prepare_before"), trace.index("PREPARE_CALL"))
+        self.assertLess(trace.index("install_before"), trace.index("INSTALL_CALL"))
+        self.assertTrue(json.loads(output)["PASS"])
+
+    def test_88_actual_child_failure_keeps_primary_and_no_postinstall_or_PASS(self):
+        failure = ValueError("SYNTHETIC_PRIVATE_CANARY")
+        native, trace, output, error, closed = self.child_model(failure=failure)
+        self.assertIs(error, failure)
+        self.assertEqual(trace[-2:], ["install_before", "INSTALL_CALL"])
+        self.assertNotIn("install_after", trace)
+        self.assertEqual(output, "")
+
+    def test_89_actual_exec_checkpoint_precedes_exec_and_no_diagnostic_fd_is_inherited(self):
+        native, trace, output, error, closed = self.child_model(case="exec")
+        self.assertEqual(str(error), "EXEC_NONRETURN_MODEL")
+        self.assertEqual(trace[-1], "exec_before")
+        self.assertEqual(closed, [3])
+        self.assertEqual(output, "")
+
+    def test_90_checkpoints_cannot_replace_native_summary_or_two_H1_successes(self):
+        pins = {"solver_fence.py": "b" * 64, "native_fence_tests.py": "c" * 64}
+        summary = old.positive_native_summary("a" * 64, pins)
+        summary["cases"], summary["H1"] = [], []
+        summary["state"] = "REFUSED_OR_UNKNOWN"
+        with self.assertRaises(ValueError):
+            f.validate_native_summary(summary, "a" * 64, pins)
+        summary["checkpoints"] = [{"phase": "emit_after", "diagnostic_only": True}]
+        with self.assertRaises(ValueError):
+            f.validate_native_summary(summary, "a" * 64, pins)
