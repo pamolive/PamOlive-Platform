@@ -1,0 +1,82 @@
+name: Expat APT C authenticated UNAPPROVED DATA
+on:
+  push:
+    branches: [agent/adr021-expat-apt-C-capture]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  capture:
+    if: >-
+      github.repository == 'pamolive/PamOlive-Platform' &&
+      github.ref == 'refs/heads/agent/adr021-expat-apt-C-capture' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      CODE_PINS_SHA: a8b2adb640ea5db5f2b3b42efa5e18d4e293c68a7de2d796f69dfc81276170a7
+      POLICY_SHA: 3bab6351fe8cb82cb557fe6d334cc2e386e05a2a6c19cd7cf6613a015b7323f4
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Pure data regressions; never a native qualification
+        run: >-
+          /usr/bin/python3.12 -I -B -S qualification/expat_apt_C/run_pure.py
+          "$RUNNER_TEMP/C-pure.json"
+      - name: Capture on exact supplier parent; no target installation
+        timeout-minutes: 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$GITHUB_ACTIONS" = true
+          test "$GITHUB_REPOSITORY" = pamolive/PamOlive-Platform
+          test "$GITHUB_REF" = refs/heads/agent/adr021-expat-apt-C-capture
+          test "$(sha256sum qualification/expat_apt_C/policy.json | cut -d' ' -f1)" = "$POLICY_SHA"
+          mkdir "$RUNNER_TEMP/C-authority" "$RUNNER_TEMP/C-docker-config"
+          cp qualification/expat_apt_C/policy.json "$RUNNER_TEMP/C-authority/policy.json"
+          /usr/bin/python3.12 -I -B -S - "$RUNNER_TEMP" "$GITHUB_SHA" <<'PY'
+          import pathlib,re,shutil,sys
+          assert re.fullmatch('[a-f0-9]{40}',sys.argv[2])
+          info=dict(line.split(':',1) for line in pathlib.Path('/proc/meminfo').read_text().splitlines())
+          assert int(info['MemAvailable'].split()[0])>=4*1024**2
+          assert shutil.disk_usage(sys.argv[1]).free>=10*1024**3
+          PY
+          sources=(transaction.py gate.py materials.py bounded_io.py capture.py network_worker.py solver.py oci_codec.py supervisor.py code-pins.json)
+          paths=()
+          for name in "${sources[@]}"; do paths+=("deploy/expat_apt/$name"); done
+          git archive --format=tar "$GITHUB_SHA" "${paths[@]}" qualification/expat_apt_C/Dockerfile > "$RUNNER_TEMP/C-context.tar"
+          /usr/bin/python3.12 -I -B -S - "$RUNNER_TEMP/C-context.tar" "$GITHUB_SHA" "$RUNNER_TEMP/C-source.json" <<'PY'
+          import hashlib,json,pathlib,sys
+          p=pathlib.Path(sys.argv[1]);b=p.read_bytes();assert len(b)<=2*1024**2
+          pathlib.Path(sys.argv[3]).write_text(json.dumps({'revision':sys.argv[2],
+              'context_sha256':hashlib.sha256(b).hexdigest(),'build_verified':False,
+              'materials_complete':False})+'\n')
+          PY
+          env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP/C-docker-config" \
+            DOCKER_CONFIG="$RUNNER_TEMP/C-docker-config" DOCKER_BUILDKIT=1 \
+            /usr/bin/timeout --signal=TERM --kill-after=15s 2050s \
+            /usr/bin/docker build --platform linux/amd64 --file qualification/expat_apt_C/Dockerfile \
+            --build-context c-authority="$RUNNER_TEMP/C-authority" \
+            --build-arg CODE_PINS_SHA="$CODE_PINS_SHA" --build-arg POLICY_SHA="$POLICY_SHA" \
+            --target capture-data --output "type=local,dest=$RUNNER_TEMP/C-data" - < "$RUNNER_TEMP/C-context.tar"
+      - name: Require actual driver normal completion and unchanged dpkg prestate
+        run: >-
+          /usr/bin/python3.12 -I -B -S qualification/expat_apt_C/check_result.py
+          "$RUNNER_TEMP/C-data" --code-sha "$CODE_PINS_SHA" --policy-sha "$POLICY_SHA"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: expat-apt-C-UNAPPROVED-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/C-pure.json
+            ${{ runner.temp }}/C-source.json
+            ${{ runner.temp }}/C-data/supervisor.json
+            ${{ runner.temp }}/C-data/supervisor/*.json
+            ${{ runner.temp }}/C-data/commands/**/*.json
+            ${{ runner.temp }}/C-data/inputs/**
+            ${{ runner.temp }}/C-data/base/blobs/sha256/*
