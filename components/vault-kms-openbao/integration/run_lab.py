@@ -232,6 +232,7 @@ def wait_for_seal_status(server, admin, *, initialized):
             time.sleep(0.15)
         else:
             need(state["initialized"] is initialized and state["sealed"] is True)
+            need(state["storage_type"] == "pebbledb")
             return
     need(False)
 
@@ -259,7 +260,7 @@ def run(binary, root, report):
 disable_mlock = true
 log_level = "error"
 api_addr = "https://{SERVER}:{PORT}"
-storage "file" {{ path = {json.dumps(str(storage))} }}
+storage "pebbledb" {{ path = {json.dumps(str(storage))} }}
 listener "tcp" {{
   address = "{ADDRESS}:{PORT}"
   tls_cert_file = {json.dumps(str(root / (SERVER + ".crt")))}

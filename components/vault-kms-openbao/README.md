@@ -23,7 +23,8 @@ qualification attendue sont décrites dans [ADR-030](../../docs/adr-030-openbao-
 
 Les tests locaux utilisent un double Transit et un serveur mTLS synthétique
 temporaire sur loopback. Le laboratoire CI utilise les deux wheels installées,
-un binaire OpenBao publié et signé, des données neuves et un stockage jetable.
+un binaire OpenBao publié et signé, des données neuves et un stockage PebbleDB
+jetable. [Stockage PebbleDB](https://openbao.org/docs/configuration/storage/pebbledb/)
 Il vérifie les ACL et les versions après redémarrage, puis révoque un token.
 Le processus d'administration et le client utilisent des identités TLS
 distinctes sur le même runner. L'indépendance de l'hôte et la restauration
