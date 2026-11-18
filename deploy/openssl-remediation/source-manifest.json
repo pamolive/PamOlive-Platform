@@ -1,0 +1,309 @@
+{
+  "schema": "pamolive.openssl-public-source-selection/1",
+  "base": "6d4c7db",
+  "base_commit": "6d4c7db259e805e7e37036b1005d99eed33dc828",
+  "not_signature_or_approval_authority": true,
+  "source_only": true,
+  "files": {
+    "acquisition_io.py": {
+      "bytes": 3497,
+      "sha256": "fd11cf42fa32acb06b0fd6aeffda52041e48791ef2952ef8495fdc8ca452aa6e"
+    },
+    "acquisition_owner.py": {
+      "bytes": 7309,
+      "sha256": "858cc661a7bacf7046963f602833c6521b02f9694c29ecb4884c6ddb623a60ce"
+    },
+    "future_linux.py": {
+      "bytes": 17992,
+      "sha256": "22bcac2165d02fa7a0573cf05334d22cc482a3b401b1072f95d9614d795dd63b"
+    },
+    "future_support/bounded_io.py": {
+      "bytes": 9011,
+      "sha256": "687dac211d8cc770ed541b52df857ce7634a775e999e76d327d3c45d630752d3"
+    },
+    "future_support/common.py": {
+      "bytes": 3442,
+      "sha256": "93bd8f0951316c452a39e6864e4c24db04ffe86765b4b39139531fee4699eeb9"
+    },
+    "materials/baseline/tag-object.json": {
+      "bytes": 2567,
+      "sha256": "eaf62bc04adb60869fd3fcd4297770ab47e7ed85da12687ab88addd04c01e0c8"
+    },
+    "materials/baseline/tag-ref.json": {
+      "bytes": 355,
+      "sha256": "4feb40e39c0ddb3e945b0a6cc16f1763b008b9b39629bee4bcc34b4ed424124f"
+    },
+    "materials/baseline/upstream-3.5.7/crypto/ec/ec_key.c": {
+      "bytes": 30913,
+      "sha256": "420e382d4b878e62ad75fa823408f4a4b290fca37d7eddf78e16f2a1c5e8d275"
+    },
+    "materials/baseline/upstream-3.5.7/include/internal/quic_sf_list.h": {
+      "bytes": 5098,
+      "sha256": "e43aacacd29c894ef7718aea6cd6dec07b69ff4dd0e817b3667ece935d20d009"
+    },
+    "materials/baseline/upstream-3.5.7/include/openssl/ecerr.h": {
+      "bytes": 3359,
+      "sha256": "c072432649cd1e4bd1eb8c1f636bc2b57045d6f620d69d61c85f589d1c6b63e3"
+    },
+    "materials/baseline/upstream-3.5.7/include/openssl/proverr.h": {
+      "bytes": 6414,
+      "sha256": "3aaec27b2bf592b5861a3524b6f03a541d7de34e6dfcbcabc2b6bc40221bc743"
+    },
+    "materials/baseline/upstream-3.5.7/LICENSE.txt": {
+      "bytes": 10175,
+      "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
+    },
+    "materials/baseline/upstream-3.5.7/providers/implementations/ciphers/cipher_aes_gcm_siv.c": {
+      "bytes": 12364,
+      "sha256": "25012f573a36a465f0a68fe004366ef586f3a153d60a5a53db55df9b7b1da5c3"
+    },
+    "materials/baseline/upstream-3.5.7/providers/implementations/ciphers/cipher_aes_gcm_siv.h": {
+      "bytes": 2641,
+      "sha256": "d4e16e903d736ca8407dcde418676a281b1411531344db18fef1da3ee9751172"
+    },
+    "materials/baseline/upstream-3.5.7/providers/implementations/ciphers/cipher_aes_gcm_siv_hw.c": {
+      "bytes": 11385,
+      "sha256": "a36d0b483ffeafc18de200fd672e383a080d21cb47aa8bba33ecd8645a0b5b4f"
+    },
+    "materials/baseline/upstream-3.5.7/ssl/quic/quic_rstream.c": {
+      "bytes": 7439,
+      "sha256": "d03d814555c51b036aabc3c791c51c3fcd3e9dae59dff5df1d6eb8a053b46681"
+    },
+    "materials/baseline/upstream-3.5.7/ssl/quic/quic_sf_list.c": {
+      "bytes": 8332,
+      "sha256": "28ce496a0f3274fdb72bf95f41eca776a1468419e4607319b40d410d9fbde8fb"
+    },
+    "materials/baseline/upstream-3.5.7/test/ectest.c": {
+      "bytes": 121682,
+      "sha256": "eec366891a69eb9d2de9d814abd51b2c9aa4db2ef51ca19dbc1869a48a446bfe"
+    },
+    "materials/baseline/upstream-3.5.7/test/evp_test.c": {
+      "bytes": 163411,
+      "sha256": "e67b93bf22a853701baa4b99fc35445008bfc5af8949e6d7e2ab6baf8c92079e"
+    },
+    "materials/baseline/upstream-3.5.7/test/quic_stream_test.c": {
+      "bytes": 19762,
+      "sha256": "b5a89a6ad3c05ee2b2d8f45aabdcea419464b21ec73a973a03487c46ed8237a7"
+    },
+    "materials/baseline/upstream-3.5.7/test/recipes/15-test_ec.t": {
+      "bytes": 4714,
+      "sha256": "9f0cb9228ceba727017e5a5084668238ff77450ef47a960d713737cb8f9d0e0c"
+    },
+    "materials/baseline/upstream-3.5.7/test/recipes/30-test_evp.t": {
+      "bytes": 8781,
+      "sha256": "bd54650e3a50356817f0a089c210c47657e52d249e50b5bd3f42b95a49319a83"
+    },
+    "materials/baseline/upstream-3.5.7/test/recipes/30-test_evp_data/evpciph_aes_gcm_siv.txt": {
+      "bytes": 15873,
+      "sha256": "b075b0e339f0c442c92a5bec3e5254976b357f68e273f1cc5801fb6fc34fbd8c"
+    },
+    "materials/baseline/upstream-3.5.7/test/recipes/70-test_quic_stream.t": {
+      "bytes": 567,
+      "sha256": "58b4c49e8c2873a1730fc53fb51814bbe6142fae7a0cac8624e75553ae370e6c"
+    },
+    "materials/baseline/upstream-3.5.7/test/recipes/80-test_ssl_new.t": {
+      "bytes": 8152,
+      "sha256": "ef49dd2b80448cef490501242cf24c4fc6414bf8c48cfb3fa9d9871cc3b64669"
+    },
+    "materials/blobs/159e1de0c448d7b9f09ad768c8e141def4aa1eb4/providers/implementations/ciphers/cipher_aes_gcm_siv.c": {
+      "bytes": 12703,
+      "sha256": "1c9190d4dfbb2fd767c588376167358e7fd32b135aad0827b8d2cd6b78d69793"
+    },
+    "materials/blobs/159e1de0c448d7b9f09ad768c8e141def4aa1eb4/providers/implementations/ciphers/cipher_aes_gcm_siv_hw.c": {
+      "bytes": 11497,
+      "sha256": "d5ea349bd8c5d48634b3a6006f1a1ef233213564ee675ee2fce4faec824cc639"
+    },
+    "materials/blobs/1a73dc590cbad62d6f0329ea4779eadaa8d8fd75/crypto/ec/ec_key.c": {
+      "bytes": 29097,
+      "sha256": "76ffd45abfc989d3f5a7c80e71e7ff712cff2c1b3c70f471a5f952190b545bf2"
+    },
+    "materials/blobs/1a73dc590cbad62d6f0329ea4779eadaa8d8fd75/test/ectest.c": {
+      "bytes": 121682,
+      "sha256": "eec366891a69eb9d2de9d814abd51b2c9aa4db2ef51ca19dbc1869a48a446bfe"
+    },
+    "materials/blobs/237f60028477b4bb74888f9366c2b693438e7cc0/include/internal/quic_strm_reas.h": {
+      "bytes": 2707,
+      "sha256": "6dd9e3268036cd44869e40616e302c033902de6155a57c696420a75c83f0f457"
+    },
+    "materials/blobs/237f60028477b4bb74888f9366c2b693438e7cc0/ssl/quic/quic_rstream.c": {
+      "bytes": 5851,
+      "sha256": "1d75050a351302038ffc4868c253cb73caaf202f1b91da7fbceb62514c712297"
+    },
+    "materials/blobs/237f60028477b4bb74888f9366c2b693438e7cc0/ssl/quic/quic_strm_reas.c": {
+      "bytes": 44487,
+      "sha256": "040b6e3c0cc3144616d3c899a79b90f70a9517a5fb215a10f38b483499360c4c"
+    },
+    "materials/blobs/257a3427aa0ef8d9dd2ef5b3e2d1c021a221b116/providers/implementations/ciphers/cipher_aes_gcm_siv.c": {
+      "bytes": 13166,
+      "sha256": "62510edfb867c2c33b034ec7f1f04913551827441a0f156966bc857cc271c211"
+    },
+    "materials/blobs/9a5764a6facb8a21cff9f012cf34ecd5c3f98e0a/providers/implementations/ciphers/cipher_aes_gcm_siv.c": {
+      "bytes": 12364,
+      "sha256": "25012f573a36a465f0a68fe004366ef586f3a153d60a5a53db55df9b7b1da5c3"
+    },
+    "materials/blobs/9a5764a6facb8a21cff9f012cf34ecd5c3f98e0a/providers/implementations/ciphers/cipher_aes_gcm_siv_hw.c": {
+      "bytes": 11625,
+      "sha256": "37f4e407d03117c6b74e5d1385efb233f2d71225788f82857bff2368e7fd0457"
+    },
+    "materials/blobs/a0051cfe699bf5a047bc1c4faef65f80f7987366/crypto/ec/ec_key.c": {
+      "bytes": 29225,
+      "sha256": "72726357d1e33de2fdc28da42781bb489d4a87762ed308ce81e0c49feaaa82bb"
+    },
+    "materials/blobs/a0051cfe699bf5a047bc1c4faef65f80f7987366/providers/implementations/ciphers/cipher_aes_gcm_siv.c": {
+      "bytes": 12703,
+      "sha256": "1c9190d4dfbb2fd767c588376167358e7fd32b135aad0827b8d2cd6b78d69793"
+    },
+    "materials/blobs/a0051cfe699bf5a047bc1c4faef65f80f7987366/test/ectest.c": {
+      "bytes": 122680,
+      "sha256": "404248bb6baaffa0ba1663cd21be5df7bd65e17c283591b29ab2664cc1ed6582"
+    },
+    "materials/blobs/f6244675833e097c2429a40d1b206d95385bd42f/include/internal/quic_strm_reas.h": {
+      "bytes": 3884,
+      "sha256": "23cddd86dd8ed5246bca7f668197e73cec4a2653e476310a1d6a34ee243f4d1f"
+    },
+    "materials/blobs/f6244675833e097c2429a40d1b206d95385bd42f/ssl/quic/quic_rstream.c": {
+      "bytes": 6126,
+      "sha256": "ca832c01b754e6556d0d29ee667616102870bb93be2c21e5845e461861b21c31"
+    },
+    "materials/blobs/f6244675833e097c2429a40d1b206d95385bd42f/ssl/quic/quic_strm_reas.c": {
+      "bytes": 45581,
+      "sha256": "9ed4d3ab6508b79c04033ebb793c0fbcce5615e75323022de20bf2748f74c319"
+    },
+    "materials/commits/159e1de0c448d7b9f09ad768c8e141def4aa1eb4.json": {
+      "bytes": 7113,
+      "sha256": "8dabda0de2c93dda5d481cc61e60d937515cae54b827b5f71578c6081362fb34"
+    },
+    "materials/commits/257a3427aa0ef8d9dd2ef5b3e2d1c021a221b116.json": {
+      "bytes": 5428,
+      "sha256": "4a0ccac023eaeb44aac446b143a58d991b3b116e665c0d041c7db89cba0cf45e"
+    },
+    "materials/commits/a0051cfe699bf5a047bc1c4faef65f80f7987366.json": {
+      "bytes": 7084,
+      "sha256": "2ae14f581595700cdceff91837fe302bbee28cca918a5ffe12847d4e30879db4"
+    },
+    "materials/commits/f6244675833e097c2429a40d1b206d95385bd42f.json": {
+      "bytes": 11492,
+      "sha256": "3ea158127c956629e0f8238f9522f5a0513d3a896900659d01919e63204e6a73"
+    },
+    "materials/debian/InRelease": {
+      "bytes": 43409,
+      "sha256": "6b1967280f6901efc36475be8a40819c00e9a96d584fe66294a344aa6af0892c"
+    },
+    "materials/debian/openssl_3.5.7-1~deb13u3.dsc": {
+      "bytes": 2710,
+      "sha256": "9cdb0d9daf0773ca5c0f3f5ea1fc59b1106a99e005a5c048948b826e8d3b47e1"
+    },
+    "materials/official-advisory-20261110.txt": {
+      "bytes": 11780,
+      "sha256": "31f4c88950cd9cd310794a218361b787d293a940d2568f9f82334915ac54a402"
+    },
+    "materials/patches/CVE-2026-107496.patch": {
+      "bytes": 3375,
+      "sha256": "77d3759d279c71af59629c4a0fa82d8272a099762f2fa9e3f66d7ca5ed544157"
+    },
+    "materials/patches/CVE-2026-88823.patch": {
+      "bytes": 3483,
+      "sha256": "a945077c0a978dbfe5af5e4f7174a2151466547f8fb94562f395baa7b6b7c147"
+    },
+    "materials/patches/CVE-2026-95691.patch": {
+      "bytes": 7377,
+      "sha256": "93d8e82fdc995172a6d5cc6952491658106191bd5ac221d34596adbddfcd1afe"
+    },
+    "materials/patches/CVE-2026-95692.patch": {
+      "bytes": 2100,
+      "sha256": "0e328604c0038de6629a29322ae5f02d2f5f5128c2625b57ca64262efab99e05"
+    },
+    "materials-reception.json": {
+      "bytes": 26969,
+      "sha256": "bd9cf041a2dafeb8403ceb418329baf6dc1d253e1721437bee15a6c6af59e3af"
+    },
+    "patch_contracts.py": {
+      "bytes": 4465,
+      "sha256": "26005ff9e5909b79c5e5a21ca523dedb16383d0af329ab2179307956883746d3"
+    },
+    "proposal/patches/01-CVE-2026-88823.patch": {
+      "bytes": 1100,
+      "sha256": "039a6c46f730123508981ebee1b111dcc592dd7cc8c545a046922c1d191f7a45"
+    },
+    "proposal/patches/02-CVE-2026-107496.patch": {
+      "bytes": 1839,
+      "sha256": "49795c989e376769a9a2f35122ef19973aeddffabd2121acf2afd9094f5017ed"
+    },
+    "proposal/patches/03-CVE-2026-95692.patch": {
+      "bytes": 816,
+      "sha256": "1c28f1bc7a19c0b09609750612298f3c6d7a40dc2b9eea50b085cb67229716a4"
+    },
+    "proposal/postimages-upstream-tag-reference/crypto/ec/ec_key.c": {
+      "bytes": 31041,
+      "sha256": "940371b5ab45c7547603cd3a36af9a466f1ceb0275de88c024779abe38a74a83"
+    },
+    "proposal/postimages-upstream-tag-reference/providers/implementations/ciphers/cipher_aes_gcm_siv.c": {
+      "bytes": 13166,
+      "sha256": "62510edfb867c2c33b034ec7f1f04913551827441a0f156966bc857cc271c211"
+    },
+    "proposal/postimages-upstream-tag-reference/providers/implementations/ciphers/cipher_aes_gcm_siv_hw.c": {
+      "bytes": 11257,
+      "sha256": "e197ffdbc1a4e7c98d225ff264ff3d210d66032cbd027593fec0fdb0e11aa7c2"
+    },
+    "proposal/postimages-upstream-tag-reference/test/ectest.c": {
+      "bytes": 122680,
+      "sha256": "404248bb6baaffa0ba1663cd21be5df7bd65e17c283591b29ab2664cc1ed6582"
+    },
+    "README.md": {
+      "bytes": 8852,
+      "sha256": "80ba56a4649e6d702de62db40df5619761931177c0706a530ad35adda0e530bc"
+    },
+    "recipe-inputs.json": {
+      "bytes": 1387,
+      "sha256": "00c5baf8326f892a3dda02a376187abc533694c1f19318cd13fb750b4e292526"
+    },
+    "reused_signature_data.py": {
+      "bytes": 2156,
+      "sha256": "7889d532ac51505fcd1c0762fae5ac088123c3fb60be6268d265d9d99e9aa81f"
+    },
+    "reused_text_helpers.py": {
+      "bytes": 5281,
+      "sha256": "7f3ab9761f49b3da7ea04a7ad4ce9b92f77a436aeaf9322286f3361f0f85a59f"
+    },
+    "run_pure.py": {
+      "bytes": 3129,
+      "sha256": "0b8dccfa049d93f2b66ff31dc45cb3521b111a63f6bcd6531899a3ed2ada24f4"
+    },
+    "source-status.json": {
+      "bytes": 574,
+      "sha256": "06e57afeebb04ca3f43625e7e3d82fda7c976927b948f7b4cdb5de6634d768b8"
+    },
+    "source_data.py": {
+      "bytes": 10803,
+      "sha256": "d106f0c22a7010c1b2ca92666983f531f9cad8d24cb5ae90e294152aeff3d2ec"
+    },
+    "static-source-replay.json": {
+      "bytes": 7509,
+      "sha256": "befc539bfd98af6c9456038d346c59f9a4572c3f554efbbb2d627ba193f7c086"
+    },
+    "supplementary-text-reception.json": {
+      "bytes": 10162,
+      "sha256": "4e48ab68f68966c0b78247bacc7ae9ca5318bd5cf43ca6e60154fda1d74ee60d"
+    },
+    "test_data_contracts.py": {
+      "bytes": 12437,
+      "sha256": "ab77693a9b6e536485b3e215c49536d6b5b6f3dcb76a6a047ea25f2334a8a9e2"
+    },
+    "test_fifo_r3.py": {
+      "bytes": 4418,
+      "sha256": "2c831d667d7d2681d5becba9ac28615dc6c2327e94e1a9f6e630c40bdd0a4416"
+    },
+    "test_hardening_r2.py": {
+      "bytes": 31135,
+      "sha256": "dea08644c77c2fa38cad97e3d286e907a37ea2b7b74247a0f1d55d6145fb88f7"
+    },
+    "test_independent_contracts.py": {
+      "bytes": 8883,
+      "sha256": "f7efdead65ec5132eaddc5a721f07ad9fc0645718b3b9a5bd42241a3c4972d1e"
+    },
+    "test_publication.py": {
+      "bytes": 2973,
+      "sha256": "39dfe1ca35aa649e02eb08cf951a99ada8dbd02353515469d097d4d0b642699a"
+    }
+  }
+}

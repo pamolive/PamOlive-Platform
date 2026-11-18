@@ -1,6 +1,33 @@
 # Roadmap d’implémentation et qualification
 
-## Livraison du code de développement — 17 novembre 2026
+## Portes en cours — 18 novembre 2026
+
+Conserver les résultats propres aux deux CI de `96f7fa7` et leurs scans
+bloquants : [validation exacte](validation-main-3532232.md). Main reçu reste
+`3532232` ; une nouvelle branche ne transfère pas ces résultats à son image.
+
+Publier le kit SOURCE [ADR-037](adr-037-openssl-system-backport-source.md) avec
+son runner autonome refusant les skips, ses adaptations de publication déclarées
+et sa revue indépendante. Le produit, Dockerfile et les politiques de scan ne
+changent pas. Recevoir ensuite les vrais matériaux Debian authentifiés, résoudre
+QUIC, puis seulement proposer construction et qualification des consommateurs.
+Traiter séparément le fournisseur OpenSSL 4.x embarqué dans cryptography.
+
+Revalider aussi les deux nouveaux constats OpenSSL reçus au scan de la PR
+navigateur, CVE-2026-107493 et CVE-2026-124709 : ce scan refuse 37 groupes,
+contre 35 sur son push. Les 35 groupes communs sont inchangés, mais images et
+bases du scanner diffèrent ; ne pas attribuer la divergence à une cause non
+mesurée. Les deux constats ne sont pas corrigés par le kit initial de quatre CVE.
+
+La PR #28 a reçu deux inventaires Chrome identiques de 261 entrées et le refus
+attendu du profil non commissionné. Préparer un essai staging seul avec nettoyage
+Root du préfixe possédé ; vérifier ensuite le sandbox réel avant toute UI.
+L'admission exige une décision source explicite et une revue, sans apprentissage
+automatique ni modification globale du runner. L'UI et l'image restent non
+qualifiées ; les autres travaux P1/P2/P3 et l'installation NAS ne sont pas
+déclarés terminés par ces portes de préparation.
+
+## Historique de livraison du code de développement — 17 novembre 2026
 
 À la demande explicite du propriétaire, la capture Expat APT et ses diagnostics
 sont intégrés à main avec le contrat de contexte typé et le diagnostic navigateur.

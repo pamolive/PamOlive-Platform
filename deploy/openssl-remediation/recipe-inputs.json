@@ -1,0 +1,32 @@
+{
+  "schema": "pamolive.openssl-build-inputs.UNCOMMISSIONED.v1",
+  "source_package": "openssl",
+  "source_version": "3.5.7-1~deb13u3",
+  "proposed_local_version": "3.5.7-1~deb13u3+pamolive1",
+  "platform": "linux/amd64",
+  "builder_reference_from_main353": "python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b",
+  "trust_policy_sha256": null,
+  "exact_debian_patch_plan_sha256": null,
+  "build_dependency_lock_sha256": null,
+  "received_dsc_observed_not_authenticated": {
+    "bytes": 2710,
+    "sha256": "9cdb0d9daf0773ca5c0f3f5ea1fc59b1106a99e005a5c048948b826e8d3b47e1"
+  },
+  "received_InRelease_signature_verified": false,
+  "required_missing_materials": [
+    "trusted-input/debian-archive-keyring.gpg",
+    "trust-policy.json",
+    "Sources.xz authenticated by Release",
+    "authenticated source-record text",
+    "openssl_3.5.7.orig.tar.gz authenticated by Sources and DSC",
+    "openssl_3.5.7.orig.tar.gz.asc",
+    "openssl_3.5.7-1~deb13u3.debian.tar.xz authenticated by Sources and DSC",
+    "exact Debian patched C/header/debian files",
+    "exact-debian-patch-plan.json with resolved four CVEs",
+    "build-dependencies.lock.json with exact full installed closure"
+  ],
+  "source_authority": false,
+  "build_verified": false,
+  "operational_GO": false,
+  "wheel_OpenSSL_4_0_3_corrected": false
+}
