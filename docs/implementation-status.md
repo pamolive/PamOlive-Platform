@@ -784,6 +784,12 @@ vérifiées et du descripteur dans le même job. Le transfert conditionne l'écr
 du reçu à l'exécution réussie, aux empreintes attendues et au nettoyage confirmé.
 La qualification du laboratoire installé avec PostgreSQL et mTLS reste à faire.
 
+Le contrôle qui suit consomme le reçu du même job pour installer les wheels dans
+une image de test distincte avec le pilote C psycopg 3.2.10 et libpq 17.12. Le
+build et la vérification Python sont hors réseau après l’acquisition vérifiée
+des dépendances. PostgreSQL et le service Vault seront démarrés lors de la
+qualification suivante sur ce profil.
+
 Un premier laboratoire de restauration déclaré a ensuite réellement exécuté
 `pg_dump`, la création d'une seconde base synthétique neuve, sa restauration sous
 rôle restreint et les grants courants. Propriétaires et lignes/audits restaurés

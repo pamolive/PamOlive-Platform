@@ -101,3 +101,12 @@ report through its existing allowlist. The frame stays in the job's private
 temporary directory, outside that allowlist. The default run keeps its original
 packet protocol. The handoff only receives verified installation materials.
 The PostgreSQL and mutual TLS laboratory has its own acceptance requirements.
+
+The opt-in job then reopens the private handoff alongside both host cleanup
+receipts. It revalidates the three archives against the checkout and builds a
+separate test image with those exact wheels. Its database driver uses the
+project's pinned psycopg 3.2.10 C source and Debian libpq 17.12. APT installs the
+pinned Debian dependencies in the build stages. Wheel construction, installation
+and verification run without network. The image stays in the ephemeral runner's
+local store for the laboratory. This step performs no database connection or
+mutual TLS exchange. [Dockerfile network modes](https://docs.docker.com/reference/dockerfile/#run---network).

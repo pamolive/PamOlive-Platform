@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       transfer_verified_wheels:
-        description: Retain a private handoff of the verified wheels for this job only
+        description: Reinstall the verified wheels in the private Vault laboratory image
         type: boolean
         default: false
 permissions:
@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     env:
-      VAULT_SOURCES_SHA: 0ca457e755cc638bc3e1d6cae612708ccb8543eae31b27356821b3bbe8b1d1a5
+      VAULT_SOURCES_SHA: 9544e22f59305efda5a29ba48e6b1e6f8c835b56fe374541ce4412c3aa06cdb1
       VAULT_ASSETS_SHA: 71d26e9cc4b1c27465f875879fff28c0c657688f70f797b91f174f86fed6a1eb
       VAULT_PAYLOAD_SHA: d9e7ff40d7395a109833225b5051feb1f85f6dc9f7061a07c3fa97110bc6b4a6
     steps:
@@ -106,6 +106,32 @@ jobs:
           test ! -L "$transfer"
           test -s "$transfer"
           test "$(stat -c '%a' "$transfer")" = 600
+      - name: Prepare the isolated Vault consumer from the accepted wheel handoff
+        if: inputs.transfer_verified_wheels == true
+        timeout-minutes: 12
+        run: >-
+          python -I -B -S qualification/vault_runtime_installed_ci/consumer_inputs.py
+          --assets-sha256 "$VAULT_ASSETS_SHA" --work "$VAULT_WORK"
+          --materials "$VAULT_MATERIALS"
+      - name: Install the same wheels in a separate image and verify the native driver offline
+        if: inputs.transfer_verified_wheels == true
+        timeout-minutes: 22
+        env:
+          DOCKER_BUILDKIT: '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          context="$VAULT_WORK/verified-consumer-context"
+          descriptor_sha=$(sha256sum "$context/descriptor.json")
+          inventories_sha=$(sha256sum "$context/inventories.json")
+          docker --config "$VAULT_WORK/docker-config" -H unix:///var/run/docker.sock build \
+            --platform linux/amd64 --no-cache --progress plain \
+            --build-arg "VAULT_DESCRIPTOR_SHA256=${descriptor_sha%% *}" \
+            --build-arg "VAULT_INVENTORIES_SHA256=${inventories_sha%% *}" \
+            --iidfile "$VAULT_WORK/vault-consumer.iid" \
+            --file qualification/vault_runtime_installed_ci/Dockerfile.consumer \
+            "$context"
+          grep -qxE 'sha256:[0-9a-f]{64}' "$VAULT_WORK/vault-consumer.iid"
       - name: Retain public qualification and cleanup facts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always() && env.VAULT_WORK != ''

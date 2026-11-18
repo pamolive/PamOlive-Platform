@@ -3,13 +3,19 @@
 import io
 import sys
 import unittest
+from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import consumer_inputs  # noqa: E402
 import orchestrate  # noqa: E402
 import schema  # noqa: E402
+import support  # noqa: E402
 import test_phase2_orchestration as fixture  # noqa: E402
+import verify_offline  # noqa: E402
+import wheel_gate  # noqa: E402
 import wheel_transfer  # noqa: E402
 import workload_cli  # noqa: E402
 import workload_entry  # noqa: E402
@@ -28,6 +34,24 @@ class WheelTransferTests(unittest.TestCase):
         self.packet = workload_schema.packet(self.report, **self.bindings)
         self.work = flow.work
         self.raw = wheel_transfer.from_work(self.work, self.packet, bindings=self.bindings)
+
+    def received(self):
+        cleanup = {
+            "container_released": True,
+            "clients_released": True,
+            "resources_released": True,
+            "failure": None,
+            "authority": False,
+        }
+        public = {
+            **cleanup,
+            "schema": "pamolive.vault-installed-host-reception/2",
+            "ok": True,
+            "container_exit_code": 0,
+            "container_OOMKilled": False,
+            "packet": self.packet,
+        }
+        return public, cleanup
 
     def test_roundtrip_transfers_only_the_three_wheels_and_the_bound_descriptor(self):
         packet, descriptor, files = wheel_transfer.decode(self.raw, bindings=self.bindings)
@@ -132,6 +156,55 @@ class WheelTransferTests(unittest.TestCase):
         self.assertEqual(result.exception.code, 0)
         entry = workload_host.bootstrap(entry_sha, self.bindings, transfer_verified_wheels=True)
         self.assertEqual(cleanup.call_args.args[2:], (state, entry, sha(entry)))
+
+    def test_consumer_stage_binds_the_three_lock_lines_to_the_received_archives(self):
+        public, cleanup = self.received()
+        desc, wheels = consumer_inputs.verify_reception(
+            self.raw, public, cleanup, bindings=self.bindings
+        )
+        inventories, lock = consumer_inputs.installation_inputs(
+            consumer_inputs.ROOT.parents[1], consumer_inputs.ROOT / "inputs", wheels
+        )
+        self.assertEqual(desc, (self.work / "input.json").read_bytes())
+        self.assertEqual(len(lock.splitlines()), 3)
+        public_checks = SimpleNamespace(
+            support=support, wheel_gate=wheel_gate, qualifier=load("qualify_installed.py")
+        )
+        for kind, name in wheel_transfer.wheel_names().items():
+            line = (
+                f"{inventories[kind]['name']} @ file:///inputs/wheels/{name}"
+                f" --hash=sha256:{sha(wheels[name])}"
+            ).encode("ascii")
+            self.assertIn(line, lock.splitlines())
+            self.assertTrue(
+                verify_offline.check_internal_members(
+                    public_checks, wheels[name], inventories[kind]
+                )
+            )
+
+    def test_consumer_refuses_unconfirmed_cleanup_and_unrelated_public_packet(self):
+        public, cleanup = self.received()
+        foreign = deepcopy(self.packet)
+        foreign["execution_sha256"] = "0" * 64
+        for report, cleanup_result in (
+            (public, {**cleanup, "resources_released": False}),
+            ({**public, "container_exit_code": False}, cleanup),
+            ({**public, "container_OOMKilled": True}, cleanup),
+            ({**public, "packet": foreign}, cleanup),
+        ):
+            with self.assertRaises(ValueError):
+                consumer_inputs.verify_reception(
+                    self.raw, report, cleanup_result, bindings=self.bindings
+                )
+
+    def test_consumer_refuses_changed_native_verification_helper(self):
+        deploy = consumer_inputs.ROOT.parents[1] / "deploy"
+        utils = consumer_inputs.pinned_utils(deploy)
+        self.assertEqual(set(utils), {"check_database_driver.py", "native_inventory.py"})
+        utils["native_inventory.py"] += b"\n# changed\n"
+        with patch.object(consumer_inputs, "read_regular", side_effect=lambda p, _: utils[p.name]):
+            with self.assertRaises(ValueError):
+                consumer_inputs.pinned_utils(deploy)
 
 
 if __name__ == "__main__":

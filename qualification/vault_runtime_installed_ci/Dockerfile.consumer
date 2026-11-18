@@ -1,0 +1,50 @@
+# Private laboratory image. CI verifies the context before invoking Docker.
+ARG LIBPQ_DEBIAN_VERSION=17.12-0+deb13u1
+FROM --platform=linux/amd64 docker.io/library/python@sha256:05a994d2344eb364cc186910f4fc8786a38215f39f00d0acc25bff33a08f4177 AS vault-driver-builder
+ARG LIBPQ_DEBIAN_VERSION
+ARG VAULT_DESCRIPTOR_SHA256
+ARG VAULT_INVENTORIES_SHA256
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_CONFIG_FILE=/dev/null PIP_DISABLE_PIP_VERSION_CHECK=1
+RUN --network=default test "$LIBPQ_DEBIAN_VERSION" = '17.12-0+deb13u1' && apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev=${LIBPQ_DEBIAN_VERSION} libpq5=${LIBPQ_DEBIAN_VERSION} && rm -rf /var/lib/apt/lists/*
+COPY public/ /inputs/public/
+COPY wheels/ /inputs/wheels/
+COPY locks/ /inputs/locks/
+COPY controller/ /inputs/controller/
+COPY util/ /inputs/util/
+COPY descriptor.json inventories.json verify_offline.py /inputs/
+RUN --network=none python -I -B -S /inputs/verify_offline.py inputs --descriptor-sha256 "$VAULT_DESCRIPTOR_SHA256" --inventories-sha256 "$VAULT_INVENTORIES_SHA256"
+RUN --network=none python -I -B -m venv --without-pip /opt/build && /opt/build/bin/python -I -B -c 'import runpy,sys; sys.path.insert(0,"/inputs/public/pip-26.3-py3-none-any.whl"); sys.argv[0]="pip"; runpy.run_module("pip",run_name="__main__")' --isolated --disable-pip-version-check install --no-compile --no-cache-dir --no-index --find-links=/inputs/public --only-binary=:all: --no-deps --require-hashes -r /inputs/locks/bootstrap.lock
+RUN --network=none /opt/build/bin/python -I -B -m pip --isolated --disable-pip-version-check install --no-compile --no-cache-dir --no-index --find-links=/inputs/public --only-binary=:all: --no-deps --require-hashes -r /inputs/locks/build.lock && /opt/build/bin/python -I -B -m pip --isolated --disable-pip-version-check check
+RUN --network=none /opt/build/bin/python -I -B -m pip --isolated --disable-pip-version-check wheel --no-cache-dir --no-index --find-links=/inputs/public --no-binary=:all: --no-build-isolation --check-build-dependencies --no-deps --require-hashes --wheel-dir /derived -r /inputs/locks/database-build.lock
+RUN --network=none python -I -B -S /inputs/verify_offline.py derived --descriptor-sha256 "$VAULT_DESCRIPTOR_SHA256" --inventories-sha256 "$VAULT_INVENTORIES_SHA256"
+
+FROM --platform=linux/amd64 docker.io/library/python@sha256:05a994d2344eb364cc186910f4fc8786a38215f39f00d0acc25bff33a08f4177 AS vault-consumer
+ARG LIBPQ_DEBIAN_VERSION
+ARG VAULT_DESCRIPTOR_SHA256
+ARG VAULT_INVENTORIES_SHA256
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PSYCOPG_IMPL=c PIP_CONFIG_FILE=/dev/null PIP_DISABLE_PIP_VERSION_CHECK=1
+RUN --network=default test "$LIBPQ_DEBIAN_VERSION" = '17.12-0+deb13u1' && apt-get update && apt-get install -y --no-install-recommends libpq5=${LIBPQ_DEBIAN_VERSION} && rm -rf /var/lib/apt/lists/*
+COPY --from=vault-driver-builder /inputs/ /inputs/
+COPY --from=vault-driver-builder /derived/ /derived/
+COPY --from=vault-driver-builder /evidence/ /evidence/
+RUN --network=none python -I -B -m venv --without-pip /opt/vault && /opt/vault/bin/python -I -B -c 'import runpy,sys; sys.path.insert(0,"/inputs/public/pip-26.3-py3-none-any.whl"); sys.argv[0]="pip"; runpy.run_module("pip",run_name="__main__")' --isolated --disable-pip-version-check install --no-compile --no-cache-dir --no-index --find-links=/inputs/public --only-binary=:all: --no-deps --require-hashes -r /inputs/locks/bootstrap.lock
+RUN --network=none \
+    python -I -B -S /inputs/verify_offline.py prelaunch \
+      --descriptor-sha256 "$VAULT_DESCRIPTOR_SHA256" --inventories-sha256 "$VAULT_INVENTORIES_SHA256" \
+    && /opt/vault/bin/python -I -B -m pip --isolated --disable-pip-version-check install \
+      --no-compile --no-cache-dir --no-index --find-links=/inputs/public --find-links=/derived \
+      --only-binary=:all: --no-deps --require-hashes \
+      -r /inputs/locks/runtime.lock -r /inputs/locks/psycopg.lock \
+      -r /derived/database-derived.lock -r /inputs/locks/internal.lock
+RUN --network=none \
+    python -I -B -S /inputs/verify_offline.py prelaunch \
+      --descriptor-sha256 "$VAULT_DESCRIPTOR_SHA256" --inventories-sha256 "$VAULT_INVENTORIES_SHA256" \
+    && /opt/vault/bin/python -I -B -m pip --isolated --disable-pip-version-check check \
+    && python -I -B -S /inputs/verify_offline.py prelaunch \
+      --descriptor-sha256 "$VAULT_DESCRIPTOR_SHA256" --inventories-sha256 "$VAULT_INVENTORIES_SHA256" \
+    && /opt/vault/bin/python -I -B /inputs/verify_offline.py installed \
+      --descriptor-sha256 "$VAULT_DESCRIPTOR_SHA256" --inventories-sha256 "$VAULT_INVENTORIES_SHA256"
+USER 1000:1000
+WORKDIR /work
+# Parent supplies the separately reviewed server/client command and RO role mounts.
+CMD ["/opt/vault/bin/python", "-I", "-B", "--version"]
