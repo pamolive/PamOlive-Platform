@@ -1,0 +1,59 @@
+name: OpenBao Transit backend laboratory
+on:
+  push:
+    branches: [agent/p2-vault-openbao]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: vault-openbao-lab-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  synthetic-openbao:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Acquire the signed public OpenBao binary
+        shell: bash
+        run: >-
+          bash components/vault-kms-openbao/integration/acquire.sh
+          "$RUNNER_TEMP/pamolive-openbao-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+      - name: Build and install the two test wheels without source fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          envpath="$RUNNER_TEMP/pamolive-openbao-env"
+          python -m venv "$envpath"
+          py="$envpath/bin/python"
+          "$py" -I -m pip --isolated install --only-binary=:all: --no-deps --require-hashes -r requirements-bootstrap.lock
+          "$py" -I -m pip --isolated install --only-binary=:all: --no-deps --require-hashes -r requirements-python-build-tools-linux.lock
+          grep -E '^h11==0\.16\.0 --hash=sha256:[a-f0-9]{64}$' requirements-python-runtime-linux.lock > "$envpath/h11.lock"
+          test "$(wc -l < "$envpath/h11.lock")" = 1
+          "$py" -I -m pip --isolated install --only-binary=:all: --no-deps --require-hashes -r requirements-p2-test-linux.lock -r "$envpath/h11.lock"
+          "$py" -I -m pip --isolated wheel --no-index --no-deps --no-build-isolation --wheel-dir "$envpath/wheels" ./components/vault ./components/vault-kms-openbao
+          "$py" -I -m pip --isolated install --no-index --no-deps --only-binary=:all: --find-links "$envpath/wheels" pamolive-vault-envelope==0.1.0a1 pamolive-vault-kms-openbao==0.1.0a1
+          "$py" -I -m pip --isolated check
+          "$py" -I -B components/vault-kms-openbao/tests/run.py
+      - name: Verify native Transit ACLs, persistent rotation and revocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM --kill-after=20s 105s \
+            "$RUNNER_TEMP/pamolive-openbao-env/bin/python" -I -B \
+            components/vault-kms-openbao/integration/run_lab.py \
+            "$RUNNER_TEMP/pamolive-openbao-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/bao" \
+            | tee "$RUNNER_TEMP/pamolive-openbao-public.json"
+      - name: Retain only the closed laboratory receipt
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: vault-openbao-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pamolive-openbao-public.json
+          if-no-files-found: ignore
+          retention-days: 7
