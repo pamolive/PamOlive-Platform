@@ -863,6 +863,25 @@ Le [rapport de validation](validation-main-3532232.md) recense l'erreur de
 fixture de la suite PostgreSQL (1 747 tests, une erreur, 42 skips), les suites
 dediees reussies et les etapes image non atteintes. Le correctif de fixture
 Python conserve la garde d'execution et ajoute deux regressions ; 84 tests purs
-passent sous les deux modes de lancement. Une nouvelle CI du commit corrige
-reste necessaire. Les observations du runner et l'essai Expat C4 sont presentes
+passent sous les deux modes de lancement. La réception du commit corrigé est
+décrite ci-dessous. Les observations du runner et l'essai Expat C4 sont presentes
 avec leurs identites distinctes, sans qualification ou image nouvelle induite.
+
+## Prochaines portes de qualification — 18 novembre 2026
+
+Les deux CI de `96f7fa7` ont validé la suite PostgreSQL et Directory ; leurs
+scans image restent bloquants sur 35 groupes. Voir les identités et compteurs
+exacts dans [la validation](validation-main-3532232.md). La PR #27 reste une
+correction de fixture, sans transfert de qualification vers un nouveau SHA.
+
+Publier le candidat SOURCE R12 de [l'ADR-036](adr-036-authenticated-browser-test-bundle.md)
+sur la branche de qualification du navigateur. Recevoir sa propre mesure
+Linux : inventaire authentifié, ou refus borné d'une extension non admise.
+Conserver le profil non commissionné et refuser avant staging/UI. Examiner
+ensuite ressources, rôle sandbox et contraintes de relocalisation avant toute
+admission explicite. Les 196 tests Chrome, 14 contrats UI et dix défis de revue
+ne remplacent pas le parcours réel TLS/MFA/WebAuthn et multi-organisations.
+
+En parallèle, poursuivre les remédiations des bibliothèques système et les
+revues indépendantes. Aucun passage de ces portes ne découle de la seule
+publication du code ; aucune nouvelle image ni installation NAS n'est admise.

@@ -1131,6 +1131,24 @@ Le [rapport de validation](validation-main-3532232.md) recense l'erreur de
 fixture de la suite PostgreSQL (1 747 tests, une erreur, 42 skips), les suites
 dediees reussies et les etapes image non atteintes. Le correctif de fixture
 Python conserve la garde d'execution et ajoute deux regressions ; 84 tests purs
-passent sous les deux modes de lancement. Une nouvelle CI du commit corrige
-reste necessaire. Les observations du runner et l'essai Expat C4 sont presentes
+passent sous les deux modes de lancement. La réception du commit corrigé est
+décrite ci-dessous. Les observations du runner et l'essai Expat C4 sont presentes
 avec leurs identites distinctes, sans qualification ou image nouvelle induite.
+
+## Réception du correctif de fixture et bundle navigateur — 18 novembre 2026
+
+Les deux CI de `96f7fa7`, push et PR #27, ont terminé : PostgreSQL annonce
+Found 1754, Ran 1749, OK (skipped=42). Le comptage des lignes donne 1709 méthodes
+réussies, 40 méthodes ignorées et deux setUpClass ignorés ; ne pas soustraire
+42 du total Ran. Directory passe ses 130 tests. Le scan strict de chaque image
+refuse encore 35 groupes de vulnérabilités ; aucune image nouvelle qualifiée.
+Le [rapport de validation](validation-main-3532232.md) lie les deux contextes.
+
+[ADR-036](adr-036-authenticated-browser-test-bundle.md) introduit un bundle
+de navigateur TEST authentifié distinct de l'installation mutable du runner.
+R12 corrige deux points de revue : budget physique TAR avant extensions et
+vérification indépendante du véritable interpréteur Root. Les 196 tests Chrome
+et 14 contrats UI passent sans skip ; la revue ajoute dix défis indépendants.
+Le profil reste non commissionné. La prochaine mesure Linux dédiée ne doit
+produire qu'un inventaire authentifié ou un refus borné ; staging et parcours
+UI restent interdits par ce profil. Aucune modification NAS n'est réalisée.

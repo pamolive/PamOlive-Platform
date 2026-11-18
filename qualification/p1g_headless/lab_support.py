@@ -425,3 +425,102 @@ def prepare_tls(private, repo):
         "server_certificate": str(private / "server.pem"),
         "server_key": str(private / "server.key"),
     }
+
+
+def chrome_target(repo, *, mode=None):
+    """One typed resolver for all three readers; v3 is explicit, never fallback."""
+    mode = os.environ.get("P1G_CHROME_MODE", "legacy-installed-v2") if mode is None else mode
+    need(mode in {"legacy-installed-v2", "test-bundle-v3"}, "chrome_mode")
+    if mode == "legacy-installed-v2":
+        path = Path("/opt/google/chrome/chrome")
+        return path, tool_pin(path)
+    guard(os.environ)
+    source_binding(
+        repo, Path(os.environ["RUNNER_TEMP"]) / "p1g-source.json", os.environ["GITHUB_SHA"]
+    )
+    reader = bounded(repo)
+    context_raw = reader.read_regular(
+        Path(os.environ["RUNNER_TEMP"]) / "p1g-source.json", 2 * 1024**2
+    )
+    context = json.loads(context_raw)
+    name = "qualification/p1g_headless/chrome-bootstrap-pins.json"
+    pins_raw = reader.read_regular(repo / name, 131072)
+    need(
+        hashlib.sha256(pins_raw).hexdigest() == context["files"].get(name),
+        "bundle_manifest_context",
+    )
+    pins = json.loads(pins_raw)
+    name = "qualification/p1g_headless/chrome_bundle.py"
+    raw = reader.read_regular(repo / name, 131072)
+    need(
+        hashlib.sha256(raw).hexdigest()
+        == pins["source_files"].get(name)
+        == context["files"].get(name),
+        "bundle_helper_context",
+    )
+    spec = importlib.util.spec_from_file_location("p1g_reviewed_bundle", repo / name)
+    bundle = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = bundle
+    exec(compile(raw, str(repo / name), "exec"), bundle.__dict__)
+    name = "qualification/p1g_headless/chrome-bundle-profile.json"
+    profile_raw = reader.read_regular(repo / name, 4 * 1024**2)
+    need(
+        hashlib.sha256(profile_raw).hexdigest()
+        == bundle.PROFILE_SHA
+        == pins["source_files"].get(name)
+        == context["files"].get(name),
+        "bundle_profile_context",
+    )
+    expected = {
+        "revision": os.environ["GITHUB_SHA"],
+        "pins_manifest_sha256": hashlib.sha256(pins_raw).hexdigest(),
+        "context_receipt_sha256": hashlib.sha256(context_raw).hexdigest(),
+        "package_version": pins["package"]["Version"],
+    }
+    runtime_check, runtime_postcheck = bundle_runtime_checker(
+        repo, pins, context, pins_raw, context_raw, reader
+    )
+    path, pin = bundle.verify(
+        os.environ,
+        expected,
+        profile_raw,
+        bundle.PROFILE_SHA,
+        until=__import__("time").monotonic() + 30,
+        runtime_check=runtime_check,
+    )
+    runtime_postcheck()
+    # Preserve the existing strong ELF/ancestry guard as an additional check.
+    need(tool_pin(path) == pin, "bundle_target_changed")
+    return path, pin
+
+
+def bundle_runtime_checker(repo, pins, context, pins_raw, context_raw, reader):
+    """Reuse the historical Root proof contract, never a producer boolean."""
+    name = "qualification/p1g_headless/chrome_bootstrap.py"
+    raw = reader.read_regular(repo / name, 131072)
+    source_sha = hashlib.sha256(raw).hexdigest()
+    need(
+        source_sha == pins["source_files"].get(name) == context["files"].get(name),
+        "bundle_runtime_validator_context",
+    )
+    spec = importlib.util.spec_from_file_location("p1g_reviewed_root_validator", repo / name)
+    validator = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = validator
+    exec(compile(raw, str(repo / name), "exec"), validator.__dict__)
+    support = sys.modules[__name__]
+    role = validator.root_interpreter_pin(support)
+
+    def check(facts):
+        validator.check_root_interpreter(
+            facts,
+            role,
+            context_sha=hashlib.sha256(context_raw).hexdigest(),
+            pins_sha=hashlib.sha256(pins_raw).hexdigest(),
+            source_sha=source_sha,
+            revision=os.environ["GITHUB_SHA"],
+        )
+
+    def postcheck():
+        need(validator.root_interpreter_pin(support) == role, "root_interpreter_changed")
+
+    return check, postcheck

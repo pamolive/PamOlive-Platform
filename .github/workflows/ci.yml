@@ -815,7 +815,7 @@ jobs:
           PAMOLIVE_TEST_DATABASE_NAME: test_pamolive_p1g_browser
           PAMOLIVE_P1G_DISPOSABLE: '1'
           P1G_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          P1G_CHROME_PINS_SHA: 697e5e6275f110c3bbc635559ff02ae546a187acb64e4f2ec3ddc21b609375e7
+          P1G_CHROME_PINS_SHA: e9a89aa992a5ed55b678badebdbab26a4d03a643c9ed445580433d999440d13b
         shell: bash
         run: |
           set -euo pipefail
@@ -1114,7 +1114,7 @@ jobs:
               assert len(raw) == row.st_size and len(raw) <= cap
               return raw
           name = "qualification/p1g_headless/chrome-bootstrap-pins.json"
-          expected = "697e5e6275f110c3bbc635559ff02ae546a187acb64e4f2ec3ddc21b609375e7"
+          expected = "e9a89aa992a5ed55b678badebdbab26a4d03a643c9ed445580433d999440d13b"
           raw = read(root / name, 131072)
           assert len(raw) <= 131072 and hashlib.sha256(raw).hexdigest() == expected
           receipt = json.loads(read(receipt_path, 4 * 1024**2))
@@ -1130,10 +1130,11 @@ jobs:
               assert hashlib.sha256(raw).hexdigest() == expected == receipt["files"][name]
           PY
           python -I -B -S "$source/qualification/p1g_headless/run_chrome_pure.py"
-          "$RUNNER_TEMP/p1g-venv/bin/python" -I -B -S "$source/qualification/p1g_headless/chrome_bootstrap.py" --pins-sha 697e5e6275f110c3bbc635559ff02ae546a187acb64e4f2ec3ddc21b609375e7 --native-scope-preflight-required
+          "$RUNNER_TEMP/p1g-venv/bin/python" -I -B -S "$source/qualification/p1g_headless/chrome_bootstrap.py" --pins-sha e9a89aa992a5ed55b678badebdbab26a4d03a643c9ed445580433d999440d13b --native-scope-preflight-required --test-bundle
       - name: Exercise the synthetic P1-G JavaScript increment
         timeout-minutes: 12
         env:
+          P1G_CHROME_MODE: test-bundle-v3
           DATABASE_URL: postgresql://p1g:p1g-synthetic-disposable-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/pamolive_p1g
           PAMOLIVE_TEST_DATABASE_NAME: test_pamolive_p1g_browser
           PAMOLIVE_P1G_DISPOSABLE: '1'

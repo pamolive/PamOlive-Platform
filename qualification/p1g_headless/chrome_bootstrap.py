@@ -9,7 +9,6 @@ import os
 import re
 import stat
 import sys
-import tarfile
 import time
 from datetime import timedelta
 from pathlib import Path, PurePosixPath
@@ -22,6 +21,7 @@ ROOT_INTERPRETER = "/usr/bin/python3.12"
 ROOT_CACHE_BASENAME = "google-chrome-stable_157.0.8103.78-1_amd64.deb"
 ROOT_INTERPRETER_SCHEMA = "pamolive.chrome-root-interpreter/1"
 INSTALLED_SCHEMA = "pamolive.chrome-bootstrap/2"
+TAR_HELPER_SHA = "e81f446a2138654c8d17fb8d85bc972a99f8184c9b014c01dbd8d73de2f4c51f"
 ROOT_FLAGS = {
     "isolated": 1,
     "ignore_environment": 1,
@@ -33,6 +33,8 @@ ROOT_FLAGS = {
 }
 SOURCE_PATHS = {
     "qualification/p1g_headless/chrome_bootstrap.py",
+    "qualification/p1g_headless/chrome_bundle.py",
+    "qualification/p1g_headless/chrome-bundle-profile.json",
     "qualification/p1g_headless/chrome_gpg.py",
     "qualification/p1g_headless/chrome_key_scope.py",
     "qualification/p1g_headless/chrome_key_scope_native.py",
@@ -51,6 +53,7 @@ SOURCE_PATHS = {
     },
 }
 TEST_PATHS = {
+    "qualification/p1g_headless/test_chrome_bundle.py",
     "qualification/p1g_headless/test_chrome_bootstrap.py",
     "qualification/p1g_headless/test_chrome_key_scope.py",
     "qualification/p1g_headless/chrome_scope_native_fixtures.json",
@@ -64,6 +67,42 @@ MATERIALS = {"google-key.asc", "Release", "Release.gpg", "Packages"}
 BASE_URL = "https://dl.google.com/linux/chrome/deb/"
 ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C", "LC_ALL": "C"}
 DIAGNOSTICS = {
+    "bundle_tar_extensions_refused_PAX",
+    "bundle_tar_extensions_refused_GLOBAL",
+    "bundle_tar_extensions_refused_GNU_LONGNAME",
+    "bundle_tar_extensions_refused_GNU_LONGLINK",
+    "bundle_tar_extensions_refused_GNU_SPARSE",
+    "bundle_tar_physical_budget",
+    "bundle_tar_read_budget",
+    "bundle_tar_read_shape",
+    "bundle_tar_seek",
+    "bundle_tar_truncated",
+    "bundle_tar_terminator",
+    "bundle_tar_trailing_data",
+    "bundle_tar_header_budget",
+    "bundle_tar_header",
+    "bundle_tar_header_changed",
+    "bundle_tar_collision",
+    "bundle_tar_member_budget",
+    "bundle_tar_nonfile_payload",
+    "bundle_tar_padding",
+    "bundle_tar_path_type",
+    "bundle_tar_type",
+    "bundle_root_runtime_checker",
+    "payload_tar_helper_pin",
+    "bundle_profile_uncommissioned",
+    "bundle_profile_pin",
+    "bundle_profile_tree",
+    "bundle_unsupported_entry",
+    "bundle_privileged_roles",
+    "bundle_deadline",
+    "bundle_payload_changed",
+    "bundle_root_parent",
+    "bundle_root_race",
+    "bundle_parent_race",
+    "bundle_resource_changed",
+    "bundle_resource_missing",
+    "bundle_unexpected_entry",
     "apt_cache_path",
     "apt_cache_metadata",
     "apt_cache_changed",
@@ -707,10 +746,20 @@ def apt_plan(raw):
     )
 
 
-def payload_target(stream):
-    stream.seek(0)
+def payload_archive(stream, *, until=None):
+    """Use the same pinned pre-parse physical/IO bounds in the legacy reader."""
+    until = time.monotonic() + 60 if until is None else until
+    need(time.monotonic() < until, "bootstrap_deadline")
+    path = HERE / "chrome_bundle.py"
+    body = read(path, 131072)
+    need(sha(body) == TAR_HELPER_SHA, "payload_tar_helper_pin")
+    helper = load("p1g_pinned_payload_tar", body, path)
+    return helper.checked_tar(stream, until=until)
+
+
+def payload_target(stream, *, until=None):
     target, count, total = None, 0, 0
-    with tarfile.open(fileobj=stream, mode="r:") as archive:
+    with payload_archive(stream, until=until) as archive:
         for member in archive:
             count, total = count + 1, total + member.size
             need(
@@ -1375,7 +1424,15 @@ def main(argv=None):
     parser.add_argument("--native-scope-preflight-required", action="store_true", required=True)
     parser.add_argument("--scope-native-only", action="store_true")
     parser.add_argument("--root-install", action="store_true")
+    bundle_modes = parser.add_mutually_exclusive_group()
+    bundle_modes.add_argument("--test-bundle", action="store_true")
+    bundle_modes.add_argument("--bundle-inventory-only", action="store_true")
     args = parser.parse_args(argv)
+    need(
+        not (args.root_install and args.bundle_inventory_only)
+        and not (args.scope_native_only and (args.test_bundle or args.bundle_inventory_only)),
+        "bundle_mode",
+    )
     need(sys.platform == "linux" and os.environ.get("GITHUB_ACTIONS") == "true", "CI_Linux_only")
     os.umask(0o077)
     root = ROOT
@@ -1694,7 +1751,24 @@ def main(argv=None):
                 cap=1024**3,
                 sink=stream,
             )
-            target = payload_target(stream)
+            target = payload_target(stream, until=commands.until - 10)
+            if args.test_bundle or args.bundle_inventory_only:
+                bundle = load(
+                    "p1g_authenticated_bundle",
+                    captured["qualification/p1g_headless/chrome_bundle.py"],
+                    root / "qualification/p1g_headless/chrome_bundle.py",
+                )
+                profile_raw = captured["qualification/p1g_headless/chrome-bundle-profile.json"]
+                tree = bundle.inventory(
+                    stream, pins["package"]["SHA256"], until=commands.until - 10
+                )
+                support.fresh_write(
+                    command_public / "bundle-inventory.json", bundle.canonical(tree), mode=0o444
+                )
+                if args.bundle_inventory_only:
+                    return 0
+                phase = "test_bundle_admission"
+                bundle.admit(tree, profile_raw, bundle.PROFILE_SHA)
         phase = "dependencies"
         if args.root_install:
             root_cache_check(private, cache_binding, pins["package"])
@@ -1702,6 +1776,47 @@ def main(argv=None):
             root_cache_check(private, cache_binding, pins["package"])
         else:
             apt_plan(commands.run([*APT, "--simulate", "install", str(package)], seconds=30))
+        if args.test_bundle:
+            phase = "test_bundle_stage"
+            bindings = {
+                "revision": os.environ["GITHUB_SHA"],
+                "pins_manifest_sha256": args.pins_sha,
+                "context_receipt_sha256": sha(read(base / "p1g-source.json", 4 * 1024**2)),
+                "package_version": pins["package"]["Version"],
+                "signature": valid,
+                "key_scope": scope_proof,
+                "root_interpreter": root_runtime,
+            }
+            if not args.root_install:
+                root_bundle_supervisor(
+                    commands,
+                    support,
+                    bundle,
+                    profile_raw,
+                    bindings,
+                    args.pins_sha,
+                    sha(captured["qualification/p1g_headless/chrome_bootstrap.py"]),
+                )
+            else:
+                bundle_receipt = stage_bundle_root(
+                    commands,
+                    support,
+                    bundle,
+                    profile_raw,
+                    bindings,
+                    pins,
+                    args,
+                    captured,
+                    private,
+                    cache_binding,
+                    payload,
+                    tree,
+                    root_runtime,
+                )
+                support.fresh_write(
+                    public / "test-bundle.json", bundle.canonical(bundle_receipt), mode=0o444
+                )
+            return 0
         if not args.root_install:
             phase = "root_supervisor"
             root_supervisor(
@@ -1813,6 +1928,96 @@ def main(argv=None):
             mode=0o444,
         )
         return 42
+
+
+def stage_bundle_root(
+    commands,
+    support,
+    bundle,
+    profile_raw,
+    bindings,
+    pins,
+    args,
+    captured,
+    private,
+    cache_binding,
+    payload,
+    tree,
+    root_runtime,
+):
+    root_cache_check(private, cache_binding, pins["package"])
+    with payload.open("rb") as stream:
+        bundle_receipt = bundle.stage(
+            stream,
+            tree,
+            profile_raw,
+            bundle.PROFILE_SHA,
+            os.environ,
+            bindings,
+            until=commands.until - 10,
+        )
+    bundle.verify(os.environ, bindings, profile_raw, bundle.PROFILE_SHA, until=commands.until - 10)
+    root_cache_check(private, cache_binding, pins["package"])
+    need(
+        root_interpreter_runtime(
+            support,
+            context_sha=bindings["context_receipt_sha256"],
+            pins_sha=args.pins_sha,
+            source_sha=sha(captured["qualification/p1g_headless/chrome_bootstrap.py"]),
+            revision=os.environ["GITHUB_SHA"],
+        )
+        == root_runtime,
+        "root_interpreter_changed",
+    )
+    return bundle_receipt
+
+
+def root_bundle_supervisor(commands, support, bundle, profile_raw, bindings, pins_sha, source_sha):
+    """Explicit new contract; no fallback from a refused legacy installation."""
+    role = root_interpreter_pin(support)
+    commands.run(
+        [
+            "/usr/bin/sudo",
+            "-n",
+            "--preserve-env=" + PRESERVE,
+            "--",
+            ROOT_INTERPRETER,
+            "-I",
+            "-B",
+            "-S",
+            str(HERE / "chrome_bootstrap.py"),
+            "--pins-sha",
+            pins_sha,
+            "--root-install",
+            "--test-bundle",
+            "--native-scope-preflight-required",
+        ],
+        seconds=480,
+        sudo=True,
+    )
+    need(root_interpreter_pin(support) == role, "root_interpreter_changed")
+    expected = {key: value for key, value in bindings.items() if key != "root_interpreter"}
+
+    def runtime_check(facts):
+        check_root_interpreter(
+            facts,
+            role,
+            context_sha=bindings["context_receipt_sha256"],
+            pins_sha=pins_sha,
+            source_sha=source_sha,
+            revision=bindings["revision"],
+        )
+
+    bundle.verify(
+        os.environ,
+        expected,
+        profile_raw,
+        bundle.PROFILE_SHA,
+        until=commands.until - 10,
+        runtime_check=runtime_check,
+    )
+    need(root_interpreter_pin(support) == role, "root_interpreter_changed")
+    need(time.monotonic() < commands.until, "bootstrap_deadline")
 
 
 if __name__ == "__main__":

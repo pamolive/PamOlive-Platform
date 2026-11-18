@@ -52,10 +52,11 @@ def worker(private):
         value["phase"] = "resource_preflight"
         value["resources_before_browser"] = support.resources(private)
         value["phase"] = "chrome_tool_preflight"
-        chrome_preflight = support.tool_pin(Path("/opt/google/chrome/chrome"))
+        chrome_binary, chrome_preflight = support.chrome_target(REPO)
         value["phase"] = "TLS_setup"
         tls = support.prepare_tls(private, REPO)
         tls["browser_binary_pin"] = chrome_preflight
+        tls["browser_mode"] = os.environ.get("P1G_CHROME_MODE", "legacy-installed-v2")
         os.environ["DJANGO_SETTINGS_MODULE"] = "config.settings"
         import django
 
@@ -178,6 +179,7 @@ def main():
         "PAMOLIVE_TEST_DATABASE_NAME",
         "DATABASE_URL",
         "RUNNER_TEMP",
+        "P1G_CHROME_MODE",
     }
     env = {key: os.environ[key] for key in keys if key in os.environ}
     env.update(

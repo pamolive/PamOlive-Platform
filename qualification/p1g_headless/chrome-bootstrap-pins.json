@@ -35,7 +35,9 @@
   "signer": "0E225917414670F4442C250DFD533C07C264648F",
   "source_files": {
     "deploy/expat-remediation/bounded_io.py": "72b778ad6e441744e8bd9ac84ba7f47b1f6b577b7885a2e0daf3b4584cc0150a",
-    "qualification/p1g_headless/chrome_bootstrap.py": "2a17131188edcff621d5555208d8e0eedfc3b0f16522ef5c59931d05ae786aca",
+    "qualification/p1g_headless/chrome-bundle-profile.json": "0c910d6ec74090281c1275e64b70fd498049cfc16d5547a0daa01263771eb6ee",
+    "qualification/p1g_headless/chrome_bootstrap.py": "11fa1bb68de93a5665da7c71bf797af71f7b32fdb57ca43c0678e239d65cf9e0",
+    "qualification/p1g_headless/chrome_bundle.py": "e81f446a2138654c8d17fb8d85bc972a99f8184c9b014c01dbd8d73de2f4c51f",
     "qualification/p1g_headless/chrome_gpg.py": "001d178e5876df97156bf2061df19a51fc56bbf5b9bfa102098999bc10357512",
     "qualification/p1g_headless/chrome_key_scope.py": "1ee01826ddd241e5bde35a98363b1c1d36f59946e44cf552b370f82b80bbad1c",
     "qualification/p1g_headless/chrome_key_scope_native.py": "9541a7c6ed9ec068fe86bae1e50c299f740dea30bd984eff0b7385688b47afff",
@@ -45,7 +47,7 @@
     "qualification/p1g_headless/gpg_fixture/fixture_contract.py": "9f1492162d9d8c2357f095b4f2d74360b14f329e1286c1f13fcaf0025b740c17",
     "qualification/p1g_headless/gpg_fixture/fixture_owner.py": "99e198d2c452513e73e2cc3dd3f57ccb952f6306757892a009ca1636a335a4ae",
     "qualification/p1g_headless/gpg_fixture/public_packets.py": "1ee01826ddd241e5bde35a98363b1c1d36f59946e44cf552b370f82b80bbad1c",
-    "qualification/p1g_headless/lab_support.py": "83169d823c2ea9e3e1abdba105f17c4259bc7f1a5c1a4827e34bd35fea7df7a8"
+    "qualification/p1g_headless/lab_support.py": "a1597f514961f3f3d0fe86357820fc70ab728ae71d5feb4f407fd810bf483845"
   },
   "test_files": {
     "qualification/p1g_headless/chrome_scope_fixtures/primary-expired.asc": "6f609a78bb44446a781b1ee6c51119af2425168a88beb69acd03ef7295281d65",
@@ -53,8 +55,9 @@
     "qualification/p1g_headless/chrome_scope_native_fixtures.json": "cce3a506be2aa27d8ce65454e5697dd5290c943100586bf8eb4e7e4a5a0370c1",
     "qualification/p1g_headless/gpg_fixture/source-pins.json": "90d74d4bfdf2ffb76b4bb93157339906cc07d2594de2715972b88a3f9b75ef04",
     "qualification/p1g_headless/gpg_fixture/test_fixture.py": "7f0800d1c9f9b74eb9b043c727fb7455223c704fe7bd9df75e45811ab8df986c",
-    "qualification/p1g_headless/run_chrome_pure.py": "f99155a607c5d638bc7c7fab4987bf534615f9821cd57299629b52c8f2940d48",
+    "qualification/p1g_headless/run_chrome_pure.py": "d268aac53fe664787d0ff3a5d8af6ff8c8a97dc04b7722310e8ec9fc113a5dbf",
     "qualification/p1g_headless/test_chrome_bootstrap.py": "b3798e4dc204db3446d232c3042acb381242d94994fbcfa1ecb30b3b8a8e56ae",
+    "qualification/p1g_headless/test_chrome_bundle.py": "2e69ca41737a6993926acdc830cc2c8d5d1df33bf65c365238f35f3b872688cf",
     "qualification/p1g_headless/test_chrome_key_scope.py": "322a7683e0e5434aa16bfaa2ae64e450c0c13d93336755ae62c57b822ecc289e"
   }
 }

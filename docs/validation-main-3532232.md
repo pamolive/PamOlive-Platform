@@ -6,8 +6,9 @@ delivery notes. Results below belong to their named source revision and run.
 
 ## Main 3532232
 
-The global PostgreSQL suite ran 1,747 tests in 593.772 seconds: one error,
-42 skips and no assertion failures. This represents 1,704 passing tests.
+The global PostgreSQL report says Ran 1,747 tests in 593.772 seconds: one error,
+42 skip events and no assertion failures. A passing count is not inferred by
+subtracting all skip events: class-level skips are counted separately by unittest.
 Directory ran 130 tests in 19.322 seconds without failures, errors or skips.
 
 The error is test_68_main_closes_then_opens_unique_CLOEXEC_FD_then_filter_marker_exec.
@@ -77,3 +78,18 @@ under both ordinary and isolated launchers, with no attempted external IO.
 This result is local source/test validation. It does not replace PostgreSQL or
 image CI on the eventual commit. The native oracle proposal remains separate
 and awaits its independent review and a fresh Linux test.
+
+## Exact corrective candidate 96f7fa7
+
+Both the push run 44174958647 and PR run 44174987438 completed. The global
+reports say Found 1,754, Ran 1,749, OK (skipped=42). Direct reconciliation of
+each log identifies 1,709 successful methods, 40 skipped methods and two
+separate skipped-class records. The five discovered methods absent from the
+Ran count are not assigned to particular classes without further evidence.
+The original test and both new regressions are explicitly successful on both
+runs. Directory reports 130 tests, OK, without skips.
+
+The sole failing job step on each run is the exact-image scan, with 35 groups
+reported as untriaged_high. These are each image's own reports: push and PR
+have distinct image identities. No image is qualified or promoted. The source
+PR remains subject to the unchanged validation and publication gates.
