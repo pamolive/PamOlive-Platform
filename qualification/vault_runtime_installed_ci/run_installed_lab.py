@@ -165,20 +165,16 @@ def bootstrap_lab(lab, report, *, restore):
     return pg, client, descriptor_sha, control
 
 
-def run_restore(lab, report, postgres, client, descriptor_sha, control):
+def run_restore(lab, report, postgres, client, descriptor_sha, plan, expires):
     import adapter_v2
     import schema
     from lab import restore_sql
 
-    report["phase"] = "restore_inputs"
     raw = read_regular(lab.work / "verified-consumer-context/descriptor.json", 65536)
     need(sha(raw) == descriptor_sha)
     descriptor = adapter_v2.descriptor(schema.parse(raw, 65536))
     sql = read_regular(ROOT.parents[1] / "components/vault/runtime/sql/schema.sql", 65536)
     need(sha(sql) == descriptor["sql_sha256"])
-    expires = control["expires_at"]
-    need(type(expires) is int and 0 < expires - time.time() <= 40)
-    plan = control["plan"]
     original = "vault_n0_lab_" + lab.reservation.removeprefix("pv-")
     need(type(plan) is dict and plan.get("original_database") == original)
     need(postgres[1].user == "999:999" and postgres[1].role == "postgres")
@@ -255,7 +251,19 @@ def run_restore(lab, report, postgres, client, descriptor_sha, control):
 def run(lab, report, *, restore=False):
     pg, client, descriptor_sha, control = bootstrap_lab(lab, report, restore=restore)
     if restore:
-        run_restore(lab, report, pg, client, descriptor_sha, control)
+        report["phase"] = "restore_inputs"
+        expires = control["expires_at"]
+        need(type(expires) is int)
+        remaining = expires - time.time()
+        need(0 < remaining <= 40)
+        engine = lab.engine
+        original_deadline = engine.deadline
+        # Ownership inspections and subprocesses share the same restore window.
+        engine.deadline = min(original_deadline, engine.clock() + remaining)
+        try:
+            run_restore(lab, report, pg, client, descriptor_sha, control["plan"], expires)
+        finally:
+            engine.deadline = original_deadline
         report["phase"] = "complete"
         return
     report["phase"] = "client_tests"

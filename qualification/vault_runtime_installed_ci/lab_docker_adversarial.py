@@ -302,6 +302,28 @@ class ScenarioTests(unittest.TestCase):
         self.assertEqual(capture.call_count, 1)
         lab.exec.assert_not_called()
 
+    def test_restore_bounds_ownership_inspection_and_recovers_engine_deadline_on_failure(self):
+        lab, (_, postgres, _, client) = self.laboratory()
+        lab.engine.clock.return_value = 10
+        lab.engine.deadline = 480
+        control = {"expires_at": 130, "plan": {}}
+
+        def refuse(*_args):
+            self.assertEqual(lab.engine.deadline, 40)
+            raise ValueError("synthetic failure")
+
+        with (
+            patch.object(
+                scenario, "bootstrap_lab", return_value=(postgres, client, "a" * 64, control)
+            ),
+            patch.object(scenario.time, "time", return_value=100),
+            patch.object(scenario, "run_restore", side_effect=refuse) as restore,
+            self.assertRaises(ValueError),
+        ):
+            scenario.run(lab, {}, restore=True)
+        restore.assert_called_once()
+        self.assertEqual(lab.engine.deadline, 480)
+
     def test_success_requires_exact_client_test_counts_after_commissioning(self):
         lab, roles = self.laboratory()
         raw = b"synthetic"
