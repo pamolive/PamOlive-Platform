@@ -817,6 +817,28 @@ Le reçu public a été vérifié indépendamment, SHA-256
 PITR, reprise multi-hôte et détection du rollback sous la même incarnation
 restent à qualifier.
 
+### Fournisseur OpenBao Transit en laboratoire CI
+
+La [PR nº 33](https://github.com/pamolive/PamOlive-Platform/pull/33) ajoute un
+adaptateur explicite et un banc distinct pour la gestion des KEK des credentials
+techniques. L'API d'enveloppe et ses octets restent compatibles. Les 31 tests du
+fournisseur, dont un canal mTLS synthétique, ainsi que les 25 tests existants de
+l'enveloppe passent localement. Ruff, Bandit sur le composant et le scan de
+secrets des changements passent. La revue indépendante confirme la sélection
+des clés par configuration commissionnée et les limites des jetons bearer.
+
+La [CI native](https://github.com/pamolive/PamOlive-Platform/actions/runs/44297768561)
+du commit `123856a` valide la provenance du binaire 2.7.2, installe les deux
+wheels et termine cinq tests Transit sans exclusion. Elle relit le contenu V1
+après redémarrage sur PebbleDB, refuse l'ancienne version en écriture, réenveloppe
+en V2, vérifie les refus d'AAD, d'ACL, d'upsert, de mTLS et de jeton révoqué.
+L'arrêt propre est confirmé. Reçu SHA-256
+`f3fe27d4ab29d853168e14ef441ceeb462e25904d87b5738ee82a397e6ed3347`.
+Les deux premiers essais de démarrage restent archivés. La version 2.7 a
+supprimé le backend `file` utilisé dans ces essais. La récupération depuis une
+sauvegarde OpenBao, les hôtes et dépositaires distincts et l'autorisation de
+remise PAM restent à qualifier. [Notes OpenBao 2.7](https://openbao.org/docs/release-notes/2-7-0/)
+
 ### Historique des sujets et refus précédents
 
 Point du 14 novembre : le socle PR2 est `2f28224`. Ses deux CI terminent

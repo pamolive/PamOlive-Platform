@@ -10,9 +10,12 @@ l'historique conservé, le refus de l'ancien contexte, les ACL SQL et le nettoya
 [Tests PostgreSQL et mTLS](https://github.com/pamolive/PamOlive-Platform/actions/runs/44289749907) ·
 [Restauration logique](https://github.com/pamolive/PamOlive-Platform/actions/runs/44293387418)
 
-P2 poursuit la gestion séparée des KEK avec l'[ADR-030](adr-030-openbao-transit-key-provider.md)
-et la qualification dédiée du témoin. PITR, reprise multi-hôte et publication
-de la plateforme restent soumis à leurs validations respectives.
+La gestion séparée des KEK avance avec l'[ADR-030](adr-030-openbao-transit-key-provider.md).
+Le commit `123856a` valide cinq tests OpenBao 2.7.2 en CI sur une instance mTLS
+et un stockage PebbleDB jetables. Le témoin W1, la restauration des sauvegardes
+KMS, PITR, la reprise multi-hôte et la publication de la plateforme gardent des
+portes distinctes. [PR nº 33](https://github.com/pamolive/PamOlive-Platform/pull/33) ·
+[Qualification OpenBao](https://github.com/pamolive/PamOlive-Platform/actions/runs/44297768561)
 
 ## Livraison du code de développement — 17 novembre 2026
 
