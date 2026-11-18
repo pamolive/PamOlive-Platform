@@ -702,6 +702,11 @@ durable aboutissent seulement à `pending_proofs`, sans secret ni autorité d'ac
 Pas de migration Django, service de production ou image minimale. Les tests
 installés reçus ensuite sur `27cf3b4` ne qualifient pas ce parcours SQL/mTLS.
 
+Le transfert privé des wheels vérifiées prépare la suite sur CI. Le laboratoire
+de réception consommera les trois mêmes wheels et le descripteur associé après
+validation du parcours hors réseau et du nettoyage du producteur. La prochaine
+porte reste la réception du profil installé avec PostgreSQL neuf et mTLS.
+
 La réception des deux cas confirme les faits H1, 190 clients CLI récoltés/drainés,
 six stdin complets et nettoyage 4/3/1, lease libre et PG inchangé. Les 18 retours
 non nuls sont des sondes readiness avant succès ; les quatre exits 137 sans OOM

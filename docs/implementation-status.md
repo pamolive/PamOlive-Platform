@@ -778,6 +778,18 @@ expiration attendue, backup/restore ou frontière OS Web hostile qualifiés.
 Le rollback clandestin sous même incarnation reste hors garantie. Aucun service
 Web/P0 ou migration Django n'est changé ; P2 n'est pas terminé.
 
+La campagne d'installation a ensuite reçu les 52 méthodes installées sur
+`27cf3b4`. Un chemin CI optionnel prépare le transfert privé des trois wheels
+vérifiées et du descripteur dans le même job. Le transfert conditionne l'écriture
+du reçu à l'exécution réussie, aux empreintes attendues et au nettoyage confirmé.
+La qualification du laboratoire installé avec PostgreSQL et mTLS reste à faire.
+
+Le contrôle qui suit consomme le reçu du même job pour installer les wheels dans
+une image de test distincte avec le pilote C psycopg 3.2.10 et libpq 17.12. Le
+build et la vérification Python sont hors réseau après l’acquisition vérifiée
+des dépendances. PostgreSQL et le service Vault seront démarrés lors de la
+qualification suivante sur ce profil.
+
 Un premier laboratoire de restauration déclaré a ensuite réellement exécuté
 `pg_dump`, la création d'une seconde base synthétique neuve, sa restauration sous
 rôle restreint et les grants courants. Propriétaires et lignes/audits restaurés
