@@ -1,5 +1,27 @@
 # Plan de validation W1 — réception réelle restant à exécuter
 
+## Wheel W1 installée — 18 novembre 2026
+
+La [CI installée](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191)
+du commit `de63044` construit la wheel W1 séparément et vérifie les 18 entrées
+de l'archive, le `RECORD` installé et la relocalisation SQL. Les trois wheels
+Vault conservées dans le transfert historique servent de base au consommateur.
+Les 62 tests W1 existants passent depuis le paquet installé, sans échec,
+exclusion ni tentative d'I/O externe. Le reçu public SHA-256
+`e7d31f341396914841efeca051788fb9d61ddc09c6119941a66decf2a5b2431a`
+est lié à la [PR nº 34](https://github.com/pamolive/PamOlive-Platform/pull/34).
+
+Le profil W01 réserve six conteneurs et cinq volumes de fixtures. Les deux
+clusters PostgreSQL utilisent chacun leur PGDATA dédié. Les deux précontrôles
+de clusters vierges doivent être acceptés avant la première écriture. Les 21
+tests de propriété des ressources, les 19 tests du provisionnement sous
+doublures et les 13 régressions Vault passent. Le commissionnement réel,
+les deux terminaux durables et leurs reprises, les rôles PostgreSQL et le mTLS
+entre processus attendent la campagne W01. Les limites de 30 s et 40 s restent
+celles du contrat existant.
+
+## Plan des campagnes restantes
+
 Source W1 implémentée localement. La régression HTTP a été exécutée sur
 62 tests purs avant correction, avec un échec attendu, puis sur 62 tests après
 correction sans failure, error, skip ni tentative d'I/O externe. Les 59 méthodes

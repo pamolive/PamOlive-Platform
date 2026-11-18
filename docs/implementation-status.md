@@ -733,6 +733,14 @@ hors publication de ce lot ; aucun test SQL/TLS ni service W n'est encore reçu.
 Cette décision ne qualifie pas
 la durabilité, l'indépendance humaine/OS, le KMS ou un chemin de production.
 
+Depuis, `de63044` reçoit la wheel W1 sur Linux et les 62 tests hors réseau
+depuis le paquet installé. L'installation vérifie les fichiers du paquet, le
+`RECORD` installé et la relocalisation du schéma SQL. Les 40 contrôles du profil
+W01 sous doublures valident la propriété des ressources et la double barrière
+avant écriture PostgreSQL. Le parcours réel W01 reste à qualifier.
+[PR nº 34](https://github.com/pamolive/PamOlive-Platform/pull/34) ·
+[CI installée W1](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191)
+
 Le parent `6c17536` conserve ses résultats distincts : PR fonctionnelle puis
 scan High en échec, push arrêté au timeout TLS d'acquisition avant assertion
 post-build. Le correctif courant borne les seuls téléchargements publics

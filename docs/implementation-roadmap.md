@@ -1,5 +1,13 @@
 # Roadmap d’implémentation et qualification
 
+## Témoin installé et préparation du laboratoire W01 — 18 novembre 2026
+
+La [PR nº 34](https://github.com/pamolive/PamOlive-Platform/pull/34) reçoit la
+wheel W1, 62 tests installés hors réseau et 40 contrôles sous doublures du
+profil à deux clusters PostgreSQL. La validation des terminaux et de leurs
+preuves par mTLS sur les deux bases réelles reste à exécuter.
+[Réception installée](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191)
+
 ## Livraison du code de développement — 17 novembre 2026
 
 À la demande explicite du propriétaire, la capture Expat APT et ses diagnostics
