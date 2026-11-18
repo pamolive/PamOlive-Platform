@@ -9,6 +9,10 @@ on:
         description: Reinstall the verified wheels in the private Vault laboratory image
         type: boolean
         default: false
+      run_synthetic_lab:
+        description: Execute the ten PostgreSQL and mutual TLS tests after the isolated build
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -19,7 +23,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     env:
-      VAULT_SOURCES_SHA: 9544e22f59305efda5a29ba48e6b1e6f8c835b56fe374541ce4412c3aa06cdb1
+      VAULT_SOURCES_SHA: 927db6c4c41099bbd5e0a8c60af7005e66d32f80e34aae66d1cee944edee267b
       VAULT_ASSETS_SHA: 71d26e9cc4b1c27465f875879fff28c0c657688f70f797b91f174f86fed6a1eb
       VAULT_PAYLOAD_SHA: d9e7ff40d7395a109833225b5051feb1f85f6dc9f7061a07c3fa97110bc6b4a6
     steps:
@@ -54,6 +58,11 @@ jobs:
         run: python -I -B qualification/vault_runtime_installed_ci/run_pure.py
       - name: Verify the private handoff and refuse changed wheel bytes
         run: python -I -B -S qualification/vault_runtime_installed_ci/wheel_transfer_adversarial.py
+      - name: Verify lab Docker ownership and role isolation under doubles
+        run: python -I -B -S qualification/vault_runtime_installed_ci/lab_docker_adversarial.py
+      - name: Require the installed consumer before running the synthetic lab
+        if: inputs.run_synthetic_lab == true && inputs.transfer_verified_wheels != true
+        run: exit 42
       - name: Seventeen existing wheel DATA regressions
         run: python -I -B qualification/vault_reservation/test_wheel.py
       - name: Verify closed source and independent expected bindings
@@ -132,6 +141,12 @@ jobs:
             --file qualification/vault_runtime_installed_ci/Dockerfile.consumer \
             "$context"
           grep -qxE 'sha256:[0-9a-f]{64}' "$VAULT_WORK/vault-consumer.iid"
+      - name: Run the installed Vault tests on dedicated PostgreSQL and mutual TLS
+        if: inputs.run_synthetic_lab == true && inputs.transfer_verified_wheels == true
+        timeout-minutes: 10
+        run: >-
+          python -I -B -S qualification/vault_runtime_installed_ci/run_installed_lab.py
+          --work "$VAULT_WORK"
       - name: Retain public qualification and cleanup facts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always() && env.VAULT_WORK != ''
@@ -140,6 +155,7 @@ jobs:
           path: |
             ${{ env.VAULT_WORK }}/public-report.json
             ${{ env.VAULT_WORK }}/cleanup-public.json
+            ${{ env.VAULT_WORK }}/lab-public.json
             qualification/vault_runtime_installed_ci/checkout-capture.json
             ${{ env.VAULT_MATERIALS }}/acquisition.json
           if-no-files-found: error

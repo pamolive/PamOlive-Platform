@@ -11,6 +11,8 @@ COPY wheels/ /inputs/wheels/
 COPY locks/ /inputs/locks/
 COPY controller/ /inputs/controller/
 COPY util/ /inputs/util/
+COPY lab/ /inputs/lab/
+COPY runtime/integration/ /inputs/runtime/integration/
 COPY descriptor.json inventories.json verify_offline.py /inputs/
 RUN --network=none python -I -B -S /inputs/verify_offline.py inputs --descriptor-sha256 "$VAULT_DESCRIPTOR_SHA256" --inventories-sha256 "$VAULT_INVENTORIES_SHA256"
 RUN --network=none python -I -B -m venv --without-pip /opt/build && /opt/build/bin/python -I -B -c 'import runpy,sys; sys.path.insert(0,"/inputs/public/pip-26.3-py3-none-any.whl"); sys.argv[0]="pip"; runpy.run_module("pip",run_name="__main__")' --isolated --disable-pip-version-check install --no-compile --no-cache-dir --no-index --find-links=/inputs/public --only-binary=:all: --no-deps --require-hashes -r /inputs/locks/bootstrap.lock
@@ -44,6 +46,7 @@ RUN --network=none \
       --descriptor-sha256 "$VAULT_DESCRIPTOR_SHA256" --inventories-sha256 "$VAULT_INVENTORIES_SHA256" \
     && /opt/vault/bin/python -I -B /inputs/verify_offline.py installed \
       --descriptor-sha256 "$VAULT_DESCRIPTOR_SHA256" --inventories-sha256 "$VAULT_INVENTORIES_SHA256"
+RUN --network=none mkdir -m 0755 /stage
 USER 1000:1000
 WORKDIR /work
 # Parent supplies the separately reviewed server/client command and RO role mounts.

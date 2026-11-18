@@ -110,3 +110,17 @@ pinned Debian dependencies in the build stages. Wheel construction, installation
 and verification run without network. The image stays in the ephemeral runner's
 local store for the laboratory. This step performs no database connection or
 mutual TLS exchange. [Dockerfile network modes](https://docs.docker.com/reference/dockerfile/#run---network).
+
+Set both `transfer_verified_wheels` and `run_synthetic_lab` to exercise the
+installed service. The workflow allocates one private internal Docker network,
+three role volumes and four containers in the ephemeral job. PostgreSQL uses
+new `PGDATA` in tmpfs. Its bootstrap checks the local socket and an empty
+catalog before running the installed schema. The offline preparer stages only
+the files of each role and exits before Vault starts. The server sees its own
+read-only volume. The client uses the existing six PostgreSQL and four TLS tests
+against those exact installed packages. There are no published ports.
+
+Only the closed count, phase and cleanup result are uploaded in `lab-public.json`.
+The preparer retains its transient material in memory and tmpfs. The workflow
+keeps the historical wildcard and the existing pure-install profiles separate.
+Cleanup verifies the identities of the objects created for this execution.

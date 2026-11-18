@@ -15,6 +15,7 @@ import schema  # noqa: E402
 import wheel_gate  # noqa: E402
 import wheel_transfer  # noqa: E402
 import workload_prepare  # noqa: E402
+from lab.fixture_stage import FIXTURE_SHA256  # noqa: E402
 from support import load, need, read_regular, sha  # noqa: E402
 
 DRIVERS = {"psycopg", "psycopg-c"}
@@ -23,6 +24,15 @@ UTILS = {
     "native_inventory.py": "0ae411ff3971470b7d62aba8d27bf307e948258aac2853ed82fdddcf8edd20c1",
 }
 CONTEXT = "verified-consumer-context"
+TEST_SHA = "f0911729caf6907b56b24c98a32f415c51babdd4019153dd79f27b55b5caee5e"
+LAB_FILES = {
+    "fixture_stage.py",
+    "fixtures.source",
+    "installed_ten.py",
+    "pg_bootstrap.py",
+    "postgres_stage.py",
+    "role_files.py",
+}
 
 
 def verify_reception(frame, public, cleanup, *, bindings):
@@ -82,6 +92,32 @@ def pinned_utils(directory):
     return files
 
 
+def put_lab(stage, repository, descriptor):
+    lines = read_regular(ROOT / "source-checksums.sha256", 32768).decode("ascii").splitlines()
+    pins = {path: digest for digest, path in (line.split("  ", 1) for line in lines)}
+    for source in [
+        *("lab/" + name for name in sorted(LAB_FILES)),
+        "lab_prepare.py",
+        "run_lab_role.py",
+    ]:
+        raw = read_regular(ROOT / source, 65536)
+        need(sha(raw) == pins[source])
+        put(stage, "lab/" + Path(source).name, raw)
+    fixtures = repository / "components/vault/runtime"
+    for source, target, digest in (
+        ("tests/fixtures.py", "lab/signing-fixture.py", FIXTURE_SHA256),
+        (
+            "integration/serve_lab.py",
+            "runtime/integration/serve_lab.py",
+            descriptor["stage_files"]["integration/serve_lab.py"],
+        ),
+        ("integration/test_lab.py", "runtime/integration/test_lab.py", TEST_SHA),
+    ):
+        raw = read_regular(fixtures / source, 65536)
+        need(sha(raw) == digest)
+        put(stage, target, raw)
+
+
 def prepare(work, material_directory, assets_sha):
     control, gate = load("controller.py"), load("python_materials.py")
     control.ci_guard(work)
@@ -139,6 +175,7 @@ def prepare(work, material_directory, assets_sha):
         put(stage, "locks/" + filename + ".lock", gate.lock_bytes([drivers[name]]))
     put(stage, "locks/internal.lock", internal_lock)
     put(stage, "descriptor.json", descriptor)
+    put_lab(stage, repository, adapter_v2.descriptor(schema.parse(descriptor)))
     put(stage, "inventories.json", schema.encode(inventories, schema.MAX_PACKET))
     for name, row in asset_rows.items():
         raw = read_regular(ROOT / name, 2 * 1024**2)
