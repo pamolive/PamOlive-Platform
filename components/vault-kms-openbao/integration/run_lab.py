@@ -191,14 +191,35 @@ def reception(root, phase, expected):
 
 
 def start(binary, root, config):
-    return subprocess.Popen(
-        [str(binary), "server", "-config", str(config)],
-        cwd=root,
-        env=environment(root),
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    with (root / "server-diagnostic.log").open("wb") as log:
+        return subprocess.Popen(
+            [str(binary), "server", "-config", str(config)],
+            cwd=root,
+            env=environment(root),
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+        )
+
+
+def startup_failure(root, server, error):
+    if server.poll() is None:
+        return (
+            "seal_status_tls_refused"
+            if isinstance(error, ssl.SSLError)
+            else "seal_status_unconfirmed"
+        )
+    with (root / "server-diagnostic.log").open("rb") as log:
+        raw = log.read(16 * 1024)
+    for code, markers in (
+        ("listener_address_in_use", (b"address already in use",)),
+        ("listener_configuration", (b"initializing listener", b"TLS config")),
+        ("storage_configuration", (b"storage backend", b"storage migration")),
+        ("configuration_syntax", (b"Error parsing", b"Error loading configuration")),
+    ):
+        if any(marker in raw for marker in markers):
+            return code
+    return "openbao_exited"
 
 
 def wait_for_seal_status(server, admin, *, initialized):
@@ -228,6 +249,7 @@ def stop(server):
 
 
 def run(binary, root, report):
+    report["phase"] = "fixtures"
     certs(root)
     storage = root / "storage"
     storage.mkdir(mode=0o700)
@@ -235,6 +257,7 @@ def run(binary, root, report):
     config.write_text(
         f'''
 disable_mlock = true
+log_level = "error"
 api_addr = "https://{SERVER}:{PORT}"
 storage "file" {{ path = {json.dumps(str(storage))} }}
 listener "tcp" {{
@@ -250,9 +273,10 @@ listener "tcp" {{
         encoding="ascii",
     )
     admin = Administration(root)
-    report["phase"] = "startup"
+    report["phase"] = "launch"
     server = start(binary, root, config)
     try:
+        report["phase"] = "initial_seal_status"
         wait_for_seal_status(server, admin, initialized=False)
         report["phase"] = "provisioning"
         share = admin.initialize()
@@ -297,6 +321,10 @@ listener "tcp" {{
         admin.request("POST", "auth/token/revoke", {"token": token_a})
         report["receptions"].append(reception(root, "revoked", 1))
         report["phase"] = "complete"
+    except Exception as error:
+        if report["phase"] in {"initial_seal_status", "persistent-restart"}:
+            report["failure"] = startup_failure(root, server, error)
+        raise
     finally:
         report["server_stopped"] = stop(server)
 
@@ -304,7 +332,7 @@ listener "tcp" {{
 def main():
     report = {
         "schema": "pamolive.openbao.synthetic-lab-receipt/1",
-        "phase": "startup",
+        "phase": "runner_input",
         "receptions": [],
         "server_stopped": False,
         "authority": False,
@@ -320,8 +348,24 @@ def main():
         with tempfile.TemporaryDirectory(dir=temp, prefix="pamolive-openbao-private-") as folder:
             run(binary, Path(folder), report)
         report["ok"] = report["phase"] == "complete" and report["server_stopped"]
-    except Exception:
-        pass
+    except Exception as error:
+        if "failure" not in report:
+            kind = type(error).__name__
+            report["failure"] = (
+                kind
+                if kind
+                in {
+                    "ModuleNotFoundError",
+                    "FileNotFoundError",
+                    "PermissionError",
+                    "SSLError",
+                    "TimeoutError",
+                    "OSError",
+                    "ValueError",
+                    "KeyError",
+                }
+                else "unclassified"
+            )
     print(json.dumps(report, separators=(",", ":"), allow_nan=False))
     return 0 if report["ok"] else 1
 
