@@ -1,5 +1,21 @@
 # P1-G — Qualification préparatoire du parcours Identity Security
 
+Le parcours d'accès présente la politique enregistrée par PamOlive lors de
+chaque décision, avec le nombre d'approbations comptées, le seuil et la
+référence d'audit locale. La lecture vérifie l'empreinte de cette entrée et
+son lien avec la demande et le vote dans l'organisation. Elle ne recalcule
+pas le résultat avec la politique en vigueur aujourd'hui. Une politique
+indisponible laisse le vote lisible. La projection est masquée si Governance
+est désactivé. Ce champ de lecture est ajouté au contrat existant sans
+changer les règles de décision, le journal ni le schéma de base.
+
+Sur la [PR #28](https://github.com/pamolive/PamOlive-Platform/pull/28), les deux
+essais Linux du commit `43e36f7` ont terminé le staging privé et le nettoyage.
+Chaque reçu confirme la suppression de 255 fichiers et de huit répertoires
+ainsi que l'absence du préfixe après nettoyage. Les jobs s'arrêtent ensuite au
+HOLD prévu, avant l'étape UI. La mesure du sandbox actif et l'exécution du
+parcours navigateur restent à recevoir.
+
 Statut : premier incrément local réuni au socle dans la fusion `4c9cd2b`, sans publication P1-G. Le [rapport d'intégration du 14 novembre](p1-fg-p2-integration-20261114.md) décrit les 134 tests PostgreSQL du candidat commun. Les sections datées ci-dessous conservent les campagnes antérieures ; elles ne qualifient pas l'image intégrée ni un parcours PAM complet. Ce lot ne redéveloppe pas le démonstrateur PC-483 / PC-991.
 
 Complément local : le [parcours HTTP PAM](p1-g-pam-http-validation.md) passe

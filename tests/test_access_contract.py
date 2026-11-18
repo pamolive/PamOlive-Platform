@@ -1,8 +1,10 @@
 """Synthetic acceptance tests for the P1 read-only access contract."""
 
 import json
+import time
 from datetime import timedelta
 
+import pyotp
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import connection
@@ -10,16 +12,21 @@ from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 
 from platform_core.access_contract import SCHEMA, build_access_contract
-from platform_core.models import AuditEvent, ModuleActivation
+from platform_core.authorization import recent_authentication
+from platform_core.models import AccountSecurity, AuditEvent, ModuleActivation
+from platform_core.security import cipher
+from platform_core.services import install_module
 from platform_core.tenancy import organization_context
 from platform_modules.access.models import AccessIntent
 from platform_modules.approvals.models import ApprovalDecision
+from platform_modules.approvals.services import decide
 from platform_modules.connectors.models import (
     AccountBinding,
     ExecutionEvidence,
     ExternalChange,
     ProvisioningConnector,
 )
+from platform_modules.governance.services import publish_policy
 from platform_modules.identity.models import ExternalAccount, Grant, Identity, Resource
 
 from . import test_platform as baseline
@@ -64,6 +71,65 @@ class AccessContractTests(TestCase):
         self.assertEqual(AuditEvent.objects.count(), before)
         self.assertTrue(result["read_only"])
         json.dumps(result)
+
+    def test_decision_policy_comes_from_its_audit_record_after_new_revision(self):
+        install_module("governance", actor=self.admin, organization=self.org)
+        AccountSecurity.objects.create(
+            account=self.admin,
+            encrypted_secret=cipher().encrypt(pyotp.random_base32().encode()).decode(),
+        )
+        policy = {
+            "min_reviewers": 2,
+            "critical_reviewers": 2,
+            "require_external_contract": False,
+            "supplier_sponsor_required": False,
+        }
+        with recent_authentication(self.admin, self.org, time.time()):
+            initial = publish_policy(policy, actor=self.admin, organization=self.org)
+            first = decide(
+                self.intent.pk, actor=self.reviewer, organization=self.org,
+                approved=True, comment="First synthetic decision",
+            )
+            revised = publish_policy(
+                {**policy, "min_reviewers": 1}, actor=self.admin, organization=self.org,
+            )
+            second = decide(
+                self.intent.pk, actor=self.admin, organization=self.org,
+                approved=True, comment="Second synthetic decision",
+            )
+
+        result = self.read()
+        rows = {item["id"]: item for item in result["approval_decisions"]["items"]}
+        for decision, version, minimum, approved in (
+            (first, initial, 2, 1), (second, revised, 1, 2),
+        ):
+            with self.subTest(decision=decision.pk):
+                entry = AuditEvent.objects.get(
+                    organization=self.org, action="approvals.intent.decided.v1",
+                    object_id=str(decision.pk),
+                )
+                self.assertEqual(rows[str(decision.pk)]["recorded_policy"], {
+                    "policy_id": str(version.pk), "minimum": minimum, "approved": approved,
+                    "unit": "comptes de connexion", "audit_id": str(entry.pk),
+                    "assurance": "local_audit_record",
+                })
+
+        ModuleActivation.objects.filter(organization=self.org, module_key="governance").update(
+            enabled=False
+        )
+        hidden = self.read()["approval_decisions"]["items"]
+        self.assertEqual({row["id"] for row in hidden}, {str(first.pk), str(second.pk)})
+        self.assertTrue(all(row["recorded_policy"] is None for row in hidden))
+
+    def test_legacy_decision_without_audit_policy_remains_readable(self):
+        install_module("governance", actor=self.admin, organization=self.org)
+        decision = ApprovalDecision.objects.create(
+            organization=self.org, intent=self.intent, reviewer=self.reviewer,
+            approved=True, comment="Synthetic historical decision",
+        )
+        row, = self.read()["approval_decisions"]["items"]
+        self.assertEqual(row["id"], str(decision.pk))
+        self.assertIsNone(row["recorded_policy"])
 
     def test_local_grant_and_succeeded_flag_do_not_invent_provider_confirmation(self):
         grant = self.grant()
