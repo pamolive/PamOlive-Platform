@@ -1,6 +1,7 @@
 """Stage the synthetic role mounts from one offline test process."""
 
 import argparse
+import json
 import os
 import stat
 import sys
@@ -12,26 +13,26 @@ LAB = Path("/inputs/lab")
 WORK = Path("/work")
 PKI = LAB / "fixtures.source"
 PREFIX = Path("/opt/vault")
-sys.path[:0] = [str(LAB), "/inputs/controller"]
+sys.path[:0] = [str(LAB.parent), str(LAB), "/inputs/controller"]
 import adapter_v2  # noqa: E402
 import fixture_stage  # noqa: E402
 import installed_runner  # noqa: E402
 import installed_ten  # noqa: E402
 import pg_bootstrap  # noqa: E402
 import postgres_stage  # noqa: E402
-import role_files  # noqa: E402
 import schema  # noqa: E402
 import support  # noqa: E402
+from lab import restore_inputs, role_files  # noqa: E402
 
 
-def stage(role, files):
+def stage(role, files, *, restore=False):
     fd = os.open(Path("/stage") / role, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         state = os.fstat(fd)
         role_files.directory(state)
         support.need(stat.S_IMODE(state.st_mode) in (0o700, 0o755) and not os.listdir(fd))
         os.fchmod(fd, 0o700)
-        role_files.stage_role(role, files, (role, state.st_dev, state.st_ino))
+        role_files.stage_role(role, files, (role, state.st_dev, state.st_ino), restore=restore)
     finally:
         os.close(fd)
 
@@ -84,6 +85,7 @@ def prepare(args):
         database=args.database,
         schema=support.read_regular(PREFIX / "share/pamolive/vault-reservation/schema.sql", 65536),
         descriptor=descriptor,
+        restore_database=restore_inputs.restored_database(args.database) if args.restore else None,
     )
     stage("pg", postgres.files)
     private_file("pg.sql", postgres.guarded_sql)
@@ -112,7 +114,11 @@ def prepare(args):
         schema_stdout=receipt,
     )
     stage("server", tables.server_files)
-    stage("client", tables.client_files)
+    client = tables.client_files
+    if args.restore:
+        client, control = restore_inputs.create(client, args.database, tables.expires_at)
+        private_file("restore-control.json", json.dumps(control).encode("ascii"))
+    stage("client", client, restore=args.restore)
     private_file("seed.sql", sql)
     deadline = time.monotonic() + 45
     while not (WORK / "finished").exists():
@@ -124,6 +130,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", required=True)
     parser.add_argument("--input-sha256", required=True)
+    parser.add_argument("--restore", action="store_true")
     try:
         prepare(parser.parse_args())
     except Exception:

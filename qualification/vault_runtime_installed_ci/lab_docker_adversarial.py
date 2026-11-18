@@ -7,9 +7,11 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+from uuid import UUID
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run_installed_lab as scenario  # noqa: E402
+from lab import restore_inputs, role_files  # noqa: E402
 from lab_docker import ENDPOINTS, Container, Lab, Volume  # noqa: E402
 
 TOKEN = "pv-" + "a" * 32
@@ -203,6 +205,62 @@ class LabOwnershipTests(unittest.TestCase):
         self.engine.rows[("container", "renamed-owned-container")] = row
         self.assertFalse(self.lab.cleanup())
         self.assertEqual(self.engine.commands, [])
+
+
+class RestoreInputTests(unittest.TestCase):
+    old = UUID(int=1)
+    new = UUID(int=2)
+    slot = UUID(int=3)
+    database = "vault_n0_lab_" + "a" * 32
+
+    def client(self):
+        files = {
+            "lab/" + name: (b"synthetic", *attributes)
+            for name, attributes in role_files.ROLE_FILES["client"].items()
+        }
+        slot = {
+            "schema": "pamolive.vault.local-reservation-slot/1",
+            "expectations": {"ledger_incarnation": str(self.old)},
+            "slot_id": str(self.slot),
+        }
+        files["lab/slot.json"] = (json.dumps(slot).encode(), *role_files.PUBLIC)
+        for role in ("runtime", "owner", "web", "worker"):
+            connection = {"dbname": self.database, "user": role}
+            files[f"lab/{role}-db.json"] = (json.dumps(connection).encode(), *role_files.PUBLIC)
+        return files
+
+    def test_restoration_material_is_an_explicit_client_only_extension(self):
+        original = self.client()
+        snapshot = original.copy()
+        extended, control = restore_inputs.create(
+            original, self.database, 200, new_uuid=lambda: self.new
+        )
+        self.assertEqual(original, snapshot)
+        self.assertEqual(control["expires_at"], 200)
+        plan = control["plan"]
+        self.assertEqual(plan["old_slot_sha256"], scenario.sha(original["lab/slot.json"][0]))
+        self.assertEqual(
+            plan["new_slot_sha256"], scenario.sha(extended["lab/restored-slot.json"][0])
+        )
+        self.assertEqual(plan["slot_id"], str(self.slot))
+        self.assertEqual(plan["new_incarnation"], str(self.new))
+        reservation = ("client", 1, 1)
+        role_files.validate("client", original, reservation)
+        role_files.validate("client", extended, reservation, restore=True)
+        with self.assertRaises(role_files.RoleFilesRefused):
+            role_files.validate("client", extended, reservation)
+        with self.assertRaises(role_files.RoleFilesRefused):
+            role_files.validate("server", extended, ("server", 1, 1), restore=True)
+
+    def test_refuses_old_incarnation_and_foreign_database(self):
+        with self.assertRaises(ValueError):
+            restore_inputs.create(self.client(), self.database, 200, new_uuid=lambda: self.old)
+        with self.assertRaises(ValueError):
+            restore_inputs.create(self.client(), "postgres", 200, new_uuid=lambda: self.new)
+        with self.assertRaises(ValueError):
+            restore_inputs.create(
+                self.client(), self.database + "b", 200, new_uuid=lambda: self.new
+            )
 
 
 class ScenarioTests(unittest.TestCase):

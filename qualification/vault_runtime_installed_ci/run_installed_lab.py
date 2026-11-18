@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from consumer_inputs import TEST_SHA  # noqa: E402
-from lab import pg_bootstrap, postgres_stage  # noqa: E402
+from lab import pg_bootstrap, postgres_stage, restore_probe  # noqa: E402
 from lab_docker import POSTGRES_IMAGE, Container, Lab, Volume  # noqa: E402
 from support import load, need, read_regular, sha  # noqa: E402
 
@@ -17,6 +17,13 @@ ROLE = ("/usr/local/bin/python3.12", "-I", "-B", "-S", "/inputs/lab/run_lab_role
 WORK_TMPFS = (("/work", "rw,noexec,nosuid,nodev,size=8388608,mode=0700,uid=0,gid=0"),)
 CLIENT_TMPFS = (("/work", "rw,noexec,nosuid,nodev,size=8388608,mode=0700,uid=1000,gid=1000"),)
 READY_PG = 'test "$(cat /proc/1/comm)" = postgres && pg_isready -U vault_n0_admin -d postgres'
+RESTORE_ENV = (
+    "/usr/bin/env",
+    "-i",
+    "PATH=/usr/local/bin:/usr/bin:/bin",
+    "PGCONNECT_TIMEOUT=3",
+    "LC_ALL=C.UTF-8",
+)
 
 
 def wait(lab, item, spec, argv, seconds):
@@ -46,16 +53,21 @@ def run_pg(lab, item, spec, sql):
     )
 
 
-def create(lab, consumer, pg, descriptor_sha):
+def create(lab, consumer, pg, descriptor_sha, *, restore=False):
     settings = postgres_stage.profile()
     need(settings["image"] == POSTGRES_IMAGE and settings["user"] == "999:999")
     database = "vault_n0_lab_" + lab.reservation.removeprefix("pv-")
+    preparer = (*ROLE, "preparer", "--database", database, "--input-sha256", descriptor_sha)
+    client = (*ROLE, "client", "--input-sha256", descriptor_sha, "--test-sha256", TEST_SHA)
+    if restore:
+        preparer = (*preparer, "--restore")
+        client = (*ROLE, "restore-hold")
     roles = (
         Container(
             consumer,
             "preparer",
             "0:0",
-            (*ROLE, "preparer", "--database", database, "--input-sha256", descriptor_sha),
+            preparer,
             (
                 Volume("postgres", "/stage/pg", False),
                 Volume("server", "/stage/server", False),
@@ -88,7 +100,7 @@ def create(lab, consumer, pg, descriptor_sha):
             consumer,
             "client",
             "1000:1000",
-            (*ROLE, "client", "--input-sha256", descriptor_sha, "--test-sha256", TEST_SHA),
+            client,
             (Volume("client", "/lab"),),
             CLIENT_TMPFS,
             address="10.253.249.4",
@@ -97,7 +109,7 @@ def create(lab, consumer, pg, descriptor_sha):
     return [(lab.create_container(spec), spec) for spec in roles]
 
 
-def run(lab, report):
+def bootstrap_lab(lab, report, *, restore):
     work = lab.work
     stage = work / "verified-consumer-context"
     report["phase"] = "image_binding"
@@ -108,7 +120,7 @@ def run(lab, report):
     lab.create_network()
     for role in ("postgres", "server", "client"):
         lab.create_volume(role)
-    prepare, pg, server, client = create(lab, consumer, postgres, descriptor_sha)
+    prepare, pg, server, client = create(lab, consumer, postgres, descriptor_sha, restore=restore)
     report["phase"] = "postgres_staging"
     lab.start(*prepare)
     bootstrap = staged_sql(lab, *prepare, "pg.sql", 45)
@@ -129,6 +141,12 @@ def run(lab, report):
     seed = staged_sql(lab, *prepare, "seed.sql", 12)
     result = run_pg(lab, *pg, seed)
     postgres_stage.require_commissioned(result.returncode, result.stdout)
+    control = None
+    if restore:
+        received = lab.exec(*prepare, "/bin/cat", "/work/restore-control.json", stdout_cap=8192)
+        need(received.returncode == 0 and not received.stderr and received.stdout)
+        control = json.loads(received.stdout)
+        need(type(control) is dict and set(control) == {"plan", "expires_at"})
     finished = lab.exec(*prepare, "/usr/bin/touch", "/work/finished")
     need(finished.returncode == 0 and not finished.stderr)
     need(lab.engine.checked("container", "wait", prepare[0]["identity"], timeout=5) == b"0\n")
@@ -144,6 +162,102 @@ def run(lab, report):
         'import socket; socket.create_connection(("10.253.249.3", 9443), 1).close()',
     )
     wait(lab, *server, probe, 7)
+    return pg, client, descriptor_sha, control
+
+
+def run_restore(lab, report, postgres, client, descriptor_sha, control):
+    import adapter_v2
+    import schema
+    from lab import restore_sql
+
+    report["phase"] = "restore_inputs"
+    raw = read_regular(lab.work / "verified-consumer-context/descriptor.json", 65536)
+    need(sha(raw) == descriptor_sha)
+    descriptor = adapter_v2.descriptor(schema.parse(raw, 65536))
+    sql = read_regular(ROOT.parents[1] / "components/vault/runtime/sql/schema.sql", 65536)
+    need(sha(sql) == descriptor["sql_sha256"])
+    expires = control["expires_at"]
+    need(type(expires) is int and 0 < expires - time.time() <= 40)
+    plan = control["plan"]
+    original = "vault_n0_lab_" + lab.reservation.removeprefix("pv-")
+    need(type(plan) is dict and plan.get("original_database") == original)
+    need(postgres[1].user == "999:999" and postgres[1].role == "postgres")
+    need(client[1].user == "1000:1000" and client[1].role == "client")
+    primitives = restore_sql.primitives()
+    lab.start(*client)
+
+    def timeout():
+        remaining = expires - time.time()
+        need(remaining > 0)
+        return min(8, remaining)
+
+    def pg(argv, *, data, stdout_cap):
+        need(argv[0] in {"psql", "pg_dump", "pg_restore"})
+        return lab.exec(
+            *postgres,
+            "/bin/sh",
+            "-ec",
+            'test "$(cat /proc/1/comm)" = postgres; exec "$@"',
+            "postgres-restore",
+            *RESTORE_ENV,
+            *argv,
+            data=data,
+            timeout=timeout(),
+            stdin_cap=restore_sql.MAX_DUMP,
+            stdout_cap=stdout_cap,
+        )
+
+    def probe(phase):
+        result = lab.exec(
+            *client,
+            *ROLE,
+            "restore-probe",
+            "--phase",
+            phase,
+            "--input-sha256",
+            descriptor_sha,
+            "--test-sha256",
+            TEST_SHA,
+            timeout=timeout(),
+            stdout_cap=8192,
+        )
+        need(not result.stderr)
+        packet = schema.parse(result.stdout, 8192)
+        need(packet.get("authority") is False)
+        if result.returncode != 0:
+            stage, name = packet.get("stage"), packet.get("exception")
+            if (
+                packet.get("error") == "restore_probe_refused"
+                and stage in restore_probe.STAGES
+                and name in {"ValueError", "OperationalError", "Refusal", "Other"}
+            ):
+                report["restore_probe_failure"] = {"stage": stage, "exception": name}
+            raise ValueError("vault_restore_probe_refused")
+        need(set(packet) == {"schema", "phase", "observations", "authority"})
+        need(packet["schema"] == "pamolive.vault.restore-step/1" and packet["phase"] == phase)
+        return packet["observations"]
+
+    try:
+        report["restore"] = restore_sql.run_restore(
+            plan,
+            sql,
+            descriptor,
+            primitives=primitives,
+            pg=pg,
+            probe=probe,
+            expires=expires,
+        )
+    except restore_sql.RestoreRefused as error:
+        report["phase"] = "restore_" + error.phase
+        raise
+
+
+def run(lab, report, *, restore=False):
+    pg, client, descriptor_sha, control = bootstrap_lab(lab, report, restore=restore)
+    if restore:
+        run_restore(lab, report, pg, client, descriptor_sha, control)
+        report["phase"] = "complete"
+        return
     report["phase"] = "client_tests"
     result = lab.start(*client, attach=True, timeout=25, stdout_cap=8192)
     need(result.returncode == 0 and not result.stderr)
@@ -165,6 +279,7 @@ def run(lab, report):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--work", type=Path, required=True)
+    parser.add_argument("--restore", action="store_true")
     args = parser.parse_args()
     report = {
         "schema": "pamolive.vault-synthetic-installed-lab/1",
@@ -178,7 +293,7 @@ def main():
     lab = None
     try:
         lab = Lab(args.work)
-        run(lab, report)
+        run(lab, report, restore=args.restore)
     except Exception:
         pass
     finally:

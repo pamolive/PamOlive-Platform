@@ -164,6 +164,7 @@ def prepare_postgres(
     database,
     schema,
     descriptor,
+    restore_database=None,
 ):
     """Build four PG files and guarded SQL; neither creates nor reuses a cluster."""
     need(type(database) is str and DATABASE.fullmatch(database))
@@ -203,11 +204,24 @@ def prepare_postgres(
     hba, mode, uid, gid = files["lab/pg_hba.conf"]
     prefix = b"local all all trust\n"
     need(hba.startswith(prefix))
-    restricted = (
-        "local postgres vault_n0_admin trust\n"
-        f"local {database} vault_n0_admin trust\n"
-        "local all all reject\n"
-    ).encode() + hba[len(prefix) :]
+    rules = ["local postgres vault_n0_admin trust", f"local {database} vault_n0_admin trust"]
+    host = hba[len(prefix) :]
+    if restore_database is not None:
+        need(restore_database == database + "_restored" and len(restore_database) <= 63)
+        owner = ROLES["owner"]
+        rules += [
+            f"local {database} {owner} trust",
+            f"local {restore_database} {owner} trust",
+            f"local {restore_database} vault_n0_admin trust",
+        ]
+        suffix = b"host all all all reject\n"
+        need(host.endswith(suffix))
+        added = "".join(
+            f"hostssl {restore_database} {role} 10.253.249.0/28 scram-sha-256\n"
+            for role in ROLES.values()
+        ).encode("ascii")
+        host = host[: -len(suffix)] + added + suffix
+    restricted = ("\n".join([*rules, "local all all reject"]) + "\n").encode("ascii") + host
     files["lab/pg_hba.conf"] = restricted, mode, uid, gid
     provision = primitives.provision_sql(database, passwords, schema)
     guarded = bootstrap.guarded_sql(provision)

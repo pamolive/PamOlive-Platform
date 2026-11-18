@@ -77,7 +77,7 @@ class Engine:
             "LC_ALL": "C.UTF-8",
         }
 
-    def run(self, *args, data=None, timeout=10, stdout_cap=65536):
+    def run(self, *args, data=None, timeout=10, stdout_cap=65536, stdin_cap=256 * 1024):
         limit = min(timeout, self.deadline - self.clock())
         need(limit > 0)
         options = {
@@ -91,7 +91,8 @@ class Engine:
         if data is None:
             result = self.invoke(command, **options)
         else:
-            need(type(data) is bytes and 0 < len(data) <= 256 * 1024)
+            need(type(stdin_cap) is int and 0 < stdin_cap <= 8 * 1024 * 1024)
+            need(type(data) is bytes and 0 < len(data) <= stdin_cap)
             fd = os.memfd_create("vault-synthetic-stdin", os.MFD_CLOEXEC)
             with os.fdopen(fd, "w+b") as source:
                 source.write(data)

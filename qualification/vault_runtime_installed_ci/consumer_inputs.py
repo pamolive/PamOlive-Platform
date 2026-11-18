@@ -31,6 +31,9 @@ LAB_FILES = {
     "installed_ten.py",
     "pg_bootstrap.py",
     "postgres_stage.py",
+    "restore_child.py",
+    "restore_inputs.py",
+    "restore_probe.py",
     "role_files.py",
 }
 

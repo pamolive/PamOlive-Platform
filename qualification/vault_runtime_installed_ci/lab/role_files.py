@@ -10,6 +10,8 @@ import os
 import stat
 from contextlib import ExitStack
 
+from .restore_inputs import RESTORE_CLIENT
+
 MAX_FILE = 65536
 MAX_TOTAL = 4 * 1024**2
 MAX_OPERATIONS = 128
@@ -56,17 +58,21 @@ def need(value):
         raise RoleFilesRefused("vault_role_files_refused")
 
 
-def validate(role, files, reservation):
+def validate(role, files, reservation, *, restore=False):
     """Validate the complete finite role table before any OS operation."""
     need(type(role) is str and role in ROLE_FILES)
     need(type(reservation) is tuple and len(reservation) == 3)
     need(reservation[0] == role)
     need(type(reservation[1]) is int and reservation[1] >= 0)
     need(type(reservation[2]) is int and reservation[2] > 0)
-    need(type(files) is dict and len(files) == len(ROLE_FILES[role]))
-    need(set(files) == {"lab/" + name for name in ROLE_FILES[role]})
+    need(type(restore) is bool and (not restore or role == "client"))
+    expected = ROLE_FILES[role]
+    if restore:
+        expected = {**expected, **dict.fromkeys(RESTORE_CLIENT, PUBLIC)}
+    need(type(files) is dict and len(files) == len(expected))
+    need(set(files) == {"lab/" + name for name in expected})
     total, captured = 0, {}
-    for filename, attributes in ROLE_FILES[role].items():
+    for filename, attributes in expected.items():
         row = files["lab/" + filename]
         need(type(row) is tuple and len(row) == 4)
         raw, mode, uid, gid = row
@@ -158,13 +164,13 @@ def write_file(o, root_fd, filename, row):
         o.close(fd)
 
 
-def stage_role(role, files, reservation, *, os_api=os):
+def stage_role(role, files, reservation, *, os_api=os, restore=False):
     """Stage one exact table into its already reserved /stage/<role> mount.
 
     os_api is a source-level actor seam, never an input/manifest option. Failure
     is not repaired: the parent must retire only its own dedicated allocation.
     """
-    captured = validate(role, files, reservation)
+    captured = validate(role, files, reservation, restore=restore)
     o = os_api
     try:
         need(o.name == "posix" and o.geteuid() == 0)
