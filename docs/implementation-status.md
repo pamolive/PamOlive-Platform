@@ -802,6 +802,21 @@ lease libre et PG historique inchangé. Rapport public :
 `9f902fef7a5f9afc8d601db614458473561fe7f14e385dbf5f421ac7fdfbe3c8`.
 Les dumps, requêtes, nonces et journaux privés restent hors publication.
 
+### Réception CI du service Vault installé et de la restauration logique
+
+Le [laboratoire installé](https://github.com/pamolive/PamOlive-Platform/actions/runs/44289749907)
+du commit `58e9ec7` reçoit six tests PostgreSQL et quatre tests mTLS, sans échec
+ni exclusion. La [campagne de restauration](https://github.com/pamolive/PamOlive-Platform/actions/runs/44293387418)
+du commit `2078263` termine sept commandes et trois observations distinctes sur
+PostgreSQL 17.12. Elle conserve la réservation et l'audit dans une seconde base,
+ferme la source, observe le refus 403 de l'ancien contexte et le conflit 409
+sur l'ancienne idempotence. Une nouvelle demande reste en attente. Les quatre
+mutations SQL refusées, les refus Web/worker et le nettoyage sont confirmés.
+Le reçu public a été vérifié indépendamment, SHA-256
+`bc79cb4aa69350d1929cd3d537da7834b2a0d77e7bcc503702f56fec5943ca1d`.
+PITR, reprise multi-hôte et détection du rollback sous la même incarnation
+restent à qualifier.
+
 ### Historique des sujets et refus précédents
 
 Point du 14 novembre : le socle PR2 est `2f28224`. Ses deux CI terminent

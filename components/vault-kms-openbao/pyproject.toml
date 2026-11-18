@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pamolive-vault-kms-openbao"
+version = "0.1.0a1"
+description = "Explicit OpenBao Transit key wrapping provider for the isolated PamOlive Vault"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "AGPL-3.0-or-later"}
+dependencies = ["pamolive-vault-envelope==0.1.0a1", "h11==0.16.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
