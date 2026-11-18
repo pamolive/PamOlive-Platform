@@ -10,7 +10,11 @@ class AccessContractPamRenderingTests(SimpleTestCase):
         connection_time = "2026-11-14T10:12:13+00:00"
         contract = {
             "schema": "pamolive.access-contract/1",
-            "intention": {"id": "00000000-0000-4000-8000-000000000001", "reference": "render-only"},
+            "intention": {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "identity_id": "00000000-0000-4000-8000-000000000002",
+                "reference": "render-only",
+            },
             "pam_sessions": {
                 "availability": "available",
                 "items": [

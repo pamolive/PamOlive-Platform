@@ -159,6 +159,28 @@ class IdentityJourneyContractTests(ScimCreationFixture, TestCase):
         self.assertNotIn(token, json.dumps(final))
         self.assertTrue(verify_chain(self.org))
 
+        self.client.force_login(self.operator)
+        session = self.client.session
+        session["mfa_verified_at"] = time.time()
+        session.save()
+        page = self.client.get(reverse("access-contract-detail", args=[intent.pk]))
+        self.assertContains(page, reverse("identity360-detail", args=[self.identity.pk]))
+        self.assertContains(page, reverse("record-detail", args=["grant", grant.pk]))
+        self.assertContains(page, "Révocation locale enregistrée le")
+        change_url = reverse("external-change", args=[withdrawal.pk])
+        proof_anchor = f"execution-evidence-{withdrawal.proofs.get().pk}"
+        self.assertContains(page, f'href="{change_url}#{proof_anchor}"')
+        self.assertContains(self.client.get(change_url), f'id="{proof_anchor}"')
+
+        ModuleActivation.objects.filter(organization=self.org, module_key="connectors").update(
+            enabled=False
+        )
+        page = self.client.get(reverse("access-contract-detail", args=[intent.pk]))
+        self.assertContains(page, "Révocation locale enregistrée le")
+        self.assertNotContains(page, change_url)
+        self.assertNotContains(page, proof_anchor)
+        self.assertEqual(self.client.get(change_url).status_code, 403)
+
     def test_second_tenant_cannot_read_decide_or_ingest_against_the_first(self):
         intent = self.request_access()
         for module in ("identity", "access", "approvals", "connectors"):
