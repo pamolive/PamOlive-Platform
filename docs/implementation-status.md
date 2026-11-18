@@ -778,6 +778,12 @@ expiration attendue, backup/restore ou frontière OS Web hostile qualifiés.
 Le rollback clandestin sous même incarnation reste hors garantie. Aucun service
 Web/P0 ou migration Django n'est changé ; P2 n'est pas terminé.
 
+La campagne d'installation a ensuite reçu les 52 méthodes installées sur
+`27cf3b4`. Un chemin CI optionnel prépare le transfert privé des trois wheels
+vérifiées et du descripteur dans le même job. Le transfert conditionne l'écriture
+du reçu à l'exécution réussie, aux empreintes attendues et au nettoyage confirmé.
+La qualification du laboratoire installé avec PostgreSQL et mTLS reste à faire.
+
 Un premier laboratoire de restauration déclaré a ensuite réellement exécuté
 `pg_dump`, la création d'une seconde base synthétique neuve, sa restauration sous
 rôle restreint et les grants courants. Propriétaires et lignes/audits restaurés

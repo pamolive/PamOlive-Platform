@@ -4,6 +4,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      transfer_verified_wheels:
+        description: Retain a private handoff of the verified wheels for this job only
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -14,8 +19,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     env:
-      VAULT_SOURCES_SHA: 01d810e294caf566bbd7bbe55ac714654fd38e4bdc91556ef3d0d66ec45810e9
-      VAULT_ASSETS_SHA: ce51cff87ba43885bcc7a2c4643f9f540be1ff4d0a89db2cdc76c60be3e67e21
+      VAULT_SOURCES_SHA: 0ca457e755cc638bc3e1d6cae612708ccb8543eae31b27356821b3bbe8b1d1a5
+      VAULT_ASSETS_SHA: 71d26e9cc4b1c27465f875879fff28c0c657688f70f797b91f174f86fed6a1eb
       VAULT_PAYLOAD_SHA: d9e7ff40d7395a109833225b5051feb1f85f6dc9f7061a07c3fa97110bc6b4a6
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
@@ -47,6 +52,8 @@ jobs:
         run: python -I -B -S qualification/vault_runtime_installed_ci/serve_lab_adversarial.py
       - name: Sixty-five pure harness tests without production imports
         run: python -I -B qualification/vault_runtime_installed_ci/run_pure.py
+      - name: Verify the private handoff and refuse changed wheel bytes
+        run: python -I -B -S qualification/vault_runtime_installed_ci/wheel_transfer_adversarial.py
       - name: Seventeen existing wheel DATA regressions
         run: python -I -B qualification/vault_reservation/test_wheel.py
       - name: Verify closed source and independent expected bindings
@@ -61,10 +68,18 @@ jobs:
           --repository "$GITHUB_WORKSPACE" --materials "$VAULT_MATERIALS"
       - name: Prepare three closed read-only input mounts
         id: prepare
-        run: >-
-          python -I -B qualification/vault_runtime_installed_ci/workload_cli.py prepare
-          --assets-sha256 "$VAULT_ASSETS_SHA" --work "$VAULT_WORK"
-          --materials "$VAULT_MATERIALS"
+        env:
+          VAULT_TRANSFER_VERIFIED_WHEELS: ${{ inputs.transfer_verified_wheels }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          options=()
+          if [[ "$VAULT_TRANSFER_VERIFIED_WHEELS" == true ]]; then
+            options+=(--transfer-verified-wheels)
+          fi
+          python -I -B qualification/vault_runtime_installed_ci/workload_cli.py prepare \
+            --assets-sha256 "$VAULT_ASSETS_SHA" --work "$VAULT_WORK" \
+            --materials "$VAULT_MATERIALS" "${options[@]}"
       - name: Explicitly pull only the pinned public Python S0
         timeout-minutes: 6
         run: >-
@@ -81,6 +96,16 @@ jobs:
         run: >-
           python -I -B qualification/vault_runtime_installed_ci/workload_cli.py cleanup
           --assets-sha256 "$VAULT_ASSETS_SHA" --work "$VAULT_WORK"
+      - name: Verify that the isolated handoff was retained privately
+        if: inputs.transfer_verified_wheels == true
+        shell: bash
+        run: |
+          set -euo pipefail
+          transfer="$VAULT_WORK/verified-wheels.bin"
+          test -f "$transfer"
+          test ! -L "$transfer"
+          test -s "$transfer"
+          test "$(stat -c '%a' "$transfer")" = 600
       - name: Retain public qualification and cleanup facts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always() && env.VAULT_WORK != ''

@@ -236,6 +236,7 @@ class HostTests(unittest.TestCase):
                 self.assertIs(state["cleanup"]["OOMKilled"], False)
 
     def test_actual_run_owned_requires_exit0_and_OOMfalse_even_when_resources_released(self):
+        import wheel_transfer
         import workload_schema
         from test_phase2_orchestration import OrchestrationTests
 
@@ -245,7 +246,6 @@ class HostTests(unittest.TestCase):
         report = fixture.run_workload()
         bindings = fixture.bindings(report)
         packet = workload_schema.packet(report, **bindings)
-        raw = schema.encode(packet, schema.MAX_PACKET)
         pins = json.loads((ROOT / "s0-pins.json").read_bytes())
         work, _, _ = profile()
 
@@ -262,13 +262,21 @@ class HostTests(unittest.TestCase):
             def inspect(self, _cid):
                 return {"Running": False}
 
-        for exit_code, oom, expected in (
-            (0, False, True),
-            (137, False, False),
-            (0, True, False),
-            (None, False, False),
-            (False, False, False),
+        for exit_code, oom, transfer, expected in (
+            (0, False, False, True),
+            (137, False, False, False),
+            (0, True, False, False),
+            (None, False, False, False),
+            (False, False, False, False),
+            (0, False, True, True),
+            (137, False, True, False),
+            (0, True, True, False),
         ):
+            raw = (
+                wheel_transfer.from_work(fixture.work, packet, bindings=bindings)
+                if transfer
+                else schema.encode(packet, schema.MAX_PACKET)
+            )
             state = {
                 "type": host_seam.STATE,
                 "phase": host_seam.PHASE,
@@ -276,6 +284,7 @@ class HostTests(unittest.TestCase):
                 "user": "1000:1000",
                 "pull": "ready",
                 "started": False,
+                "transfer_verified_wheels": transfer,
                 "bindings": bindings,
                 "failure": None,
                 "IO": [{"operation": "pull", **Result().facts()}],
@@ -291,6 +300,7 @@ class HostTests(unittest.TestCase):
                 patch.object(LEGACY, "memory_guard"),
                 patch.object(LEGACY, "reserve_create", return_value="c" * 64),
                 patch.object(LEGACY, "owns", return_value=True),
+                patch.object(wheel_transfer, "keep_private") as persist,
                 patch.object(
                     LEGACY,
                     "reconcile",
@@ -298,7 +308,17 @@ class HostTests(unittest.TestCase):
                 ),
             ):
                 result = workload_host.run_owned(
-                    work, pins, state, ENTRY, sha(ENTRY), bindings=bindings, factory=Client
+                    work,
+                    pins,
+                    state,
+                    ENTRY,
+                    sha(ENTRY),
+                    bindings=bindings,
+                    factory=Client,
                 )
             self.assertTrue(result["resources_released"])
             self.assertIs(result["ok"], expected)
+            if transfer and expected:
+                persist.assert_called_once_with(work, raw)
+            else:
+                persist.assert_not_called()

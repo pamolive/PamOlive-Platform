@@ -89,3 +89,15 @@ methods; their errors still prevent success. No messages, paths, bodies or local
 variables are exported. Old child `/2` is refused, including when rehashed. Empty
 diagnostics are required for success; diagnostic observations never promote a
 failed child or relax guards, profiles, RECORD, source or SQL bindings.
+
+An explicit `transfer_verified_wheels` workflow dispatch can retain a private
+handoff for a subsequent laboratory step in the same job. The existing
+offline builder sends a bounded frame containing its normal success packet,
+its exact installed-input descriptor and the three verified wheels. The host
+checks the original success packet and bindings, then checks each wheel's size
+and digest. It retains `verified-wheels.bin` with mode 0600 only after the
+existing exit, reap and cleanup checks pass. The workflow uploads the public
+report through its existing allowlist. The frame stays in the job's private
+temporary directory, outside that allowlist. The default run keeps its original
+packet protocol. The handoff only receives verified installation materials.
+The PostgreSQL and mutual TLS laboratory has its own acceptance requirements.

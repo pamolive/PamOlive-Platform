@@ -12,6 +12,7 @@ adapter = importlib.import_module("adapter_v2")
 schema = importlib.import_module("schema")
 workload = importlib.import_module("workload_schema")
 support = importlib.import_module("support")
+wheel_transfer = importlib.import_module("wheel_transfer")
 
 
 def failed(bindings, error):
@@ -48,10 +49,32 @@ def proc(path, cap):
     return raw.decode("utf-8")
 
 
+def encode_result(report, bindings, transfer):
+    packet = workload.packet(report, **bindings)
+    if transfer and packet["ok"]:
+        try:
+            return wheel_transfer.from_work(orchestrate.WORK, packet, bindings=bindings), 0
+        except Exception:
+            # Keep the underlying installation and process evidence, but
+            # refuse this reception if any transferred file changed.
+            report = {
+                **report,
+                "state": "FAILED",
+                "failure": {
+                    "phase": "post-check",
+                    "code": "DATA_OR_ENVIRONMENT_REFUSED",
+                    "exception_type": "Other",
+                },
+            }
+            packet = workload.packet(report, **bindings)
+    return schema.encode(packet, schema.MAX_PACKET), (0 if packet["ok"] else 42)
+
+
 def main():
     parser = argparse.ArgumentParser()
     for field in ("source", "input", "sql", "materials"):
         parser.add_argument("--expected-" + field, required=True)
+    parser.add_argument("--transfer-verified-wheels", action="store_true")
     args = parser.parse_args()
     bindings = {
         "expected_" + field: getattr(args, "expected_" + field)
@@ -75,11 +98,10 @@ def main():
         report = orchestrate.run(Path("/materials"))
     except BaseException as error:
         report = failed(bindings, error)
-    packet = workload.packet(report, **bindings)
-    raw = schema.encode(packet, schema.MAX_PACKET)
+    raw, code = encode_result(report, bindings, args.transfer_verified_wheels)
     sys.stdout.buffer.write(raw)
     sys.stdout.buffer.flush()  # Export before the container/work tmpfs disappears.
-    raise SystemExit(0 if packet["ok"] else 42)
+    raise SystemExit(code)
 
 
 if __name__ == "__main__":
