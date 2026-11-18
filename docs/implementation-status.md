@@ -1,6 +1,28 @@
 # État réel de l’implémentation
 
-## Livraison du code de développement — 17 novembre 2026
+## Préparation actuelle de la mesure privée Chrome — 18 novembre 2026
+
+Main reçu reste `3532232`. Les notes ci-dessous conservent leurs SHA historiques.
+Le candidat navigateur `6d4c7db` de la PR #28 a reçu deux inventaires authentifiés
+identiques de 261 entrées, puis refusé le profil non commissionné avant staging
+et UI. La revue R13 a ensuite confirmé et corrigé une perte de contrôle CI :
+l'étape UI doit rester présente, avec HOLD42 impératif même après un cycle privé.
+
+La décision source de l'[ADR-036](adr-036-authenticated-browser-test-bundle.md)
+admet uniquement STAGE_CLEANUP_ONLY pour le package, l'arbre et l'unique helper
+exacts. Préfixe privé 0700, aucun payload exécuté, nettoyage limité aux objets
+possédés et absence finale indépendante restent requis. Le profil opérationnel
+v3 demeure désactivé. Les 223 tests Chrome et 14 contrats UI passent en préparation
+locale, sans skip ; la mesure Linux de ce nouveau candidat reste à recevoir.
+Ce n'est pas un sandbox actif ni un parcours P1-G qualifié.
+
+Le kit OpenSSL indépendant `e4fa523`, PR #29, a passé ses deux suites de 82 tests
+purs Linux, PostgreSQL et Directory. Les deux scans exacts refusent 37 groupes,
+dont les deux constats OpenSSL supplémentaires documentés dans cette PR.
+Aucune image nouvelle qualifiée, fusion de ces candidats ou installation NAS
+ne découle de cette préparation. Aucun ancien succès n'est transféré au nouveau SHA.
+
+## Historique de livraison du code de développement — 17 novembre 2026
 
 À la demande explicite du propriétaire, la capture Expat APT et ses diagnostics
 sont intégrés à main avec le contrat de contexte typé et le diagnostic navigateur.

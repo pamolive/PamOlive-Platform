@@ -378,6 +378,11 @@ def admit(tree, profile_raw, profile_sha):
         and profile["commissioned"] is True,
         "bundle_profile_uncommissioned",
     )
+    return _admitted_tree(tree, profile)
+
+
+def _admitted_tree(tree, profile):
+    """Shared exact-tree validation; authority is checked by each typed caller."""
     need(
         type(tree) is dict
         and set(tree)
@@ -458,6 +463,17 @@ def file_key(row):
     return directory_key(row) + (row.st_nlink, row.st_size, row.st_mtime_ns, row.st_ctime_ns)
 
 
+def _close_owned(ops, fds):
+    """Attempt every acquired FD once; any close uncertainty remains a refusal."""
+    unknown = False
+    for fd in reversed(fds):
+        try:
+            ops.close(fd)
+        except BaseException:
+            unknown = True
+    need(not unknown, "bundle_FD_close_unknown")
+
+
 def root_parents(path, ops=os):
     """Open the complete fixed parent chain through held directory FD anchors."""
     need(path == Path("/usr/lib"), "bundle_parent_path")
@@ -484,8 +500,7 @@ def root_parents(path, ops=os):
             parent = fd
         yield parent
     finally:
-        for fd in reversed(fds):
-            ops.close(fd)
+        _close_owned(ops, fds)
 
 
 def open_child(parent, name, ops=os):
@@ -518,11 +533,10 @@ def walk_parent(root_fd, name, ops=os):
             fds.append(current)
         yield current
     finally:
-        for fd in reversed(fds):
-            ops.close(fd)
+        _close_owned(ops, fds)
 
 
-def fresh_file(parent, name, body, mode, *, until, ops=os, clock=time.monotonic):
+def fresh_file(parent, name, body, mode, *, until, ops=os, clock=time.monotonic, _phase_a=None):
     budget(until, clock)
     fd = ops.open(
         name,
@@ -539,8 +553,12 @@ def fresh_file(parent, name, body, mode, *, until, ops=os, clock=time.monotonic)
             and row.st_size == 0,
             "bundle_new_file",
         )
+        if _phase_a is not None:
+            _phase_a.file(name, row, {"bytes": len(body), "sha256": digest(body), "mode": mode})
         budget(until, clock)
         need(ops.write(fd, body) == len(body), "bundle_short_write")
+        if _phase_a is not None:
+            budget(until, clock)
         ops.fsync(fd)
         budget(until, clock)
         ops.fchmod(fd, mode)
@@ -549,18 +567,25 @@ def fresh_file(parent, name, body, mode, *, until, ops=os, clock=time.monotonic)
             == file_key(ops.stat(name, dir_fd=parent, follow_symlinks=False)),
             "bundle_new_file_race",
         )
+        if _phase_a is not None:
+            _phase_a.complete_file(name, ops.fstat(fd))
     finally:
         ops.close(fd)
 
 
 def stage(
-    stream, tree, profile_raw, profile_sha, env, bindings, *, until, ops=os, clock=time.monotonic
+    stream, tree, profile_raw, profile_sha, env, bindings, *, until, ops=os, clock=time.monotonic,
+    _phase_a=None,
 ):
     """Linux Root only; existing prefix is never adopted or repaired."""
     from contextlib import contextmanager
 
     need(ops.getuid() == ops.geteuid() == ops.getgid() == ops.getegid() == 0, "bundle_root_only")
-    names = admit(tree, profile_raw, profile_sha)
+    if _phase_a is None:
+        names = admit(tree, profile_raw, profile_sha)
+    else:
+        _phase_a.validate(env, bindings)
+        names = _phase_a.admit(tree, profile_raw, profile_sha)
     budget(until, clock)
     archive_context = checked_tar(stream, until=until, clock=clock)
     path = root_path(env)
@@ -589,9 +614,13 @@ def stage(
     with contextmanager(root_parents)(path.parent, ops) as parent:
         budget(until, clock)
         ops.mkdir(path.name, 0o700, dir_fd=parent)  # EXCLUSIVE: no exist_ok and no adoption.
+        if _phase_a is not None:
+            _phase_a.claimed(parent, path.name)
         root_fd = open_child(parent, path.name, ops)
         root_before = directory_key(ops.fstat(root_fd))
         try:
+            if _phase_a is not None:
+                _phase_a.bind(parent, root_fd, path.name)
             for name, row in sorted(
                 names.items(), key=lambda item: (len(PurePosixPath(item[0]).parts), item[0])
             ):
@@ -603,8 +632,12 @@ def stage(
                     ops.mkdir(PurePosixPath(name).name, 0o700, dir_fd=location)
                     child = open_child(location, PurePosixPath(name).name, ops)
                     try:
+                        if _phase_a is not None:
+                            _phase_a.directory(name, ops.fstat(child))
                         budget(until, clock)
                         ops.fchmod(child, 0o755)  # Only this newly-created owned object.
+                        if _phase_a is not None:
+                            _phase_a.directory(name, ops.fstat(child))
                     finally:
                         ops.close(child)
             copied = set()
@@ -648,6 +681,8 @@ def stage(
                                 and first.st_size == 0,
                                 "bundle_new_file",
                             )
+                            if _phase_a is not None:
+                                _phase_a.file(relative, first, row)
                             h, length, magic = hashlib.sha256(), 0, b""
                             with archive.extractfile(member) as source:
                                 while chunk := source.read(65536):
@@ -678,6 +713,8 @@ def stage(
                                 file_key(ops.fstat(fd)) == file_key(named) and named.st_nlink == 1,
                                 "bundle_new_file_race",
                             )
+                            if _phase_a is not None:
+                                _phase_a.complete_file(relative, named)
                         finally:
                             ops.close(fd)
                     copied.add(relative)
@@ -688,8 +725,11 @@ def stage(
             budget(until, clock)
             manifest = canonical(tree)
             receipt = {
-                "schema": SCHEMA,
-                "state": "STAGED_AUTHENTICATED_TEST_BUNDLE",
+                "schema": SCHEMA if _phase_a is None else _phase_a.STAGED_SCHEMA,
+                "state": (
+                    "STAGED_AUTHENTICATED_TEST_BUNDLE"
+                    if _phase_a is None else "PRIVATE_STAGE_CLEANUP_ONLY"
+                ),
                 **bindings,
                 "run": env["GITHUB_RUN_ID"],
                 "attempt": env["GITHUB_RUN_ATTEMPT"],
@@ -704,7 +744,9 @@ def stage(
                 "operational_GO": False,
             }
             fresh_file(
-                root_fd, ".bundle-manifest.json", manifest, 0o444, until=until, ops=ops, clock=clock
+                root_fd, ".bundle-manifest.json", manifest, 0o444,
+                until=until, ops=ops, clock=clock,
+                _phase_a=_phase_a,
             )
             fresh_file(
                 root_fd,
@@ -714,6 +756,7 @@ def stage(
                 until=until,
                 ops=ops,
                 clock=clock,
+                _phase_a=_phase_a,
             )
             need(
                 directory_key(ops.fstat(root_fd))
@@ -724,16 +767,29 @@ def stage(
             budget(until, clock)
             ops.fsync(root_fd)
             budget(until, clock)
-            ops.fchmod(root_fd, 0o755)  # Publish only after all bytes and receipts are complete.
+            if _phase_a is None:
+                # Publish only after all bytes and receipts are complete.
+                ops.fchmod(root_fd, 0o755)
             need(
                 directory_key(ops.fstat(root_fd))
                 == directory_key(ops.stat(path.name, dir_fd=parent, follow_symlinks=False))
-                and stat.S_IMODE(ops.fstat(root_fd).st_mode) == 0o755,
+                and stat.S_IMODE(ops.fstat(root_fd).st_mode)
+                == (0o755 if _phase_a is None else 0o700),
                 "bundle_root_race",
             )
+            if _phase_a is not None:
+                verify(
+                    env, bindings, profile_raw, profile_sha, until=until,
+                    ops=ops, clock=clock, _phase_a=_phase_a,
+                )
+                _phase_a.stage_verified(receipt)
         finally:
-            ops.close(root_fd)
-    budget(until, clock)
+            try:
+                if _phase_a is not None:
+                    _phase_a.cleanup(parent, root_fd, path.name)
+            finally:
+                ops.close(root_fd)
+    budget(until if _phase_a is None else _phase_a.until, clock)
     return receipt
 
 
@@ -784,18 +840,24 @@ def verify(
     ops=os,
     clock=time.monotonic,
     runtime_check=None,
+    _phase_a=None,
 ):
     """Rehash every resource and exact metadata before/after a browser run."""
     from contextlib import contextmanager
 
     path = root_path(env)
     budget(until, clock)
+    if _phase_a is not None:
+        _phase_a.validate(env, bindings)
     need("root_interpreter" in bindings or callable(runtime_check), "bundle_root_runtime_checker")
     with contextmanager(root_parents)(path.parent, ops) as parent:
         root_fd = open_child(parent, path.name, ops)
         try:
             root_identity = directory_key(ops.fstat(root_fd))
-            need(stat.S_IMODE(ops.fstat(root_fd).st_mode) == 0o755, "bundle_root_mode")
+            need(
+                stat.S_IMODE(ops.fstat(root_fd).st_mode) == (0o755 if _phase_a is None else 0o700),
+                "bundle_root_mode",
+            )
             raw, receipt_row = read_leaf(
                 root_fd, ".bundle-receipt.json", 32768, ops=ops, until=until, clock=clock
             )
@@ -806,7 +868,10 @@ def verify(
             )
             need(stat.S_IMODE(manifest_row.st_mode) == 0o444, "bundle_receipt_mode")
             tree = json_bytes(manifest_raw)
-            names = admit(tree, profile_raw, profile_sha)
+            names = (
+                admit(tree, profile_raw, profile_sha)
+                if _phase_a is None else _phase_a.admit(tree, profile_raw, profile_sha)
+            )
             root_binding_keys = {
                 "revision",
                 "pins_manifest_sha256",
@@ -847,8 +912,11 @@ def verify(
             need(
                 type(receipt) is dict
                 and set(receipt) == expected_keys
-                and receipt["schema"] == SCHEMA
-                and receipt["state"] == "STAGED_AUTHENTICATED_TEST_BUNDLE"
+                and receipt["schema"] == (SCHEMA if _phase_a is None else _phase_a.STAGED_SCHEMA)
+                and receipt["state"] == (
+                    "STAGED_AUTHENTICATED_TEST_BUNDLE"
+                    if _phase_a is None else "PRIVATE_STAGE_CLEANUP_ONLY"
+                )
                 and receipt["run"] == env["GITHUB_RUN_ID"]
                 and receipt["attempt"] == env["GITHUB_RUN_ATTEMPT"]
                 and all(receipt[k] == value for k, value in bindings.items())

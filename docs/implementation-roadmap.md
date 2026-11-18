@@ -1,6 +1,26 @@
 # Roadmap d’implémentation et qualification
 
-## Livraison du code de développement — 17 novembre 2026
+## Prochaine mesure limitée — 18 novembre 2026
+
+Publier le delta R13 après revue du profil stage-only exact, fermeture de ses
+pins et régression CI persistante. La première mesure Linux autorisée par
+l'[ADR-036](adr-036-authenticated-browser-test-bundle.md) est uniquement une copie
+privée 0700, vérification et nettoyage du préfixe possédé. Elle répète toutes
+les authentifications et refuse toute dérive, expiration, état inconnu ou
+nettoyage incomplet. Aucun payload/helper/navigateur n'est exécuté.
+
+Même en cas de cycle positif, conserver HOLD42 et l'étape UI historique : le job
+reste non qualifié pour le parcours complet. Phase B devra vérifier séparément
+la relocalisation, le sandbox actif et AppArmor avant l'UI. Les 223 tests Chrome
+et 14 contrats UI locaux ne remplacent pas ces mesures.
+
+La PR #29 OpenSSL a reçu ses propres tests Linux/PostgreSQL/Directory, puis deux
+refus stricts de scan à 37 groupes. Poursuivre ses remédiations et les autres
+travaux réalisables sans promouvoir une image non qualifiée ni contacter le NAS.
+Main reçu reste `3532232`. Les paragraphes suivants sont des notes historiques
+liées à leurs révisions, sans transfert automatique de leurs résultats.
+
+## Historique de livraison du code de développement — 17 novembre 2026
 
 À la demande explicite du propriétaire, la capture Expat APT et ses diagnostics
 sont intégrés à main avec le contrat de contexte typé et le diagnostic navigateur.

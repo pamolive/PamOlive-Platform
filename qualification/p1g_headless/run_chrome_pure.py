@@ -36,7 +36,9 @@ def audit(event, args):
 sys.addaudithook(audit)
 sys.path.insert(0, str(Path(__file__).resolve().parent / "gpg_fixture"))
 suite = unittest.TestSuite()
-for name in ("test_chrome_bootstrap", "test_chrome_key_scope", "test_chrome_bundle"):
+for name in (
+    "test_chrome_bootstrap", "test_chrome_key_scope", "test_chrome_bundle", "test_chrome_phase_a"
+):
     module = __import__("qualification.p1g_headless." + name, fromlist=[name])
     suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(module))
 sys.path.insert(0, str(Path(__file__).resolve().parent / "gpg_fixture"))
