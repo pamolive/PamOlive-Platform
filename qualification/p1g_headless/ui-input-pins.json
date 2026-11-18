@@ -9,7 +9,7 @@
   "templates/security/resume.html": "9b34de38e9aaf96a908df3673bda7cd9658a9adaa91928f260c4b1719cbb7192",
   "templates/registration/login.html": "f6335b5a56cfd16ffc0ddd00a3806c3d7863798f9ce19eaa1668ffae8320e563",
   "templates/governance/approvals.html": "254db2ad9ad40dcc8aa8b0564a42e6f07e1b42a584be893f8f84ac785d7ab7a8",
-  "templates/governance/access_contract.html": "7c4e33b36a84f82861d1358ee01a1145f2d70d298bd2f8c5ad16e790936963fc",
+  "templates/governance/access_contract.html": "1b6896334cc26c88fc99e9b4a1f136b9027f9920a755d6453df0967c84ef53ad",
   "templates/observe/detail.html": "0a1d4b66023c9596d3a9c5ead4c49a657f534609e21ab72c2b56e478854696c1",
   "platform_core/security.py": "38db4cd60293e061507e283753439913784a44a9d973e04fc0cdb61359379db6",
   "platform_core/view_access.py": "0f93cde3dcff33d487a1c8f91400948c0e272115f17aeceee57fb2a61a37df2f",

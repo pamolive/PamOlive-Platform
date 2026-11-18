@@ -1,5 +1,7 @@
 """Versioned, read-only access story. A recorded decision is never an external effect."""
 
+from uuid import UUID
+
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
@@ -10,10 +12,12 @@ from platform_modules.access.models import AccessEvaluation, AccessIntent
 from platform_modules.access.provenance_status import verified_origin_status
 from platform_modules.approvals.models import ApprovalDecision
 from platform_modules.connectors.models import ExecutionEvidence, ExternalChange
+from platform_modules.governance.models import ApprovalPolicyRevision
 from platform_modules.identity.models import Grant
 from platform_modules.pam.models import RelayConnection, SessionLease
 
-from .models import Organization
+from .audit import digest
+from .models import AuditEvent, Organization
 from .product_modules import PRODUCT_MAPPING_VERSION
 from .services import authorize, module_available, require_module
 from .tenancy import current_organization, organization_context
@@ -41,6 +45,78 @@ def _section(items=(), *, available=True, truncated=False):
 def _bounded(query, limit):
     rows = list(query[: limit + 1])
     return rows[:limit], len(rows) > limit
+
+
+def _recorded_approval_policies(intent, decisions, organization):
+    """Project the policy recorded when each vote was accepted, using only local audit data."""
+    if not decisions:
+        return {}
+    by_id = {str(row.pk): row for row in decisions}
+    events, overflow = _bounded(
+        AuditEvent.objects.filter(
+            organization=organization,
+            action="approvals.intent.decided.v1",
+            object_type=ApprovalDecision._meta.label_lower,
+            object_id__in=by_id,
+        ).order_by("sequence"),
+        2 * len(decisions),
+    )
+    if overflow:
+        return {}
+    seen, candidates, revision_ids = set(), {}, set()
+    for event in events:
+        decision_id = event.object_id
+        if decision_id in seen:
+            candidates.pop(decision_id, None)
+            continue
+        seen.add(decision_id)
+        data = event.metadata
+        if (
+            event.sequence is None
+            or event.actor_id != by_id[decision_id].reviewer_id
+            or not isinstance(data, dict)
+            or data.get("intent_id") != str(intent.pk)
+            or event.event_hash != digest(event)
+        ):
+            continue
+        requirements = data.get("requirements")
+        if not isinstance(requirements, dict):
+            continue
+        policy_id = requirements.get("policy_id")
+        minimum = requirements.get("minimum")
+        approved = requirements.get("approved")
+        unit = requirements.get("unit")
+        if (
+            not isinstance(policy_id, str)
+            or type(minimum) is not int or minimum < 1
+            or type(approved) is not int or approved < 0
+            or unit not in (
+                "comptes de connexion", "personnes liées", "personnes indépendantes attestées",
+            )
+        ):
+            continue
+        if policy_id != "baseline/1":
+            if len(policy_id) != 36:
+                continue
+            try:
+                if str(UUID(policy_id)) != policy_id:
+                    continue
+            except ValueError:
+                continue
+            revision_ids.add(policy_id)
+        candidates[decision_id] = {
+            "policy_id": policy_id, "minimum": minimum, "approved": approved, "unit": unit,
+            "audit_id": str(event.pk), "assurance": "local_audit_record",
+        }
+    same_org_revisions = {
+        str(pk) for pk in ApprovalPolicyRevision.objects.filter(
+            organization=organization, pk__in=revision_ids,
+        ).values_list("pk", flat=True)
+    }
+    return {
+        key: policy for key, policy in candidates.items()
+        if policy["policy_id"] == "baseline/1" or policy["policy_id"] in same_org_revisions
+    }
 
 
 def _origin(change, organization):
@@ -135,12 +211,17 @@ def build_access_contract(intent_id, *, actor, organization, limit=100):
             decisions, truncated = _bounded(
                 ApprovalDecision.objects.filter(intent=intent).order_by("decided_at", "pk"), limit
             )
+            policies = (
+                _recorded_approval_policies(intent, decisions, organization)
+                if module_available(organization, "governance") else {}
+            )
             result["approval_decisions"] = _section(({
                 "id": str(row.pk), "reviewer_id": row.reviewer_id,
                 "reviewer_identity_id": _id(row.reviewer_identity_id),
                 "approved": row.approved, "comment": row.comment,
                 "decided_at": _time(row.decided_at), "assurance": "recorded_decision",
                 "confers_execution": False,
+                "recorded_policy": policies.get(str(row.pk)),
             } for row in decisions), truncated=truncated)
 
         grant = None
