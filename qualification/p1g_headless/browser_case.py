@@ -422,8 +422,9 @@ class P1GBrowser(StaticLiveServerTestCase):
         )
         node_before = support.tool_pin(node, root_owner=False, cap=128 * 1024**2)
         FACTS["SDK_Node_tool"] = node_before
-        binary = Path("/opt/google/chrome/chrome")
-        before = support.tool_pin(binary)
+        binary, before = support.chrome_target(
+            Path(__file__).resolve().parents[2], mode=TLS["browser_mode"]
+        )
         self.assertEqual(before, TLS["browser_binary_pin"])
         clean_env = {
             "HOME": TLS["browser_home"],
@@ -461,7 +462,11 @@ class P1GBrowser(StaticLiveServerTestCase):
             self.revoke_local_right_UI(browser)
             self.assertEqual(self.errors, [])
             self.assertEqual(self.denied, [])
-            self.assertEqual(support.tool_pin(binary), before)
+            final_binary, final_pin = support.chrome_target(
+                Path(__file__).resolve().parents[2], mode=TLS["browser_mode"]
+            )
+            self.assertEqual(final_binary, binary)
+            self.assertEqual(final_pin, before)
             FACTS["browser_E2E_executed"] = True
         finally:
             cleanup_errors = []
