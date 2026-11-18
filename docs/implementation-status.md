@@ -1,6 +1,33 @@
 # État réel de l’implémentation
 
-## Livraison du code de développement — 17 novembre 2026
+## État consolidé reçu — 18 novembre 2026
+
+Le dernier main reçu est `3532232`. Le correctif de fixture `96f7fa7`, proposé
+dans la [PR #27](https://github.com/pamolive/PamOlive-Platform/pull/27), a passé
+ses deux suites PostgreSQL et Directory ; les scans stricts de ces deux images
+refusent encore 35 groupes. Les comptes et contextes distincts sont conservés
+dans [le rapport exact](validation-main-3532232.md), sans qualification globale.
+
+Le candidat navigateur `6d4c7db` de la
+[PR #28](https://github.com/pamolive/PamOlive-Platform/pull/28) a reçu deux
+inventaires authentifiés identiques de 261 entrées, puis refusé l'admission
+du profil non commissionné avant dépendances, staging et UI. Cela ne constitue
+ni un sandbox actif ni un parcours P1-G validé.
+
+[ADR-037](adr-037-openssl-system-backport-source.md) prépare un kit SOURCE
+OpenSSL distinct du produit et de son fournisseur embarqué dans cryptography.
+Les pins de confiance, plan Debian exact et verrou de dépendances restent null.
+Trois propositions se rejouent sur une référence upstream ; QUIC reste non
+résolu et aucune applicabilité à Debian u3 n'est inférée. Publication du code,
+contrats purs et construction réellement authentifiée sont des étapes séparées.
+
+Le scan du push navigateur reçoit encore 35 groupes ; celui de sa PR reçoit
+37 groupes, dont deux nouveaux constats OpenSSL, CVE-2026-107493 et
+CVE-2026-124709. Les 35 groupes communs sont inchangés. Images, contextes et
+bases du scanner sont distincts ; aucune cause unique n'est inférée. Ces deux
+constats restent hors du périmètre initial de quatre CVE du kit SOURCE.
+
+## Historique de livraison du code de développement — 17 novembre 2026
 
 À la demande explicite du propriétaire, la capture Expat APT et ses diagnostics
 sont intégrés à main avec le contrat de contexte typé et le diagnostic navigateur.

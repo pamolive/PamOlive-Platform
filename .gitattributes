@@ -70,3 +70,12 @@ deploy/expat_apt/code-pins.json -text whitespace=cr-at-eol
 
 # Preserve the reviewed read-only origin helper source and its exact pins.
 qualification/build_origin/** -text whitespace=cr-at-eol
+
+# Keep the independently reviewed OpenSSL SOURCE kit and public signed text exact.
+deploy/openssl-remediation/** -text whitespace=cr-at-eol
+# Preserve supplier patch context and the exact public upstream test/advisory bytes.
+deploy/openssl-remediation/materials/patches/*.patch whitespace=-blank-at-eol,-blank-at-eof,cr-at-eol
+deploy/openssl-remediation/proposal/patches/*.patch whitespace=-blank-at-eol,cr-at-eol
+deploy/openssl-remediation/materials/baseline/upstream-3.5.7/test/recipes/30-test_evp.t whitespace=-blank-at-eol,cr-at-eol
+deploy/openssl-remediation/materials/baseline/upstream-3.5.7/test/recipes/30-test_evp_data/evpciph_aes_gcm_siv.txt whitespace=-blank-at-eol,-blank-at-eof,cr-at-eol
+deploy/openssl-remediation/materials/official-advisory-20261110.txt whitespace=-blank-at-eol,cr-at-eol

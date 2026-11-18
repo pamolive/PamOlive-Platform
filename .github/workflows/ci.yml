@@ -29,6 +29,8 @@ jobs:
         run: python -I -S -B qualification/public_engine_measurement/run_pure.py
       - name: Verify the confined public PostgreSQL identity owner without Docker
         run: python -I -S -B qualification/public_pg_identity_probe/run_pure.py
+      - name: Verify uncommissioned OpenSSL source contracts without native execution
+        run: python -I -B -S deploy/openssl-remediation/run_pure.py
       - name: Verify portable reviewed secret metadata before the unchanged secret scan
         run: python -m deploy.check_secret_baseline .secrets.baseline
       - name: Reject known vulnerabilities in the application lock

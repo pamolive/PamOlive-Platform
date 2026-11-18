@@ -1,0 +1,182 @@
+[
+  {
+    "url": "https://security.debian.org/debian-security/pool/updates/main/o/openssl/openssl_3.5.7-1~deb13u3.dsc",
+    "final_url": "https://security.debian.org/debian-security/pool/updates/main/o/openssl/openssl_3.5.7-1~deb13u3.dsc",
+    "path": "materials/debian/openssl_3.5.7-1~deb13u3.dsc",
+    "bytes": 2710,
+    "sha256": "9cdb0d9daf0773ca5c0f3f5ea1fc59b1106a99e005a5c048948b826e8d3b47e1",
+    "received_at": "2026-11-17T21:17:01.742563+00:00",
+    "transport_only_not_signature_authority": true,
+    "usable_source_text": true
+  },
+  {
+    "url": "https://security.debian.org/debian-security/dists/trixie-security/InRelease",
+    "final_url": "https://security.debian.org/debian-security/dists/trixie-security/InRelease",
+    "path": "materials/debian/InRelease",
+    "bytes": 43409,
+    "sha256": "6b1967280f6901efc36475be8a40819c00e9a96d584fe66294a344aa6af0892c",
+    "received_at": "2026-11-17T21:17:01.862144+00:00",
+    "transport_only_not_signature_authority": true,
+    "usable_source_text": true
+  },
+  {
+    "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/include/internal/quic_sf_list.h",
+    "final_url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/include/internal/quic_sf_list.h",
+    "path": "materials/baseline/upstream-3.5.7/include/internal/quic_sf_list.h",
+    "bytes": 5098,
+    "sha256": "e43aacacd29c894ef7718aea6cd6dec07b69ff4dd0e817b3667ece935d20d009",
+    "received_at": "2026-11-17T21:17:02.160943+00:00",
+    "transport_only_not_signature_authority": true,
+    "usable_source_text": true
+  },
+  {
+    "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/ssl/quic/quic_sf_list.c",
+    "final_url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/ssl/quic/quic_sf_list.c",
+    "path": "materials/baseline/upstream-3.5.7/ssl/quic/quic_sf_list.c",
+    "bytes": 8332,
+    "sha256": "28ce496a0f3274fdb72bf95f41eca776a1468419e4607319b40d410d9fbde8fb",
+    "received_at": "2026-11-17T21:17:02.517931+00:00",
+    "transport_only_not_signature_authority": true,
+    "usable_source_text": true
+  },
+  {
+    "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/test/recipes/30-test_evp.t",
+    "final_url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/test/recipes/30-test_evp.t",
+    "path": "materials/baseline/upstream-3.5.7/test/recipes/30-test_evp.t",
+    "bytes": 8781,
+    "sha256": "bd54650e3a50356817f0a089c210c47657e52d249e50b5bd3f42b95a49319a83",
+    "received_at": "2026-11-17T21:17:02.837147+00:00",
+    "transport_only_not_signature_authority": true,
+    "usable_source_text": true
+  },
+  {
+    "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/test/recipes/30-test_evp_data/evpciph_aes_gcm_siv.txt",
+    "final_url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/test/recipes/30-test_evp_data/evpciph_aes_gcm_siv.txt",
+    "path": "materials/baseline/upstream-3.5.7/test/recipes/30-test_evp_data/evpciph_aes_gcm_siv.txt",
+    "bytes": 15873,
+    "sha256": "b075b0e339f0c442c92a5bec3e5254976b357f68e273f1cc5801fb6fc34fbd8c",
+    "received_at": "2026-11-17T21:17:03.165144+00:00",
+    "transport_only_not_signature_authority": true,
+    "usable_source_text": true
+  },
+  {
+    "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/test/recipes/80-test_ssl_new.t",
+    "final_url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/test/recipes/80-test_ssl_new.t",
+    "path": "materials/baseline/upstream-3.5.7/test/recipes/80-test_ssl_new.t",
+    "bytes": 8152,
+    "sha256": "ef49dd2b80448cef490501242cf24c4fc6414bf8c48cfb3fa9d9871cc3b64669",
+    "received_at": "2026-11-17T21:17:03.464959+00:00",
+    "transport_only_not_signature_authority": true,
+    "usable_source_text": true
+  },
+  {
+    "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/test/recipes/70-test_quic_stream.t",
+    "final_url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/test/recipes/70-test_quic_stream.t",
+    "path": "materials/baseline/upstream-3.5.7/test/recipes/70-test_quic_stream.t",
+    "bytes": 567,
+    "sha256": "58b4c49e8c2873a1730fc53fb51814bbe6142fae7a0cac8624e75553ae370e6c",
+    "received_at": "2026-11-17T21:17:03.779273+00:00",
+    "transport_only_not_signature_authority": true,
+    "usable_source_text": true
+  },
+  {
+    "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/test/recipes/80-test_quicapi.t",
+    "path": "materials/baseline/upstream-3.5.7/test/recipes/80-test_quicapi.t",
+    "received": false,
+    "http_status": 404
+  },
+  {
+    "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/test/recipes/15-test_ec.t",
+    "final_url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/test/recipes/15-test_ec.t",
+    "path": "materials/baseline/upstream-3.5.7/test/recipes/15-test_ec.t",
+    "bytes": 4714,
+    "sha256": "9f0cb9228ceba727017e5a5084668238ff77450ef47a960d713737cb8f9d0e0c",
+    "received_at": "2026-11-17T21:17:04.403528+00:00",
+    "transport_only_not_signature_authority": true,
+    "usable_source_text": true
+  },
+  {
+    "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/test/quic_stream_test.c",
+    "final_url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/test/quic_stream_test.c",
+    "path": "materials/baseline/upstream-3.5.7/test/quic_stream_test.c",
+    "bytes": 19762,
+    "sha256": "b5a89a6ad3c05ee2b2d8f45aabdcea419464b21ec73a973a03487c46ed8237a7",
+    "received_at": "2026-11-17T21:17:04.774397+00:00",
+    "transport_only_not_signature_authority": true,
+    "usable_source_text": true
+  },
+  {
+    "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/test/evp_test.c",
+    "final_url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/test/evp_test.c",
+    "path": "materials/baseline/upstream-3.5.7/test/evp_test.c",
+    "bytes": 163411,
+    "sha256": "e67b93bf22a853701baa4b99fc35445008bfc5af8949e6d7e2ab6baf8c92079e",
+    "received_at": "2026-11-17T21:17:05.149726+00:00",
+    "transport_only_not_signature_authority": true,
+    "usable_source_text": true
+  },
+  {
+    "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/LICENSE.txt",
+    "final_url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/LICENSE.txt",
+    "path": "materials/baseline/upstream-3.5.7/LICENSE.txt",
+    "bytes": 10175,
+    "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+    "received_at": "2026-11-17T21:17:05.480259+00:00",
+    "transport_only_not_signature_authority": true,
+    "usable_source_text": true
+  },
+  {
+    "url": "https://sources.debian.org/data/main/o/openssl/3.5.7-1%7Edeb13u3/debian/control",
+    "path": "materials/debian-reference/debian/control",
+    "received": false,
+    "http_status": 404
+  },
+  {
+    "url": "https://sources.debian.org/data/main/o/openssl/3.5.7-1%7Edeb13u3/debian/rules",
+    "path": "materials/debian-reference/debian/rules",
+    "received": false,
+    "http_status": 404
+  },
+  {
+    "url": "https://sources.debian.org/data/main/o/openssl/3.5.7-1%7Edeb13u3/debian/patches/series",
+    "path": "materials/debian-reference/debian/patches/series",
+    "received": false,
+    "http_status": 404
+  },
+  {
+    "url": "https://sources.debian.org/data/main/o/openssl/3.5.7-1%7Edeb13u3/debian/libssl3t64.symbols",
+    "path": "materials/debian-reference/debian/libssl3t64.symbols",
+    "received": false,
+    "http_status": 404
+  },
+  {
+    "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/providers/implementations/ciphers/cipher_aes_gcm_siv.h",
+    "final_url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/providers/implementations/ciphers/cipher_aes_gcm_siv.h",
+    "path": "materials/baseline/upstream-3.5.7/providers/implementations/ciphers/cipher_aes_gcm_siv.h",
+    "bytes": 2641,
+    "sha256": "d4e16e903d736ca8407dcde418676a281b1411531344db18fef1da3ee9751172",
+    "received_at": "2026-11-17T21:27:08.970436+00:00",
+    "transport_only_not_signature_authority": true,
+    "usable_source_text": true
+  },
+  {
+    "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/include/openssl/ecerr.h",
+    "final_url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/include/openssl/ecerr.h",
+    "path": "materials/baseline/upstream-3.5.7/include/openssl/ecerr.h",
+    "bytes": 3359,
+    "sha256": "c072432649cd1e4bd1eb8c1f636bc2b57045d6f620d69d61c85f589d1c6b63e3",
+    "received_at": "2026-11-17T21:27:09.298151+00:00",
+    "transport_only_not_signature_authority": true,
+    "usable_source_text": true
+  },
+  {
+    "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/include/openssl/proverr.h",
+    "final_url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/include/openssl/proverr.h",
+    "path": "materials/baseline/upstream-3.5.7/include/openssl/proverr.h",
+    "bytes": 6414,
+    "sha256": "3aaec27b2bf592b5861a3524b6f03a541d7de34e6dfcbcabc2b6bc40221bc743",
+    "received_at": "2026-11-17T21:27:09.594708+00:00",
+    "transport_only_not_signature_authority": true,
+    "usable_source_text": true
+  }
+]

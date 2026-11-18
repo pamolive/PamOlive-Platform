@@ -1,0 +1,458 @@
+{
+  "schema": "pamolive.openssl-system-text-materials.v1",
+  "base_debian_source_version_required": "3.5.7-1~deb13u3",
+  "upstream_base_tag": "openssl-3.5.7",
+  "upstream_baseline_commit_reported": "8cf17aaeb4599f8af87fefd810b5b5fee90fe69e",
+  "commits": [
+    {
+      "cve": "CVE-2026-88823",
+      "commit": "159e1de0c448d7b9f09ad768c8e141def4aa1eb4",
+      "parent": "9a5764a6facb8a21cff9f012cf34ecd5c3f98e0a",
+      "upstream_selection": "https://openssl-library.org/news/vulnerabilities-3.5/",
+      "selected_branch_label": "3.5.10 git commit",
+      "cryptographic_signature_verified": false,
+      "files": [
+        {
+          "path": "providers/implementations/ciphers/cipher_aes_gcm_siv.c",
+          "status": "modified",
+          "parent": "9a5764a6facb8a21cff9f012cf34ecd5c3f98e0a",
+          "preimage_git_blob_sha1_observed": "484993e5a5e95d5db53dcd85167f5ea4045e3a94",
+          "postimage_git_blob_sha1_API_verified": "cdbaa9db945f383799fefdb81b0087c1756f6868",
+          "preimage_sha256": "25012f573a36a465f0a68fe004366ef586f3a153d60a5a53db55df9b7b1da5c3",
+          "postimage_sha256": "1c9190d4dfbb2fd767c588376167358e7fd32b135aad0827b8d2cd6b78d69793"
+        },
+        {
+          "path": "providers/implementations/ciphers/cipher_aes_gcm_siv_hw.c",
+          "status": "modified",
+          "parent": "9a5764a6facb8a21cff9f012cf34ecd5c3f98e0a",
+          "preimage_git_blob_sha1_observed": "c1079e0e7874a3df3466a2b39fa25da2b512f38a",
+          "postimage_git_blob_sha1_API_verified": "9cec707dd9bb6ab78010cdfe27fd212175d4d1c4",
+          "preimage_sha256": "37f4e407d03117c6b74e5d1385efb233f2d71225788f82857bff2368e7fd0457",
+          "postimage_sha256": "d5ea349bd8c5d48634b3a6006f1a1ef233213564ee675ee2fce4faec824cc639"
+        }
+      ]
+    },
+    {
+      "cve": "CVE-2026-107496",
+      "commit": "a0051cfe699bf5a047bc1c4faef65f80f7987366",
+      "parent": "1a73dc590cbad62d6f0329ea4779eadaa8d8fd75",
+      "upstream_selection": "https://openssl-library.org/news/vulnerabilities-3.5/",
+      "selected_branch_label": "3.5.10 git commit",
+      "cryptographic_signature_verified": false,
+      "files": [
+        {
+          "path": "crypto/ec/ec_key.c",
+          "status": "modified",
+          "parent": "1a73dc590cbad62d6f0329ea4779eadaa8d8fd75",
+          "preimage_git_blob_sha1_observed": "71f1c63e2ab62d02b25eb549f6ce3d9929ed95fa",
+          "postimage_git_blob_sha1_API_verified": "e112cd86027a5dbd6f1fc5957591bff7e8d3eb49",
+          "preimage_sha256": "76ffd45abfc989d3f5a7c80e71e7ff712cff2c1b3c70f471a5f952190b545bf2",
+          "postimage_sha256": "72726357d1e33de2fdc28da42781bb489d4a87762ed308ce81e0c49feaaa82bb"
+        },
+        {
+          "path": "test/ectest.c",
+          "status": "modified",
+          "parent": "1a73dc590cbad62d6f0329ea4779eadaa8d8fd75",
+          "preimage_git_blob_sha1_observed": "1e4ae9c63eda042a1e631cae9c4102e860ae8c46",
+          "postimage_git_blob_sha1_API_verified": "2bda8bde0f4bec231597199126227c551b435c61",
+          "preimage_sha256": "eec366891a69eb9d2de9d814abd51b2c9aa4db2ef51ca19dbc1869a48a446bfe",
+          "postimage_sha256": "404248bb6baaffa0ba1663cd21be5df7bd65e17c283591b29ab2664cc1ed6582"
+        }
+      ]
+    },
+    {
+      "cve": "CVE-2026-95692",
+      "commit": "257a3427aa0ef8d9dd2ef5b3e2d1c021a221b116",
+      "parent": "a0051cfe699bf5a047bc1c4faef65f80f7987366",
+      "upstream_selection": "https://openssl-library.org/news/vulnerabilities-3.5/",
+      "selected_branch_label": "3.5.10 git commit",
+      "cryptographic_signature_verified": false,
+      "files": [
+        {
+          "path": "providers/implementations/ciphers/cipher_aes_gcm_siv.c",
+          "status": "modified",
+          "parent": "a0051cfe699bf5a047bc1c4faef65f80f7987366",
+          "preimage_git_blob_sha1_observed": "cdbaa9db945f383799fefdb81b0087c1756f6868",
+          "postimage_git_blob_sha1_API_verified": "437be68f4fa6141671a960d3cbcc78d7c5a5eefb",
+          "preimage_sha256": "1c9190d4dfbb2fd767c588376167358e7fd32b135aad0827b8d2cd6b78d69793",
+          "postimage_sha256": "62510edfb867c2c33b034ec7f1f04913551827441a0f156966bc857cc271c211"
+        }
+      ]
+    },
+    {
+      "cve": "CVE-2026-95691",
+      "commit": "f6244675833e097c2429a40d1b206d95385bd42f",
+      "parent": "237f60028477b4bb74888f9366c2b693438e7cc0",
+      "upstream_selection": "https://openssl-library.org/news/vulnerabilities-3.5/",
+      "selected_branch_label": "3.5.10 git commit",
+      "cryptographic_signature_verified": false,
+      "files": [
+        {
+          "path": "include/internal/quic_strm_reas.h",
+          "status": "modified",
+          "parent": "237f60028477b4bb74888f9366c2b693438e7cc0",
+          "preimage_git_blob_sha1_observed": "a2d958a7adc6db2795779c74b23b1f1b440dcf8a",
+          "postimage_git_blob_sha1_API_verified": "c55a77600415ab2e571d8012bcf83f8971d94d71",
+          "preimage_sha256": "6dd9e3268036cd44869e40616e302c033902de6155a57c696420a75c83f0f457",
+          "postimage_sha256": "23cddd86dd8ed5246bca7f668197e73cec4a2653e476310a1d6a34ee243f4d1f"
+        },
+        {
+          "path": "ssl/quic/quic_rstream.c",
+          "status": "modified",
+          "parent": "237f60028477b4bb74888f9366c2b693438e7cc0",
+          "preimage_git_blob_sha1_observed": "0fdceb650094d25d9cadb7069095866ff371b556",
+          "postimage_git_blob_sha1_API_verified": "47aaed3dcb8a1498d79e931674f14fd3c2b1b945",
+          "preimage_sha256": "1d75050a351302038ffc4868c253cb73caaf202f1b91da7fbceb62514c712297",
+          "postimage_sha256": "ca832c01b754e6556d0d29ee667616102870bb93be2c21e5845e461861b21c31"
+        },
+        {
+          "path": "ssl/quic/quic_strm_reas.c",
+          "status": "modified",
+          "parent": "237f60028477b4bb74888f9366c2b693438e7cc0",
+          "preimage_git_blob_sha1_observed": "e54fefe433f3be4e679f576b30d79805d2ac57a1",
+          "postimage_git_blob_sha1_API_verified": "7d73fa00281a8066fc32688bfb8947c77c9e7e46",
+          "preimage_sha256": "040b6e3c0cc3144616d3c899a79b90f70a9517a5fb215a10f38b483499360c4c",
+          "postimage_sha256": "9ed4d3ab6508b79c04033ebb793c0fbcce5615e75323022de20bf2748f74c319"
+        }
+      ]
+    }
+  ],
+  "baseline_files": [
+    {
+      "path": "crypto/ec/ec_key.c",
+      "present": true,
+      "sha256": "420e382d4b878e62ad75fa823408f4a4b290fca37d7eddf78e16f2a1c5e8d275",
+      "git_blob_sha1_observed": "8723ead41e0e7349ee24c813088229f3f454f1eb"
+    },
+    {
+      "path": "include/internal/quic_strm_reas.h",
+      "present": false,
+      "http_status": 404
+    },
+    {
+      "path": "providers/implementations/ciphers/cipher_aes_gcm_siv.c",
+      "present": true,
+      "sha256": "25012f573a36a465f0a68fe004366ef586f3a153d60a5a53db55df9b7b1da5c3",
+      "git_blob_sha1_observed": "484993e5a5e95d5db53dcd85167f5ea4045e3a94"
+    },
+    {
+      "path": "providers/implementations/ciphers/cipher_aes_gcm_siv_hw.c",
+      "present": true,
+      "sha256": "a36d0b483ffeafc18de200fd672e383a080d21cb47aa8bba33ecd8645a0b5b4f",
+      "git_blob_sha1_observed": "bf3275f97b380453e2239ec19203781787aa92bb"
+    },
+    {
+      "path": "ssl/quic/quic_rstream.c",
+      "present": true,
+      "sha256": "d03d814555c51b036aabc3c791c51c3fcd3e9dae59dff5df1d6eb8a053b46681",
+      "git_blob_sha1_observed": "2fe1cb2cdbe48a2a7a0b4be06e6dda2f0751d9bb"
+    },
+    {
+      "path": "ssl/quic/quic_strm_reas.c",
+      "present": false,
+      "http_status": 404
+    },
+    {
+      "path": "test/ectest.c",
+      "present": true,
+      "sha256": "eec366891a69eb9d2de9d814abd51b2c9aa4db2ef51ca19dbc1869a48a446bfe",
+      "git_blob_sha1_observed": "1e4ae9c63eda042a1e631cae9c4102e860ae8c46"
+    }
+  ],
+  "receipts": [
+    {
+      "url": "https://api.github.com/repos/openssl/openssl/commits/159e1de0c448d7b9f09ad768c8e141def4aa1eb4",
+      "final_url": "https://api.github.com/repos/openssl/openssl/commits/159e1de0c448d7b9f09ad768c8e141def4aa1eb4",
+      "path": "materials/commits/159e1de0c448d7b9f09ad768c8e141def4aa1eb4.json",
+      "bytes": 7113,
+      "sha256": "8dabda0de2c93dda5d481cc61e60d937515cae54b827b5f71578c6081362fb34",
+      "received_at": "2026-11-17T21:15:25.067997+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://github.com/openssl/openssl/commit/159e1de0c448d7b9f09ad768c8e141def4aa1eb4.patch",
+      "final_url": "https://github.com/openssl/openssl/commit/159e1de0c448d7b9f09ad768c8e141def4aa1eb4.patch",
+      "path": "materials/patches/CVE-2026-88823.patch",
+      "bytes": 3483,
+      "sha256": "a945077c0a978dbfe5af5e4f7174a2151466547f8fb94562f395baa7b6b7c147",
+      "received_at": "2026-11-17T21:15:25.539504+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/159e1de0c448d7b9f09ad768c8e141def4aa1eb4/providers/implementations/ciphers/cipher_aes_gcm_siv.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/159e1de0c448d7b9f09ad768c8e141def4aa1eb4/providers/implementations/ciphers/cipher_aes_gcm_siv.c",
+      "path": "materials/blobs/159e1de0c448d7b9f09ad768c8e141def4aa1eb4/providers/implementations/ciphers/cipher_aes_gcm_siv.c",
+      "bytes": 12703,
+      "sha256": "1c9190d4dfbb2fd767c588376167358e7fd32b135aad0827b8d2cd6b78d69793",
+      "received_at": "2026-11-17T21:15:25.924030+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/9a5764a6facb8a21cff9f012cf34ecd5c3f98e0a/providers/implementations/ciphers/cipher_aes_gcm_siv.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/9a5764a6facb8a21cff9f012cf34ecd5c3f98e0a/providers/implementations/ciphers/cipher_aes_gcm_siv.c",
+      "path": "materials/blobs/9a5764a6facb8a21cff9f012cf34ecd5c3f98e0a/providers/implementations/ciphers/cipher_aes_gcm_siv.c",
+      "bytes": 12364,
+      "sha256": "25012f573a36a465f0a68fe004366ef586f3a153d60a5a53db55df9b7b1da5c3",
+      "received_at": "2026-11-17T21:15:26.264277+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/159e1de0c448d7b9f09ad768c8e141def4aa1eb4/providers/implementations/ciphers/cipher_aes_gcm_siv_hw.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/159e1de0c448d7b9f09ad768c8e141def4aa1eb4/providers/implementations/ciphers/cipher_aes_gcm_siv_hw.c",
+      "path": "materials/blobs/159e1de0c448d7b9f09ad768c8e141def4aa1eb4/providers/implementations/ciphers/cipher_aes_gcm_siv_hw.c",
+      "bytes": 11497,
+      "sha256": "d5ea349bd8c5d48634b3a6006f1a1ef233213564ee675ee2fce4faec824cc639",
+      "received_at": "2026-11-17T21:15:26.555357+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/9a5764a6facb8a21cff9f012cf34ecd5c3f98e0a/providers/implementations/ciphers/cipher_aes_gcm_siv_hw.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/9a5764a6facb8a21cff9f012cf34ecd5c3f98e0a/providers/implementations/ciphers/cipher_aes_gcm_siv_hw.c",
+      "path": "materials/blobs/9a5764a6facb8a21cff9f012cf34ecd5c3f98e0a/providers/implementations/ciphers/cipher_aes_gcm_siv_hw.c",
+      "bytes": 11625,
+      "sha256": "37f4e407d03117c6b74e5d1385efb233f2d71225788f82857bff2368e7fd0457",
+      "received_at": "2026-11-17T21:15:26.878062+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://api.github.com/repos/openssl/openssl/commits/a0051cfe699bf5a047bc1c4faef65f80f7987366",
+      "final_url": "https://api.github.com/repos/openssl/openssl/commits/a0051cfe699bf5a047bc1c4faef65f80f7987366",
+      "path": "materials/commits/a0051cfe699bf5a047bc1c4faef65f80f7987366.json",
+      "bytes": 7084,
+      "sha256": "2ae14f581595700cdceff91837fe302bbee28cca918a5ffe12847d4e30879db4",
+      "received_at": "2026-11-17T21:15:25.002876+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://github.com/openssl/openssl/commit/a0051cfe699bf5a047bc1c4faef65f80f7987366.patch",
+      "final_url": "https://github.com/openssl/openssl/commit/a0051cfe699bf5a047bc1c4faef65f80f7987366.patch",
+      "path": "materials/patches/CVE-2026-107496.patch",
+      "bytes": 3375,
+      "sha256": "77d3759d279c71af59629c4a0fa82d8272a099762f2fa9e3f66d7ca5ed544157",
+      "received_at": "2026-11-17T21:15:26.154980+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/a0051cfe699bf5a047bc1c4faef65f80f7987366/crypto/ec/ec_key.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/a0051cfe699bf5a047bc1c4faef65f80f7987366/crypto/ec/ec_key.c",
+      "path": "materials/blobs/a0051cfe699bf5a047bc1c4faef65f80f7987366/crypto/ec/ec_key.c",
+      "bytes": 29225,
+      "sha256": "72726357d1e33de2fdc28da42781bb489d4a87762ed308ce81e0c49feaaa82bb",
+      "received_at": "2026-11-17T21:15:26.497622+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/1a73dc590cbad62d6f0329ea4779eadaa8d8fd75/crypto/ec/ec_key.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/1a73dc590cbad62d6f0329ea4779eadaa8d8fd75/crypto/ec/ec_key.c",
+      "path": "materials/blobs/1a73dc590cbad62d6f0329ea4779eadaa8d8fd75/crypto/ec/ec_key.c",
+      "bytes": 29097,
+      "sha256": "76ffd45abfc989d3f5a7c80e71e7ff712cff2c1b3c70f471a5f952190b545bf2",
+      "received_at": "2026-11-17T21:15:26.825439+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/a0051cfe699bf5a047bc1c4faef65f80f7987366/test/ectest.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/a0051cfe699bf5a047bc1c4faef65f80f7987366/test/ectest.c",
+      "path": "materials/blobs/a0051cfe699bf5a047bc1c4faef65f80f7987366/test/ectest.c",
+      "bytes": 122680,
+      "sha256": "404248bb6baaffa0ba1663cd21be5df7bd65e17c283591b29ab2664cc1ed6582",
+      "received_at": "2026-11-17T21:15:27.226884+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/1a73dc590cbad62d6f0329ea4779eadaa8d8fd75/test/ectest.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/1a73dc590cbad62d6f0329ea4779eadaa8d8fd75/test/ectest.c",
+      "path": "materials/blobs/1a73dc590cbad62d6f0329ea4779eadaa8d8fd75/test/ectest.c",
+      "bytes": 121682,
+      "sha256": "eec366891a69eb9d2de9d814abd51b2c9aa4db2ef51ca19dbc1869a48a446bfe",
+      "received_at": "2026-11-17T21:15:27.672170+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://api.github.com/repos/openssl/openssl/commits/257a3427aa0ef8d9dd2ef5b3e2d1c021a221b116",
+      "final_url": "https://api.github.com/repos/openssl/openssl/commits/257a3427aa0ef8d9dd2ef5b3e2d1c021a221b116",
+      "path": "materials/commits/257a3427aa0ef8d9dd2ef5b3e2d1c021a221b116.json",
+      "bytes": 5428,
+      "sha256": "4a0ccac023eaeb44aac446b143a58d991b3b116e665c0d041c7db89cba0cf45e",
+      "received_at": "2026-11-17T21:15:25.001303+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://github.com/openssl/openssl/commit/257a3427aa0ef8d9dd2ef5b3e2d1c021a221b116.patch",
+      "final_url": "https://github.com/openssl/openssl/commit/257a3427aa0ef8d9dd2ef5b3e2d1c021a221b116.patch",
+      "path": "materials/patches/CVE-2026-95692.patch",
+      "bytes": 2100,
+      "sha256": "0e328604c0038de6629a29322ae5f02d2f5f5128c2625b57ca64262efab99e05",
+      "received_at": "2026-11-17T21:15:25.565652+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/257a3427aa0ef8d9dd2ef5b3e2d1c021a221b116/providers/implementations/ciphers/cipher_aes_gcm_siv.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/257a3427aa0ef8d9dd2ef5b3e2d1c021a221b116/providers/implementations/ciphers/cipher_aes_gcm_siv.c",
+      "path": "materials/blobs/257a3427aa0ef8d9dd2ef5b3e2d1c021a221b116/providers/implementations/ciphers/cipher_aes_gcm_siv.c",
+      "bytes": 13166,
+      "sha256": "62510edfb867c2c33b034ec7f1f04913551827441a0f156966bc857cc271c211",
+      "received_at": "2026-11-17T21:15:25.898960+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/a0051cfe699bf5a047bc1c4faef65f80f7987366/providers/implementations/ciphers/cipher_aes_gcm_siv.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/a0051cfe699bf5a047bc1c4faef65f80f7987366/providers/implementations/ciphers/cipher_aes_gcm_siv.c",
+      "path": "materials/blobs/a0051cfe699bf5a047bc1c4faef65f80f7987366/providers/implementations/ciphers/cipher_aes_gcm_siv.c",
+      "bytes": 12703,
+      "sha256": "1c9190d4dfbb2fd767c588376167358e7fd32b135aad0827b8d2cd6b78d69793",
+      "received_at": "2026-11-17T21:15:26.288068+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://api.github.com/repos/openssl/openssl/commits/f6244675833e097c2429a40d1b206d95385bd42f",
+      "final_url": "https://api.github.com/repos/openssl/openssl/commits/f6244675833e097c2429a40d1b206d95385bd42f",
+      "path": "materials/commits/f6244675833e097c2429a40d1b206d95385bd42f.json",
+      "bytes": 11492,
+      "sha256": "3ea158127c956629e0f8238f9522f5a0513d3a896900659d01919e63204e6a73",
+      "received_at": "2026-11-17T21:15:25.001303+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://github.com/openssl/openssl/commit/f6244675833e097c2429a40d1b206d95385bd42f.patch",
+      "final_url": "https://github.com/openssl/openssl/commit/f6244675833e097c2429a40d1b206d95385bd42f.patch",
+      "path": "materials/patches/CVE-2026-95691.patch",
+      "bytes": 7377,
+      "sha256": "93d8e82fdc995172a6d5cc6952491658106191bd5ac221d34596adbddfcd1afe",
+      "received_at": "2026-11-17T21:15:26.153434+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/f6244675833e097c2429a40d1b206d95385bd42f/include/internal/quic_strm_reas.h",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/f6244675833e097c2429a40d1b206d95385bd42f/include/internal/quic_strm_reas.h",
+      "path": "materials/blobs/f6244675833e097c2429a40d1b206d95385bd42f/include/internal/quic_strm_reas.h",
+      "bytes": 3884,
+      "sha256": "23cddd86dd8ed5246bca7f668197e73cec4a2653e476310a1d6a34ee243f4d1f",
+      "received_at": "2026-11-17T21:15:26.499416+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/237f60028477b4bb74888f9366c2b693438e7cc0/include/internal/quic_strm_reas.h",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/237f60028477b4bb74888f9366c2b693438e7cc0/include/internal/quic_strm_reas.h",
+      "path": "materials/blobs/237f60028477b4bb74888f9366c2b693438e7cc0/include/internal/quic_strm_reas.h",
+      "bytes": 2707,
+      "sha256": "6dd9e3268036cd44869e40616e302c033902de6155a57c696420a75c83f0f457",
+      "received_at": "2026-11-17T21:15:26.852031+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/f6244675833e097c2429a40d1b206d95385bd42f/ssl/quic/quic_rstream.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/f6244675833e097c2429a40d1b206d95385bd42f/ssl/quic/quic_rstream.c",
+      "path": "materials/blobs/f6244675833e097c2429a40d1b206d95385bd42f/ssl/quic/quic_rstream.c",
+      "bytes": 6126,
+      "sha256": "ca832c01b754e6556d0d29ee667616102870bb93be2c21e5845e461861b21c31",
+      "received_at": "2026-11-17T21:15:27.166927+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/237f60028477b4bb74888f9366c2b693438e7cc0/ssl/quic/quic_rstream.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/237f60028477b4bb74888f9366c2b693438e7cc0/ssl/quic/quic_rstream.c",
+      "path": "materials/blobs/237f60028477b4bb74888f9366c2b693438e7cc0/ssl/quic/quic_rstream.c",
+      "bytes": 5851,
+      "sha256": "1d75050a351302038ffc4868c253cb73caaf202f1b91da7fbceb62514c712297",
+      "received_at": "2026-11-17T21:15:27.488298+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/f6244675833e097c2429a40d1b206d95385bd42f/ssl/quic/quic_strm_reas.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/f6244675833e097c2429a40d1b206d95385bd42f/ssl/quic/quic_strm_reas.c",
+      "path": "materials/blobs/f6244675833e097c2429a40d1b206d95385bd42f/ssl/quic/quic_strm_reas.c",
+      "bytes": 45581,
+      "sha256": "9ed4d3ab6508b79c04033ebb793c0fbcce5615e75323022de20bf2748f74c319",
+      "received_at": "2026-11-17T21:15:27.864629+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/237f60028477b4bb74888f9366c2b693438e7cc0/ssl/quic/quic_strm_reas.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/237f60028477b4bb74888f9366c2b693438e7cc0/ssl/quic/quic_strm_reas.c",
+      "path": "materials/blobs/237f60028477b4bb74888f9366c2b693438e7cc0/ssl/quic/quic_strm_reas.c",
+      "bytes": 44487,
+      "sha256": "040b6e3c0cc3144616d3c899a79b90f70a9517a5fb215a10f38b483499360c4c",
+      "received_at": "2026-11-17T21:15:28.216122+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://api.github.com/repos/openssl/openssl/git/ref/tags/openssl-3.5.7",
+      "final_url": "https://api.github.com/repos/openssl/openssl/git/ref/tags/openssl-3.5.7",
+      "path": "materials/baseline/tag-ref.json",
+      "bytes": 355,
+      "sha256": "4feb40e39c0ddb3e945b0a6cc16f1763b008b9b39629bee4bcc34b4ed424124f",
+      "received_at": "2026-11-17T21:15:28.506130+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://api.github.com/repos/openssl/openssl/git/tags/6ca677c395a4ae4472a12c5857c122ec33b36f66",
+      "final_url": "https://api.github.com/repos/openssl/openssl/git/tags/6ca677c395a4ae4472a12c5857c122ec33b36f66",
+      "path": "materials/baseline/tag-object.json",
+      "bytes": 2567,
+      "sha256": "eaf62bc04adb60869fd3fcd4297770ab47e7ed85da12687ab88addd04c01e0c8",
+      "received_at": "2026-11-17T21:15:28.839015+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/crypto/ec/ec_key.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/crypto/ec/ec_key.c",
+      "path": "materials/baseline/upstream-3.5.7/crypto/ec/ec_key.c",
+      "bytes": 30913,
+      "sha256": "420e382d4b878e62ad75fa823408f4a4b290fca37d7eddf78e16f2a1c5e8d275",
+      "received_at": "2026-11-17T21:15:29.243034+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/providers/implementations/ciphers/cipher_aes_gcm_siv.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/providers/implementations/ciphers/cipher_aes_gcm_siv.c",
+      "path": "materials/baseline/upstream-3.5.7/providers/implementations/ciphers/cipher_aes_gcm_siv.c",
+      "bytes": 12364,
+      "sha256": "25012f573a36a465f0a68fe004366ef586f3a153d60a5a53db55df9b7b1da5c3",
+      "received_at": "2026-11-17T21:15:29.897026+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/providers/implementations/ciphers/cipher_aes_gcm_siv_hw.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/providers/implementations/ciphers/cipher_aes_gcm_siv_hw.c",
+      "path": "materials/baseline/upstream-3.5.7/providers/implementations/ciphers/cipher_aes_gcm_siv_hw.c",
+      "bytes": 11385,
+      "sha256": "a36d0b483ffeafc18de200fd672e383a080d21cb47aa8bba33ecd8645a0b5b4f",
+      "received_at": "2026-11-17T21:15:30.261092+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/ssl/quic/quic_rstream.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/ssl/quic/quic_rstream.c",
+      "path": "materials/baseline/upstream-3.5.7/ssl/quic/quic_rstream.c",
+      "bytes": 7439,
+      "sha256": "d03d814555c51b036aabc3c791c51c3fcd3e9dae59dff5df1d6eb8a053b46681",
+      "received_at": "2026-11-17T21:15:30.605579+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/test/ectest.c",
+      "final_url": "https://raw.githubusercontent.com/openssl/openssl/8cf17aaeb4599f8af87fefd810b5b5fee90fe69e/test/ectest.c",
+      "path": "materials/baseline/upstream-3.5.7/test/ectest.c",
+      "bytes": 121682,
+      "sha256": "eec366891a69eb9d2de9d814abd51b2c9aa4db2ef51ca19dbc1869a48a446bfe",
+      "received_at": "2026-11-17T21:15:31.549396+00:00",
+      "transport_only_not_signature_authority": true
+    },
+    {
+      "url": "https://openssl-library.org/news/secadv/20261110.txt",
+      "final_url": "https://openssl-library.org/news/secadv/20261110.txt",
+      "path": "materials/official-advisory-20261110.txt",
+      "bytes": 11780,
+      "sha256": "31f4c88950cd9cd310794a218361b787d293a940d2568f9f82334915ac54a402",
+      "received_at": "2026-11-17T21:15:32.413786+00:00",
+      "transport_only_not_signature_authority": true
+    }
+  ],
+  "debian_source_authenticated": false,
+  "upstream_signature_verified": false,
+  "applicable_to_exact_Debian_source_proved": false,
+  "build_verified": false,
+  "operational_GO": false,
+  "wheel_OpenSSL_4_0_3_in_scope": false
+}

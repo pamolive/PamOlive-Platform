@@ -1,0 +1,20 @@
+{
+  "schema": "pamolive.openssl-source-preparation.DATA.v1",
+  "full_Debian_source_applicability_proved": false,
+  "source_authentication": {
+    "APT_Source_chain_verified": false,
+    "GPG_executed": false
+  },
+  "cryptography_wheel_OpenSSL4_0_3": {
+    "corrected": false,
+    "in_scope": false
+  },
+  "trust_commissioned": false,
+  "build_verified": false,
+  "image_qualified": false,
+  "operational_GO": false,
+  "Linux_authorized": false,
+  "source_publication_authorized": false,
+  "CVE_closed": 0,
+  "not_signature_or_approval_authority": true
+}
