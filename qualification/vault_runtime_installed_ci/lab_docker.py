@@ -54,7 +54,8 @@ class Container:
 
     @property
     def entrypoint(self):
-        return "/usr/local/bin/docker-entrypoint.sh" if self.role == "postgres" else ""
+        postgres = self.role in {"postgres", "w-postgres", "v-postgres"}
+        return "/usr/local/bin/docker-entrypoint.sh" if postgres else ""
 
 
 class Engine:
@@ -162,6 +163,8 @@ class Engine:
 
 
 class Lab:
+    volume_roles = VOLUMES
+
     def __init__(self, work, *, engine=None, reservation=None, journal=None):
         self.work = work
         control = load("controller.py")
@@ -237,7 +240,7 @@ class Lab:
         self.network, self.network_id = name, item["identity"]
 
     def create_volume(self, role):
-        need(role in VOLUMES and role not in self.volumes)
+        need(role in self.volume_roles and role not in self.volumes)
         name = self.reservation + "-" + role
         item = self.reserve("volume", role, name)
         raw = self.engine.checked(
@@ -249,7 +252,7 @@ class Lab:
         need(row["Driver"] == "local" and row["Scope"] == "local" and not row.get("Options"))
         self.volumes[role] = name
 
-    def switches(self, spec):
+    def validate_spec(self, spec):
         need(spec.role in ROLES and spec.image.startswith("sha256:"))
         resource_id(spec.image.removeprefix("sha256:"))
         need(
@@ -272,6 +275,9 @@ class Lab:
         need(not spec.environment or spec.role == "postgres")
         need(all(m.destination.startswith(("/stage/", "/private/", "/lab")) for m in spec.volumes))
         need(len({m.role for m in spec.volumes}) == len(spec.volumes))
+
+    def switches(self, spec):
+        self.validate_spec(spec)
         args = [
             "--pull",
             "never",
@@ -465,3 +471,72 @@ class Lab:
         finally:
             self.engine.deadline = saved
         return not failures
+
+
+# Source-defined W01 topology only. These names are allocation keys, never
+# capabilities from a fixture or a caller-supplied profile. The historical Lab
+# still accepts only ROLES/VOLUMES/ENDPOINTS above.
+WITNESS_ENDPOINTS = {
+    "w-postgres": ("999:999", "10.253.249.2", "w-n0-db.test"),
+    "witness": ("1000:1000", "10.253.249.3", "witness.synthetic.invalid"),
+    "driver": ("1000:1000", "10.253.249.4", None),
+    "v-postgres": ("999:999", "10.253.249.5", "v-n0-db.test"),
+    "vault": ("1000:1000", "10.253.249.6", "vault-v.test"),
+}
+WITNESS_VOLUMES = frozenset(WITNESS_ENDPOINTS)
+WITNESS_ROLES = WITNESS_VOLUMES | {"preparer"}
+WITNESS_PREPARER_MOUNTS = tuple(Volume(role, "/stage/" + role, False) for role in WITNESS_ENDPOINTS)
+
+
+class WitnessLab(Lab):
+    """One W01 allocation; two PG containers, Vault, witness and one driver.
+
+    Reuses the existing journal, identity checks and bounded cleanup unchanged.
+    The trusted coordinator supplies pinned image/commands, exact PG tmpfs and
+    environment, and independently validated role contents. This class neither
+    commissions inputs nor establishes DB/KMS/application authority.
+    """
+
+    volume_roles = WITNESS_VOLUMES
+
+    def reserve(self, kind, role, name):
+        allowed = {
+            "network": {"network"},
+            "volume": WITNESS_VOLUMES,
+            "container": WITNESS_ROLES,
+        }
+        need(kind in allowed and role in allowed[kind])
+        need(name == self.reservation + "-" + role)
+        need(not any(item["kind"] == kind and item["role"] == role for item in self.owned))
+        return super().reserve(kind, role, name)
+
+    def validate_spec(self, spec):
+        need(spec.role in WITNESS_ROLES and spec.image.startswith("sha256:"))
+        resource_id(spec.image.removeprefix("sha256:"))
+        if spec.role == "preparer":
+            need(spec.user == "0:0" and spec.chown is True)
+            need(spec.address is None and spec.alias is None)
+            need(spec.volumes == WITNESS_PREPARER_MOUNTS)
+        else:
+            need(spec.chown is False)
+            need((spec.user, spec.address, spec.alias) == WITNESS_ENDPOINTS[spec.role])
+            need(spec.volumes == (Volume(spec.role, "/lab"),))
+        need(not spec.environment or spec.role in {"w-postgres", "v-postgres"})
+        need(all(self.volumes.get(m.role) == self.reservation + "-" + m.role for m in spec.volumes))
+        # Tmpfs never shadows a role mount or introduces a second fixture tree.
+        targets = {
+            "preparer": {"/work"},
+            "driver": {"/work"},
+            "w-postgres": {"/var/lib/postgresql/data", "/var/run/postgresql", "/tmp"},
+            "v-postgres": {"/var/lib/postgresql/data", "/var/run/postgresql", "/tmp"},
+            "witness": set(),
+            "vault": set(),
+        }
+        need(len(dict(spec.tmpfs)) == len(spec.tmpfs))
+        need(set(dict(spec.tmpfs)) <= targets[spec.role])
+
+    def container_profile(self, item, spec):
+        self.validate_spec(spec)
+        need(any(item is owned for owned in self.owned))
+        need(item["kind"] == "container" and item["role"] == spec.role)
+        return super().container_profile(item, spec)
