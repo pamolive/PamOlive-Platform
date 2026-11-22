@@ -300,6 +300,23 @@ class WitnessPostgresTests(unittest.TestCase):
         self.assertNotIn(value["credentials"]["wpg"]["postgres"], representations)
         self.assertNotIn("inert-data-not-a-certificate", representations)
 
+    def test_20_pinned_observer_hba_is_opt_in_and_witness_only(self):
+        plain = pg.prepare_pair(**inputs())
+        recovery = pg.prepare_pair(**inputs(), recovery=True)
+        for role in pg.ROLES:
+            baseline = plain.clusters[role].files["pg_hba.conf"].raw
+            selected = recovery.clusters[role].files["pg_hba.conf"].raw
+            if role == "wpg":
+                rule = (f"hostssl w01_{RUN}_wpg usage_anchor_observer"
+                        " 10.253.249.3/32 scram-sha-256\n").encode("ascii")
+                self.assertNotIn(rule, baseline)
+                self.assertIn(rule, selected)
+                self.assertEqual(selected.replace(rule, b"", 1), baseline)
+            else:
+                self.assertEqual(selected, baseline)
+        with self.assertRaises(pg.Refused):
+            pg.prepare_pair(**inputs(), recovery=1)
+
 
 def main():
     result = unittest.TestResult()

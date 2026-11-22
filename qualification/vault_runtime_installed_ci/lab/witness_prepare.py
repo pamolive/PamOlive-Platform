@@ -33,6 +33,10 @@ WITNESS_FILES = {
     "ca.crt": role_files.PUBLIC,
 }
 RUNTIME_FILES = {"runtime.json": role_files.KEY, "sql-ca.crt": role_files.PUBLIC}
+RECOVERY_ROLE = "witness-recovery"
+RECOVERY_TLS_SLOT = {
+    name: attributes for name, attributes in WITNESS_FILES.items() if name != "materials.bin"
+}
 MOUNTS = {
     **dict.fromkeys(
         POSTGRES.values(),
@@ -50,6 +54,7 @@ MOUNTS = {
     },
     "vault": RUNTIME_FILES,
     "witness": {**RUNTIME_FILES, **WITNESS_FILES, "bindings.json": role_files.PUBLIC},
+    RECOVERY_ROLE: {**RUNTIME_FILES, **RECOVERY_TLS_SLOT, "bindings.json": role_files.PUBLIC},
 }
 CAP = 256 * 1024
 
@@ -234,7 +239,7 @@ def role_bytes(role, materials):
     return {name: (raw, *allowed[name]) for name, raw in materials.items()}
 
 
-def pair_for(run, credentials, tls):
+def pair_for(run, credentials, tls, *, recovery=False):
     return witness_postgres.prepare_pair(
         run,
         databases={role: f"w01_{run}_{role}" for role in POSTGRES},
@@ -242,6 +247,7 @@ def pair_for(run, credentials, tls):
         tls=tls,
         schemas={name: read_regular(path, 65536) for name, path in SCHEMAS.items()},
         schema_pins=dict(witness_postgres.SCHEMA_PINS),
+        recovery=recovery,
     )
 
 
@@ -259,16 +265,21 @@ def runtime(cluster, passwords):
     return {**endpoint(cluster), "user": user, "password": passwords[user]}
 
 
-def base(root, work, run):
+def base(root, work, run, *, recovery=False):
+    need(type(recovery) is bool)
     need(not role_files.names(os, work, 0))
-    locations = {role: list(stage_directory(root, role)) for role in MOUNTS}
+    locations = {
+        role: list(stage_directory(root, role))
+        for role in MOUNTS
+        if role != RECOVERY_ROLE or recovery
+    }
     need(len({tuple(value) for value in locations.values()}) == len(locations))
     now = datetime.now(UTC)
     credentials, tls = {}, {}
     for role, users in witness_postgres.ROLES.items():
         credentials[role] = {user: secrets.token_urlsafe(32) for user in ("postgres", *users)}
         tls[role] = certificate_pair(witness_postgres.HOSTS[role][0], now)
-    pair = pair_for(run, credentials, tls)
+    pair = pair_for(run, credentials, tls, recovery=recovery)
     for role, mount in POSTGRES.items():
         materials = {
             name: (row.raw, row.mode, row.uid, row.gid)
@@ -304,6 +315,7 @@ def base(root, work, run):
             {
                 "run": run,
                 "witness_mount": locations["witness"],
+                **({"recovery_mount": locations[RECOVERY_ROLE]} if recovery else {}),
                 "credentials": credentials,
                 "tls": {
                     role: {name: b64(raw) for name, raw in keys.items()}
@@ -317,13 +329,17 @@ def base(root, work, run):
 
 def restore_base(run):
     state = canonical(read_regular(WORK / "base.json", CAP), CAP)
-    witness_postgres.closed(state, {"run", "credentials", "tls", "witness_mount"})
+    need(type(state) is dict)
+    mounts = {"witness_mount"}
+    if "recovery_mount" in state:
+        mounts.add("recovery_mount")
+    witness_postgres.closed(state, {"run", "credentials", "tls", *mounts})
     need(state["run"] == run)
-    need(
-        type(state["witness_mount"]) is list
-        and len(state["witness_mount"]) == 2
-        and all(type(item) is int and item >= 0 for item in state["witness_mount"])
-    )
+    for name in mounts:
+        location = state[name]
+        need(type(location) is list and len(location) == 2)
+        need(all(type(item) is int and item >= 0 for item in location))
+    need(len({tuple(state[name]) for name in mounts}) == len(mounts))
     witness_postgres.closed(state["tls"], POSTGRES)
     tls = {}
     for role, files in state["tls"].items():
@@ -335,7 +351,7 @@ def restore_base(run):
 def preflighted_pair(run, receipts):
     need(receipts == b"".join(f"W01_{run}_{role}_EMPTY\n".encode("ascii") for role in POSTGRES))
     state, tls = restore_base(run)
-    pair = pair_for(run, state["credentials"], tls)
+    pair = pair_for(run, state["credentials"], tls, recovery="recovery_mount" in state)
     for role, line in zip(POSTGRES, receipts.splitlines(keepends=True), strict=True):
         pair.accept_preflight(role, 0, line)
     return pair
@@ -381,16 +397,38 @@ def material_frame(raw, expected_source):
     return {**files, "bindings.json": encode(bindings)}
 
 
-def stage_witness(root, run, raw):
+def stage_witness(root, run, raw, *, recovery=False):
     need(read_regular(WORK / "provision.ready", 16) == run.encode("ascii"))
     state, tls = restore_base(run)
-    pair = pair_for(run, state["credentials"], tls)
+    need(type(recovery) is bool and recovery == ("recovery_mount" in state))
+    pair = pair_for(run, state["credentials"], tls, recovery=recovery)
     files = material_frame(raw, sha(read_regular(SOURCE_LEDGER, 16384)))
-    files["runtime.json"] = encode(runtime(pair.clusters["wpg"], state["credentials"]["wpg"]))
+    cluster = pair.clusters["wpg"]
+    credentials = state["credentials"]["wpg"]
+    files["runtime.json"] = encode(runtime(cluster, credentials))
     files["sql-ca.crt"] = tls["wpg"]["ca"]
     stage_directory(
         root, "witness", expected=state["witness_mount"], files=role_bytes("witness", files)
     )
+    if recovery:
+        bindings = canonical(files["bindings.json"], CAP)
+        observer = "usage_anchor_observer"
+        history_files = {
+            **{name: files[name] for name in RECOVERY_TLS_SLOT},
+            "bindings.json": encode(
+                {name: bindings[name] for name in ("source_sha256", "slot_sha256")}
+            ),
+            "runtime.json": encode(
+                {**endpoint(cluster), "user": observer, "password": credentials[observer]}
+            ),
+            "sql-ca.crt": files["sql-ca.crt"],
+        }
+        stage_directory(
+            root,
+            RECOVERY_ROLE,
+            expected=state["recovery_mount"],
+            files=role_bytes(RECOVERY_ROLE, history_files),
+        )
     return "W01_WITNESS_READY"
 
 
@@ -398,9 +436,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("phase", choices=("base", "provision", "provision-vault", "stage-witness"))
     parser.add_argument("--run", required=True)
+    parser.add_argument("--recovery", action="store_true")
     args = parser.parse_args()
     try:
         need(re.fullmatch(r"[0-9a-f]{16}", args.run) is not None)
+        need(not args.recovery or args.phase in {"base", "stage-witness"})
         kernel_check()
         os.environ.clear()
         os.environ.update(LANG="C.UTF-8", LC_ALL="C.UTF-8")
@@ -411,13 +451,15 @@ def main():
             stack.callback(os.close, work)
             role_files.directory(os.fstat(work), mode=0o700)
             if args.phase == "base":
-                marker = base(root, work, args.run)
+                marker = base(root, work, args.run, recovery=args.recovery)
             elif args.phase == "provision":
                 marker = provision(work, args.run, sys.stdin.buffer.read(257))
             elif args.phase == "provision-vault":
                 marker = provision_vault(work, args.run, sys.stdin.buffer.read(257))
             else:
-                marker = stage_witness(root, args.run, sys.stdin.buffer.read(CAP + 1))
+                marker = stage_witness(
+                    root, args.run, sys.stdin.buffer.read(CAP + 1), recovery=args.recovery
+                )
     except Exception:
         print("W01 synthetic preparation refused.", file=sys.stderr)
         return 42

@@ -84,6 +84,18 @@ autorisée. Le redémarrage d'un témoin fermé, une rotation de l'identité,
 l'isolation sous deux tenants réels et la reprise multi-hôte restent à
 qualifier. [PR nº 36](https://github.com/pamolive/PamOlive-Platform/pull/36)
 
+## Redémarrage du témoin en consultation seule
+
+L'entrée `run_witness_restart` prolonge la campagne historique. Après
+fermeture du bail, le contrôleur arrête le témoin réservé et tente le même
+démarrage ordinaire. Il exige le refus explicite du contexte fermé avant
+de retirer ce conteneur par son identifiant. Il démarre alors un nouveau
+conteneur sur les mêmes adresse et identité TLS. Son montage contient
+seulement la configuration de lecture et son rôle PostgreSQL restreint.
+Le témoin doit retrouver le reçu exact, refuser une opération en attente et
+refuser les quatre routes d'écriture. Les instantanés des deux bases sont
+comparés après le redémarrage et les appels.
+
 ## Wheel W1 installée — 18 novembre 2026
 
 La [CI installée](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191)
