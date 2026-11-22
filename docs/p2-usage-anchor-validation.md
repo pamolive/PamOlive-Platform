@@ -26,6 +26,19 @@ de l'état V et l'indépendance multi-hôte restent à qualifier. Une fermeture
 peut laisser une liaison W orpheline et la consommation du miroir historique
 ne vérifie pas l'état V actuel.
 
+## Campagne de fermeture du Vault
+
+L'entrée `run_witness_fence` ajoute la campagne de fermeture au laboratoire
+`run_witness_lab`. Après le parcours nominal, une liaison et deux
+consommations identiques synchronisent leurs réponses mTLS avant un commit
+de fermeture par le rôle d'administration Vault. L'une des réponses
+identiques est simulée perdue après le commit W. Les contrôles exigent le
+refus du nouveau miroir,
+la conservation du miroir préexistant, la présence des preuves du témoin
+et l'absence d'appel W lorsque le commissionnement est fermé ou incompatible.
+Le [choix d'architecture](adr-026-independent-usage-anchor.md#fermeture-concurrente-du-vault)
+définit la limite des appels qui ont déjà quitté Vault.
+
 ## Wheel W1 installée — 18 novembre 2026
 
 La [CI installée](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191)

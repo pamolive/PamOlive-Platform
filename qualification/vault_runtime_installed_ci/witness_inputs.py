@@ -40,6 +40,7 @@ RECEPTION = {
 }
 LAB = {
     "lab/witness_driver.py",
+    "lab/witness_fence_cases.py",
     "lab/witness_postgres.py",
     "lab/witness_prepare.py",
     "lab/witness_server.py",

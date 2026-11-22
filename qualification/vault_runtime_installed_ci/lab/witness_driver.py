@@ -381,8 +381,7 @@ def denied_tls(expected_der, who, reasons, phase, advance):
     advance(phase + "_handshake")
     with socket.create_connection((W_ADDRESS, W_PORT), timeout=3) as transport:
         try:
-            with client.wrap_socket(transport, server_hostname=W_HOST):
-                raise ValueError("witness_driver_tls_admitted")
+            channel = client.wrap_socket(transport, server_hostname=W_HOST)
         except ConnectionResetError:
             # asyncio may abort after certificate verification, before
             # flushing the fatal alert. TCP was already connected here.
@@ -393,6 +392,9 @@ def denied_tls(expected_der, who, reasons, phase, advance):
             )
             if not aborted and error.reason not in reasons:
                 raise
+        else:
+            channel.close()
+            raise ValueError("witness_driver_tls_admitted")
     advance(phase + "_control_after")
     verify_server(expected_der, tls12=True)
 
@@ -491,7 +493,7 @@ def snapshot(observer, vault):
     return read(observer, "pam_usage_anchor", W_TABLES), read(vault, "vault_reservation", V_TABLES)
 
 
-def run_cases(fixture, modules, factories, source_sha, advance):
+def run_cases(fixture, modules, factories, source_sha, advance, *, fence=False):
     from cryptography.hazmat.primitives import serialization
     from pamolive_usage_anchor import codec
     from pamolive_usage_anchor.client import MTLSClient, VaultMirror
@@ -592,7 +594,7 @@ def run_cases(fixture, modules, factories, source_sha, advance):
         permissions.denied(factories[role], "SELECT * FROM vault_reservation.usage_mirrors")
     advance("snapshot_comparison")
     require(snapshot(observer, runtime) == before)
-    return {
+    report = {
         "schema": "W01-results/2",
         "source_sha256": source_sha,
         "cases": dict.fromkeys(CASES, True),
@@ -616,12 +618,34 @@ def run_cases(fixture, modules, factories, source_sha, advance):
         "secret_release": False,
         "authority": False,
     }
+    if fence:
+        from .witness_fence_cases import run_fence_cases
+
+        report["schema"] = "W01-fence-results/1"
+        cases = run_fence_cases(
+            fixture=fixture,
+            witness_client=clients["vault"],
+            vault_runtime_connect=runtime,
+            vault_admin_connect=factories["vault_n0_admin"],
+            witness_observer_connect=observer,
+            advance=advance,
+        )
+        after = snapshot(observer, runtime)
+        for original, final in zip(before[0][:2], after[0][:2], strict=True):
+            require(set(original) <= set(final))
+        report["vault_fence"] = {
+            "cases": cases,
+            "witness_operation_delta": len(after[0][0]) - len(before[0][0]),
+            "witness_proof_use_delta": len(after[0][1]) - len(before[0][1]),
+        }
+    return report
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", required=True)
     parser.add_argument("--source-sha", required=True)
+    parser.add_argument("--fence", action="store_true")
     args = parser.parse_args()
     phase = "boundary"
 
@@ -658,7 +682,7 @@ def main():
         phase = "execute_wait"
         wait_for("execute", max(0, fixture.now + 18 - time.time()))
         phase = "native_cases"
-        report = run_cases(fixture, modules, factories, args.source_sha, advance)
+        report = run_cases(fixture, modules, factories, args.source_sha, advance, fence=args.fence)
         publish("public.json", encode(report))
         phase = "acknowledge"
         wait_for("acknowledge", 15)

@@ -50,6 +50,34 @@ les terminaux positif `consumed_no_release` et négatif `refused_no_release`,
 avec de vraies signatures synthétiques, sans KMS, SDK d'enveloppe ni plaintext.
 Ces terminaux ne deviendront jamais des permissions en activant une option.
 
+### Fermeture concurrente du Vault
+
+Le client Vault vérifie avant l'envoi que la réservation appartient au
+commissionnement ouvert, avec la même incarnation et la même empreinte de
+slot. Après la réponse mTLS, la transaction Vault verrouille cette ligne de
+commissionnement, revalide la réservation puis verrouille ou crée son miroir.
+Les droits d'écriture sur les réservations restent limités à l'insertion.
+Le même contrôle borne l'enregistrement d'un résultat incertain. Un rejeu
+terminal authentifié sous commissionnement ouvert compare les octets et
+conserve la ligne existante.
+
+Un verrou Vault conservé pendant l'aller-retour mTLS retarderait la fermeture
+administrative et ne fournirait pas de commit atomique entre les deux bases.
+Le contrôle avant envoi et avant commit a été retenu. Une fermeture peut
+intervenir pendant un appel déjà envoyé. Le témoin peut alors conserver une
+liaison ou un terminal durable. Vault refuse de publier la réponse et de
+confirmer le miroir lorsque son contrôle local échoue.
+
+Une reprise d'autorité après fermeture exige une nouvelle incarnation. Les
+appels du client vivant restent fermés dans l'ancien
+contexte, y compris les rejeux terminaux. Une voie de consultation historique
+authentifiée, distincte de la consommation, reste nécessaire pour rapprocher
+ces reçus. Le contrôle ne garantit pas une fermeture suivie d'une réouverture
+sous la même incarnation. L'incertitude locale conserve l'état du miroir
+sans établir l'empreinte de la première tentative de consommation. Une
+révocation qui doit arrêter les mutations de W doit aussi fermer son bail
+sous l'autorité du témoin.
+
 Chaque mutation suit contexte → quota principal → lease → opération → activations
 en ordre ASCII → audit. N0 sérialise les écritures par contexte tenant. Le CAS
 compare toutes les versions et tous les compteurs du snapshot, y compris les
