@@ -21,6 +21,10 @@ on:
         description: Build the separate installed W1 witness consumer and run its offline tests
         type: boolean
         default: false
+      run_witness_lab:
+        description: Qualify the installed witness with dedicated PostgreSQL clusters and mutual TLS
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -31,7 +35,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     env:
-      VAULT_SOURCES_SHA: 2d0899f4282b0e340e955b69ab2c4832cb9521e71397df1caab4f697dd7d71a9
+      VAULT_SOURCES_SHA: 76f0b841e56e8a6128be90ef399e844872bb5474a1849b3ddb630f30157fe4c0
       VAULT_ASSETS_SHA: 71d26e9cc4b1c27465f875879fff28c0c657688f70f797b91f174f86fed6a1eb
       VAULT_PAYLOAD_SHA: d9e7ff40d7395a109833225b5051feb1f85f6dc9f7061a07c3fa97110bc6b4a6
     steps:
@@ -73,6 +77,7 @@ jobs:
           set -euo pipefail
           python -I -B -S qualification/vault_runtime_installed_ci/witness_ownership_adversarial.py
           python -I -B -S qualification/vault_runtime_installed_ci/witness_postgres_adversarial.py
+          python -I -B -S qualification/vault_runtime_installed_ci/witness_runner_adversarial.py
       - name: Require the installed consumer before running the synthetic lab
         if: inputs.run_synthetic_lab == true && inputs.transfer_verified_wheels != true
         run: exit 42
@@ -81,6 +86,9 @@ jobs:
         run: exit 42
       - name: Require a dedicated W1 build with the verified Vault consumer input
         if: inputs.build_witness_consumer == true && (inputs.transfer_verified_wheels != true || inputs.run_synthetic_lab == true)
+        run: exit 42
+      - name: Require the separately installed witness for the dual-cluster lab
+        if: inputs.run_witness_lab == true && inputs.build_witness_consumer != true
         run: exit 42
       - name: Seventeen existing wheel DATA regressions
         run: python -I -B qualification/vault_reservation/test_wheel.py
@@ -165,6 +173,7 @@ jobs:
         timeout-minutes: 22
         env:
           DOCKER_BUILDKIT: '1'
+          VAULT_WITNESS_LAB: ${{ inputs.run_witness_lab }}
         shell: bash
         run: |
           set -euo pipefail
@@ -172,15 +181,29 @@ jobs:
           context="$VAULT_WORK/verified-consumer-context"
           descriptor_sha=$(sha256sum "$context/descriptor.json")
           inventories_sha=$(sha256sum "$context/inventories.json")
+          options=(--target witness-public-receipt --output "type=local,dest=$VAULT_WORK/witness-public")
+          if [[ "$VAULT_WITNESS_LAB" == true ]]; then
+            options=(--target witness-consumer --iidfile "$VAULT_WORK/witness-consumer.iid")
+          fi
           cat qualification/vault_runtime_installed_ci/Dockerfile.consumer \
               qualification/vault_runtime_installed_ci/Dockerfile.witness \
             | docker --config "$VAULT_WORK/docker-config" -H unix:///var/run/docker.sock build \
-              --platform linux/amd64 --no-cache --progress plain --target witness-public-receipt \
+              --platform linux/amd64 --no-cache --progress plain "${options[@]}" \
               --build-arg "VAULT_DESCRIPTOR_SHA256=${descriptor_sha%% *}" \
               --build-arg "VAULT_INVENTORIES_SHA256=${inventories_sha%% *}" \
-              --output "type=local,dest=$VAULT_WORK/witness-public" --file - "$context"
-          receipt="$VAULT_WORK/witness-public/witness-public.json"
-          test -f "$receipt" && test ! -L "$receipt" && test -s "$receipt"
+              --file - "$context"
+          if [[ "$VAULT_WITNESS_LAB" == true ]]; then
+            grep -qxE 'sha256:[0-9a-f]{64}' "$VAULT_WORK/witness-consumer.iid"
+          else
+            receipt="$VAULT_WORK/witness-public/witness-public.json"
+            test -f "$receipt" && test ! -L "$receipt" && test -s "$receipt"
+          fi
+      - name: Run the installed witness on dedicated PostgreSQL and mutual TLS
+        if: inputs.run_witness_lab == true && inputs.build_witness_consumer == true && inputs.transfer_verified_wheels == true
+        timeout-minutes: 10
+        run: >-
+          python -I -B -S qualification/vault_runtime_installed_ci/run_witness_lab.py
+          --work "$VAULT_WORK"
       - name: Run the installed Vault tests on dedicated PostgreSQL and mutual TLS
         if: inputs.run_synthetic_lab == true && inputs.transfer_verified_wheels == true
         timeout-minutes: 10
@@ -205,6 +228,7 @@ jobs:
             ${{ env.VAULT_WORK }}/cleanup-public.json
             ${{ env.VAULT_WORK }}/lab-public.json
             ${{ env.VAULT_WORK }}/witness-public/witness-public.json
+            ${{ env.VAULT_WORK }}/witness-lab-public.json
             qualification/vault_runtime_installed_ci/checkout-capture.json
             ${{ env.VAULT_MATERIALS }}/acquisition.json
           if-no-files-found: error

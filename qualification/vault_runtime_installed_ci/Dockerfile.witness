@@ -14,6 +14,7 @@ COPY --from=witness-wheel-builder /witness/wheels/ /witness/wheels/
 COPY --from=witness-wheel-builder /witness/wheel.lock /witness/witness_wheel.py /witness/witness-source.sha256 /witness/
 COPY witness/fixtures/ /witness/fixtures/
 COPY witness/witness_reception.py /witness/
+COPY witness/lab/ /witness/lab/
 RUN --network=none /opt/vault/bin/python -I -B -m pip --isolated --disable-pip-version-check install \
       --no-compile --no-cache-dir --no-index --only-binary=:all: --no-deps --require-hashes \
       -r /witness/wheel.lock \
@@ -26,6 +27,9 @@ RUN --network=none ln -s /opt/vault/lib/python3.12/site-packages/pamolive_usage_
 USER 1000:1000
 RUN --network=none /opt/vault/bin/python -I -B /witness/witness_reception.py > /witness/result/public.json \
     || (cat /witness/result/public.json && exit 42)
+USER 0:0
+RUN --network=none install -m 0444 -o 0 -g 0 /witness/result/public.json /witness/public.json
+USER 1000:1000
 
 FROM scratch AS witness-public-receipt
-COPY --from=witness-consumer /witness/result/public.json /witness-public.json
+COPY --from=witness-consumer /witness/public.json /witness-public.json

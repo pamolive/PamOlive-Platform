@@ -1,0 +1,101 @@
+"""Test the W01 orchestration gates without Docker, SQL or an installed runtime."""
+
+import json
+import sys
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import run_witness_lab as runner  # noqa: E402
+
+RUN = "0123456789abcdef"
+ROLES = {name: (name, None) for name in ("preparer", "w-postgres", "v-postgres")}
+
+
+class OrchestrationTests(unittest.TestCase):
+    def exercise(self, fail_at=None):
+        ledger = []
+        report = {"empty_clusters_verified": 0, "clusters_provisioned": 0}
+
+        def stage(_lab, _prepare, _run, phase, marker, **options):
+            ledger.append(phase)
+            if phase == "provision":
+                self.assertEqual(
+                    options["data"], f"W01_{RUN}_wpg_EMPTY\nW01_{RUN}_vpg_EMPTY\n".encode()
+                )
+            if phase == "provision-vault":
+                self.assertEqual(options["data"], f"W01_{RUN}_wpg_PROVISIONED\n".encode())
+            return marker
+
+        def read_role(_lab, _prepare, name, _cap):
+            return Path(name).stem.encode()
+
+        def run_pg(_lab, role, _spec, sql):
+            db, phase = sql.decode().split("-")
+            self.assertEqual(role, runner.PG_ROLES[db])
+            name = f"{db}-{phase}"
+            ledger.append(name)
+            receipt = "EMPTY" if phase == "preflight" else "PROVISIONED"
+            raw = f"W01_{RUN}_{db}_{receipt}\n".encode()
+            denied = name == fail_at
+            return SimpleNamespace(
+                returncode=0, stdout=raw if not denied else raw + b"x", stderr=b""
+            )
+
+        lab = SimpleNamespace(start=lambda *_: None)
+        with (
+            patch.object(runner, "stage", stage),
+            patch.object(runner, "wait"),
+            patch.object(runner, "read_role", read_role),
+            patch.object(runner, "run_pg", run_pg),
+        ):
+            if fail_at:
+                with self.assertRaises(ValueError):
+                    runner.bootstrap(lab, ROLES, RUN, report)
+            else:
+                runner.bootstrap(lab, ROLES, RUN, report)
+        return ledger, report
+
+    def test_requires_both_read_only_receipts_before_emitting_w_provision(self):
+        attempts, report = self.exercise("vpg-preflight")
+        self.assertEqual(attempts, ["base", "wpg-preflight", "vpg-preflight"])
+        self.assertEqual(report["clusters_provisioned"], 0)
+
+    def test_never_requests_v_sql_when_w_provision_receipt_is_invalid(self):
+        attempts, report = self.exercise("wpg-provision")
+        self.assertEqual(
+            attempts, ["base", "wpg-preflight", "vpg-preflight", "provision", "wpg-provision"]
+        )
+        self.assertEqual(report["empty_clusters_verified"], 2)
+        self.assertEqual(report["clusters_provisioned"], 0)
+
+    def test_binds_two_real_receipts_in_order_before_starting_driver(self):
+        attempts, report = self.exercise()
+        self.assertEqual(
+            attempts,
+            [
+                "base",
+                "wpg-preflight",
+                "vpg-preflight",
+                "provision",
+                "wpg-provision",
+                "provision-vault",
+                "vpg-provision",
+            ],
+        )
+        self.assertEqual(report["clusters_provisioned"], 2)
+
+    def test_native_receipt_rejects_private_or_incomplete_content(self):
+        source = "a" * 64
+        for value in (
+            {"schema": "W01-results/1", "source_sha256": source},
+            {"schema": "W01-results/1", "source_sha256": source, "private": "never_publish"},
+        ):
+            with self.assertRaises(ValueError):
+                runner.collect_native(json.dumps(value).encode(), source)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -11,7 +11,7 @@ exclusion ni tentative d'I/O externe. Le reçu public SHA-256
 `e7d31f341396914841efeca051788fb9d61ddc09c6119941a66decf2a5b2431a`
 est lié à la [PR nº 34](https://github.com/pamolive/PamOlive-Platform/pull/34).
 
-Le profil W01 réserve six conteneurs et cinq volumes de fixtures. Les deux
+Le profil Docker W01 autorise six conteneurs et cinq volumes de fixtures. Les deux
 clusters PostgreSQL utilisent chacun leur PGDATA dédié. Les deux précontrôles
 de clusters vierges doivent être acceptés avant la première écriture. Les 21
 tests de propriété des ressources, les 19 tests du provisionnement sous
@@ -19,6 +19,31 @@ doublures et les 13 régressions Vault passent. Le commissionnement réel,
 les deux terminaux durables et leurs reprises, les rôles PostgreSQL et le mTLS
 entre processus attendent la campagne W01. Les limites de 30 s et 40 s restent
 celles du contrat existant.
+
+### Exécution du laboratoire W01 installé
+
+Le workflow `Installed Vault reservation runtime` propose l'entrée
+`run_witness_lab`. Elle requiert `transfer_verified_wheels` et
+`build_witness_consumer`. Elle s'exécute séparément du laboratoire de
+restauration Vault. La campagne crée cinq conteneurs et cinq volumes dédiés
+sur un runner éphémère.
+
+Le préparateur hors réseau attribue des identifiants temporaires indépendants
+aux deux clusters PostgreSQL 17.12. Le contrôleur vérifie les deux reçus de
+lecture seule sur les conteneurs réservés avant toute création de schéma. Il
+attend ensuite la confirmation du cluster W avant d'autoriser l'application du
+schéma V. Le processus témoin charge la wheel installée et son seul rôle
+PostgreSQL, via TLS avec validation du nom du serveur. Le pilote conserve les clés
+de signature synthétiques en mémoire et génère le dossier nécessaire au
+service témoin après la préparation des bases.
+
+Le reçu `witness-lab-public.json` contient le résultat des 62 tests hors ligne,
+les confirmations PostgreSQL, les cas natifs et le résultat du nettoyage des
+objets réservés. Il exclut les scripts de provisionnement, les pièces privées
+du pilote et les journaux des conteneurs. W01 exerce le serveur témoin en mTLS
+et la persistance des réservations et des miroirs dans la base V. Le listener
+Vault reste hors du périmètre de ce scénario. Les essais inter-hôtes et la
+qualification d'un témoin de production restent à effectuer.
 
 ## Plan des campagnes restantes
 

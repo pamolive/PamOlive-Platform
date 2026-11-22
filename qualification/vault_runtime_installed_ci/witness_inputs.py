@@ -38,6 +38,12 @@ RECEPTION = {
     "tests/test_pure.py",
     "tests/test_r2.py",
 }
+LAB = {
+    "lab/witness_driver.py",
+    "lab/witness_postgres.py",
+    "lab/witness_prepare.py",
+    "lab/witness_server.py",
+}
 
 
 def capture(repository, pins):
@@ -74,6 +80,12 @@ def prepare(work):
         put(witness, ("source/" if name in BUILD else "fixtures/") + name, raw)
     for name in ("witness_wheel.py", "witness_reception.py", "witness-source.sha256"):
         put(witness, name, read_regular(ROOT / name, 65536))
+    lines = read_regular(ROOT / "source-checksums.sha256", 32768).decode("ascii").splitlines()
+    runner_pins = {name: digest for digest, name in (line.split("  ", 1) for line in lines)}
+    for name in sorted(LAB):
+        raw = read_regular(ROOT / name, 65536)
+        need(sha(raw) == runner_pins[name])
+        put(witness, name, raw)
 
 
 if __name__ == "__main__":
