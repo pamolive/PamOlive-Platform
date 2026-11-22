@@ -493,7 +493,7 @@ def snapshot(observer, vault):
     return read(observer, "pam_usage_anchor", W_TABLES), read(vault, "vault_reservation", V_TABLES)
 
 
-def run_cases(fixture, modules, factories, source_sha, advance, *, fence=False):
+def run_cases(fixture, modules, factories, source_sha, advance, *, fence=False, history=False):
     from cryptography.hazmat.primitives import serialization
     from pamolive_usage_anchor import codec
     from pamolive_usage_anchor.client import MTLSClient, VaultMirror
@@ -622,7 +622,7 @@ def run_cases(fixture, modules, factories, source_sha, advance, *, fence=False):
         from .witness_fence_cases import run_fence_cases
 
         report["schema"] = "W01-fence-results/1"
-        cases = run_fence_cases(
+        cases, evidence = run_fence_cases(
             fixture=fixture,
             witness_client=clients["vault"],
             vault_runtime_connect=runtime,
@@ -638,6 +638,20 @@ def run_cases(fixture, modules, factories, source_sha, advance, *, fence=False):
             "witness_operation_delta": len(after[0][0]) - len(before[0][0]),
             "witness_proof_use_delta": len(after[0][1]) - len(before[0][1]),
         }
+        if history:
+            from .witness_history_cases import run_history_cases
+
+            report["schema"] = "W01-history-results/1"
+            report["history"] = run_history_cases(
+                fixture=fixture,
+                clients=clients,
+                factories=factories,
+                pending_reservation_id=pending.reservation_id,
+                pending_bound_raw=bound_raw,
+                snapshot=snapshot,
+                advance=advance,
+                **evidence,
+            )
     return report
 
 
@@ -646,6 +660,7 @@ def main():
     parser.add_argument("--run", required=True)
     parser.add_argument("--source-sha", required=True)
     parser.add_argument("--fence", action="store_true")
+    parser.add_argument("--history", action="store_true")
     args = parser.parse_args()
     phase = "boundary"
 
@@ -654,6 +669,7 @@ def main():
         phase = name
 
     try:
+        require(not args.history or args.fence)
         os.environ.clear()
         os.environ.update(LANG="C.UTF-8", LC_ALL="C.UTF-8", PSYCOPG_IMPL="c")
         require(
@@ -682,7 +698,10 @@ def main():
         phase = "execute_wait"
         wait_for("execute", max(0, fixture.now + 18 - time.time()))
         phase = "native_cases"
-        report = run_cases(fixture, modules, factories, args.source_sha, advance, fence=args.fence)
+        report = run_cases(
+            fixture, modules, factories, args.source_sha, advance,
+            fence=args.fence, history=args.history,
+        )
         publish("public.json", encode(report))
         phase = "acknowledge"
         wait_for("acknowledge", 15)

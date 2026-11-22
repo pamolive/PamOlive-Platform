@@ -34,6 +34,7 @@ RECEPTION = {
     "tests/fixtures.py",
     "tests/golden/auth01-r1-public.json",
     "tests/golden/codec.json",
+    "tests/test_history.py",
     "tests/test_http_client.py",
     "tests/test_pure.py",
     "tests/test_r2.py",
@@ -41,6 +42,7 @@ RECEPTION = {
 LAB = {
     "lab/witness_driver.py",
     "lab/witness_fence_cases.py",
+    "lab/witness_history_cases.py",
     "lab/witness_postgres.py",
     "lab/witness_prepare.py",
     "lab/witness_server.py",

@@ -83,6 +83,10 @@ DRIVER_PHASES = frozenset(
         b"fence_concurrent_close\n",
         b"fence_closed_refusal\n",
         b"fence_durable_evidence\n",
+        b"history_vault_closed\n",
+        b"history_refusals\n",
+        b"history_witness_closed\n",
+        b"history_unchanged\n",
         b"acknowledge\n",
     )
 )
@@ -121,6 +125,15 @@ FENCE_CASES = (
     "vault_historical_rows_preserved",
     "reservation_rows_append_only",
 )
+HISTORY_CASES = (
+    "closed_vault_terminal_exact",
+    "pending_refused",
+    "missing_refused",
+    "wrong_purpose_refused",
+    "different_bundle_conflict",
+    "closed_witness_terminal_exact",
+    "history_rows_unchanged",
+)
 
 
 def role_command(role, *args):
@@ -133,7 +146,7 @@ def role_command(role, *args):
     return (*PYTHON, command, *args)
 
 
-def create(lab, consumer, postgres, run_id, source_sha, *, fence=False):
+def create(lab, consumer, postgres, run_id, source_sha, *, fence=False, history=False):
     pg_environment = {
         "PGDATA": "/var/lib/postgresql/data",
         "POSTGRES_USER": "postgres",
@@ -146,6 +159,8 @@ def create(lab, consumer, postgres, run_id, source_sha, *, fence=False):
     pg_tmpfs = tuple(postgres_stage.profile()["tmpfs"].items())
     common = ("--run", run_id, "--source-sha", source_sha)
     driver_args = (*common, "--fence") if fence else common
+    if history:
+        driver_args = (*driver_args, "--history")
     specs = [
         Container(
             consumer,
@@ -294,7 +309,7 @@ def collect_pure(lab, prepare, source_sha, descriptor_sha):
     expected = {
         "schema": "pamolive.witness-installed-pure/1",
         "phase": "complete",
-        "tests": 62,
+        "tests": 70,
         "failures": 0,
         "errors": 0,
         "skips": 0,
@@ -312,7 +327,7 @@ def collect_pure(lab, prepare, source_sha, descriptor_sha):
     return result
 
 
-def collect_native(raw, source_sha, *, fence=False):
+def collect_native(raw, source_sha, *, fence=False, history=False):
     # Consume only a closed receipt. No child payload, request, or private
     # material may cross into an uploaded qualification artifact.
     expected = {
@@ -346,12 +361,16 @@ def collect_native(raw, source_sha, *, fence=False):
             "witness_operation_delta": 2,
             "witness_proof_use_delta": 1,
         }
+    if history:
+        need(fence)
+        expected["schema"] = "W01-history-results/1"
+        expected["history"] = dict.fromkeys(HISTORY_CASES, True)
     canonical = json.dumps(expected, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
     need(raw == canonical.encode("ascii") + b"\n")
     return expected
 
 
-def run(lab, report, *, fence=False):
+def run(lab, report, *, fence=False, history=False):
     work = lab.work
     stage_root = work / "verified-consumer-context"
     descriptor_sha = sha(read_regular(stage_root / "descriptor.json", 65536))
@@ -364,7 +383,7 @@ def run(lab, report, *, fence=False):
     lab.create_network()
     for role in WITNESS_ENDPOINTS:
         lab.create_volume(role)
-    roles = create(lab, consumer, postgres, run_id, source_sha, fence=fence)
+    roles = create(lab, consumer, postgres, run_id, source_sha, fence=fence, history=history)
     prepare, driver, witness = (roles[name] for name in ("preparer", "driver", "witness"))
     lab.start(*prepare)
     report["installed"] = collect_pure(lab, prepare, source_sha, descriptor_sha)
@@ -386,9 +405,10 @@ def run(lab, report, *, fence=False):
     report["phase"] = "witness_round_trip"
     lab.start(*witness)
     mark(lab, driver, "execute")
-    wait_driver(lab, driver, "public.json", 32, report)
+    wait_driver(lab, driver, "public.json", 50 if history else 32, report)
     report["native"] = collect_native(
-        read_role(lab, driver, "/work/public.json", PUBLIC_CAP), source_sha, fence=fence
+        read_role(lab, driver, "/work/public.json", PUBLIC_CAP), source_sha,
+        fence=fence, history=history,
     )
     mark(lab, driver, "acknowledge")
     need(lab.engine.checked("container", "wait", driver[0]["identity"], timeout=5) == b"0\n")
@@ -401,7 +421,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--work", type=Path, required=True)
     parser.add_argument("--fence", action="store_true")
+    parser.add_argument("--history", action="store_true")
     options = parser.parse_args()
+    if options.history and not options.fence:
+        parser.error("--history requires --fence")
     report = {
         "schema": "pamolive.witness-installed-dual-cluster/2",
         "phase": "reservation",
@@ -417,7 +440,7 @@ def main():
     lab = None
     try:
         lab = WitnessLab(options.work)
-        run(lab, report, fence=options.fence)
+        run(lab, report, fence=options.fence, history=options.history)
     except Exception:
         pass
     finally:

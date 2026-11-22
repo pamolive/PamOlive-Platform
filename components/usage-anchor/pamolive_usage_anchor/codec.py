@@ -63,6 +63,38 @@ def closed(value, keys):
     need(type(value) is dict and set(value) == set(keys))
 
 
+def terminal_receipt(raw, *, reservation_id, operation_id, body_hash, final_digest):
+    """Validate the existing terminal format while retaining its original bytes."""
+    value = parse(raw, 4096, special=True)
+    closed(
+        value,
+        {
+            "schema",
+            "operation_id",
+            "reservation_id",
+            "state",
+            "body_hash",
+            "final_assertions_digest",
+            "issued_at",
+            "expires_at",
+            "terminal_at",
+            "authorized",
+        },
+    )
+    need(
+        value["authorized"] is False
+        and value["schema"] == "pamolive.vault.usage-terminal/1"
+        and value["state"] in ("consumed_no_release", "refused_no_release")
+        and value["operation_id"] == operation_id
+        and value["body_hash"] == body_hash
+        and value["reservation_id"] == reservation_id
+        and value["final_assertions_digest"] == final_digest,
+        "context_refused",
+        403,
+    )
+    return value
+
+
 def b64(raw):
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
 

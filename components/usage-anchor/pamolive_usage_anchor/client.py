@@ -3,7 +3,7 @@
 import http.client
 import ssl
 
-from pamolive_vault_contracts import body_hash, parse_transcript
+from pamolive_vault_contracts import body_hash, final_assertions_digest, parse_transcript
 from psycopg.rows import dict_row
 
 from .codec import (
@@ -11,6 +11,7 @@ from .codec import (
     Error,
     b64,
     baseline,
+    bundle,
     closed,
     commitment,
     digest,
@@ -18,6 +19,7 @@ from .codec import (
     need,
     parse,
     sha,
+    terminal_receipt,
     unb64,
     uuid,
 )
@@ -221,48 +223,56 @@ class VaultMirror:
             code, status = "unavailable", 503
         raise Error(code, status) from None
 
-    def _consume(self, reservation_id, bundle_raw):
-        from .codec import bundle
+    def _witness_terminal(self, route, reservation_id, value, bundle_raw):
+        status, raw = self.client.request(route, bundle_raw)
+        need(status == 200, "unavailable", 503)
+        terminal = terminal_receipt(
+            raw,
+            reservation_id=reservation_id,
+            operation_id=value["operation_id"],
+            body_hash=value["body_hash"],
+            final_digest=final_assertions_digest(bundle_raw),
+        )
+        return terminal, raw
 
+    @staticmethod
+    def _check_stored_terminal(row, terminal, raw):
+        need(
+            row["terminal_response"] is None
+            or (bytes(row["terminal_response"]) == raw and row["state"] == terminal["state"]),
+            "idempotency_conflict",
+            409,
+        )
+
+    def observe_terminal(self, reservation_id, bundle_raw):
+        """Retrieve authenticated W evidence through a historical local binding."""
+        try:
+            uuid(reservation_id)
+            value = bundle(bundle_raw)
+            with self.connect() as conn, conn.transaction(), conn.cursor(row_factory=dict_row) as c:
+                c.execute("SET TRANSACTION READ ONLY")
+                c.execute("SET LOCAL statement_timeout='3000ms'")
+                row = self._matching_mirror(c, reservation_id, value)
+            terminal, raw = self._witness_terminal(
+                "/v1/operations/observe-terminal", reservation_id, value, bundle_raw
+            )
+            self._check_stored_terminal(row, terminal, raw)
+            return raw
+        except Error as error:
+            code, status = error.code, error.status
+        except Exception:
+            code, status = "unavailable", 503
+        raise Error(code, status) from None
+
+    def _consume(self, reservation_id, bundle_raw):
         uuid(reservation_id)
         value = bundle(bundle_raw)
         with self.connect() as conn, conn.cursor(row_factory=dict_row) as c:
             reservation = self._active_reservation(c, reservation_id)
             row = self._matching_mirror(c, reservation_id, value)
         try:
-            _, terminal_raw = self.client.request("/v1/operations/consume", bundle_raw)
-            terminal = parse(terminal_raw, 4096, special=True)
-            closed(
-                terminal,
-                {
-                    "schema",
-                    "operation_id",
-                    "reservation_id",
-                    "state",
-                    "body_hash",
-                    "final_assertions_digest",
-                    "issued_at",
-                    "expires_at",
-                    "terminal_at",
-                    "authorized",
-                },
-            )
-            need(
-                terminal.get("authorized") is False
-                and terminal.get("schema") == "pamolive.vault.usage-terminal/1"
-                and terminal.get("state") in ("consumed_no_release", "refused_no_release")
-                and terminal.get("operation_id") == value["operation_id"]
-                and terminal.get("body_hash") == value["body_hash"]
-                and terminal.get("reservation_id") == reservation_id,
-                "context_refused",
-                403,
-            )
-            from pamolive_vault_contracts import final_assertions_digest
-
-            need(
-                terminal.get("final_assertions_digest") == final_assertions_digest(bundle_raw),
-                "context_refused",
-                403,
+            terminal, terminal_raw = self._witness_terminal(
+                "/v1/operations/consume", reservation_id, value, bundle_raw
             )
             with self.connect() as conn, conn.transaction(), conn.cursor(row_factory=dict_row) as c:
                 need(
@@ -276,15 +286,7 @@ class VaultMirror:
                     "context_refused",
                     403,
                 )
-                need(
-                    old["terminal_response"] is None
-                    or (
-                        bytes(old["terminal_response"]) == terminal_raw
-                        and old["state"] == terminal["state"]
-                    ),
-                    "idempotency_conflict",
-                    409,
-                )
+                self._check_stored_terminal(old, terminal, terminal_raw)
                 if old["terminal_response"] is None:
                     c.execute(
                         (

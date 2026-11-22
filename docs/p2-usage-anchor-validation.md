@@ -52,6 +52,18 @@ L'étape Vault seul a été ignorée. La reprise historique par un chemin dédi�
 la révocation indépendante du bail W et la qualification multi-hôte restent
 ouvertes. [PR nº 35](https://github.com/pamolive/PamOlive-Platform/pull/35)
 
+## Consultation historique des reçus
+
+L'entrée `run_witness_history` prolonge les campagnes de fermeture et W01.
+Le client historique récupère le reçu authentifié après fermeture de Vault,
+même si sa ligne locale est restée liée sans terminal. Le pilote tient aussi
+des verrous sur le contexte et l'opération W pendant une lecture pour vérifier
+que la route n'attend pas ces verrous. Il vérifie les refus d'une opération
+absente, en attente, d'un mauvais usage du certificat et d'un bundle divergent.
+Après fermeture du bail W par son administrateur, le reçu doit encore être
+identique. Les comparaisons SQL contrôlent la conservation des opérations,
+preuves, compteurs, journaux et miroirs après ces consultations.
+
 ## Wheel W1 installée — 18 novembre 2026
 
 La [CI installée](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191)

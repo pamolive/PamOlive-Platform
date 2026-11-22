@@ -28,6 +28,7 @@ from .codec import (
     need,
     parse,
     sha,
+    terminal_receipt,
     unb64,
     uuid,
 )
@@ -63,6 +64,7 @@ class Service:
             actions = {
                 "/v1/operations/bind": self.bind,
                 "/v1/operations/consume": self.consume,
+                "/v1/operations/observe-terminal": self.observe_terminal,
                 "/v1/activations/begin": self.begin_activation,
                 "/v1/activations/finish": self.finish_activation,
             }
@@ -323,6 +325,34 @@ class Service:
                 tx.before_commit(lambda: self._check(slot, peer, der, tx, expires, draft))
                 status = 201
         return status, response
+
+    def observe_terminal(self, raw, der):
+        """Read an existing receipt in W even when the operation lease is closed."""
+        purpose = "usage-anchor.vault/1"
+        slot, peer, _ = self._caller(der, purpose)
+        value = bundle(raw)
+        final_digest = final_assertions_digest(raw)
+        row = self.ledger.read_terminal(slot, peer, value["operation_id"])
+        need(row is not None, "context_refused", 403)
+        need(
+            row["body_hash"] == value["body_hash"]
+            and row["final_digest"] == final_digest
+            and bytes(row["final_bundle"]) == raw,
+            "idempotency_conflict",
+            409,
+        )
+        response = bytes(row["terminal_response"])
+        terminal = terminal_receipt(
+            response,
+            reservation_id=str(row["reservation_id"]),
+            operation_id=value["operation_id"],
+            body_hash=value["body_hash"],
+            final_digest=final_digest,
+        )
+        need(terminal["state"] == row["state"], "context_refused", 403)
+        current_slot, current_peer, _ = self._caller(der, purpose)
+        need((current_slot, current_peer) == (slot, peer), "context_refused", 403)
+        return 200, response
 
     def consume(self, raw, der):
         value = bundle(raw)
