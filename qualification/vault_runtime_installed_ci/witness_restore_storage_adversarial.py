@@ -24,6 +24,12 @@ STEPS = (
     b"W01_TARGET_ABSENT\n", SNAP, ARCHIVE, TOC, b"W01_TARGET_FRESH\n", b"", SNAP,
     SNAP, b"W01_TARGET_READ_ONLY\n",
 )
+SOURCE_ID = b"7051354136572160041\n"
+TARGET_ID = b"7051354136572160042\n"
+CLUSTER_SOURCE_STEPS = (b"W01_TARGET_ABSENT\n", SNAP, SOURCE_ID, ARCHIVE, TOC, SNAP)
+CLUSTER_TARGET_STEPS = (
+    TARGET_ID, b"W01_TARGET_FRESH\n", b"", SNAP, b"W01_TARGET_READ_ONLY\n", TARGET_ID,
+)
 
 ATTEMPTS = []
 
@@ -192,6 +198,153 @@ class RestoreTests(unittest.TestCase):
                 lab.replies[step] = result(stdout)
                 self.assert_refused(lab, "verify", step + 1)
         self.assertEqual(ATTEMPTS, [])
+
+
+class ClusterLab(Lab):
+    def __init__(self):
+        super().__init__()
+        self.target_item = {
+            "name": self.reservation + "-w-postgres-restore", "identity": "c" * 64,
+        }
+        self.target_spec = SimpleNamespace(
+            role="w-postgres-restore", user=self.spec.user, command=self.spec.command,
+        )
+        self.states = {"w-postgres": "running", "w-postgres-restore": "created"}
+        self.exit_code = 0
+        self.replies = {
+            self.spec.role: [result(stdout) for stdout in CLUSTER_SOURCE_STEPS],
+            self.target_spec.role: [result(stdout) for stdout in CLUSTER_TARGET_STEPS],
+        }
+        self.cutoffs = 0
+
+    def bind(self, item, spec):
+        if item is self.item and spec is self.spec:
+            return self.spec.role
+        if item is self.target_item and spec is self.target_spec:
+            return self.target_spec.role
+        raise AssertionError("unexpected allocation")
+
+    def exec(self, item, spec, *argv, **options):
+        role = self.bind(item, spec)
+        if self.states[role] != "running":
+            raise AssertionError("exec in stopped or unstarted PostgreSQL")
+        self.calls.append((role, argv, options))
+        return self.replies[role].pop(0)
+
+    def container_profile(self, item, spec):
+        status = self.states[self.bind(item, spec)]
+        return {
+            "State": {
+                "Status": status,
+                "Running": status == "running",
+                "OOMKilled": False,
+                "ExitCode": self.exit_code,
+            },
+        }
+
+    def switch_clusters(self):
+        self.cutoffs += 1
+        self.states.update({"w-postgres": "exited", "w-postgres-restore": "running"})
+
+    def run(self, run_id=RUN):
+        return storage.restore_witness_cluster(
+            self, self.item, self.spec, self.target_item, self.target_spec, run_id,
+            switch_clusters=self.switch_clusters,
+        )
+
+
+class ClusterRestoreTests(unittest.TestCase):
+    def assert_refused(self, lab, phase, source_calls, target_calls, cutoffs):
+        with self.assertRaises(storage.WitnessStorageRefused) as trapped:
+            lab.run()
+        self.assertEqual(trapped.exception.phase, phase)
+        self.assertEqual(str(trapped.exception), "witness_storage_refused")
+        self.assertIsNone(trapped.exception.__cause__)
+        self.assertEqual(
+            [role for role, _, _ in lab.calls],
+            [lab.spec.role] * source_calls + [lab.target_spec.role] * target_calls,
+        )
+        self.assertEqual(lab.cutoffs, cutoffs)
+
+    def test_cross_cluster_uses_archive_only_after_source_is_unavailable(self):
+        lab = ClusterLab()
+        self.assertEqual(lab.run(), {
+            "archive_verified": True,
+            "distinct_database_created": True,
+            "history_and_state_preserved": True,
+            "read_only_grants_verified": True,
+            "original_cluster_unavailable": True,
+            "distinct_cluster_verified": True,
+        })
+        self.assertEqual(
+            [role for role, _, _ in lab.calls],
+            [lab.spec.role] * len(CLUSTER_SOURCE_STEPS)
+            + [lab.target_spec.role] * len(CLUSTER_TARGET_STEPS),
+        )
+        self.assertEqual(lab.cutoffs, 1)
+        self.assertEqual(lab.states[lab.spec.role], "exited")
+        self.assertIn(SOURCE, lab.calls[3][1])
+        self.assertIn(b"pg_control_system()", lab.calls[2][2]["data"])
+        target_identity = lab.calls[6][2]["data"]
+        self.assertIn(b"pg_control_system()", target_identity)
+        self.assertIn(b"pg_database", target_identity)
+        self.assertIn(b"pg_auth_members", target_identity)
+        self.assertIn(b"ARRAY['postgres','usage_anchor_observer']", target_identity)
+        for role in storage.NONLOGIN_ROLES:
+            self.assertIn(role.encode(), target_identity)
+        creation = lab.calls[7][2]["data"]
+        self.assertIn(b"pg_database", creation)
+        self.assertIn(b"NOT rolcanlogin", creation)
+        self.assertNotIn(b"DROP", creation)
+        self.assertIn(f"--dbname={CLONE}", lab.calls[8][1])
+        self.assertEqual(lab.calls[8][2]["data"], ARCHIVE)
+        self.assertEqual(ATTEMPTS, [])
+
+    def test_prestarted_or_aliased_target_is_refused_before_reading_source(self):
+        lab = ClusterLab()
+        lab.states[lab.target_spec.role] = "running"
+        self.assert_refused(lab, "inputs", 0, 0, 0)
+        lab = ClusterLab()
+        lab.target_item["identity"] = lab.item["identity"]
+        self.assert_refused(lab, "inputs", 0, 0, 0)
+
+    def test_source_disagreement_before_cutoff_refuses_without_stopping_either(self):
+        lab = ClusterLab()
+        lab.replies[lab.spec.role][5] = result(SNAP.replace(b"a" * 64, b"c" * 64, 1))
+        self.assert_refused(lab, "cutoff", 6, 0, 0)
+        self.assertEqual(lab.states[lab.spec.role], "running")
+
+    def test_source_still_running_or_abnormally_exited_after_cutoff_is_refused(self):
+        lab = ClusterLab()
+        original_switch = lab.switch_clusters
+
+        def keep_source_running():
+            original_switch()
+            lab.states[lab.spec.role] = "running"
+
+        lab.switch_clusters = keep_source_running
+        self.assert_refused(lab, "cutoff", 6, 0, 1)
+        lab = ClusterLab()
+        lab.exit_code = 137
+        self.assert_refused(lab, "cutoff", 6, 0, 1)
+
+    def test_target_reused_system_identifier_or_unverified_freshness_is_refused(self):
+        for output in (SOURCE_ID, b"", b"98706\n98706\n"):
+            with self.subTest(output=output):
+                lab = ClusterLab()
+                lab.replies[lab.target_spec.role][0] = result(output)
+                self.assert_refused(lab, "target", 6, 1, 1)
+
+    def test_wrong_restored_snapshot_grants_or_postrestore_identity_fail(self):
+        for step, output in (
+            (3, SNAP.replace(b"a" * 64, b"d" * 64, 1)),
+            (4, b""),
+            (5, b"7051354136572160043\n"),
+        ):
+            with self.subTest(step=step):
+                lab = ClusterLab()
+                lab.replies[lab.target_spec.role][step] = result(output)
+                self.assert_refused(lab, "verify", 6, step + 1, 1)
 
 
 if __name__ == "__main__":

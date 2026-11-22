@@ -25,8 +25,10 @@ ROLES = MappingProxyType({
 OWNERS = MappingProxyType({"wpg": "usage_anchor_owner", "vpg": "vault_n0_owner"})
 HOSTS = MappingProxyType({"wpg": ("w-n0-db.test", "10.253.249.2"),
                           "vpg": ("v-n0-db.test", "10.253.249.5")})
+RESTORE_HOST = ("w-n0-recovery-db.test", "10.253.249.7")
 ROLE_FLAGS = "NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"
 REFUSED = b"W01_CLUSTER_REFUSED\n"
+REJECT_REMOTE = "host all all 0.0.0.0/0 reject\nhost all all ::/0 reject\n"
 
 
 class Refused(ValueError):
@@ -128,6 +130,65 @@ def _preflight(run, cluster):
     return (_blank_guard() + b"\\if :w01_blank\n\\echo "
             + _marker(run, cluster.role, "EMPTY")
             + b"\\else\n\\echo W01_CLUSTER_REFUSED\n\\endif\n")
+
+
+def _check_tls(tls):
+    closed(tls, {"ca", "certificate", "key"})
+    for raw in tls.values():
+        need(type(raw) is bytes and 0 < len(raw) <= 16384 and raw.isascii()
+             and raw.startswith(b"-----BEGIN ") and raw.endswith(b"-----\n"))
+
+
+def _pg_files(address, admin_password, tls, hba):
+    config = (f"listen_addresses='{address}'\nport=5432\nssl=on\n"
+              "ssl_cert_file='/lab/server.crt'\nssl_key_file='/lab/server.key'\n"
+              "hba_file='/lab/pg_hba.conf'\npassword_encryption='scram-sha-256'\n"
+              "fsync=on\nsynchronous_commit=on\nshared_buffers='16MB'\n"
+              "max_connections=16\nlog_statement='none'\nlog_min_messages='fatal'\n")
+    return MappingProxyType({
+        "ca.crt": File(tls["ca"], 0o444),
+        "server.crt": File(tls["certificate"], 0o444),
+        "server.key": File(tls["key"], 0o400),
+        "initial-password": File(admin_password.encode("ascii"), 0o400),
+        "postgresql.conf": File(config.encode("ascii"), 0o444),
+        "pg_hba.conf": File((hba + REJECT_REMOTE).encode("ascii"), 0o444),
+    })
+
+
+def prepare_restore_cluster(run_id, *, credentials, tls):
+    """Return only inert staging data for a separate blank cluster."""
+    database = restore_database(run_id)
+    closed(credentials, {"postgres", "usage_anchor_observer"})
+    for value in credentials.values():
+        password(value)
+    need(len(set(credentials.values())) == len(credentials))
+    _check_tls(tls)
+    name, address = RESTORE_HOST
+    hba = (
+        f"local postgres postgres peer\nlocal {database} postgres peer\nlocal all all reject\n"
+        f"hostssl {database} usage_anchor_observer 10.253.249.3/32 scram-sha-256\n"
+        f"hostssl {database} usage_anchor_observer 10.253.249.4/32 scram-sha-256\n"
+    )
+    return Cluster("wpr", name, address, database, _pg_files(address, credentials["postgres"],
+                                                               tls, hba))
+
+
+def restore_cluster_scripts(run_id, cluster, observer_password):
+    """Give the new cluster defined role names without installing application schema."""
+    need(cluster.role == "wpr" and cluster.database == restore_database(run_id))
+    need((cluster.hostname, cluster.address) == RESTORE_HOST)
+    observer = "usage_anchor_observer"
+    statements = [
+        f"CREATE ROLE {identifier(role)} NOLOGIN {ROLE_FLAGS};"
+        for role in (OWNERS["wpg"], *ROLES["wpg"]) if role != observer
+    ]
+    statements.append(f"CREATE ROLE {identifier(observer)} LOGIN {ROLE_FLAGS} "
+                      f"PASSWORD {password(observer_password)};")
+    body = ("\n".join(statements) + "\n").encode("ascii")
+    script = (_blank_guard() + b"\\if :w01_blank\n" + body
+              + b"\\echo " + _marker(run_id, cluster.role, "PROVISIONED")
+              + b"\\else\n\\echo W01_CLUSTER_REFUSED\n\\endif\n")
+    return _preflight(run_id, cluster), script
 
 
 def _provision(run, cluster, secrets, schemas):
@@ -278,16 +339,8 @@ def prepare_pair(
         for value in checked_credentials.values():
             password(value)
             all_passwords.append(value)
-        closed(tls[role], {"ca", "certificate", "key"})
-        for raw in tls[role].values():
-            need(type(raw) is bytes and 0 < len(raw) <= 16384 and raw.isascii()
-                 and raw.startswith(b"-----BEGIN ") and raw.endswith(b"-----\n"))
+        _check_tls(tls[role])
         name, address = HOSTS[role]
-        config = (f"listen_addresses='{address}'\nport=5432\nssl=on\n"
-                  "ssl_cert_file='/lab/server.crt'\nssl_key_file='/lab/server.key'\n"
-                  "hba_file='/lab/pg_hba.conf'\npassword_encryption='scram-sha-256'\n"
-                  "fsync=on\nsynchronous_commit=on\nshared_buffers='16MB'\n"
-                  "max_connections=16\nlog_statement='none'\nlog_min_messages='fatal'\n")
         hba = f"local postgres postgres peer\nlocal {database} postgres peer\n"
         restored = restore_database(run_id) if restore_witness and role == "wpg" else None
         if restored:
@@ -304,16 +357,10 @@ def prepare_pair(
                 hba += (
                     f"hostssl {restored} usage_anchor_observer {client_address}/32 scram-sha-256\n"
                 )
-        hba += "host all all 0.0.0.0/0 reject\nhost all all ::/0 reject\n"
-        files = {
-            "ca.crt": File(tls[role]["ca"], 0o444),
-            "server.crt": File(tls[role]["certificate"], 0o444),
-            "server.key": File(tls[role]["key"], 0o400),
-            "initial-password": File(checked_credentials["postgres"].encode("ascii"), 0o400),
-            "postgresql.conf": File(config.encode("ascii"), 0o444),
-            "pg_hba.conf": File(hba.encode("ascii"), 0o444),
-        }
-        cluster = Cluster(role, name, address, database, MappingProxyType(files))
+        cluster = Cluster(
+            role, name, address, database, _pg_files(address, checked_credentials["postgres"],
+                                                    tls[role], hba),
+        )
         clusters[role] = cluster
         scripts[role] = _provision(run_id, cluster, checked_credentials, checked_schemas)
     need(len(set(all_passwords)) == len(all_passwords))

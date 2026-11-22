@@ -1,4 +1,4 @@
-"""Restore sealed W01 SQL data into a fresh database in the owned W cluster."""
+"""Restore sealed W01 SQL data inside an owned synthetic PostgreSQL lab."""
 
 import re
 
@@ -8,6 +8,7 @@ from lab.witness_postgres import restore_database
 MAX_ARCHIVE = 1024 * 1024
 OWNER = "usage_anchor_owner"
 OBSERVER = "usage_anchor_observer"
+NONLOGIN_ROLES = ("usage_anchor_admin", OWNER, "usage_anchor_runtime", "w_v_probe", "w_web_probe")
 TABLES = (
     "activation_challenges",
     "activations",
@@ -57,11 +58,19 @@ WITH ns AS (
  UNION ALL
  SELECT 'default', defaclobjtype::text, defaclrole, defaclacl
  FROM pg_default_acl JOIN ns ON defaclnamespace=ns.oid
+), named_acl AS (
+ SELECT kind, name, pg_get_userbyid(owner)::text AS object_owner,
+        pg_get_userbyid(grantor)::text AS grantor_name,
+        CASE WHEN grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(grantee)::text END AS grantee_name,
+        privilege_type, is_grantable
+ FROM acl LEFT JOIN LATERAL aclexplode(entries) ON true
 )
 SELECT encode(sha256(convert_to(string_agg(
- jsonb_build_array(kind,name,owner,entry::text)::text, E'\n'
- ORDER BY kind COLLATE "C",name COLLATE "C",owner,entry::text COLLATE "C"), 'UTF8')), 'hex')
-FROM acl LEFT JOIN LATERAL unnest(entries) AS grant_entry(entry) ON true;
+ jsonb_build_array(kind,name,object_owner,grantor_name,grantee_name,
+                   privilege_type,is_grantable)::text, E'\n'
+ ORDER BY kind COLLATE "C",name COLLATE "C",object_owner COLLATE "C",grantor_name COLLATE "C",
+          grantee_name COLLATE "C",privilege_type COLLATE "C",is_grantable), 'UTF8')), 'hex')
+FROM named_acl;
 """
 
 
@@ -95,12 +104,37 @@ SELECT 'W01_TARGET_ABSENT' WHERE
 """
 
 
-def create_target(original, restored):
+def target_cluster_fresh():
+    names = ", ".join(f"'{role}'" for role in NONLOGIN_ROLES)
+    return f"""
+(SELECT array_agg(datname::text ORDER BY datname::text COLLATE "C") FROM pg_database)
+    =ARRAY['postgres','template0','template1']
+AND NOT EXISTS(SELECT FROM pg_database WHERE datdba<>10
+               OR datistemplate<>(datname<>'postgres') OR datallowconn<>(datname<>'template0'))
+AND ARRAY(SELECT rolname::text FROM pg_roles WHERE rolcanlogin
+          ORDER BY rolname::text COLLATE "C")=ARRAY['postgres','{OBSERVER}']
+AND ARRAY(SELECT rolname::text FROM pg_roles
+          WHERE rolname IN ({names}) AND NOT rolcanlogin
+          ORDER BY rolname::text COLLATE "C")=ARRAY[{names}]
+AND NOT EXISTS(
+ SELECT FROM pg_roles WHERE rolname IN ({names},'{OBSERVER}')
+   AND (rolsuper OR rolinherit OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls
+        OR EXISTS(SELECT FROM pg_auth_members WHERE member=pg_roles.oid OR roleid=pg_roles.oid))
+)
+"""
+
+
+def create_target(original, restored, *, separate_cluster=False):
     # The database cannot accept clients until its restrictive CONNECT ACL exists.
+    if separate_cluster:
+        target_guard = target_cluster_fresh()
+    else:
+        target_guard = f"""
+EXISTS(SELECT FROM pg_database WHERE datname='{original}' AND datdba='{OWNER}'::regrole)
+AND NOT EXISTS(SELECT FROM pg_database WHERE datname='{restored}')
+"""
     return rf"""
-SELECT (({context("postgres")}) AND EXISTS(
- SELECT FROM pg_database WHERE datname='{original}' AND datdba='{OWNER}'::regrole
- ) AND NOT EXISTS(SELECT FROM pg_database WHERE datname='{restored}')) IS TRUE
+SELECT (({context("postgres")}) AND ({target_guard})) IS TRUE
  AS w01_can_create \gset
 \if :w01_can_create
 CREATE DATABASE "{restored}" OWNER {OWNER} TEMPLATE template0 ALLOW_CONNECTIONS false;
@@ -170,8 +204,75 @@ HAVING count(*)<=64;
     return "".join(statements)
 
 
+class _WitnessPostgres:
+    def __init__(self, lab, item, spec, role):
+        need(spec.role == role and spec.user == "999:999")
+        need(spec.command == ("postgres", "-c", "config_file=/lab/postgresql.conf"))
+        need(item["name"] == lab.reservation + "-" + role and not item.get("removed"))
+        need(re.fullmatch(r"[0-9a-f]{64}", item["identity"]))
+        self.lab, self.item, self.spec = lab, item, spec
+
+    def inactive(self, status):
+        state = self.lab.container_profile(self.item, self.spec)["State"]
+        need(state["Status"] == status and state["Running"] is False)
+        need(state["OOMKilled"] is False)
+        if status == "exited":
+            need(state["ExitCode"] in (0, 143))
+
+    def execute(self, argv, *, data=None, cap=8192):
+        # Lab.exec re-checks the exact owned, running CID and Docker profile.
+        result = self.lab.exec(
+            self.item, self.spec, *LOCAL, *argv, data=data, timeout=9, stdout_cap=cap,
+            stdin_cap=MAX_ARCHIVE,
+        )
+        check_result(result, cap)
+        need(result.stderr == b"")
+        return result.stdout
+
+    def sql(self, database, body, *, read_only=True):
+        target = (*PSQL, "-d", database, "-f", "-")
+        if read_only:
+            body = (
+                "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;\n"
+                "SET LOCAL search_path=pg_catalog;\n"
+                f"SELECT ({context(database)}) IS TRUE AS w01_storage_session \\gset\n"
+                "\\if :w01_storage_session\n" + body + "\\endif\nCOMMIT;\n"
+            )
+        return self.execute(target, data=body.encode("ascii"))
+
+    def snapshot(self, database):
+        output = self.sql(database, snapshot_sql())
+        need(output.endswith(b"\n"))
+        lines = output.splitlines()
+        need(len(lines) == len(TABLES) + 2 and lines[0] == b"W01_STATE_SEALED")
+        need(all(re.fullmatch(rb"[0-9a-f]{64}", value) for value in lines[1:]))
+        return output
+
+    def cluster_id(self, *, fresh=False):
+        where = f" WHERE {target_cluster_fresh()}" if fresh else ""
+        identifier = self.sql(
+            "postgres", f"SELECT system_identifier FROM pg_control_system(){where};\n"
+        )
+        need(re.fullmatch(rb"-?[1-9][0-9]{0,18}\n", identifier))
+        return identifier
+
+
 def restore_witness_storage(lab, item, spec, run_id):
-    """Use only bounded bytes from one sealed source and the lab's local peer socket."""
+    """Restore into a fresh database in the same synthetic W cluster."""
+    return _restore(lab, item, spec, run_id)
+
+
+def restore_witness_cluster(
+    lab, source_item, source_spec, target_item, target_spec, run_id, *, switch_clusters
+):
+    """Hold an in-memory dump across a verified shutdown and fresh cluster startup."""
+    return _restore(
+        lab, source_item, source_spec, run_id,
+        destination=(target_item, target_spec), switch_clusters=switch_clusters,
+    )
+
+
+def _restore(lab, item, spec, run_id, *, destination=None, switch_clusters=None):
     phase = "inputs"
     try:
         restored = restore_database(run_id)
@@ -179,77 +280,74 @@ def restore_witness_storage(lab, item, spec, run_id):
         need(restored == original + "_restored")
         need(re.fullmatch(r"pv-[0-9a-f]{32}", lab.reservation))
         need(run_id == lab.reservation[3:19])
-        need(spec.role == "w-postgres" and spec.user == "999:999")
-        need(spec.command == ("postgres", "-c", "config_file=/lab/postgresql.conf"))
-        need(item["name"] == lab.reservation + "-w-postgres" and not item.get("removed"))
-        need(re.fullmatch(r"[0-9a-f]{64}", item["identity"]))
-
-        def execute(argv, *, data=None, cap=8192):
-            # Lab.exec re-checks the exact owned, running CID and Docker profile.
-            result = lab.exec(
-                item, spec, *LOCAL, *argv, data=data, timeout=9, stdout_cap=cap,
-                stdin_cap=MAX_ARCHIVE,
-            )
-            check_result(result, cap)
-            need(result.stderr == b"")
-            return result.stdout
-
-        def sql(database, body, *, read_only=True):
-            target = (*PSQL, "-d", database, "-f", "-")
-            if read_only:
-                body = (
-                    "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;\n"
-                    f"SET LOCAL search_path=pg_catalog;\n"
-                    f"SELECT ({context(database)}) IS TRUE AS w01_storage_session \\gset\n"
-                    "\\if :w01_storage_session\n" + body + "\\endif\nCOMMIT;\n"
-                )
-            return execute(target, data=body.encode("ascii"))
-
-        def snapshot(database):
-            output = sql(database, snapshot_sql())
-            need(output.endswith(b"\n"))
-            lines = output.splitlines()
-            need(len(lines) == len(TABLES) + 2 and lines[0] == b"W01_STATE_SEALED")
-            need(all(re.fullmatch(rb"[0-9a-f]{64}", value) for value in lines[1:]))
-            return output
+        source = _WitnessPostgres(lab, item, spec, "w-postgres")
+        target = source
+        separate_cluster = destination is not None
+        if separate_cluster:
+            need(callable(switch_clusters))
+            target = _WitnessPostgres(lab, *destination, "w-postgres-restore")
+            need(source.item["identity"] != target.item["identity"])
+            target.inactive("created")
 
         phase = "source"
-        need(sql("postgres", source_guard(original, restored)) == b"W01_TARGET_ABSENT\n")
-        before = snapshot(original)
+        need(source.sql("postgres", source_guard(original, restored)) == b"W01_TARGET_ABSENT\n")
+        before = source.snapshot(original)
+        source_id = source.cluster_id() if separate_cluster else None
 
         phase = "archive"
-        archive = execute(local_argv([
+        archive = source.execute(local_argv([
             "pg_dump", "-U", "postgres", "-d", original, "--format=custom",
             "--schema=pam_usage_anchor", "--strict-names", "--no-owner", "--no-comments",
             "--no-security-labels", "--no-tablespaces", "--no-publications",
             "--no-subscriptions", "--lock-wait-timeout=2s",
         ]), cap=MAX_ARCHIVE)
         need(archive.startswith(b"PGDMP") and len(archive) > 5)
-        table_list = execute(("pg_restore", "--list"), data=archive, cap=32768)
+        table_list = source.execute(("pg_restore", "--list"), data=archive, cap=32768)
         names = re.findall(rb"(?m)^\d+; \d+ \d+ TABLE DATA pam_usage_anchor (\w+) "
                            rb"usage_anchor_owner$", table_list)
         need(sorted(names) == [name.encode("ascii") for name in TABLES])
         need(table_list.count(b" TABLE DATA ") == len(TABLES))
 
+        if separate_cluster:
+            phase = "cutoff"
+            need(source.snapshot(original) == before)
+            target.inactive("created")
+            switch_clusters()
+            source.inactive("exited")
+            phase = "target"
+            target_id = target.cluster_id(fresh=True)
+            need(target_id != source_id)
+
         phase = "create"
-        fresh = sql("postgres", create_target(original, restored), read_only=False)
+        fresh = target.sql(
+            "postgres", create_target(original, restored, separate_cluster=separate_cluster),
+            read_only=False,
+        )
         need(fresh == b"W01_TARGET_FRESH\n")
 
         phase = "restore"
-        need(execute(local_argv([
+        need(target.execute(local_argv([
             "pg_restore", "-U", "postgres", "--dbname=" + restored,
             "--role=" + OWNER, "--exit-on-error", "--single-transaction", "--no-owner",
             "--no-comments", "--no-security-labels", "--no-tablespaces",
         ]), data=archive) == b"")
 
         phase = "verify"
-        need(snapshot(restored) == before and snapshot(original) == before)
-        need(sql(restored, observer_grants(restored)) == b"W01_TARGET_READ_ONLY\n")
-        return {
+        need(target.snapshot(restored) == before)
+        if not separate_cluster:
+            need(source.snapshot(original) == before)
+        need(target.sql(restored, observer_grants(restored)) == b"W01_TARGET_READ_ONLY\n")
+        if separate_cluster:
+            need(target.cluster_id() == target_id)
+            source.inactive("exited")
+        facts = {
             "archive_verified": True,
             "distinct_database_created": True,
             "history_and_state_preserved": True,
             "read_only_grants_verified": True,
         }
+        if separate_cluster:
+            facts.update(original_cluster_unavailable=True, distinct_cluster_verified=True)
+        return facts
     except Exception:
         raise WitnessStorageRefused(phase) from None

@@ -1,5 +1,17 @@
 # Roadmap d’implémentation et qualification
 
+## Reprise après arrêt du cluster du témoin — 23 novembre 2026
+
+La [PR nº 39](https://github.com/pamolive/PamOlive-Platform/pull/39) qualifie
+sur `8da2d76` la reprise logique sur un cluster PostgreSQL neuf, après arrêt
+du cluster source. Le témoin restauré consulte le reçu d'origine sous un
+compte SQL observateur doté de nouveaux justificatifs. Le bail reste fermé
+et le port PostgreSQL source reste inaccessible. Les 77 tests installés,
+35 scénarios natifs et six constats SQL passent. La sauvegarde physique,
+le PITR, la rotation du certificat applicatif et la reprise multi-hôte
+restent ouverts.
+[CI de reprise](https://github.com/pamolive/PamOlive-Platform/actions/runs/45085143496)
+
 ## Restauration logique du témoin — 23 novembre 2026
 
 La [PR nº 38](https://github.com/pamolive/PamOlive-Platform/pull/38) qualifie
@@ -7,8 +19,8 @@ sur `b4ff379` une restauration en consultation d'un témoin fermé vers une
 base neuve du même cluster. La campagne PostgreSQL 17.12 et mTLS confirme
 77 tests installés, 34 scénarios natifs, quatre contrôles du stockage et le
 nettoyage. Le reçu d'origine reste exact et les routes d'écriture restent
-fermées. Le PITR, la rotation d'identité et la reprise après perte du cluster
-ou sur un autre hôte restent ouverts.
+fermées. La campagne ci-dessus étend cet essai au remplacement du cluster
+sur le même hôte.
 [CI de restauration](https://github.com/pamolive/PamOlive-Platform/actions/runs/45084090436)
 
 ## Redémarrage du témoin en consultation seule — 23 novembre 2026

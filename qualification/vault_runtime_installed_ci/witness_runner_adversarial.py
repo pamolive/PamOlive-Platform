@@ -1,5 +1,6 @@
 """Test the W01 orchestration gates without Docker, SQL or an installed runtime."""
 
+import errno
 import json
 import sys
 import unittest
@@ -166,7 +167,53 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(command[:2], driver)
         self.assertIn("test -f /work/restore-ready", command[-1])
 
-    def test_restored_database_factory_binds_only_observer_and_exact_copy(self):
+    def test_cluster_restore_orders_shutdown_preflight_and_new_service(self):
+        lab = MagicMock()
+        ledger = MagicMock()
+        for name in ("retire_recovery", "retire_source", "start"):
+            ledger.attach_mock(getattr(lab, name), name)
+        recovery, driver, source, target = [(object(), object()) for _ in range(4)]
+        facts = dict.fromkeys(runner.CLUSTER_STORAGE_CASES, True)
+        report = {"empty_clusters_verified": 2, "clusters_provisioned": 2}
+
+        def storage(*args, switch_clusters):
+            self.assertEqual(args, (lab, *source, *target, RUN))
+            switch_clusters()
+            return facts
+
+        with (
+            patch.object(runner, "wait_driver"),
+            patch.object(runner, "read_role", return_value=b"W01_RESTORE_READY\n"),
+            patch.object(runner, "restore_witness_cluster", side_effect=storage) as restore,
+            patch.object(runner, "wait"),
+            patch.object(runner, "run_pg") as pg,
+            patch.object(runner, "start_history_listener") as listen,
+            patch.object(runner, "mark"),
+        ):
+            pg.side_effect = [
+                SimpleNamespace(
+                    returncode=0, stdout=f"W01_{RUN}_wpr_{phase}\n".encode(), stderr=b""
+                )
+                for phase in ("EMPTY", "PROVISIONED")
+            ]
+            ledger.attach_mock(restore, "storage")
+            ledger.attach_mock(pg, "pg")
+            ledger.attach_mock(listen, "listener")
+            runner.restore_closed_witness(
+                lab, recovery, driver, source, "image", RUN, "a" * 64, report,
+                recovery_pg=(target, b"preflight", b"provision"),
+            )
+            self.assertEqual(
+                [call[0] for call in ledger.mock_calls],
+                ["storage", "retire_recovery", "retire_source", "start", "pg", "pg", "listener"],
+            )
+            self.assertEqual([call.args for call in pg.call_args_list], [
+                (lab, *target, b"preflight"), (lab, *target, b"provision"),
+            ])
+        self.assertEqual(report["empty_clusters_verified"], 3)
+        self.assertEqual(report["clusters_provisioned"], 3)
+
+    def database_rows(self):
         rows = {}
         for database, users in witness_driver.ROLES.items():
             host, address = witness_driver.HOSTS[database]
@@ -177,6 +224,10 @@ class OrchestrationTests(unittest.TestCase):
                 "dbname": f"w01_{RUN}_{database}",
                 "credentials": {user: "fixture-" * 4 + user for user in users},
             }
+        return rows
+
+    def test_restored_database_factory_binds_only_observer_and_exact_copy(self):
+        rows = self.database_rows()
         raw = witness_driver.encode({"run": RUN, "databases": rows})
 
         def read_regular(path, _cap):
@@ -217,6 +268,74 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(settings["sslmode"], "verify-full")
         self.assertEqual(settings["channel_binding"], "require")
         self.assertIn("default_transaction_read_only=on", settings["options"])
+
+    def test_cluster_restore_requires_a_distinct_sql_identity(self):
+        rows = self.database_rows()
+        source = rows["wpg"]
+        observer = "usage_anchor_observer"
+        host, address = witness_driver.RESTORE_HOST
+        target = {
+            **source,
+            "host": host,
+            "hostaddr": address,
+            "dbname": source["dbname"] + "_restored",
+            "credentials": {observer: "restore-" * 4 + observer},
+        }
+        for field, change, same_ca in (
+            (None, None, False),
+            ("hostaddr", source["hostaddr"], False),
+            ("credentials", {observer: source["credentials"][observer]}, False),
+            (None, None, True),
+        ):
+            with self.subTest(field=field, same_ca=same_ca):
+                candidate = target if field is None else {**target, field: change}
+                raw = witness_driver.encode(
+                    {"run": RUN, "databases": rows, "database_restored": candidate}
+                )
+
+                def read_regular(path, _cap):
+                    if path.name == "driver.json":
+                        return raw
+                    if same_ca and path.name == "wpr-ca.crt":
+                        return b"wpg-ca.crt"
+                    return path.name.encode("ascii")
+
+                connect = MagicMock(return_value=SimpleNamespace(
+                    autocommit=False,
+                    info=SimpleNamespace(user=observer, host=host, hostaddr=address, port=5432,
+                                         dbname=target["dbname"], server_version=170012),
+                ))
+                with patch.dict(sys.modules, {
+                    "psycopg": SimpleNamespace(connect=connect),
+                    "witness_wheel": SimpleNamespace(read_regular=read_regular),
+                }):
+                    if field or same_ca:
+                        with self.assertRaises(ValueError):
+                            witness_driver.database_connectors(
+                                RUN, lambda _: None, restore_cluster=True
+                            )
+                        connect.assert_not_called()
+                        continue
+                    factories = witness_driver.database_connectors(
+                        RUN, lambda _: None, restore_cluster=True
+                    )
+                    factories["restored_observer"]()
+                    settings = connect.call_args.kwargs
+                    self.assertEqual(settings["hostaddr"], address)
+                    self.assertEqual(settings["user"], observer)
+                    self.assertTrue(settings["sslrootcert"].endswith("wpr-ca.crt"))
+
+    def test_source_outage_requires_transport_failure_at_exact_endpoint(self):
+        with patch.object(witness_driver.socket, "create_connection") as connect:
+            connect.side_effect = ConnectionRefusedError(errno.ECONNREFUSED, "fixture")
+            witness_driver.require_original_database_unavailable()
+            connect.assert_called_once_with((witness_driver.HOSTS["wpg"][1], 5432), timeout=3)
+            connect.side_effect = OSError(errno.EACCES, "fixture")
+            with self.assertRaises(ValueError):
+                witness_driver.require_original_database_unavailable()
+            connect.side_effect = None
+            with self.assertRaises(ValueError):
+                witness_driver.require_original_database_unavailable()
 
     def test_diagnostic_publishes_only_an_enumerated_phase(self):
         driver = ({"identity": "a" * 64}, None)

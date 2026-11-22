@@ -2,6 +2,7 @@
 
 import argparse
 import base64
+import errno
 import http.client
 import importlib
 import json
@@ -16,7 +17,7 @@ from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
 
-from .witness_postgres import HOSTS, OWNERS, ROLES, restore_database
+from .witness_postgres import HOSTS, OWNERS, RESTORE_HOST, ROLES, restore_database
 
 ROOT = Path("/witness")
 MOUNT = Path("/lab")
@@ -176,7 +177,7 @@ def installed(source_sha):
     return modules
 
 
-def database_connectors(run, advance, *, restore_witness=False):
+def database_connectors(run, advance, *, restore_witness=False, restore_cluster=False):
     import psycopg
     from witness_wheel import read_regular
 
@@ -185,7 +186,10 @@ def database_connectors(run, advance, *, restore_witness=False):
     advance("database_profile_canonical")
     config = json.loads(raw)
     require(encode(config) == raw)
-    require(type(config) is dict and set(config) == {"run", "databases"} and config["run"] == run)
+    keys = {"run", "databases"}
+    if restore_cluster:
+        keys.add("database_restored")
+    require(type(config) is dict and set(config) == keys and config["run"] == run)
     databases = config["databases"]
     require(type(databases) is dict and set(databases) == set(ROLES))
     passwords, authorities, factories = set(), set(), {}
@@ -254,18 +258,32 @@ def database_connectors(run, advance, *, restore_witness=False):
             factories[user] = factory(row, user, ca)
     advance("database_profile_distinct_ca")
     require(len(authorities) == 2)
-    if restore_witness:
+    if restore_witness or restore_cluster:
         advance("database_restore_configuration")
         observer = "usage_anchor_observer"
-        row = databases["wpg"]
-        restored = {
-            **row,
-            "dbname": restore_database(run),
-            "credentials": {observer: row["credentials"][observer]},
-        }
-        factories["restored_observer"] = factory(
-            restored, observer, MOUNT / "wpg-ca.crt", read_only=True
-        )
+        dbname = restore_database(run)
+        if restore_cluster:
+            restored = config["database_restored"]
+            require(type(restored) is dict and set(restored) == set(databases["wpg"]))
+            require((restored["host"], restored["hostaddr"]) == RESTORE_HOST)
+            require(type(restored["port"]) is int and restored["port"] == 5432)
+            require(restored["dbname"] == dbname)
+            credentials = restored["credentials"]
+            require(type(credentials) is dict and set(credentials) == {observer})
+            password = credentials[observer]
+            require(type(password) is str and re.fullmatch(r"[A-Za-z0-9_-]{32,128}", password))
+            require(password not in passwords)
+            ca = MOUNT / "wpr-ca.crt"
+            require(read_regular(ca, 16384) not in authorities)
+        else:
+            row = databases["wpg"]
+            restored = {
+                **row,
+                "dbname": dbname,
+                "credentials": {observer: row["credentials"][observer]},
+            }
+            ca = MOUNT / "wpg-ca.crt"
+        factories["restored_observer"] = factory(restored, observer, ca, read_only=True)
     return factories
 
 
@@ -389,6 +407,18 @@ def wait_server(expected_der, expires):
     require(time.time() < expires)
     endpoints = socket.getaddrinfo(W_HOST, W_PORT, type=socket.SOCK_STREAM)
     require({endpoint[4] for endpoint in endpoints} == {(W_ADDRESS, W_PORT)})
+
+
+def require_original_database_unavailable():
+    try:
+        with socket.create_connection((HOSTS["wpg"][1], 5432), timeout=3):
+            pass
+    except TimeoutError:
+        return
+    except OSError as error:
+        require(error.errno in {errno.ECONNREFUSED, errno.EHOSTUNREACH, errno.ENETUNREACH})
+        return
+    require(False)
 
 
 def denied_tls(expected_der, who, reasons, phase, advance):
@@ -524,6 +554,7 @@ def run_cases(
     history=False,
     restart_history=False,
     restore_witness=False,
+    restore_cluster=False,
 ):
     from cryptography.hazmat.primitives import serialization
     from pamolive_usage_anchor import codec
@@ -706,15 +737,18 @@ def run_cases(
                     advance=advance,
                     restart=restart,
                 )
-                if restore_witness:
+                if restore_witness or restore_cluster:
                     def restore():
                         advance("restore_wait")
                         publish("restore-ready", b"W01_RESTORE_READY\n")
-                        wait_for("restored", 90)
+                        wait_for("restored", 130 if restore_cluster else 90)
                         advance("restore_tls")
                         wait_server(server_der, time.time() + 10)
 
-                    report["schema"] = "W01-restore-results/1"
+                    report["schema"] = (
+                        "W01-restore-cluster-results/1"
+                        if restore_cluster else "W01-restore-results/1"
+                    )
                     report["restoration"] = run_recovery_cases(
                         fixture=fixture,
                         client=clients["vault"],
@@ -727,7 +761,12 @@ def run_cases(
                         advance=advance,
                         restart=restore,
                         restored=True,
+                        source_unavailable=(
+                            require_original_database_unavailable if restore_cluster else None
+                        ),
                     )
+                    if restore_cluster:
+                        report["postgres"]["clusters"] = 3
     return report
 
 
@@ -738,7 +777,9 @@ def main():
     parser.add_argument("--fence", action="store_true")
     parser.add_argument("--history", action="store_true")
     parser.add_argument("--restart-history", action="store_true")
-    parser.add_argument("--restore-witness", action="store_true")
+    restoration = parser.add_mutually_exclusive_group()
+    restoration.add_argument("--restore-witness", action="store_true")
+    restoration.add_argument("--restore-cluster", action="store_true")
     args = parser.parse_args()
     phase = "boundary"
 
@@ -750,6 +791,7 @@ def main():
         require(not args.history or args.fence)
         require(not args.restart_history or args.history)
         require(not args.restore_witness or args.restart_history)
+        require(not args.restore_cluster or args.restart_history)
         os.environ.clear()
         os.environ.update(LANG="C.UTF-8", LC_ALL="C.UTF-8", PSYCOPG_IMPL="c")
         require(
@@ -760,7 +802,10 @@ def main():
         phase = "installed_wheels"
         modules = installed(args.source_sha)
         phase = "database_configuration"
-        factories = database_connectors(args.run, advance, restore_witness=args.restore_witness)
+        factories = database_connectors(
+            args.run, advance, restore_witness=args.restore_witness,
+            restore_cluster=args.restore_cluster,
+        )
         phase = "database_roles"
         check_database_roles(args.run, factories)
         phase = "initialized_publish"
@@ -788,6 +833,7 @@ def main():
             history=args.history,
             restart_history=args.restart_history,
             restore_witness=args.restore_witness,
+            restore_cluster=args.restore_cluster,
         )
         publish("public.json", encode(report))
         phase = "acknowledge"

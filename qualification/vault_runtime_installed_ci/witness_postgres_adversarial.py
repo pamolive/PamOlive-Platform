@@ -355,6 +355,53 @@ class WitnessPostgresTests(unittest.TestCase):
                 self.assertEqual((cluster.hostname, cluster.address), pg.HOSTS[role])
                 self.assertEqual(cluster.database, f"w01_{RUN}_{role}")
 
+    def test_24_separate_restore_hba_exposes_only_the_exact_observer_route(self):
+        target_passwords = {"postgres": "p" * 40, "usage_anchor_observer": "o" * 40}
+        cluster = pg.prepare_restore_cluster(
+            RUN, credentials=target_passwords, tls=inputs()["tls"]["wpg"]
+        )
+        database = pg.restore_database(RUN)
+        self.assertEqual((cluster.hostname, cluster.address), pg.RESTORE_HOST)
+        self.assertEqual(cluster.database, database)
+        self.assertEqual(cluster.role, "wpr")
+        self.assertEqual(
+            cluster.files["pg_hba.conf"].raw.decode().splitlines(),
+            [
+                "local postgres postgres peer",
+                f"local {database} postgres peer",
+                "local all all reject",
+                f"hostssl {database} usage_anchor_observer 10.253.249.3/32 scram-sha-256",
+                f"hostssl {database} usage_anchor_observer 10.253.249.4/32 scram-sha-256",
+                "host all all 0.0.0.0/0 reject",
+                "host all all ::/0 reject",
+            ],
+        )
+        self.assertIn(b"listen_addresses='10.253.249.7'\n", cluster.files["postgresql.conf"].raw)
+        self.assertNotIn(target_passwords["usage_anchor_observer"].encode(),
+                         b"".join(file.raw for file in cluster.files.values()))
+
+    def test_25_separate_restore_role_script_is_blank_guarded_and_schema_free(self):
+        target_passwords = {"postgres": "p" * 40, "usage_anchor_observer": "o" * 40}
+        tls = inputs()["tls"]["wpg"]
+        cluster = pg.prepare_restore_cluster(RUN, credentials=target_passwords, tls=tls)
+        preflight, provision = pg.restore_cluster_scripts(
+            RUN, cluster, target_passwords["usage_anchor_observer"]
+        )
+        self.assertTrue(provision.startswith(pg._blank_guard() + b"\\if :w01_blank\n"))
+        self.assertIn(f"W01_{RUN}_wpr_EMPTY".encode(), preflight)
+        self.assertIn(f"W01_{RUN}_wpr_PROVISIONED".encode(), provision)
+        self.assertNotIn(b"CREATE ROLE", preflight)
+        self.assertNotIn(b"GRANT ", provision)
+        self.assertNotIn(b"CREATE DATABASE", provision)
+        self.assertNotIn(b"CREATE SCHEMA", provision)
+        self.assertNotIn(target_passwords["postgres"].encode(), provision)
+        self.assertIn(b'CREATE ROLE "usage_anchor_observer" LOGIN ', provision)
+        for role in {pg.OWNERS["wpg"], *pg.ROLES["wpg"]} - {"usage_anchor_observer"}:
+            self.assertIn(f'CREATE ROLE "{role}" NOLOGIN '.encode(), provision)
+        reused = dict.fromkeys(target_passwords, target_passwords["postgres"])
+        with self.assertRaises(pg.Refused):
+            pg.prepare_restore_cluster(RUN, credentials=reused, tls=tls)
+
 
 def main():
     result = unittest.TestResult()

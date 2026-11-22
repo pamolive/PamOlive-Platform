@@ -54,7 +54,7 @@ class Container:
 
     @property
     def entrypoint(self):
-        postgres = self.role in {"postgres", "w-postgres", "v-postgres"}
+        postgres = self.role in {"postgres", "w-postgres", "v-postgres", "w-postgres-restore"}
         return "/usr/local/bin/docker-entrypoint.sh" if postgres else ""
 
 
@@ -501,6 +501,7 @@ class WitnessLab(Lab):
     container_roles = WITNESS_ROLES
     endpoints = WITNESS_ENDPOINTS
     preparer_mounts = WITNESS_PREPARER_MOUNTS
+    postgres_roles = frozenset({"w-postgres", "v-postgres"})
 
     def reserve(self, kind, role, name):
         allowed = {
@@ -524,14 +525,15 @@ class WitnessLab(Lab):
             need(spec.chown is False)
             need((spec.user, spec.address, spec.alias) == self.endpoints[spec.role])
             need(spec.volumes == (Volume(spec.role, "/lab"),))
-        need(not spec.environment or spec.role in {"w-postgres", "v-postgres"})
+        need(not spec.environment or spec.role in self.postgres_roles)
         need(all(self.volumes.get(m.role) == self.reservation + "-" + m.role for m in spec.volumes))
         # Tmpfs never shadows a role mount or introduces a second fixture tree.
         targets = {
             "preparer": {"/work"},
             "driver": {"/work"},
-            "w-postgres": {"/var/lib/postgresql/data", "/var/run/postgresql", "/tmp"},
-            "v-postgres": {"/var/lib/postgresql/data", "/var/run/postgresql", "/tmp"},
+            **dict.fromkeys(
+                self.postgres_roles, {"/var/lib/postgresql/data", "/var/run/postgresql", "/tmp"}
+            ),
         }
         need(len(dict(spec.tmpfs)) == len(spec.tmpfs))
         need(set(dict(spec.tmpfs)) <= targets.get(spec.role, set()))
@@ -644,3 +646,62 @@ class WitnessRestoreLab(WitnessRecoveryLab):
         if spec.role == "witness-restored":
             self._require_restore_slot()
         return super().start(item, spec, **options)
+
+
+class WitnessClusterRestoreLab(WitnessRestoreLab):
+    """Use a new PGDATA after both old listeners and the original PG stop."""
+
+    role = "w-postgres-restore"
+    endpoints = {
+        **WitnessRestoreLab.endpoints,
+        role: ("999:999", "10.253.249.7", "w-n0-recovery-db.test"),
+    }
+    volume_roles = WitnessRestoreLab.volume_roles | {role}
+    container_roles = WitnessRestoreLab.container_roles | {role}
+    postgres_roles = WitnessRestoreLab.postgres_roles | {role}
+    preparer_mounts = (
+        *WitnessRestoreLab.preparer_mounts,
+        Volume(role, "/stage/w-postgres-restore", False),
+    )
+    _stopped_source = None
+    _started_target = None
+
+    def retire_source(self, item, spec):
+        super()._require_restore_slot()
+        need(self._stopped_source is None and spec.role == "w-postgres")
+        state = self.container_profile(item, spec)["State"]
+        need(state["Status"] == "running" and state["Running"] is True and not state["OOMKilled"])
+        self.engine.checked("container", "stop", "--time", "5", item["identity"], timeout=8)
+        self._assert_source_stopped(item, spec)
+        self._stopped_source = item, spec
+
+    def _assert_source_stopped(self, item, spec):
+        state = self.container_profile(item, spec)["State"]
+        need(
+            state["Status"] == "exited"
+            and state["Running"] is False
+            and state["OOMKilled"] is False
+            and state["ExitCode"] == 0
+        )
+
+    def _require_restore_slot(self):
+        super()._require_restore_slot()
+        need(self._stopped_source is not None and self._started_target is not None)
+        self._assert_source_stopped(*self._stopped_source)
+        state = self.container_profile(*self._started_target)["State"]
+        need(state["Status"] == "running" and state["Running"] is True and not state["OOMKilled"])
+
+    def start(self, item, spec, **options):
+        if spec.role != self.role:
+            return super().start(item, spec, **options)
+        super()._require_restore_slot()
+        need(self._stopped_source is not None and self._started_target is None)
+        self._assert_source_stopped(*self._stopped_source)
+        _, source = self._stopped_source
+        need(
+            (spec.image, spec.command, spec.tmpfs, spec.environment)
+            == (source.image, source.command, source.tmpfs, source.environment)
+        )
+        result = super().start(item, spec, **options)
+        self._started_target = item, spec
+        return result

@@ -789,9 +789,18 @@ même cluster W. Le laboratoire SQL compare les neuf tables et leurs droits.
 Le témoin restauré sert le reçu exact sous la même identité TLS. Le contexte
 et le bail restent fermés. Les données d'origine sont conservées et le
 nettoyage est confirmé. Les 77 tests installés, 34 contrôles natifs et
-quatre constats de restauration SQL passent. La reprise après perte du
-cluster et la qualification multi-hôte restent ouvertes.
+quatre constats de restauration SQL passent. La campagne suivante poursuit
+la qualification sur un cluster distinct.
 [CI de restauration](https://github.com/pamolive/PamOlive-Platform/actions/runs/45084090436)
+
+La [PR nº 39](https://github.com/pamolive/PamOlive-Platform/pull/39) valide
+sur `8da2d76` une restauration logique sur un cluster neuf. Le contrôleur
+prouve la différence d'identité PostgreSQL et l'arrêt du cluster initial.
+Le témoin utilise les nouveaux justificatifs SQL de l'observateur. Il sert
+le reçu exact sous le certificat d'origine du slot, avec le bail fermé.
+La CI confirme les 77 tests installés, 35 scénarios natifs, six constats SQL
+et le nettoyage. Le PITR et la reprise multi-hôte restent à qualifier.
+[CI de reprise](https://github.com/pamolive/PamOlive-Platform/actions/runs/45085143496)
 
 Le parent `6c17536` conserve ses résultats distincts : PR fonctionnelle puis
 scan High en échec, push arrêté au timeout TLS d'acquisition avant assertion
