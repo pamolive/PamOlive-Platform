@@ -764,6 +764,15 @@ Le reçu vérifié confirme le nettoyage. Le listener Vault séparé, la lecture
 historique après fermeture et les campagnes de reprise W04 à W08 restent ouverts.
 [CI de fermeture](https://github.com/pamolive/PamOlive-Platform/actions/runs/45079293012)
 
+La [PR nº 36](https://github.com/pamolive/PamOlive-Platform/pull/36) valide
+sur `c1f8017` la consultation historique avec le témoin déjà démarré.
+Les sept contrôles natifs dédiés passent après les neuf scénarios W01 et
+les huit contrôles de fermeture. Les 70 tests installés sont verts et la
+revue indépendante confirme le reçu, les deux clusters et leur nettoyage.
+Les cas de redémarrage fermé, de rotation d'identité et de reprise multi-hôte
+restent ouverts.
+[CI de consultation](https://github.com/pamolive/PamOlive-Platform/actions/runs/45080374417/attempts/2)
+
 Le parent `6c17536` conserve ses résultats distincts : PR fonctionnelle puis
 scan High en échec, push arrêté au timeout TLS d'acquisition avant assertion
 post-build. Le correctif courant borne les seuls téléchargements publics

@@ -1,5 +1,15 @@
 # Roadmap d’implémentation et qualification
 
+## Consultation historique du témoin — 23 novembre 2026
+
+La [PR nº 36](https://github.com/pamolive/PamOlive-Platform/pull/36) qualifie
+sur `c1f8017` la lecture authentifiée d'un reçu après fermeture de Vault et
+du bail W. Les 70 tests installés et les 24 contrôles natifs passent sur un
+runner. Les lectures préservent l'état des deux bases. Le redémarrage en
+contexte fermé, la rotation de l'identité de consultation, le listener Vault
+séparé et la reprise multi-hôte restent à qualifier.
+[CI de consultation](https://github.com/pamolive/PamOlive-Platform/actions/runs/45080374417/attempts/2)
+
 ## Fermeture concurrente du Vault — 22 novembre 2026
 
 La [PR nº 35](https://github.com/pamolive/PamOlive-Platform/pull/35) qualifie
