@@ -16,7 +16,7 @@ from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
 
-from .witness_postgres import HOSTS, OWNERS, ROLES
+from .witness_postgres import HOSTS, OWNERS, ROLES, restore_database
 
 ROOT = Path("/witness")
 MOUNT = Path("/lab")
@@ -176,11 +176,13 @@ def installed(source_sha):
     return modules
 
 
-def database_connectors(run, *, restore_witness=False):
+def database_connectors(run, advance, *, restore_witness=False):
     import psycopg
     from witness_wheel import read_regular
 
+    advance("database_profile_read")
     raw = read_regular(MOUNT / "driver.json", 8192)
+    advance("database_profile_fields")
     config = json.loads(raw)
     require(encode(config) == raw)
     require(type(config) is dict and set(config) == {"run", "databases"} and config["run"] == run)
@@ -241,7 +243,9 @@ def database_connectors(run, *, restore_witness=False):
         require(row["dbname"] == f"w01_{run}_{database}")
         require(type(row["credentials"]) is dict and set(row["credentials"]) == set(users))
         ca = MOUNT / (database + "-ca.crt")
+        advance("database_profile_ca")
         authorities.add(read_regular(ca, 16384))
+        advance("database_profile_fields")
         for user, password in row["credentials"].items():
             require(type(password) is str and re.fullmatch(r"[A-Za-z0-9_-]{32,128}", password))
             require(password not in passwords)
@@ -249,8 +253,7 @@ def database_connectors(run, *, restore_witness=False):
             factories[user] = factory(row, user, ca)
     require(len(authorities) == 2)
     if restore_witness:
-        from .witness_postgres import restore_database
-
+        advance("database_restore_configuration")
         observer = "usage_anchor_observer"
         row = databases["wpg"]
         restored = {
@@ -755,7 +758,7 @@ def main():
         phase = "installed_wheels"
         modules = installed(args.source_sha)
         phase = "database_configuration"
-        factories = database_connectors(args.run, restore_witness=args.restore_witness)
+        factories = database_connectors(args.run, advance, restore_witness=args.restore_witness)
         phase = "database_roles"
         check_database_roles(args.run, factories)
         phase = "initialized_publish"

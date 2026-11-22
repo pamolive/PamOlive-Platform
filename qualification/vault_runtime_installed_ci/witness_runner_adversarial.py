@@ -155,6 +155,69 @@ class OrchestrationTests(unittest.TestCase):
             with self.subTest(marker=marker, storage=storage):
                 self.assertIsNone(self.exercise_restore(marker, storage)["restoration_storage"])
 
+    def test_restore_ready_is_a_checked_driver_marker(self):
+        state = SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+        lab = MagicMock()
+        lab.engine.deadline = float("inf")
+        lab.exec.return_value = state
+        driver = (object(), object())
+        runner.wait_driver(lab, driver, "restore-ready", 5, {})
+        command = lab.exec.call_args.args
+        self.assertEqual(command[:2], driver)
+        self.assertIn("test -f /work/restore-ready", command[-1])
+
+    def test_restored_database_factory_binds_only_observer_and_exact_copy(self):
+        rows = {}
+        for database, users in witness_driver.ROLES.items():
+            host, address = witness_driver.HOSTS[database]
+            rows[database] = {
+                "host": host,
+                "hostaddr": address,
+                "port": 5432,
+                "dbname": f"w01_{RUN}_{database}",
+                "credentials": {user: "fixture-" * 4 + user for user in users},
+            }
+        raw = witness_driver.encode({"run": RUN, "databases": rows})
+
+        def read_regular(path, _cap):
+            return raw if path.name == "driver.json" else path.name.encode("ascii")
+
+        row = rows["wpg"]
+        dbname = row["dbname"] + "_restored"
+        observer = "usage_anchor_observer"
+        connection = SimpleNamespace(
+            autocommit=False,
+            info=SimpleNamespace(
+                user=observer,
+                dbname=dbname,
+                host=row["host"],
+                hostaddr=row["hostaddr"],
+                port=5432,
+                server_version=witness_driver.TLS_EXPECTED,
+            ),
+        )
+        connect = MagicMock(return_value=connection)
+        with patch.dict(sys.modules, {
+            "psycopg": SimpleNamespace(connect=connect),
+            "witness_wheel": SimpleNamespace(read_regular=read_regular),
+        }):
+            plain = witness_driver.database_connectors(RUN, lambda _: None)
+            phases = []
+            factories = witness_driver.database_connectors(
+                RUN, phases.append, restore_witness=True
+            )
+            self.assertEqual(factories.keys() - plain.keys(), {"restored_observer"})
+            self.assertEqual(phases[-1], "database_restore_configuration")
+            connect.assert_not_called()
+            self.assertIs(factories["restored_observer"](), connection)
+        settings = connect.call_args.kwargs
+        self.assertEqual(settings["dbname"], dbname)
+        self.assertEqual(settings["user"], observer)
+        self.assertEqual(settings["password"], row["credentials"][observer])
+        self.assertEqual(settings["sslmode"], "verify-full")
+        self.assertEqual(settings["channel_binding"], "require")
+        self.assertIn("default_transaction_read_only=on", settings["options"])
+
     def test_diagnostic_publishes_only_an_enumerated_phase(self):
         driver = ({"identity": "a" * 64}, None)
         state = SimpleNamespace(returncode=42, stdout=b"", stderr=b"")

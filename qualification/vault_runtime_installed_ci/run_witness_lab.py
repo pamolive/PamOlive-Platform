@@ -36,6 +36,10 @@ DRIVER_PHASES = frozenset(
         b"boundary\n",
         b"installed_wheels\n",
         b"database_configuration\n",
+        b"database_profile_read\n",
+        b"database_profile_fields\n",
+        b"database_profile_ca\n",
+        b"database_restore_configuration\n",
         b"database_roles\n",
         b"database_connection\n",
         b"database_ca\n",
@@ -336,7 +340,7 @@ def mark(lab, driver, name):
 
 
 def wait_driver(lab, driver, file, seconds, report):
-    need(file in {"initialized", "w-stage.json", "history-closed", "public.json"})
+    need(file in {"initialized", "w-stage.json", "history-closed", "restore-ready", "public.json"})
     probe = f"if test -f /work/failed; then exit 42; else test -f /work/{file}; fi"
     end = min(time.monotonic() + seconds, lab.engine.deadline)
     while time.monotonic() < end:
