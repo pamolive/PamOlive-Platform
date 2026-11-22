@@ -84,7 +84,7 @@ autorisée. Le redémarrage d'un témoin fermé, une rotation de l'identité,
 l'isolation sous deux tenants réels et la reprise multi-hôte restent à
 qualifier. [PR nº 36](https://github.com/pamolive/PamOlive-Platform/pull/36)
 
-## Redémarrage du témoin en consultation seule
+## Redémarrage du témoin en consultation seule — 23 novembre 2026
 
 L'entrée `run_witness_restart` prolonge la campagne historique. Après
 fermeture du bail, le contrôleur arrête le témoin réservé et tente le même
@@ -95,6 +95,22 @@ seulement la configuration de lecture et son rôle PostgreSQL restreint.
 Le témoin doit retrouver le reçu exact, refuser une opération en attente et
 refuser les quatre routes d'écriture. Les instantanés des deux bases sont
 comparés après le redémarrage et les appels.
+
+La [CI de `7d37e0d`](https://github.com/pamolive/PamOlive-Platform/actions/runs/45081802652)
+confirme le refus du démarrage ordinaire sur contexte fermé. Le conteneur
+de reprise sert le reçu d'origine sous la même identité mTLS avec le rôle
+observateur. Quatre contrôles dédiés vérifient le reçu exact, le refus d'une
+opération en attente, le refus des quatre routes de mutation et la
+conservation des deux états SQL. Les 77 tests installés et les 24 scénarios
+W01, de fermeture et d'historique passent aussi. Le nettoyage est confirmé.
+
+L'archive `14777970828` correspond au digest GitHub et le reçu public porte le
+SHA-256 `a888891dac1a47bca417fe6ec235fff49dec02525dfe44393c98386e6349c9fc`.
+L'étape du laboratoire Vault seul est ignorée pour ce profil. L'essai
+remplace le processus témoin sur un seul runner et conserve ses bases
+PostgreSQL 17.12 et son certificat. Il reste à qualifier la restauration du
+stockage, la rotation d'identité et la reprise multi-hôte.
+[PR nº 37](https://github.com/pamolive/PamOlive-Platform/pull/37)
 
 ## Wheel W1 installée — 18 novembre 2026
 
