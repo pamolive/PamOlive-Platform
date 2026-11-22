@@ -493,7 +493,17 @@ def snapshot(observer, vault):
     return read(observer, "pam_usage_anchor", W_TABLES), read(vault, "vault_reservation", V_TABLES)
 
 
-def run_cases(fixture, modules, factories, source_sha, advance, *, fence=False, history=False):
+def run_cases(
+    fixture,
+    modules,
+    factories,
+    source_sha,
+    advance,
+    *,
+    fence=False,
+    history=False,
+    restart_history=False,
+):
     from cryptography.hazmat.primitives import serialization
     from pamolive_usage_anchor import codec
     from pamolive_usage_anchor.client import MTLSClient, VaultMirror
@@ -652,6 +662,29 @@ def run_cases(fixture, modules, factories, source_sha, advance, *, fence=False, 
                 advance=advance,
                 **evidence,
             )
+            if restart_history:
+                from .witness_history_cases import run_recovery_cases
+
+                def restart():
+                    advance("recovery_wait")
+                    publish("history-closed", b"W01_HISTORY_CLOSED\n")
+                    wait_for("restarted", 30)
+                    advance("recovery_tls")
+                    wait_server(server_der, time.time() + 10)
+
+                report["schema"] = "W01-recovery-results/1"
+                report["recovery"] = run_recovery_cases(
+                    fixture=fixture,
+                    client=clients["vault"],
+                    factories=factories,
+                    evidence=evidence,
+                    pending_reservation_id=pending.reservation_id,
+                    pending_bound_raw=bound_raw,
+                    bind_raw=bind_raw,
+                    snapshot=snapshot,
+                    advance=advance,
+                    restart=restart,
+                )
     return report
 
 
@@ -661,6 +694,7 @@ def main():
     parser.add_argument("--source-sha", required=True)
     parser.add_argument("--fence", action="store_true")
     parser.add_argument("--history", action="store_true")
+    parser.add_argument("--restart-history", action="store_true")
     args = parser.parse_args()
     phase = "boundary"
 
@@ -670,6 +704,7 @@ def main():
 
     try:
         require(not args.history or args.fence)
+        require(not args.restart_history or args.history)
         os.environ.clear()
         os.environ.update(LANG="C.UTF-8", LC_ALL="C.UTF-8", PSYCOPG_IMPL="c")
         require(
@@ -699,8 +734,14 @@ def main():
         wait_for("execute", max(0, fixture.now + 18 - time.time()))
         phase = "native_cases"
         report = run_cases(
-            fixture, modules, factories, args.source_sha, advance,
-            fence=args.fence, history=args.history,
+            fixture,
+            modules,
+            factories,
+            args.source_sha,
+            advance,
+            fence=args.fence,
+            history=args.history,
+            restart_history=args.restart_history,
         )
         publish("public.json", encode(report))
         phase = "acknowledge"

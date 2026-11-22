@@ -95,8 +95,27 @@ témoin confirme un terminal que Vault avait perdu avant de fermer. La route
 peut répondre quand le bail W est fermé, tant que le service W fonctionne
 et que l'identité mTLS est toujours autorisée. La remise et les écritures
 d'usage restent sous les contrôles du chemin de consommation. La reprise
-après redémarrage d'un contexte W fermé et la consultation au-delà d'une
-rotation d'identité demanderont un mécanisme d'archive distinct.
+au-delà d'une rotation d'identité demandera un mécanisme d'archive distinct.
+
+### Redémarrage d'un témoin fermé
+
+Le mode de consultation au démarrage est explicite et utilise le rôle
+PostgreSQL dédié `usage_anchor_observer`. Il exige le contexte fermé et
+un bail clôturé à un epoch supérieur à celui du slot. Il vérifie le tenant,
+l'installation, l'incarnation, l'empreinte du slot et l'identité du
+principal Vault. Le rôle doit être dépourvu de droits d'écriture effectifs.
+Les consultations revérifient la fermeture dans leur instantané SQL en
+lecture seule. Le processus ne monte que le slot épinglé, ses éléments
+mTLS et les identifiants SQL d'observation.
+
+L'option de démarrage conserve le refus de l'application ordinaire sur un
+contexte fermé. Déduire automatiquement le mode depuis un état SQL
+risquerait de changer l'autorité du processus à son insu. Employer le
+même rôle SQL avec un filtre HTTP préserverait ses droits d'écriture
+sous le filtre. La récupération retient donc une application dédiée, une
+route et un rôle SQL distincts. Le reçu d'origine reste consultable sous
+la même identité autorisée. Le mode de récupération ne peut réarmer un
+bail ni administrer le contexte.
 
 Chaque mutation suit contexte → quota principal → lease → opération → activations
 en ordre ASCII → audit. N0 sérialise les écritures par contexte tenant. Le CAS

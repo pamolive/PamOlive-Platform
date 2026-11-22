@@ -235,14 +235,16 @@ def exec_args(container_id):
             "-p 5432 -U postgres -d postgres -f -")
 
 
-def prepare_pair(run_id, *, databases, credentials, tls, schemas, schema_pins):
+def prepare_pair(run_id, *, databases, credentials, tls, schemas, schema_pins, recovery=False):
     """Return inert private data only. PEM trust/identity is checked by real TLS.
 
     databases/credentials/tls use exact wpg/vpg keys. Credentials include postgres
     plus each role in ROLES. tls has ca/certificate/key bytes for each cluster.
+    The recovery profile permits the observer at W's reserved service address.
     No key/password is generated or read here; there is no inherited environment.
     """
     need(type(run_id) is str and re.fullmatch(r"[a-f0-9]{16}", run_id))
+    need(type(recovery) is bool)
     closed(databases, ROLES)
     closed(credentials, ROLES)
     closed(tls, ROLES)
@@ -282,6 +284,8 @@ def prepare_pair(run_id, *, databases, credentials, tls, schemas, schema_pins):
             hba += f"hostssl {database} {login} 10.253.249.4/32 scram-sha-256\n"
         runtime_ip = "10.253.249.3" if role == "wpg" else "10.253.249.6"
         hba += f"hostssl {database} {ROLES[role][0]} {runtime_ip}/32 scram-sha-256\n"
+        if recovery and role == "wpg":
+            hba += f"hostssl {database} usage_anchor_observer {runtime_ip}/32 scram-sha-256\n"
         hba += "host all all 0.0.0.0/0 reject\nhost all all ::/0 reject\n"
         files = {
             "ca.crt": File(tls[role]["ca"], 0o444),

@@ -33,6 +33,10 @@ on:
         description: Verify read-only witness receipts after Vault and witness closure
         type: boolean
         default: false
+      run_witness_restart:
+        description: Replace the closed witness process with its read-only recovery listener
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -43,7 +47,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     env:
-      VAULT_SOURCES_SHA: ef7571783af70819e8baf0aaf9145b8b069dba36b3e1988b3e3b0e13ad2f8eb5
+      VAULT_SOURCES_SHA: 50d918027f6db54d5aba02b919a1b87e978a7ab6b6191a4058f99535dfdbe318
       VAULT_ASSETS_SHA: 71d26e9cc4b1c27465f875879fff28c0c657688f70f797b91f174f86fed6a1eb
       VAULT_PAYLOAD_SHA: d9e7ff40d7395a109833225b5051feb1f85f6dc9f7061a07c3fa97110bc6b4a6
     steps:
@@ -103,6 +107,9 @@ jobs:
         run: exit 42
       - name: Require Vault closure before testing historical witness receipts
         if: inputs.run_witness_history == true && inputs.run_witness_fence != true
+        run: exit 42
+      - name: Require historical witness checks before exercising closed restart
+        if: inputs.run_witness_restart == true && inputs.run_witness_history != true
         run: exit 42
       - name: Seventeen existing wheel DATA regressions
         run: python -I -B qualification/vault_reservation/test_wheel.py
@@ -218,6 +225,7 @@ jobs:
         env:
           VAULT_WITNESS_FENCE: ${{ inputs.run_witness_fence }}
           VAULT_WITNESS_HISTORY: ${{ inputs.run_witness_history }}
+          VAULT_WITNESS_RESTART: ${{ inputs.run_witness_restart }}
         shell: bash
         run: |
           set -euo pipefail
@@ -227,6 +235,9 @@ jobs:
           fi
           if [[ "$VAULT_WITNESS_HISTORY" == true ]]; then
             options+=(--history)
+          fi
+          if [[ "$VAULT_WITNESS_RESTART" == true ]]; then
+            options+=(--restart-history)
           fi
           python -I -B -S qualification/vault_runtime_installed_ci/run_witness_lab.py \
             --work "$VAULT_WORK" "${options[@]}"

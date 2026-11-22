@@ -2,9 +2,9 @@
 
 from .authority import Authority
 from .codec import MAX_MATERIALS
-from .http import Application
-from .ledger import PostgresLedger
-from .service import Service
+from .http import Application, HistoryApplication
+from .ledger import PostgresHistory, PostgresLedger
+from .service import HistoryService, Service
 from .slot import ReadOnly, SlotFile
 
 
@@ -19,3 +19,11 @@ def application(*, slot_path, slot_sha256, materials_path, connect, owner_uid=0)
     ledger = PostgresLedger(connect)
     ledger.startup(guard.check())
     return Application(Service(Authority(guard, materials), ledger))
+
+
+def history_application(*, slot_path, slot_sha256, connect, owner_uid=0):
+    """Start an observer for an already closed and fenced witness."""
+    guard = SlotFile(slot_path, slot_sha256, owner_uid)
+    ledger = PostgresHistory(connect)
+    ledger.startup(guard.check())
+    return HistoryApplication(HistoryService(guard, ledger))

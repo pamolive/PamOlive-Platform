@@ -773,6 +773,15 @@ Les cas de redémarrage fermé, de rotation d'identité et de reprise multi-hôt
 restent ouverts.
 [CI de consultation](https://github.com/pamolive/PamOlive-Platform/actions/runs/45080374417/attempts/2)
 
+La [PR nº 37](https://github.com/pamolive/PamOlive-Platform/pull/37) qualifie
+le redémarrage fermé sur `7d37e0d`. Le démarrage ordinaire est refusé,
+puis le nouveau conteneur utilise le même certificat avec un montage et
+un compte SQL de lecture séparés. Les quatre tests de reprise s'ajoutent
+aux 24 scénarios antérieurs et les 77 tests installés passent. Le reçu
+confirme le nettoyage. Le stockage restauré, la rotation de l'identité,
+le serveur Vault distinct et la reprise multi-hôte restent à qualifier.
+[CI de redémarrage](https://github.com/pamolive/PamOlive-Platform/actions/runs/45081802652)
+
 Le parent `6c17536` conserve ses résultats distincts : PR fonctionnelle puis
 scan High en échec, push arrêté au timeout TLS d'acquisition avant assertion
 post-build. Le correctif courant borne les seuls téléchargements publics

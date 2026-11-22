@@ -7,10 +7,10 @@ from psycopg.rows import dict_row
 from .codec import encode, need, sha
 
 
-def role_guard(cursor):
+def role_guard(cursor, *, observer=False):
     cursor.execute("SET LOCAL search_path = pg_catalog")
     cursor.execute(
-        """SELECT current_user=session_user AND current_user='usage_anchor_runtime'
+        """SELECT current_user=session_user AND current_user=%s
             AS correct,
             r.rolsuper,r.rolcreatedb,r.rolcreaterole,r.rolreplication,r.rolbypassrls,
             pg_has_role(current_user,c.relowner,'MEMBER') AS owner_member,
@@ -25,7 +25,8 @@ def role_guard(cursor):
             m.member=r.oid) AS memberships FROM pg_catalog.pg_roles r JOIN
             pg_catalog.pg_class c ON c.relname='operations' JOIN
             pg_catalog.pg_namespace n ON c.relnamespace=n.oid WHERE
-            r.rolname=current_user AND n.nspname='pam_usage_anchor'"""
+            r.rolname=current_user AND n.nspname='pam_usage_anchor'""",
+        ("usage_anchor_observer" if observer else "usage_anchor_runtime",),
     )
     row = cursor.fetchone()
     need(
@@ -35,6 +36,134 @@ def role_guard(cursor):
     )
     cursor.execute("SHOW fsync")
     need(next(iter(cursor.fetchone().values())) == "on", "unavailable", 503)
+    if observer:
+        _observer_guard(cursor)
+
+
+def _observer_guard(cursor):
+    # Effective privileges include column grants, PUBLIC and implicit ownership.
+    cursor.execute(
+        """SELECT
+            NOT EXISTS(SELECT 1 FROM pg_roles AS r
+                       WHERE r.rolname=current_user AND r.rolcanlogin) AS no_login,
+            EXISTS(SELECT 1 FROM pg_database AS d
+                   WHERE d.datname=current_database()
+                     AND pg_has_role(current_user,d.datdba,'MEMBER')) AS database_owner,
+            has_database_privilege(current_user,current_database(),'TEMP') AS temporary_create,
+            EXISTS(SELECT 1 FROM pg_namespace AS n
+                   WHERE pg_has_role(current_user,n.nspowner,'MEMBER')
+                      OR has_schema_privilege(current_user,n.oid,'CREATE')) AS schema_ddl,
+            EXISTS(SELECT 1 FROM pg_class AS c JOIN pg_namespace AS n ON n.oid=c.relnamespace
+                   WHERE n.nspname='pam_usage_anchor' AND c.relkind IN ('r','p','v','m','f')
+                     AND (pg_has_role(current_user,c.relowner,'MEMBER')
+                       OR has_table_privilege(current_user,c.oid,
+                           'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN')
+                       OR has_any_column_privilege(current_user,c.oid,'INSERT,UPDATE,REFERENCES')))
+                AS relation_write,
+            EXISTS(SELECT 1 FROM pg_class AS c JOIN pg_namespace AS n ON n.oid=c.relnamespace
+                   WHERE n.nspname='pam_usage_anchor' AND c.relkind='S'
+                     AND (pg_has_role(current_user,c.relowner,'MEMBER')
+                       OR has_sequence_privilege(current_user,c.oid,'UPDATE,USAGE')))
+                AS sequence_write,
+            EXISTS(SELECT 1 FROM pg_proc AS p JOIN pg_namespace AS n ON n.oid=p.pronamespace
+                   WHERE n.nspname='pam_usage_anchor' AND p.prosecdef
+                     AND has_function_privilege(current_user,p.oid,'EXECUTE'))
+                AS elevated_execute"""
+    )
+    row = cursor.fetchone()
+    need(row is not None and all(flag is False for flag in row.values()), "unavailable", 503)
+
+
+@contextmanager
+def _read_transaction(connect, *, observer=False):
+    with connect() as connection, connection.transaction():
+        with connection.cursor(row_factory=dict_row) as cursor:
+            cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            cursor.execute("SET LOCAL statement_timeout='3000ms'")
+            cursor.execute("SET LOCAL lock_timeout='2000ms'")
+            role_guard(cursor, observer=observer)
+            yield cursor
+
+
+def _terminal_row(cursor, slot, peer, operation_id):
+    expected = slot.expected()
+    cursor.execute(
+        """SELECT o.reservation_id,o.state,o.body_hash,o.final_bundle,o.final_digest,
+                  o.terminal_response
+           FROM pam_usage_anchor.operations AS o
+           JOIN pam_usage_anchor.contexts AS c ON c.context_id=o.context_id
+           JOIN pam_usage_anchor.quotas AS q
+             ON q.context_id=c.context_id AND q.service_id=o.vault_service
+           JOIN pam_usage_anchor.leases AS l
+             ON l.context_id=c.context_id AND l.service_id=o.vault_service
+           WHERE o.operation_id=%s AND c.context_id=%s AND c.installation_id=%s
+             AND c.tenant_id=%s AND c.witness_incarnation=%s AND c.slot_sha256=%s
+             AND o.vault_service=%s AND o.vault_instance=%s AND o.vault_der=%s
+             AND o.state IN ('consumed_no_release','refused_no_release')""",
+        (
+            operation_id,
+            slot.context_id,
+            expected["installation_id"],
+            expected["organization_id"],
+            slot.witness_incarnation,
+            slot.source_sha256,
+            peer.service_id,
+            peer.broker_instance_id,
+            peer.certificate_sha256,
+        ),
+    )
+    return cursor.fetchone()
+
+
+def _closed_fence(cursor, slot):
+    expected = slot.expected()
+    purposes = dict(slot.purposes)
+    vault_principal = next(
+        principal
+        for principal in slot.principals
+        if purposes[principal.service_id] == "usage-anchor.vault/1"
+    )
+    cursor.execute(
+        """SELECT EXISTS(
+               SELECT 1 FROM pam_usage_anchor.contexts AS c
+               JOIN pam_usage_anchor.leases AS l ON l.context_id=c.context_id
+               JOIN pam_usage_anchor.quotas AS q
+                 ON q.context_id=c.context_id AND q.service_id=l.service_id
+               WHERE c.context_id=%s AND c.installation_id=%s AND c.tenant_id=%s
+                 AND c.witness_incarnation=%s AND c.slot_sha256=%s AND c.serving_state='closed'
+                 AND l.service_id=%s AND l.incarnation=%s AND l.owner_der=ANY(%s::text[])
+                 AND l.serving_state='closed' AND l.epoch>%s
+           ) AS fenced""",
+        (
+            slot.context_id,
+            expected["installation_id"],
+            expected["organization_id"],
+            slot.witness_incarnation,
+            slot.source_sha256,
+            vault_principal.service_id,
+            expected["ledger_incarnation"],
+            list(vault_principal.certificate_sha256),
+            slot.lease_epoch,
+        ),
+    )
+    row = cursor.fetchone()
+    need(row is not None and row["fenced"] is True, "context_refused", 403)
+
+
+class PostgresHistory:
+    """Cold reader with an observer connection and no write transaction API."""
+
+    def __init__(self, connect):
+        self.connect = connect
+
+    def startup(self, slot):
+        with _read_transaction(self.connect, observer=True) as cursor:
+            _closed_fence(cursor, slot)
+
+    def read_terminal(self, slot, peer, operation_id):
+        with _read_transaction(self.connect, observer=True) as cursor:
+            _closed_fence(cursor, slot)
+            return _terminal_row(cursor, slot, peer, operation_id)
 
 
 class PostgresLedger:
@@ -59,42 +188,8 @@ class PostgresLedger:
 
     def read_terminal(self, slot, peer, operation_id):
         """Look up a committed receipt in the peer's current witness context."""
-        expected = slot.expected()
-        with self.connect() as connection, connection.transaction():
-            with connection.cursor(row_factory=dict_row) as cursor:
-                cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-                cursor.execute("SET LOCAL statement_timeout='3000ms'")
-                cursor.execute("SET LOCAL lock_timeout='2000ms'")
-                role_guard(cursor)
-                # Historical evidence remains readable when the lease is closed.
-                # The original identity and its commissioned scope still apply.
-                cursor.execute(
-                    """SELECT o.reservation_id,o.state,o.body_hash,o.final_bundle,o.final_digest,
-                              o.terminal_response
-                       FROM pam_usage_anchor.operations AS o
-                       JOIN pam_usage_anchor.contexts AS c ON c.context_id=o.context_id
-                       JOIN pam_usage_anchor.quotas AS q
-                         ON q.context_id=c.context_id AND q.service_id=o.vault_service
-                       JOIN pam_usage_anchor.leases AS l
-                         ON l.context_id=c.context_id AND l.service_id=o.vault_service
-                       WHERE o.operation_id=%s AND c.context_id=%s AND c.installation_id=%s
-                         AND c.tenant_id=%s AND c.witness_incarnation=%s AND c.slot_sha256=%s
-                         AND o.vault_service=%s AND o.vault_instance=%s AND o.vault_der=%s
-                         AND o.state IN ('consumed_no_release','refused_no_release')""",
-                    (
-                        operation_id,
-                        slot.context_id,
-                        expected["installation_id"],
-                        expected["organization_id"],
-                        slot.witness_incarnation,
-                        slot.source_sha256,
-                        peer.service_id,
-                        peer.broker_instance_id,
-                        peer.certificate_sha256,
-                    ),
-                )
-                row = cursor.fetchone()
-        return row
+        with _read_transaction(self.connect) as cursor:
+            return _terminal_row(cursor, slot, peer, operation_id)
 
     @contextmanager
     def transaction(self, slot, peer, *, vault):

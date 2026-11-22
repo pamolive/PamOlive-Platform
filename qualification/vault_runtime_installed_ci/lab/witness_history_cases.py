@@ -65,6 +65,15 @@ def observe_while_witness_locked(connect, slot, operation_id, observe):
         return observe()
 
 
+def proof_from(fixture, bound_raw, *, spaced):
+    from pamolive_usage_anchor.codec import parse, unb64
+    from pamolive_vault_contracts import parse_transcript
+
+    bound = parse(bound_raw, 196608, string=90000, special=True)
+    transcript = parse_transcript(unb64(bound["transcript_b64"], 32768))
+    return fixture.final_bundle(transcript, bound["operation_id"], negative=True, spaced=spaced)
+
+
 def run_history_cases(
     *,
     fixture,
@@ -82,13 +91,7 @@ def run_history_cases(
     from fixtures import uid
     from pamolive_usage_anchor.administration import Administration
     from pamolive_usage_anchor.client import VaultMirror
-    from pamolive_usage_anchor.codec import bundle, encode, parse, unb64
-    from pamolive_vault_contracts import parse_transcript
-
-    def proof_from(bound_raw, *, spaced):
-        bound = parse(bound_raw, 196608, string=90000, special=True)
-        transcript = parse_transcript(unb64(bound["transcript_b64"], 32768))
-        return fixture.final_bundle(transcript, bound["operation_id"], negative=True, spaced=spaced)
+    from pamolive_usage_anchor.codec import bundle, encode, parse
 
     vault = factories["vault_n0_runtime"]
     observer = factories["usage_anchor_observer"]
@@ -113,12 +116,12 @@ def run_history_cases(
     require(terminal["state"] == "refused_no_release" and terminal["authorized"] is False)
 
     advance("history_refusals")
-    pending = proof_from(pending_bound_raw, spaced=True)
+    pending = proof_from(fixture, pending_bound_raw, spaced=True)
     expect_error("context_refused", 403, mirror.observe_terminal, pending_reservation_id, pending)
     missing = encode({**original, "operation_id": uid(880)}, 2097152, string=90000)
     expect_error("context_refused", 403, witness_client.request, OBSERVE, missing)
     expect_error("caller_refused", 403, clients["activation"].request, OBSERVE, bundle_raw)
-    different = proof_from(terminal_bound_raw, spaced=False)
+    different = proof_from(fixture, terminal_bound_raw, spaced=False)
     alternative = bundle(different)
     require(different != bundle_raw)
     require(alternative["operation_id"] == original["operation_id"])
@@ -145,4 +148,55 @@ def run_history_cases(
         "different_bundle_conflict": True,
         "closed_witness_terminal_exact": True,
         "history_rows_unchanged": True,
+    }
+
+
+def run_recovery_cases(
+    *,
+    fixture,
+    client,
+    factories,
+    evidence,
+    pending_reservation_id,
+    pending_bound_raw,
+    bind_raw,
+    snapshot,
+    advance,
+    restart,
+):
+    from fixtures import uid
+    from pamolive_usage_anchor.client import VaultMirror
+    from pamolive_usage_anchor.codec import encode
+
+    vault = factories["vault_n0_runtime"]
+    observer = factories["usage_anchor_observer"]
+    check_witness_fence(observer, fixture.slot, "closed", fixture.slot.lease_epoch + 1)
+    before = snapshot(observer, vault)
+    restart()
+
+    advance("recovery_reads")
+    mirror = VaultMirror(vault, client)
+    original = evidence["bundle_raw"]
+    require(
+        mirror.observe_terminal(evidence["reservation_id"], original) == evidence["terminal_raw"]
+    )
+    pending = proof_from(fixture, pending_bound_raw, spaced=True)
+    expect_error("context_refused", 403, mirror.observe_terminal, pending_reservation_id, pending)
+
+    advance("recovery_write_refusal")
+    for route, raw in (
+        ("/v1/operations/bind", bind_raw),
+        ("/v1/operations/consume", original),
+        ("/v1/activations/begin", encode({"person_id": uid(20)}, 4096)),
+        ("/v1/activations/finish", b"{}"),
+    ):
+        expect_error("context_refused", 403, client.request, route, raw)
+
+    advance("recovery_unchanged")
+    require(snapshot(observer, vault) == before)
+    return {
+        "closed_terminal_exact": True,
+        "pending_refused": True,
+        "mutation_routes_refused": True,
+        "historical_rows_unchanged": True,
     }

@@ -498,12 +498,15 @@ class WitnessLab(Lab):
     """
 
     volume_roles = WITNESS_VOLUMES
+    container_roles = WITNESS_ROLES
+    endpoints = WITNESS_ENDPOINTS
+    preparer_mounts = WITNESS_PREPARER_MOUNTS
 
     def reserve(self, kind, role, name):
         allowed = {
             "network": {"network"},
-            "volume": WITNESS_VOLUMES,
-            "container": WITNESS_ROLES,
+            "volume": self.volume_roles,
+            "container": self.container_roles,
         }
         need(kind in allowed and role in allowed[kind])
         need(name == self.reservation + "-" + role)
@@ -511,15 +514,15 @@ class WitnessLab(Lab):
         return super().reserve(kind, role, name)
 
     def validate_spec(self, spec):
-        need(spec.role in WITNESS_ROLES and spec.image.startswith("sha256:"))
+        need(spec.role in self.container_roles and spec.image.startswith("sha256:"))
         resource_id(spec.image.removeprefix("sha256:"))
         if spec.role == "preparer":
             need(spec.user == "0:0" and spec.chown is True)
             need(spec.address is None and spec.alias is None)
-            need(spec.volumes == WITNESS_PREPARER_MOUNTS)
+            need(spec.volumes == self.preparer_mounts)
         else:
             need(spec.chown is False)
-            need((spec.user, spec.address, spec.alias) == WITNESS_ENDPOINTS[spec.role])
+            need((spec.user, spec.address, spec.alias) == self.endpoints[spec.role])
             need(spec.volumes == (Volume(spec.role, "/lab"),))
         need(not spec.environment or spec.role in {"w-postgres", "v-postgres"})
         need(all(self.volumes.get(m.role) == self.reservation + "-" + m.role for m in spec.volumes))
@@ -529,14 +532,63 @@ class WitnessLab(Lab):
             "driver": {"/work"},
             "w-postgres": {"/var/lib/postgresql/data", "/var/run/postgresql", "/tmp"},
             "v-postgres": {"/var/lib/postgresql/data", "/var/run/postgresql", "/tmp"},
-            "witness": set(),
-            "vault": set(),
         }
         need(len(dict(spec.tmpfs)) == len(spec.tmpfs))
-        need(set(dict(spec.tmpfs)) <= targets[spec.role])
+        need(set(dict(spec.tmpfs)) <= targets.get(spec.role, set()))
 
     def container_profile(self, item, spec):
         self.validate_spec(spec)
         need(any(item is owned for owned in self.owned))
         need(item["kind"] == "container" and item["role"] == spec.role)
         return super().container_profile(item, spec)
+
+
+class WitnessRecoveryLab(WitnessLab):
+    """Keep one W TLS identity and mount separate credentials after retirement."""
+
+    endpoints = {**WITNESS_ENDPOINTS, "witness-recovery": WITNESS_ENDPOINTS["witness"]}
+    volume_roles = WITNESS_VOLUMES | {"witness-recovery"}
+    container_roles = WITNESS_ROLES | {"witness-recovery"}
+    preparer_mounts = (
+        *WITNESS_PREPARER_MOUNTS,
+        Volume("witness-recovery", "/stage/witness-recovery", False),
+    )
+
+    def retire_witness(self, item, spec):
+        need(spec.role == "witness" and not item.get("removed"))
+        state = self.container_profile(item, spec)["State"]
+        need(
+            state["Status"] == "exited"
+            and state["Running"] is False
+            and state["OOMKilled"] is False
+            and state["ExitCode"] == 43
+        )
+        # No force and no name-based removal. Only retire the owned CID whose
+        # closed-context startup refusal has been observed.
+        self.engine.checked("container", "rm", item["identity"])
+        self._require_absent_witness(item)
+        item["removed"] = True
+        self.save()
+
+    def _require_absent_witness(self, item):
+        identifier = resource_id(item["identity"])
+        need(not self.engine.exists("container", item["name"]))
+        need(not self.engine.identity_exists("container", identifier))
+
+    def _require_retired_witness(self):
+        matches = [
+            item for item in self.owned
+            if item["kind"] == "container" and item["role"] == "witness"
+        ]
+        need(len(matches) == 1 and matches[0].get("removed") is True)
+        self._require_absent_witness(matches[0])
+
+    def create_container(self, spec):
+        if spec.role == "witness-recovery":
+            self._require_retired_witness()
+        return super().create_container(spec)
+
+    def start(self, item, spec, **options):
+        if spec.role == "witness-recovery":
+            self._require_retired_witness()
+        return super().start(item, spec, **options)

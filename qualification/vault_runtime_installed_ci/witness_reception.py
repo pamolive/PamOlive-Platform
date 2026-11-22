@@ -23,8 +23,8 @@ from witness_wheel import (  # noqa: E402
 
 FIXTURES = ROOT / "fixtures"
 TESTS = FIXTURES / "tests"
-TEST_MODULES = ("test_pure", "test_r2", "test_http_client", "test_history")
-TEST_COUNT = 70
+TEST_MODULES = ("test_pure", "test_r2", "test_http_client", "test_history", "test_cold_history")
+TEST_COUNT = 77
 attempts = []
 
 
@@ -82,7 +82,9 @@ def execute(report):
         }
     )
     need(
-        result.wasSuccessful() and result.testsRun == TEST_COUNT and not result.skipped
+        result.wasSuccessful()
+        and result.testsRun == TEST_COUNT
+        and not result.skipped
         and not attempts
     )
     report["phase"] = "installed_after_tests"

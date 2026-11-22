@@ -1,5 +1,15 @@
 # Roadmap d’implémentation et qualification
 
+## Redémarrage du témoin en consultation seule — 23 novembre 2026
+
+La [PR nº 37](https://github.com/pamolive/PamOlive-Platform/pull/37) qualifie
+sur `7d37e0d` le refus du démarrage ordinaire et le redémarrage d'un processus
+de consultation avec un compte PostgreSQL observateur. Les 77 tests installés
+et 28 scénarios natifs passent. La lecture rend le reçu exact et les routes
+d'écriture sont bloquées. Les essais de restauration du stockage, de
+rotation d'identité et de reprise multi-hôte restent ouverts.
+[CI de redémarrage](https://github.com/pamolive/PamOlive-Platform/actions/runs/45081802652)
+
 ## Consultation historique du témoin — 23 novembre 2026
 
 La [PR nº 36](https://github.com/pamolive/PamOlive-Platform/pull/36) qualifie

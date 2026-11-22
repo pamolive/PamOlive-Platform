@@ -7,14 +7,17 @@ not establish native tmpfs isolation, PG privileges, TLS or witness authority.
 import ast
 import copy
 import hashlib
+import json
 import sys
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import lab_docker as ownership  # noqa: E402
+from lab import witness_prepare  # noqa: E402
 from lab_docker import (  # noqa: E402
     WITNESS_ENDPOINTS,
     WITNESS_PREPARER_MOUNTS,
@@ -24,6 +27,7 @@ from lab_docker import (  # noqa: E402
     Lab,
     Volume,
     WitnessLab,
+    WitnessRecoveryLab,
 )
 
 TOKEN = "pv-" + "a" * 32
@@ -35,18 +39,18 @@ PG_TMPFS = (
 )
 
 
-def specs():
+def specs(profile=WitnessLab):
     preparer = Container(
         IMAGE,
         "preparer",
         "0:0",
         ("/inputs/w01-prepare",),
-        WITNESS_PREPARER_MOUNTS,
+        profile.preparer_mounts,
         (("/work", "rw,noexec,nosuid,nodev,size=8388608,mode=0700,uid=0,gid=0"),),
         chown=True,
     )
     result = [preparer]
-    for role, (user, address, alias) in WITNESS_ENDPOINTS.items():
+    for role, (user, address, alias) in profile.endpoints.items():
         pg = role in {"w-postgres", "v-postgres"}
         tmpfs = PG_TMPFS if pg else ()
         if role == "driver":
@@ -205,6 +209,13 @@ class EngineActor:
                     for mount in container["Mounts"]
                 )
             del self.rows[(kind, row["Name"].lstrip("/"))]
+            return b""
+        if action == "start" and kind == "container":
+            row = self.inspect(kind, args[-1])
+            row["State"].update(Status="running", Running=True)
+            endpoint = row["NetworkSettings"]["Networks"].get(self.lab.network)
+            if endpoint is not None:
+                endpoint["IPAddress"] = endpoint["IPAMConfig"]["IPv4Address"]
             return b""
         raise AssertionError("unexpected inert command")
 
@@ -527,6 +538,136 @@ class WitnessOwnershipTests(unittest.TestCase):
                 "\n".join(ast.dump(node, include_attributes=False) for node in methods).encode()
             ).hexdigest(),
             "6570ab7409e5f730868f737781e6d989786170528b6e4b238781aba2a4ad222e",
+        )
+
+
+class WitnessRecoveryOwnershipTests(unittest.TestCase):
+    def setUp(self):
+        no_process = patch.object(ownership.subprocess, "Popen", side_effect=AssertionError)
+        no_process.start()
+        self.addCleanup(no_process.stop)
+        self.engine = EngineActor()
+        self.engine.specs = {spec.role: spec for spec in specs(WitnessRecoveryLab)}
+        journal = []
+        self.lab = WitnessRecoveryLab(
+            Path(__file__).resolve().parent / "inert-recovery-not-created",
+            engine=self.engine,
+            reservation=TOKEN,
+            journal=lambda _path, data: journal.append(copy.deepcopy(data)),
+        )
+        self.lab.journal_rows = journal
+        self.engine.lab = self.lab
+        self.lab.create_network()
+        for role in self.lab.endpoints:
+            self.lab.create_volume(role)
+        self.witness = self.engine.specs["witness"]
+        self.recovery = self.engine.specs["witness-recovery"]
+
+    def test_separate_readonly_mount_with_the_same_authenticated_endpoint(self):
+        preparer = self.engine.specs["preparer"]
+        self.lab.validate_spec(preparer)
+        self.assertEqual(
+            preparer.volumes,
+            (
+                *WITNESS_PREPARER_MOUNTS,
+                Volume("witness-recovery", "/stage/witness-recovery", False),
+            ),
+        )
+        self.lab.validate_spec(self.recovery)
+        self.assertEqual(self.recovery.volumes, (Volume("witness-recovery", "/lab"),))
+        self.assertEqual(
+            (self.recovery.address, self.recovery.alias),
+            (self.witness.address, self.witness.alias),
+        )
+        with self.assertRaises(ValueError):
+            self.lab.validate_spec(replace(self.recovery, volumes=self.witness.volumes))
+
+    def test_recovery_requires_the_exact_refused_witness_to_be_absent(self):
+        with self.assertRaises(ValueError):
+            self.lab.create_container(self.recovery)
+        witness = self.lab.create_container(self.witness)
+        with self.assertRaises(ValueError):
+            self.lab.create_container(self.recovery)
+        row = self.engine.inspect("container", witness["identity"])
+        row["State"].update(Status="exited", ExitCode=42)
+        with self.assertRaises(ValueError):
+            self.lab.retire_witness(witness, self.witness)
+        row["State"]["ExitCode"] = 43
+        self.lab.retire_witness(witness, self.witness)
+        self.assertTrue(witness["removed"])
+        self.assertEqual(self.engine.commands[-1][0], ("container", "rm", witness["identity"]))
+        history = self.lab.create_container(self.recovery)
+        # A renamed live identity must prevent restart even after journal retirement.
+        self.engine.rows[("container", "renamed-witness")] = row
+        with self.assertRaises(ValueError):
+            self.lab.start(history, self.recovery)
+        del self.engine.rows[("container", "renamed-witness")]
+        self.lab.start(history, self.recovery)
+        self.assertNotEqual(history["identity"], witness["identity"])
+        self.assertTrue(self.lab.cleanup())
+        self.assertEqual(self.engine.rows, {})
+
+    def test_preparer_stages_only_observer_and_shared_tls_slot_material_for_recovery(self):
+        preparer = witness_prepare
+        run = "0123456789abcdef"
+        source = b"inert witness source ledger"
+        originals = {name: name.encode() for name in preparer.WITNESS_FILES}
+        frame = preparer.encode(
+            {
+                "files": {name: preparer.b64(raw) for name, raw in originals.items()},
+                "bindings": {
+                    "source_sha256": preparer.sha(source),
+                    "slot_sha256": preparer.sha(originals["slot.json"]),
+                    "materials_sha256": preparer.sha(originals["materials.bin"]),
+                },
+            }
+        )
+        credentials = {
+            "usage_anchor_runtime": "inert-runtime",
+            "usage_anchor_observer": "inert-observer",
+        }
+        state = {
+            "credentials": {"wpg": credentials},
+            "witness_mount": [1, 1],
+            "recovery_mount": [1, 2],
+        }
+        cluster = SimpleNamespace(
+            role="wpg",
+            hostname="w-n0-db.test",
+            address="10.253.249.2",
+            port=5432,
+            database=f"w01_{run}_wpg",
+        )
+        pair = SimpleNamespace(clusters={"wpg": cluster})
+        run_bytes = run.encode()
+        with (
+            patch.object(preparer, "read_regular", side_effect=(run_bytes, run_bytes, source)),
+            patch.object(preparer, "restore_base", return_value=(state, {"wpg": {"ca": b"inert"}})),
+            patch.object(preparer, "pair_for", return_value=pair),
+            patch.object(preparer, "stage_directory") as stage,
+        ):
+            with self.assertRaises(ValueError):
+                preparer.stage_witness(123, run, frame)
+            stage.assert_not_called()
+            self.assertEqual(
+                preparer.stage_witness(123, run, frame, recovery=True), "W01_WITNESS_READY"
+            )
+        live, cold = stage.call_args_list
+        self.assertEqual(live.args, (123, "witness"))
+        self.assertEqual(cold.args, (123, "witness-recovery"))
+        self.assertEqual(cold.kwargs["expected"], [1, 2])
+        files = cold.kwargs["files"]
+        self.assertEqual(
+            set(files),
+            {"ca.crt", "server.crt", "server.key", "slot.json", "bindings.json",
+             "runtime.json", "sql-ca.crt"},
+        )
+        protected = json.loads(files["runtime.json"][0])
+        self.assertEqual(protected["user"], "usage_anchor_observer")
+        self.assertEqual(protected["password"], credentials["usage_anchor_observer"])
+        self.assertNotIn(credentials["usage_anchor_runtime"], repr(files))
+        self.assertEqual(
+            set(json.loads(files["bindings.json"][0])), {"source_sha256", "slot_sha256"}
         )
 
 

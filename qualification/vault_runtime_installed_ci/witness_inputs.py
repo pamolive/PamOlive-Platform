@@ -35,6 +35,7 @@ RECEPTION = {
     "tests/golden/auth01-r1-public.json",
     "tests/golden/codec.json",
     "tests/test_history.py",
+    "tests/test_cold_history.py",
     "tests/test_http_client.py",
     "tests/test_pure.py",
     "tests/test_r2.py",
