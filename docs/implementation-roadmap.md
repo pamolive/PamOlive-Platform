@@ -1,12 +1,20 @@
 # Roadmap d’implémentation et qualification
 
-## Témoin installé et préparation du laboratoire W01 — 18 novembre 2026
+## Qualification native du témoin W01 — 22 novembre 2026
 
-La [PR nº 34](https://github.com/pamolive/PamOlive-Platform/pull/34) reçoit la
-wheel W1, 62 tests installés hors réseau et 40 contrôles sous doublures du
-profil à deux clusters PostgreSQL. La validation des terminaux et de leurs
-preuves par mTLS sur les deux bases réelles reste à exécuter.
-[Réception installée](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191)
+La [PR nº 34](https://github.com/pamolive/PamOlive-Platform/pull/34) exécute W01
+sur une image de qualification éphémère. Le candidat `c8af05f` passe 62 tests
+depuis la wheel installée. Le runner vérifie deux clusters PostgreSQL vierges,
+applique leurs schémas et confirme le nettoyage. La CI s'arrête au démarrage du
+pilote. La prochaine exécution doit qualifier les terminaux et leur miroir
+PostgreSQL par mTLS, avec une phase de refus vérifiable en cas d'arrêt.
+[Première exécution native](https://github.com/pamolive/PamOlive-Platform/actions/runs/45075125056)
+
+Sur la [PR nº 32](https://github.com/pamolive/PamOlive-Platform/pull/32), les
+deux CI de `12c705b` passent SSH natif. La politique d'image refuse 37 groupes
+High identiques, sans exemption. L'image reste en qualification.
+[CI PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/44299357657) ·
+[CI branche](https://github.com/pamolive/PamOlive-Platform/actions/runs/44299350264)
 
 ## Livraison du code de développement — 17 novembre 2026
 

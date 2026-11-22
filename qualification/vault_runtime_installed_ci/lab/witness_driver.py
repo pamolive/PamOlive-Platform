@@ -56,6 +56,12 @@ def require(condition):
         raise ValueError("witness_driver_refused")
 
 
+class DatabaseCheckRefused(ValueError):
+    def __init__(self, phase):
+        super().__init__("witness_driver_database_check_refused")
+        self.phase = phase
+
+
 def encode(value):
     return (
         json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("ascii")
@@ -213,35 +219,42 @@ def check_database_roles(run, factories):
     """Check actual endpoint, TLS and assigned membership before any fixture writes."""
     for database, users in ROLES.items():
         for user in users:
-            with factories[user]() as conn, conn.cursor() as cursor:
-                cursor.execute(
-                    """SELECT current_database(), current_user, session_user,
+            try:
+                connection = factories[user]()
+            except Exception:
+                raise DatabaseCheckRefused("database_connection") from None
+            try:
+                with connection as conn, conn.cursor() as cursor:
+                    cursor.execute(
+                        """SELECT current_database(), current_user, session_user,
                               host(inet_server_addr()), inet_server_port(), ssl,
                               r.rolsuper, r.rolcreatedb, r.rolcreaterole,
                               r.rolreplication, r.rolbypassrls, r.rolinherit,
                               pg_has_role(current_user, %s, 'MEMBER')
                        FROM pg_stat_ssl JOIN pg_roles AS r ON r.rolname=current_user
                        WHERE pid=pg_backend_pid()""",
-                    (OWNERS[database],),
-                )
-                require(
-                    cursor.fetchone()
-                    == (
-                        f"w01_{run}_{database}",
-                        user,
-                        user,
-                        HOSTS[database][1],
-                        5432,
-                        True,
-                        False,
-                        False,
-                        False,
-                        False,
-                        False,
-                        False,
-                        user == users[1],
+                        (OWNERS[database],),
                     )
-                )
+                    actual = cursor.fetchone()
+            except Exception:
+                raise DatabaseCheckRefused("database_role_query") from None
+            expected = (
+                f"w01_{run}_{database}",
+                user,
+                user,
+                HOSTS[database][1],
+                5432,
+                True,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                user == users[1],
+            )
+            if actual != expected:
+                raise DatabaseCheckRefused("database_role_mismatch")
 
 
 def public_certificate(certificate):
@@ -547,14 +560,17 @@ def main():
             and re.fullmatch(r"[a-f0-9]{64}", args.source_sha)
         )
         kernel()
-        phase = "installed"
+        phase = "installed_wheels"
         modules = installed(args.source_sha)
-        phase = "roles"
+        phase = "database_configuration"
         factories = database_connectors(args.run)
+        phase = "database_roles"
         check_database_roles(args.run, factories)
+        phase = "initialized_publish"
         publish("initialized", b"W01_INITIALIZED\n")
-        phase = "prepare"
+        phase = "prepare_wait"
         wait_for("prepare", 45)
+        phase = "fixture"
         fixture = modules[0].Fixture(now=int(time.time()))
         modules[1].seed_new_databases(
             witness_owner_connect=factories["usage_anchor_admin"],
@@ -562,15 +578,23 @@ def main():
             fixture=fixture,
         )
         stage(fixture, args.source_sha)
-        phase = "execute"
+        phase = "execute_wait"
         wait_for("execute", max(0, fixture.now + 18 - time.time()))
+        phase = "native_cases"
         report = run_cases(fixture, modules, factories, args.source_sha)
         publish("public.json", encode(report))
         phase = "acknowledge"
         wait_for("acknowledge", 15)
-    except Exception:
-        # No database, TLS, or private-frame exception message crosses the boundary.
-        print("W01_DRIVER_REFUSED:" + phase, file=sys.stderr)
+    except Exception as error:
+        # Keep the private tmpfs reachable just long enough for the controller
+        # to read a fixed phase name. No exception or material leaves the role.
+        try:
+            if isinstance(error, DatabaseCheckRefused):
+                phase = error.phase
+            publish("failed", (phase + "\n").encode("ascii"))
+            wait_for("acknowledge", 15)
+        except Exception:
+            pass
         return 42
     return 0
 

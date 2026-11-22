@@ -737,9 +737,13 @@ Depuis, `de63044` reçoit la wheel W1 sur Linux et les 62 tests hors réseau
 depuis le paquet installé. L'installation vérifie les fichiers du paquet, le
 `RECORD` installé et la relocalisation du schéma SQL. Les 40 contrôles du profil
 W01 sous doublures valident la propriété des ressources et la double barrière
-avant écriture PostgreSQL. Le parcours réel W01 reste à qualifier.
+avant écriture PostgreSQL. Sur `c8af05f`, le premier laboratoire natif passe
+les 62 tests sur wheel, les deux précontrôles de bases vierges, les deux
+provisionnements PostgreSQL et le contrôle de nettoyage. Le démarrage du
+pilote échoue avant la validation mTLS et les terminaux durables.
 [PR nº 34](https://github.com/pamolive/PamOlive-Platform/pull/34) ·
-[CI installée W1](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191)
+[CI installée W1](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191) ·
+[Première exécution native](https://github.com/pamolive/PamOlive-Platform/actions/runs/45075125056)
 
 Le parent `6c17536` conserve ses résultats distincts : PR fonctionnelle puis
 scan High en échec, push arrêté au timeout TLS d'acquisition avant assertion

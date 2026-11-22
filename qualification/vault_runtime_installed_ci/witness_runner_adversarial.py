@@ -96,6 +96,27 @@ class OrchestrationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 runner.collect_native(json.dumps(value).encode(), source)
 
+    def test_diagnostic_publishes_only_an_enumerated_phase(self):
+        driver = ({"identity": "a" * 64}, None)
+        state = SimpleNamespace(returncode=42, stdout=b"", stderr=b"")
+        lab = SimpleNamespace(
+            exec=lambda *_args, **_options: state,
+            engine=SimpleNamespace(
+                deadline=float("inf"), checked=lambda *_args, **_options: b"42\n"
+            ),
+        )
+        for payload, expected in ((b"database_roles\n", "database_roles"), (b"private\n", None)):
+            with self.subTest(expected=expected):
+                report = {"driver_failure": None}
+                with (
+                    patch.object(runner, "read_role", return_value=payload),
+                    patch.object(runner, "mark") as mark,
+                    self.assertRaises(ValueError),
+                ):
+                    runner.wait_driver(lab, driver, "initialized", 5, report)
+                self.assertEqual(report["driver_failure"], expected)
+                self.assertEqual(mark.call_count, 1 if expected else 0)
+
 
 if __name__ == "__main__":
     unittest.main()

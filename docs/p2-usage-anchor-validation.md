@@ -45,6 +45,14 @@ et la persistance des réservations et des miroirs dans la base V. Le listener
 Vault reste hors du périmètre de ce scénario. Les essais inter-hôtes et la
 qualification d'un témoin de production restent à effectuer.
 
+L'[exécution du 22 novembre](https://github.com/pamolive/PamOlive-Platform/actions/runs/45075125056)
+sur `c8af05f` a passé les 62 tests installés, vérifié les deux clusters vierges,
+appliqué leurs deux schémas et confirmé le nettoyage. Elle a échoué au
+démarrage du pilote, avant le scénario mTLS. Le reçu public porte le SHA-256
+`792e7e157c6bf599424cd593820896bab6fdc3bd3ff704c064bd3c6428005a56`.
+Le reçu de version 2 indique la phase du pilote en cas d'arrêt. Sa valeur
+provient d'une liste fermée de phases et ne comprend aucun texte d'exception.
+
 ## Plan des campagnes restantes
 
 Source W1 implémentée localement. La régression HTTP a été exécutée sur

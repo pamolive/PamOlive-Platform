@@ -29,6 +29,23 @@ READY_PG = (
 )
 W_FRAME_CAP = 256 * 1024
 PUBLIC_CAP = 8192
+DRIVER_PHASES = frozenset(
+    (
+        b"boundary\n",
+        b"installed_wheels\n",
+        b"database_configuration\n",
+        b"database_roles\n",
+        b"database_connection\n",
+        b"database_role_query\n",
+        b"database_role_mismatch\n",
+        b"initialized_publish\n",
+        b"prepare_wait\n",
+        b"fixture\n",
+        b"execute_wait\n",
+        b"native_cases\n",
+        b"acknowledge\n",
+    )
+)
 NATIVE_CASES = (
     "vertical_positive",
     "vertical_negative",
@@ -178,6 +195,29 @@ def mark(lab, driver, name):
     need(result.returncode == 0 and not result.stdout and not result.stderr)
 
 
+def wait_driver(lab, driver, file, seconds, report):
+    need(file in {"initialized", "w-stage.json", "public.json"})
+    probe = f"if test -f /work/failed; then exit 42; else test -f /work/{file}; fi"
+    end = min(time.monotonic() + seconds, lab.engine.deadline)
+    while time.monotonic() < end:
+        result = lab.exec(*driver, "/bin/sh", "-ec", probe, timeout=4, stdout_cap=64)
+        need(not result.stderr and not result.stdout)
+        if result.returncode == 0:
+            return
+        if result.returncode == 42:
+            phase = read_role(lab, driver, "/work/failed", 64)
+            need(phase in DRIVER_PHASES)
+            report["driver_failure"] = phase[:-1].decode("ascii")
+            mark(lab, driver, "acknowledge")
+            need(
+                lab.engine.checked("container", "wait", driver[0]["identity"], timeout=5) == b"42\n"
+            )
+            need(False)
+        need(result.returncode == 1)
+        time.sleep(0.15)
+    need(False)
+
+
 def collect_pure(lab, prepare, source_sha, descriptor_sha):
     raw = read_role(lab, prepare, "/witness/public.json", PUBLIC_CAP)
     result = json.loads(raw)
@@ -252,11 +292,13 @@ def run(lab, report):
     bootstrap(lab, roles, run_id, report)
     report["phase"] = "driver_startup"
     lab.start(*driver)
-    wait(lab, driver, ("/usr/bin/test", "-f", "/work/initialized"), 12)
+    # Nine checked connections each have a three-second bound. The signed
+    # witness fixture and its lease are created only after initialization.
+    wait_driver(lab, driver, "initialized", 35, report)
     need(read_role(lab, driver, "/work/initialized", 64) == b"W01_INITIALIZED\n")
     report["phase"] = "witness_staging"
     mark(lab, driver, "prepare")
-    wait(lab, driver, ("/usr/bin/test", "-f", "/work/w-stage.json"), 9)
+    wait_driver(lab, driver, "w-stage.json", 9, report)
     frame = read_role(lab, driver, "/work/w-stage.json", W_FRAME_CAP)
     stage(lab, prepare, run_id, "stage-witness", b"W01_WITNESS_READY\n", data=frame, timeout=5)
     need(lab.container_profile(*prepare)["State"]["Running"] is True)
@@ -265,7 +307,7 @@ def run(lab, report):
     report["phase"] = "witness_round_trip"
     lab.start(*witness)
     mark(lab, driver, "execute")
-    wait(lab, driver, ("/usr/bin/test", "-f", "/work/public.json"), 32)
+    wait_driver(lab, driver, "public.json", 32, report)
     report["native"] = collect_native(
         read_role(lab, driver, "/work/public.json", PUBLIC_CAP), source_sha
     )
@@ -281,12 +323,13 @@ def main():
     parser.add_argument("--work", type=Path, required=True)
     options = parser.parse_args()
     report = {
-        "schema": "pamolive.witness-installed-dual-cluster/1",
+        "schema": "pamolive.witness-installed-dual-cluster/2",
         "phase": "reservation",
         "installed": None,
         "empty_clusters_verified": 0,
         "clusters_provisioned": 0,
         "native": None,
+        "driver_failure": None,
         "cleaned_up": False,
         "ok": False,
         "authority": False,
