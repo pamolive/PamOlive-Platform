@@ -500,6 +500,7 @@ def run_cases(fixture, modules, factories, source_sha, advance):
         witness_client=clients["vault"],
         vault_runtime_connect=runtime,
         witness_observer_connect=observer,
+        advance=advance,
     )
     terminals = ["consumed_no_release", "refused_no_release"]
     require(
@@ -559,6 +560,12 @@ def run_cases(fixture, modules, factories, source_sha, advance):
     require(checks["forbidden_principals"] == 2)
     permissions.terminal_shape_probe(witness, fixture.slot.context_id, bound["operation_id"])
     advance("vault_sql_permissions")
+    permissions.denied(
+        runtime,
+        "SELECT reservation_id FROM vault_reservation.reservations"
+        " WHERE reservation_id=%s FOR UPDATE",
+        (pending.reservation_id,),
+    )
     for role in ("v_web_probe", "v_worker_probe"):
         permissions.denied(factories[role], "SELECT * FROM vault_reservation.reservations")
         permissions.denied(factories[role], "SELECT * FROM vault_reservation.usage_mirrors")
@@ -575,6 +582,7 @@ def run_cases(fixture, modules, factories, source_sha, advance):
             "channel_binding_required": True,
             "assigned_roles_verified": True,
             "vault_forbidden_roles": 2,
+            "vault_reservation_lock_denied": True,
             "witness_forbidden_roles": 2,
         },
         "terminal_states": terminals,

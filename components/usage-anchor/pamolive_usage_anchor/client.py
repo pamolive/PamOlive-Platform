@@ -160,12 +160,17 @@ class VaultMirror:
             "context_refused",
             403,
         )
-        # Commit mirror before exposing the transcript. Retries compare bytes.
+        # Serialize mirrors through the same commissioned-state lock as the
+        # reservation ledger. The runtime cannot update reservation rows.
         with self.connect() as conn, conn.transaction(), conn.cursor(row_factory=dict_row) as c:
             c.execute(
                 (
-                    """SELECT canonical_draft,nonce,issued_at,expires_at,state FROM
-                    vault_reservation.reservations WHERE reservation_id=%s FOR UPDATE"""
+                    """SELECT r.canonical_draft,r.nonce,r.issued_at,r.expires_at,r.state
+                    FROM vault_reservation.reservations AS r
+                    JOIN vault_reservation.commissioned_state AS s
+                      ON s.slot_sha256=r.slot_sha256 AND s.incarnation=r.incarnation
+                    WHERE r.reservation_id=%s AND s.serving_state='open'
+                    FOR UPDATE OF s"""
                 ),
                 (reservation_id,),
             )

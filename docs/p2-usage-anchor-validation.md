@@ -77,6 +77,17 @@ porte un en-tête d'identité transmis. La première doit réussir et la seconde
 doit être explicitement refusée. SHA-256 du reçu de cet essai
 `186ba70f4772205dddfe59ae6ffe775d04d98a6f02987a270506ab74bc9b521c`.
 
+Le [run `fdd5f95`](https://github.com/pamolive/PamOlive-Platform/actions/runs/45076825039)
+confirme aussi le démarrage mTLS du témoin et l'activation des identités de
+test. L'exécution s'arrête dans la transaction de bout en bout. Le miroir
+tente de verrouiller une réservation alors que le rôle Vault ne dispose que
+de `SELECT` et `INSERT` sur cette table. PostgreSQL exige un droit de mise
+à jour pour ce verrou. Le miroir prend désormais le verrou sur l'état de
+commissionnement utilisé par le registre Vault et revalide la correspondance
+entre l'incarnation, l'empreinte et l'état ouvert. Le laboratoire vérifie aussi
+que le rôle ne peut toujours pas verrouiller les réservations.
+[Règles du verrouillage PostgreSQL 17](https://www.postgresql.org/docs/17/sql-select.html#SQL-FOR-UPDATE-SHARE)
+
 ## Plan des campagnes restantes
 
 Source W1 implémentée localement. La régression HTTP a été exécutée sur
