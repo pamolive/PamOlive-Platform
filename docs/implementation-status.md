@@ -733,6 +733,28 @@ hors publication de ce lot ; aucun test SQL/TLS ni service W n'est encore reçu.
 Cette décision ne qualifie pas
 la durabilité, l'indépendance humaine/OS, le KMS ou un chemin de production.
 
+Depuis, `de63044` reçoit la wheel W1 sur Linux et les 62 tests hors réseau
+depuis le paquet installé. L'installation vérifie les fichiers du paquet, le
+`RECORD` installé et la relocalisation du schéma SQL. Les 40 contrôles du profil
+W01 sous doublures valident la propriété des ressources et la double barrière
+avant écriture PostgreSQL. Sur `c8af05f`, le premier laboratoire natif passe
+les 62 tests sur wheel, les deux précontrôles de bases vierges, les deux
+provisionnements PostgreSQL et le contrôle de nettoyage. Le démarrage du
+pilote échoue avant la validation mTLS et les terminaux durables.
+[PR nº 34](https://github.com/pamolive/PamOlive-Platform/pull/34) ·
+[CI installée W1](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191) ·
+[Première exécution native](https://github.com/pamolive/PamOlive-Platform/actions/runs/45075125056)
+
+Le commit `1756244` qualifie W01 sur un seul hôte de CI. Les 62 tests de la
+wheel et les neuf scénarios natifs passent. Le reçu vérifie deux clusters
+PostgreSQL 17.12 neufs, la liaison de canal SCRAM, les rôles distincts, le refus
+de verrouiller une réservation append-only, trois opérations, cinq usages de
+preuve et le nettoyage de la réservation Docker. La revue indépendante
+confirme les empreintes et la portée du reçu. Le listener Vault séparé,
+la fermeture concurrente, les campagnes W04 à W08 et la qualification
+multi-hôte restent ouverts.
+[CI W01](https://github.com/pamolive/PamOlive-Platform/actions/runs/45078177751)
+
 Le parent `6c17536` conserve ses résultats distincts : PR fonctionnelle puis
 scan High en échec, push arrêté au timeout TLS d'acquisition avant assertion
 post-build. Le correctif courant borne les seuls téléchargements publics

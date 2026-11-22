@@ -1,5 +1,22 @@
 # Roadmap d’implémentation et qualification
 
+## Qualification native du témoin W01 — 22 novembre 2026
+
+La [PR nº 34](https://github.com/pamolive/PamOlive-Platform/pull/34) qualifie
+W01 sur le candidat `1756244`. La CI passe 62 tests hors ligne depuis la wheel
+et neuf scénarios natifs avec deux clusters PostgreSQL 17.12 neufs et le témoin
+mTLS. Elle vérifie les refus de provenance et de permissions, les terminaux,
+les relectures identiques, les miroirs et le nettoyage des ressources. Reste à
+qualifier le listener Vault séparé, les scénarios de reprise W04 à W08 et
+l'indépendance multi-hôte.
+[CI W01](https://github.com/pamolive/PamOlive-Platform/actions/runs/45078177751)
+
+Sur la [PR nº 32](https://github.com/pamolive/PamOlive-Platform/pull/32), les
+deux CI de `12c705b` passent SSH natif. La politique d'image refuse 37 groupes
+High identiques, sans exemption. L'image reste en qualification.
+[CI PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/44299357657) ·
+[CI branche](https://github.com/pamolive/PamOlive-Platform/actions/runs/44299350264)
+
 ## Livraison du code de développement — 17 novembre 2026
 
 À la demande explicite du propriétaire, la capture Expat APT et ses diagnostics
