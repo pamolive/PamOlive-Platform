@@ -1,5 +1,16 @@
 # Roadmap d’implémentation et qualification
 
+## Fermeture concurrente du Vault — 22 novembre 2026
+
+La [PR nº 35](https://github.com/pamolive/PamOlive-Platform/pull/35) qualifie
+la fermeture du commissionnement Vault sur `0d8b7cc`. Les huit contrôles
+natifs vérifient la fermeture après réponse W, la perte de réponse, les refus
+avant envoi et la conservation des preuves sans remise de secret. Les
+62 tests installés et les neuf contrôles W01 passent sur les mêmes deux
+clusters PostgreSQL 17.12. La consultation historique authentifiée, la
+révocation du bail W et la qualification multi-hôte restent à réaliser.
+[CI de fermeture](https://github.com/pamolive/PamOlive-Platform/actions/runs/45079293012)
+
 ## Qualification native du témoin W01 — 22 novembre 2026
 
 La [PR nº 34](https://github.com/pamolive/PamOlive-Platform/pull/34) qualifie

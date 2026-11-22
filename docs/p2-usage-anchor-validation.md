@@ -26,7 +26,7 @@ de l'état V et l'indépendance multi-hôte restent à qualifier. Une fermeture
 peut laisser une liaison W orpheline et la consommation du miroir historique
 ne vérifie pas l'état V actuel.
 
-## Campagne de fermeture du Vault
+## Campagne de fermeture du Vault — 22 novembre 2026
 
 L'entrée `run_witness_fence` ajoute la campagne de fermeture au laboratoire
 `run_witness_lab`. Après le parcours nominal, une liaison et deux
@@ -38,6 +38,19 @@ la conservation du miroir préexistant, la présence des preuves du témoin
 et l'absence d'appel W lorsque le commissionnement est fermé ou incompatible.
 Le [choix d'architecture](adr-026-independent-usage-anchor.md#fermeture-concurrente-du-vault)
 définit la limite des appels qui ont déjà quitté Vault.
+
+La [CI du commit `0d8b7cc`](https://github.com/pamolive/PamOlive-Platform/actions/runs/45079293012)
+passe les 62 tests du paquet installé, les neuf scénarios W01 et les huit
+contrôles de fermeture. Elle confirme zéro appel au témoin après refus du
+commissionnement, la conservation des lignes historiques V et le maintien
+des preuves W. L'exécution ajoute deux opérations W et un usage de preuve
+aux compteurs W01, puis nettoie ses conteneurs, ses volumes et son réseau.
+La revue indépendante a vérifié l'archive `14777030815` et le SHA-256 du
+reçu public
+`c7e10e3ee898a091f0ddd466954cd21aed2f9b2302f9d8ebceced56bab341315`.
+L'étape Vault seul a été ignorée. La reprise historique par un chemin dédié,
+la révocation indépendante du bail W et la qualification multi-hôte restent
+ouvertes. [PR nº 35](https://github.com/pamolive/PamOlive-Platform/pull/35)
 
 ## Wheel W1 installée — 18 novembre 2026
 

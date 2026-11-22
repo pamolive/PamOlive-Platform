@@ -755,6 +755,15 @@ la fermeture concurrente, les campagnes W04 à W08 et la qualification
 multi-hôte restent ouverts.
 [CI W01](https://github.com/pamolive/PamOlive-Platform/actions/runs/45078177751)
 
+La [PR nº 35](https://github.com/pamolive/PamOlive-Platform/pull/35) valide
+huit contrôles supplémentaires sur `0d8b7cc`. Vault refuse les réponses
+après fermeture et conserve les lignes historiques y compris lors d'une
+perte de réponse. Le témoin conserve deux opérations supplémentaires et
+compte un seul nouvel usage de preuve après deux consommations identiques.
+Le reçu vérifié confirme le nettoyage. Le listener Vault séparé, la lecture
+historique après fermeture et les campagnes de reprise W04 à W08 restent ouverts.
+[CI de fermeture](https://github.com/pamolive/PamOlive-Platform/actions/runs/45079293012)
+
 Le parent `6c17536` conserve ses résultats distincts : PR fonctionnelle puis
 scan High en échec, push arrêté au timeout TLS d'acquisition avant assertion
 post-build. Le correctif courant borne les seuls téléchargements publics
