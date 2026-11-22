@@ -28,6 +28,7 @@ from lab_docker import (  # noqa: E402
     Volume,
     WitnessLab,
     WitnessRecoveryLab,
+    WitnessRestoreLab,
 )
 
 TOKEN = "pv-" + "a" * 32
@@ -84,6 +85,7 @@ class EngineActor:
         self.fail_role = None
         self.fail_after_create = False
         self.stall_inspection = False
+        self.stop_exit_code = 143
         self.specs = {spec.role: spec for spec in specs()}
 
     def bound(self):
@@ -216,6 +218,11 @@ class EngineActor:
             endpoint = row["NetworkSettings"]["Networks"].get(self.lab.network)
             if endpoint is not None:
                 endpoint["IPAddress"] = endpoint["IPAMConfig"]["IPv4Address"]
+            return b""
+        if action == "stop" and kind == "container":
+            row = self.inspect(kind, args[-1])
+            assert row["State"]["Running"] is True
+            row["State"].update(Status="exited", Running=False, ExitCode=self.stop_exit_code)
             return b""
         raise AssertionError("unexpected inert command")
 
@@ -541,15 +548,17 @@ class WitnessOwnershipTests(unittest.TestCase):
         )
 
 
-class WitnessRecoveryOwnershipTests(unittest.TestCase):
+class WitnessRecoveryFixture(unittest.TestCase):
+    profile = WitnessRecoveryLab
+
     def setUp(self):
         no_process = patch.object(ownership.subprocess, "Popen", side_effect=AssertionError)
         no_process.start()
         self.addCleanup(no_process.stop)
         self.engine = EngineActor()
-        self.engine.specs = {spec.role: spec for spec in specs(WitnessRecoveryLab)}
+        self.engine.specs = {spec.role: spec for spec in specs(self.profile)}
         journal = []
-        self.lab = WitnessRecoveryLab(
+        self.lab = self.profile(
             Path(__file__).resolve().parent / "inert-recovery-not-created",
             engine=self.engine,
             reservation=TOKEN,
@@ -563,6 +572,8 @@ class WitnessRecoveryOwnershipTests(unittest.TestCase):
         self.witness = self.engine.specs["witness"]
         self.recovery = self.engine.specs["witness-recovery"]
 
+
+class WitnessRecoveryOwnershipTests(WitnessRecoveryFixture):
     def test_separate_readonly_mount_with_the_same_authenticated_endpoint(self):
         preparer = self.engine.specs["preparer"]
         self.lab.validate_spec(preparer)
@@ -639,20 +650,29 @@ class WitnessRecoveryOwnershipTests(unittest.TestCase):
             database=f"w01_{run}_wpg",
         )
         pair = SimpleNamespace(clusters={"wpg": cluster})
+        state["restore_mount"] = [1, 3]
         run_bytes = run.encode()
         with (
-            patch.object(preparer, "read_regular", side_effect=(run_bytes, run_bytes, source)),
+            patch.object(
+                preparer, "read_regular",
+                side_effect=(run_bytes, run_bytes, run_bytes, source),
+            ),
             patch.object(preparer, "restore_base", return_value=(state, {"wpg": {"ca": b"inert"}})),
             patch.object(preparer, "pair_for", return_value=pair),
             patch.object(preparer, "stage_directory") as stage,
         ):
             with self.assertRaises(ValueError):
                 preparer.stage_witness(123, run, frame)
+            with self.assertRaises(ValueError):
+                preparer.stage_witness(123, run, frame, restore_witness=True)
+            with self.assertRaises(ValueError):
+                preparer.stage_witness(123, run, frame, recovery=True)
             stage.assert_not_called()
             self.assertEqual(
-                preparer.stage_witness(123, run, frame, recovery=True), "W01_WITNESS_READY"
+                preparer.stage_witness(123, run, frame, recovery=True, restore_witness=True),
+                "W01_WITNESS_READY",
             )
-        live, cold = stage.call_args_list
+        live, cold, restored = stage.call_args_list
         self.assertEqual(live.args, (123, "witness"))
         self.assertEqual(cold.args, (123, "witness-recovery"))
         self.assertEqual(cold.kwargs["expected"], [1, 2])
@@ -669,6 +689,89 @@ class WitnessRecoveryOwnershipTests(unittest.TestCase):
         self.assertEqual(
             set(json.loads(files["bindings.json"][0])), {"source_sha256", "slot_sha256"}
         )
+        self.assertEqual(restored.args, (123, "witness-restored"))
+        self.assertEqual(restored.kwargs["expected"], [1, 3])
+        copy_files = restored.kwargs["files"]
+        self.assertEqual(set(copy_files), set(files))
+        self.assertEqual(copy_files["runtime.json"][1:], files["runtime.json"][1:])
+        self.assertEqual(
+            json.loads(copy_files["runtime.json"][0]),
+            {**protected, "dbname": f"w01_{run}_wpg_restored"},
+        )
+        self.assertEqual(
+            {name: entry for name, entry in copy_files.items() if name != "runtime.json"},
+            {name: entry for name, entry in files.items() if name != "runtime.json"},
+        )
+
+
+class WitnessRestoreOwnershipTests(WitnessRecoveryFixture):
+    profile = WitnessRestoreLab
+
+    def start_recovery(self):
+        witness = self.lab.create_container(self.witness)
+        row = self.engine.inspect("container", witness["identity"])
+        row["State"].update(Status="exited", ExitCode=43)
+        self.lab.retire_witness(witness, self.witness)
+        history = self.lab.create_container(self.recovery)
+        self.lab.start(history, self.recovery)
+        return history
+
+    def test_restore_uses_only_its_volume_and_requires_verified_listener_retirement(self):
+        copy_spec = self.engine.specs["witness-restored"]
+        self.lab.validate_spec(copy_spec)
+        self.assertEqual(copy_spec.volumes, (Volume("witness-restored", "/lab"),))
+        self.assertEqual(
+            self.lab.preparer_mounts,
+            (*WitnessRecoveryLab.preparer_mounts,
+             Volume("witness-restored", "/stage/witness-restored", False)),
+        )
+        self.assertEqual(
+            (copy_spec.address, copy_spec.alias),
+            (self.witness.address, self.witness.alias),
+        )
+        with self.assertRaises(ValueError):
+            self.lab.validate_spec(replace(copy_spec, volumes=self.recovery.volumes))
+        with self.assertRaises(ValueError):
+            self.lab.create_container(copy_spec)
+        history = self.start_recovery()
+        with self.assertRaises(ValueError):
+            self.lab.create_container(copy_spec)
+        row = self.engine.inspect("container", history["identity"])
+        self.lab.retire_recovery(history, self.recovery)
+        identifier = history["identity"]
+        self.assertEqual(
+            [entry[0] for entry in self.engine.commands[-2:]],
+            [("container", "stop", "--time", "2", identifier), ("container", "rm", identifier)],
+        )
+        self.assertTrue(history["removed"])
+        restored = self.lab.create_container(copy_spec)
+        self.engine.rows[("container", "renamed-recovery")] = row
+        with self.assertRaises(ValueError):
+            self.lab.start(restored, copy_spec)
+        del self.engine.rows[("container", "renamed-recovery")]
+        self.lab.start(restored, copy_spec)
+        self.assertNotEqual(restored["identity"], identifier)
+        self.assertTrue(self.lab.cleanup())
+        self.assertEqual(self.engine.rows, {})
+
+    def test_foreign_identity_and_ungraceful_shutdown_cannot_release_the_slot(self):
+        history = self.start_recovery()
+        copy_spec = self.engine.specs["witness-restored"]
+        row = self.engine.inspect("container", history["identity"])
+        identity = row["Id"]
+        row["Id"] = "e" * 64
+        count = len(self.engine.commands)
+        with self.assertRaises((ValueError, StopIteration)):
+            self.lab.retire_recovery(history, self.recovery)
+        self.assertEqual(len(self.engine.commands), count)
+        row["Id"] = identity
+        self.engine.stop_exit_code = 137
+        with self.assertRaises(ValueError):
+            self.lab.retire_recovery(history, self.recovery)
+        self.assertEqual(len(self.engine.commands), count + 1)
+        self.assertFalse(history.get("removed"))
+        with self.assertRaises(ValueError):
+            self.lab.create_container(copy_spec)
 
 
 if __name__ == "__main__":

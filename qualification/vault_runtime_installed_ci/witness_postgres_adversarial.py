@@ -317,6 +317,37 @@ class WitnessPostgresTests(unittest.TestCase):
         with self.assertRaises(pg.Refused):
             pg.prepare_pair(**inputs(), recovery=1)
 
+    def test_21_restore_rules_scope_an_explicit_clone_to_the_observer(self):
+        recovery = pg.prepare_pair(**inputs(), recovery=True)
+        restored = pg.prepare_pair(**inputs(), recovery=True, restore_witness=True)
+        clone = f"w01_{RUN}_wpg_restored"
+        self.assertEqual(pg.restore_database(RUN), clone)
+        source_rules = recovery.clusters["wpg"].files["pg_hba.conf"].raw.splitlines()
+        restore_rules = restored.clusters["wpg"].files["pg_hba.conf"].raw.splitlines()
+        added = [line for line in restore_rules if line not in source_rules]
+        self.assertEqual(
+            [line.decode("ascii") for line in added],
+            [
+                f"local {clone} postgres peer",
+                f"hostssl {clone} usage_anchor_observer 10.253.249.3/32 scram-sha-256",
+                f"hostssl {clone} usage_anchor_observer 10.253.249.4/32 scram-sha-256",
+            ],
+        )
+        self.assertEqual([line for line in restore_rules if line not in added], source_rules)
+        self.assertLess(restore_rules.index(added[0]), restore_rules.index(b"local all all reject"))
+        self.assertLess(restore_rules.index(added[2]),
+                        restore_rules.index(b"host all all 0.0.0.0/0 reject"))
+        self.assertEqual(restored.clusters["vpg"].files, recovery.clusters["vpg"].files)
+        self.assertEqual(restored.preflight_sql("wpg"), recovery.preflight_sql("wpg"))
+
+    def test_22_restore_rejects_an_implicit_profile_or_invalid_destination(self):
+        for args in ({"restore_witness": True}, {"recovery": True, "restore_witness": 1}):
+            with self.subTest(args=args), self.assertRaises(pg.Refused):
+                pg.prepare_pair(**inputs(), **args)
+        for run in (None, "other", RUN.upper(), RUN + " "):
+            with self.subTest(run=run), self.assertRaises(pg.Refused):
+                pg.restore_database(run)
+
 
 def main():
     result = unittest.TestResult()

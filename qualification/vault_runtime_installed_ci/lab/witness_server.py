@@ -9,19 +9,20 @@ from pathlib import Path
 
 from support import need, read_regular, sha
 
-from .witness_postgres import HOSTS
+from .witness_postgres import HOSTS, restore_database
 
 ROOT = Path("/lab")
 SITE = Path("/opt/vault/lib/python3.12/site-packages")
 SOURCE = Path("/witness/witness-source.sha256")
 
 
-def serve(run, source_sha, *, recovery=False):
+def serve(run, source_sha, *, recovery=False, restore_witness=False):
     need(os.getuid() == os.getgid() == 1000)
     need(sys.flags.isolated and sys.dont_write_bytecode and sys.prefix == "/opt/vault")
     need(re.fullmatch(r"[a-f0-9]{16}", run) is not None)
     need(re.fullmatch(r"[a-f0-9]{64}", source_sha) is not None)
     need(sha(read_regular(SOURCE, 16384)) == source_sha)
+    need(not restore_witness or recovery)
     os.environ.clear()
     os.environ.update(LANG="C.UTF-8", LC_ALL="C.UTF-8", PSYCOPG_IMPL="c")
 
@@ -54,7 +55,7 @@ def serve(run, source_sha, *, recovery=False):
         host=HOSTS["wpg"][0],
         hostaddr=HOSTS["wpg"][1],
         port=5432,
-        dbname=f"w01_{run}_wpg",
+        dbname=restore_database(run) if restore_witness else f"w01_{run}_wpg",
         user="usage_anchor_observer" if recovery else "usage_anchor_runtime",
     )
     need(type(database) is dict and set(database) == {*expected, "password"})
@@ -120,9 +121,15 @@ if __name__ == "__main__":
     parser.add_argument("--run", required=True)
     parser.add_argument("--source-sha", required=True)
     parser.add_argument("--recovery", action="store_true")
+    parser.add_argument("--restore-witness", action="store_true")
     args = parser.parse_args()
     try:
-        status = serve(args.run, args.source_sha, recovery=args.recovery)
+        status = serve(
+            args.run,
+            args.source_sha,
+            recovery=args.recovery,
+            restore_witness=args.restore_witness,
+        )
     except Exception:
         print("W01 witness startup refused.", file=sys.stderr)
         raise SystemExit(42) from None

@@ -112,6 +112,28 @@ PostgreSQL 17.12 et son certificat. Il reste à qualifier la restauration du
 stockage, la rotation d'identité et la reprise multi-hôte.
 [PR nº 37](https://github.com/pamolive/PamOlive-Platform/pull/37)
 
+## Restauration logique du stockage du témoin
+
+L'entrée CI `run_witness_restore` exige la campagne de redémarrage fermé.
+Après la consultation de contrôle, le contrôleur utilise le socket local de
+l'instance PostgreSQL W réservée. Il vérifie le contexte et le bail fermés,
+puis copie le schéma du témoin avec `pg_dump` et `pg_restore` dans une base
+neuve. L'archive native est bornée à 1 Mio et reste en mémoire. Son contenu
+et les empreintes SQL de comparaison ne figurent dans aucun artefact.
+
+La campagne vérifie les neuf tables, les droits sur le schéma restauré et
+l'accès SQL limité à l'observateur. Elle remplace le conteneur de consultation
+avec un montage dédié à la base restaurée. Le client vérifie l'identité TLS,
+relit le reçu terminal octet pour octet, vérifie le refus de l'opération en
+attente et des routes d'écriture, puis compare les trois bases. Le contexte
+et le bail restent fermés et le témoin ne reçoit aucun droit de remise.
+
+L'essai utilise une base distincte dans le même cluster PostgreSQL W.
+L'identité TLS et le rôle observateur synthétiques sont réutilisés. Ce périmètre
+couvre l'intégrité et les autorisations de la restauration logique. La reprise
+après perte du cluster, le PITR, la rotation d'identité et la reprise multi-hôte
+exigent leurs propres qualifications.
+
 ## Wheel W1 installée — 18 novembre 2026
 
 La [CI installée](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191)

@@ -176,7 +176,7 @@ def installed(source_sha):
     return modules
 
 
-def database_connectors(run):
+def database_connectors(run, *, restore_witness=False):
     import psycopg
     from witness_wheel import read_regular
 
@@ -188,7 +188,11 @@ def database_connectors(run):
     require(type(databases) is dict and set(databases) == set(ROLES))
     passwords, authorities, factories = set(), set(), {}
 
-    def factory(row, uid, ca):
+    def factory(row, uid, ca, *, read_only=False):
+        options = "-c search_path=pg_catalog -c statement_timeout=3000 -c lock_timeout=2000"
+        if read_only:
+            options += " -c default_transaction_read_only=on"
+
         def connect():
             try:
                 conn = psycopg.connect(
@@ -202,9 +206,7 @@ def database_connectors(run):
                     sslrootcert=str(ca),
                     channel_binding="require",
                     connect_timeout=3,
-                    options=(
-                        "-c search_path=pg_catalog -c statement_timeout=3000 -c lock_timeout=2000"
-                    ),
+                    options=options,
                 )
             except psycopg.OperationalError as error:
                 raise DatabaseCheckRefused(connection_failure(error)) from None
@@ -246,6 +248,19 @@ def database_connectors(run):
             passwords.add(password)
             factories[user] = factory(row, user, ca)
     require(len(authorities) == 2)
+    if restore_witness:
+        from .witness_postgres import restore_database
+
+        observer = "usage_anchor_observer"
+        row = databases["wpg"]
+        restored = {
+            **row,
+            "dbname": restore_database(run),
+            "credentials": {observer: row["credentials"][observer]},
+        }
+        factories["restored_observer"] = factory(
+            restored, observer, MOUNT / "wpg-ca.crt", read_only=True
+        )
     return factories
 
 
@@ -503,6 +518,7 @@ def run_cases(
     fence=False,
     history=False,
     restart_history=False,
+    restore_witness=False,
 ):
     from cryptography.hazmat.primitives import serialization
     from pamolive_usage_anchor import codec
@@ -685,6 +701,28 @@ def run_cases(
                     advance=advance,
                     restart=restart,
                 )
+                if restore_witness:
+                    def restore():
+                        advance("restore_wait")
+                        publish("restore-ready", b"W01_RESTORE_READY\n")
+                        wait_for("restored", 90)
+                        advance("restore_tls")
+                        wait_server(server_der, time.time() + 10)
+
+                    report["schema"] = "W01-restore-results/1"
+                    report["restoration"] = run_recovery_cases(
+                        fixture=fixture,
+                        client=clients["vault"],
+                        factories=factories,
+                        evidence=evidence,
+                        pending_reservation_id=pending.reservation_id,
+                        pending_bound_raw=bound_raw,
+                        bind_raw=bind_raw,
+                        snapshot=snapshot,
+                        advance=advance,
+                        restart=restore,
+                        restored=True,
+                    )
     return report
 
 
@@ -695,6 +733,7 @@ def main():
     parser.add_argument("--fence", action="store_true")
     parser.add_argument("--history", action="store_true")
     parser.add_argument("--restart-history", action="store_true")
+    parser.add_argument("--restore-witness", action="store_true")
     args = parser.parse_args()
     phase = "boundary"
 
@@ -705,6 +744,7 @@ def main():
     try:
         require(not args.history or args.fence)
         require(not args.restart_history or args.history)
+        require(not args.restore_witness or args.restart_history)
         os.environ.clear()
         os.environ.update(LANG="C.UTF-8", LC_ALL="C.UTF-8", PSYCOPG_IMPL="c")
         require(
@@ -715,7 +755,7 @@ def main():
         phase = "installed_wheels"
         modules = installed(args.source_sha)
         phase = "database_configuration"
-        factories = database_connectors(args.run)
+        factories = database_connectors(args.run, restore_witness=args.restore_witness)
         phase = "database_roles"
         check_database_roles(args.run, factories)
         phase = "initialized_publish"
@@ -742,6 +782,7 @@ def main():
             fence=args.fence,
             history=args.history,
             restart_history=args.restart_history,
+            restore_witness=args.restore_witness,
         )
         publish("public.json", encode(report))
         phase = "acknowledge"
