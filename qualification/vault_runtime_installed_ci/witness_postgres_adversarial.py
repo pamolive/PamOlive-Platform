@@ -348,6 +348,13 @@ class WitnessPostgresTests(unittest.TestCase):
             with self.subTest(run=run), self.assertRaises(pg.Refused):
                 pg.restore_database(run)
 
+    def test_23_restore_client_rules_do_not_replace_either_cluster_endpoint(self):
+        restored = pg.prepare_pair(**inputs(), recovery=True, restore_witness=True)
+        for role, cluster in restored.clusters.items():
+            with self.subTest(role=role):
+                self.assertEqual((cluster.hostname, cluster.address), pg.HOSTS[role])
+                self.assertEqual(cluster.database, f"w01_{RUN}_{role}")
+
 
 def main():
     result = unittest.TestResult()

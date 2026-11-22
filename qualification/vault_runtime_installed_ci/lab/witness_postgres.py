@@ -300,8 +300,10 @@ def prepare_pair(
         if recovery and role == "wpg":
             hba += f"hostssl {database} usage_anchor_observer {runtime_ip}/32 scram-sha-256\n"
         if restored:
-            for address in (runtime_ip, "10.253.249.4"):
-                hba += f"hostssl {restored} usage_anchor_observer {address}/32 scram-sha-256\n"
+            for client_address in (runtime_ip, "10.253.249.4"):
+                hba += (
+                    f"hostssl {restored} usage_anchor_observer {client_address}/32 scram-sha-256\n"
+                )
         hba += "host all all 0.0.0.0/0 reject\nhost all all ::/0 reject\n"
         files = {
             "ca.crt": File(tls[role]["ca"], 0o444),
