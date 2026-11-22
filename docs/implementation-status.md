@@ -745,6 +745,16 @@ pilote échoue avant la validation mTLS et les terminaux durables.
 [CI installée W1](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191) ·
 [Première exécution native](https://github.com/pamolive/PamOlive-Platform/actions/runs/45075125056)
 
+Le commit `1756244` qualifie W01 sur un seul hôte de CI. Les 62 tests de la
+wheel et les neuf scénarios natifs passent. Le reçu vérifie deux clusters
+PostgreSQL 17.12 neufs, la liaison de canal SCRAM, les rôles distincts, le refus
+de verrouiller une réservation append-only, trois opérations, cinq usages de
+preuve et le nettoyage de la réservation Docker. La revue indépendante
+confirme les empreintes et la portée du reçu. Le listener Vault séparé,
+la fermeture concurrente, les campagnes W04 à W08 et la qualification
+multi-hôte restent ouverts.
+[CI W01](https://github.com/pamolive/PamOlive-Platform/actions/runs/45078177751)
+
 Le parent `6c17536` conserve ses résultats distincts : PR fonctionnelle puis
 scan High en échec, push arrêté au timeout TLS d'acquisition avant assertion
 post-build. Le correctif courant borne les seuls téléchargements publics

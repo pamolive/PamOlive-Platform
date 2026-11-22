@@ -2,13 +2,14 @@
 
 ## Qualification native du témoin W01 — 22 novembre 2026
 
-La [PR nº 34](https://github.com/pamolive/PamOlive-Platform/pull/34) exécute W01
-sur une image de qualification éphémère. Le candidat `c8af05f` passe 62 tests
-depuis la wheel installée. Le runner vérifie deux clusters PostgreSQL vierges,
-applique leurs schémas et confirme le nettoyage. La CI s'arrête au démarrage du
-pilote. La prochaine exécution doit qualifier les terminaux et leur miroir
-PostgreSQL par mTLS, avec une phase de refus vérifiable en cas d'arrêt.
-[Première exécution native](https://github.com/pamolive/PamOlive-Platform/actions/runs/45075125056)
+La [PR nº 34](https://github.com/pamolive/PamOlive-Platform/pull/34) qualifie
+W01 sur le candidat `1756244`. La CI passe 62 tests hors ligne depuis la wheel
+et neuf scénarios natifs avec deux clusters PostgreSQL 17.12 neufs et le témoin
+mTLS. Elle vérifie les refus de provenance et de permissions, les terminaux,
+les relectures identiques, les miroirs et le nettoyage des ressources. Reste à
+qualifier le listener Vault séparé, les scénarios de reprise W04 à W08 et
+l'indépendance multi-hôte.
+[CI W01](https://github.com/pamolive/PamOlive-Platform/actions/runs/45078177751)
 
 Sur la [PR nº 32](https://github.com/pamolive/PamOlive-Platform/pull/32), les
 deux CI de `12c705b` passent SSH natif. La politique d'image refuse 37 groupes

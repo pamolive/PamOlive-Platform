@@ -1,4 +1,30 @@
-# Plan de validation W1 — réception réelle restant à exécuter
+# Validation W1 et campagnes restantes
+
+## Réception native W01 — 22 novembre 2026
+
+La [CI du commit `1756244`](https://github.com/pamolive/PamOlive-Platform/actions/runs/45078177751)
+qualifie le témoin mTLS et deux clusters PostgreSQL 17.12 neufs sur un seul
+runner éphémère. Les 62 tests hors ligne depuis la wheel et les neuf scénarios
+natifs passent. Chaque connexion PostgreSQL valide le certificat du serveur
+auprès de son autorité de certification, vérifie son nom et exige la liaison
+SCRAM au canal. Les rôles, le refus du verrou sur les réservations et le
+nettoyage des ressources sont vérifiés.
+
+Le reçu confirme trois opérations, cinq usages de preuve, deux états terminaux
+et leurs relectures identiques. Les miroirs Vault persistent dans la seconde
+base. Les refus laissent les lignes observées inchangées. Aucune remise de
+secret ni autorité d'accès ne résulte de l'essai.
+
+Le SHA-256 du reçu vérifié est
+`8a54f2f267d205c68f681cfc178846426aad49f77c9b75eb924b7996264e8a3c`.
+L'archive GitHub `14775644488` a été vérifiée indépendamment par rapport au
+digest publié par l'API. L'étape Vault seul a été ignorée pour cette exécution.
+
+Le pilote utilise la base V pour les réservations et les miroirs. Les contrôles
+du listener Vault séparé, les campagnes W04 à W08, la fermeture concurrente
+de l'état V et l'indépendance multi-hôte restent à qualifier. Une fermeture
+peut laisser une liaison W orpheline et la consommation du miroir historique
+ne vérifie pas l'état V actuel.
 
 ## Wheel W1 installée — 18 novembre 2026
 
