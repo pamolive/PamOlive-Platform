@@ -10,6 +10,7 @@ from .codec import Error, encode, need
 LIMITS = {
     "/v1/operations/bind": 32768,
     "/v1/operations/consume": 2097152,
+    "/v1/operations/observe-terminal": 2097152,
     "/v1/activations/begin": 4096,
     "/v1/activations/finish": 131072,
 }

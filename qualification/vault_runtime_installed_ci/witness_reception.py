@@ -1,4 +1,4 @@
-"""Run the unchanged 62 W1 tests against their installed packages, without IO."""
+"""Run the W1 tests against their installed packages, without IO."""
 
 import importlib
 import io
@@ -23,7 +23,8 @@ from witness_wheel import (  # noqa: E402
 
 FIXTURES = ROOT / "fixtures"
 TESTS = FIXTURES / "tests"
-TEST_MODULES = ("test_pure", "test_r2", "test_http_client")
+TEST_MODULES = ("test_pure", "test_r2", "test_http_client", "test_history")
+TEST_COUNT = 70
 attempts = []
 
 
@@ -69,7 +70,7 @@ def execute(report):
         suite = unittest.TestSuite(
             unittest.defaultTestLoader.loadTestsFromModule(m) for m in modules
         )
-        need(suite.countTestCases() == 62)
+        need(suite.countTestCases() == TEST_COUNT)
         result = unittest.TextTestRunner(stream=io.StringIO()).run(suite)
     report.update(
         {
@@ -80,7 +81,10 @@ def execute(report):
             "external_attempts": len(attempts),
         }
     )
-    need(result.wasSuccessful() and result.testsRun == 62 and not result.skipped and not attempts)
+    need(
+        result.wasSuccessful() and result.testsRun == TEST_COUNT and not result.skipped
+        and not attempts
+    )
     report["phase"] = "installed_after_tests"
     need(verify_install() == before)
     report.update(before)

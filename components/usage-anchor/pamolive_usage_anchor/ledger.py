@@ -57,6 +57,45 @@ class PostgresLedger:
                 403,
             )
 
+    def read_terminal(self, slot, peer, operation_id):
+        """Look up a committed receipt in the peer's current witness context."""
+        expected = slot.expected()
+        with self.connect() as connection, connection.transaction():
+            with connection.cursor(row_factory=dict_row) as cursor:
+                cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                cursor.execute("SET LOCAL statement_timeout='3000ms'")
+                cursor.execute("SET LOCAL lock_timeout='2000ms'")
+                role_guard(cursor)
+                # Historical evidence remains readable when the lease is closed.
+                # The original identity and its commissioned scope still apply.
+                cursor.execute(
+                    """SELECT o.reservation_id,o.state,o.body_hash,o.final_bundle,o.final_digest,
+                              o.terminal_response
+                       FROM pam_usage_anchor.operations AS o
+                       JOIN pam_usage_anchor.contexts AS c ON c.context_id=o.context_id
+                       JOIN pam_usage_anchor.quotas AS q
+                         ON q.context_id=c.context_id AND q.service_id=o.vault_service
+                       JOIN pam_usage_anchor.leases AS l
+                         ON l.context_id=c.context_id AND l.service_id=o.vault_service
+                       WHERE o.operation_id=%s AND c.context_id=%s AND c.installation_id=%s
+                         AND c.tenant_id=%s AND c.witness_incarnation=%s AND c.slot_sha256=%s
+                         AND o.vault_service=%s AND o.vault_instance=%s AND o.vault_der=%s
+                         AND o.state IN ('consumed_no_release','refused_no_release')""",
+                    (
+                        operation_id,
+                        slot.context_id,
+                        expected["installation_id"],
+                        expected["organization_id"],
+                        slot.witness_incarnation,
+                        slot.source_sha256,
+                        peer.service_id,
+                        peer.broker_instance_id,
+                        peer.certificate_sha256,
+                    ),
+                )
+                row = cursor.fetchone()
+        return row
+
     @contextmanager
     def transaction(self, slot, peer, *, vault):
         with self.connect() as connection:

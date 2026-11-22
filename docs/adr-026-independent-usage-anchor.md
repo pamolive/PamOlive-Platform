@@ -70,13 +70,33 @@ confirmer le miroir lorsque son contrôle local échoue.
 
 Une reprise d'autorité après fermeture exige une nouvelle incarnation. Les
 appels du client vivant restent fermés dans l'ancien
-contexte, y compris les rejeux terminaux. Une voie de consultation historique
-authentifiée, distincte de la consommation, reste nécessaire pour rapprocher
-ces reçus. Le contrôle ne garantit pas une fermeture suivie d'une réouverture
+contexte, y compris les rejeux terminaux. Le contrôle ne garantit pas
+une fermeture suivie d'une réouverture
 sous la même incarnation. L'incertitude locale conserve l'état du miroir
 sans établir l'empreinte de la première tentative de consommation. Une
 révocation qui doit arrêter les mutations de W doit aussi fermer son bail
 sous l'autorité du témoin.
+
+### Consultation des reçus après fermeture
+
+`POST /v1/operations/observe-terminal` présente le bundle d'origine au
+témoin. L'identité mTLS courante doit conserver le service, l'instance et le
+certificat DER de l'opération. Le témoin relit le reçu dans une transaction
+PostgreSQL en lecture seule, sous son contexte courant. Il vérifie
+l'incarnation du témoin, le tenant, l'installation et le commissionnement
+du principal. Il compare le digest et les octets d'origine. Un terminal
+éligible renvoie le reçu exact conservé, avec `authorized=false`. Une
+opération en attente ou absente reçoit un refus. Un bundle différent pour
+un terminal éligible reçoit un conflit.
+
+Le client de consultation Vault vérifie son ancien miroir dans une
+transaction locale en lecture seule. Il laisse le miroir intact lorsque le
+témoin confirme un terminal que Vault avait perdu avant de fermer. La route
+peut répondre quand le bail W est fermé, tant que le service W fonctionne
+et que l'identité mTLS est toujours autorisée. La remise et les écritures
+d'usage restent sous les contrôles du chemin de consommation. La reprise
+après redémarrage d'un contexte W fermé et la consultation au-delà d'une
+rotation d'identité demanderont un mécanisme d'archive distinct.
 
 Chaque mutation suit contexte → quota principal → lease → opération → activations
 en ordre ASCII → audit. N0 sérialise les écritures par contexte tenant. Le CAS

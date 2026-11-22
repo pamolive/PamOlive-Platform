@@ -265,7 +265,7 @@ def run_fence_cases(
         and bytes(consume_terminal) == consume_client.response
         and counts == {consume_op: 1}
     )
-    return {
+    cases = {
         "bind_close_refused_before_mirror": True,
         "consume_close_refused_after_witness_commit": True,
         "closed_v_refuses_before_witness": True,
@@ -274,4 +274,10 @@ def run_fence_cases(
         "vault_historical_rows_preserved": True,
         "reservation_rows_append_only": True,
         "unknown_witness_response_fenced": True,
+    }
+    return cases, {
+        "reservation_id": consume_id,
+        "bundle_raw": proofs,
+        "terminal_raw": consume_client.response,
+        "terminal_bound_raw": prepared,
     }

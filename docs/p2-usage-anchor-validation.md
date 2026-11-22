@@ -52,6 +52,38 @@ L'étape Vault seul a été ignorée. La reprise historique par un chemin dédi�
 la révocation indépendante du bail W et la qualification multi-hôte restent
 ouvertes. [PR nº 35](https://github.com/pamolive/PamOlive-Platform/pull/35)
 
+## Consultation historique des reçus — 23 novembre 2026
+
+L'entrée `run_witness_history` prolonge les campagnes de fermeture et W01.
+Le client historique récupère le reçu authentifié après fermeture de Vault,
+même si sa ligne locale est restée liée sans terminal. Le pilote tient aussi
+des verrous sur le contexte et l'opération W pendant une lecture pour vérifier
+que la route n'attend pas ces verrous. Il vérifie les refus d'une opération
+absente, en attente, d'un mauvais usage du certificat et d'un bundle divergent.
+Après fermeture du bail W par son administrateur, le reçu doit encore être
+identique. Les comparaisons SQL contrôlent la conservation des opérations,
+preuves, compteurs, journaux et miroirs après ces consultations.
+
+Le [run `45080374417`, tentative 2](https://github.com/pamolive/PamOlive-Platform/actions/runs/45080374417/attempts/2)
+sur `c1f8017` valide les 70 tests du paquet installé, les neuf scénarios W01,
+les huit contrôles de fermeture et les sept contrôles historiques. Les deux
+clusters PostgreSQL 17.12 et le témoin mTLS s'exécutent sur un seul runner.
+La lecture réussit sous verrou administratif, puis après fermeture du Vault
+et du bail W. Après chaque phase de lecture, les états SQL comparés sont
+identiques. Le reçu conserve `authorized=false` et le nettoyage passe.
+
+La revue indépendante a validé l'archive `14777335283` et le SHA-256 du reçu
+public `8f90604af11a312786b08bcd0b7c0dd806fe6eda476a864956e477df36711226`.
+La [première tentative](https://github.com/pamolive/PamOlive-Platform/actions/runs/45080374417/attempts/1)
+s'arrête au téléchargement de l'image Python épinglée et son contrôle de
+réconciliation échoue. Les essais natifs y sont ignorés. La relance conserve
+le même commit et utilise un nouveau runner.
+
+L'essai couvre un processus W déjà démarré avec l'identité d'origine encore
+autorisée. Le redémarrage d'un témoin fermé, une rotation de l'identité,
+l'isolation sous deux tenants réels et la reprise multi-hôte restent à
+qualifier. [PR nº 36](https://github.com/pamolive/PamOlive-Platform/pull/36)
+
 ## Wheel W1 installée — 18 novembre 2026
 
 La [CI installée](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191)
