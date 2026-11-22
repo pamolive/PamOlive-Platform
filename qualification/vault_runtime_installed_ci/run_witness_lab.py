@@ -65,14 +65,33 @@ DRIVER_PHASES = frozenset(
         b"pending_binding\n",
         b"database_snapshot\n",
         b"forwarded_header\n",
-        b"tls_no_client\n",
+        b"tls_no_client_control_before\n",
+        b"tls_no_client_handshake\n",
+        b"tls_no_client_control_after\n",
         b"tls_unknown_ca\n",
+        b"tls_unknown_ca_control_before\n",
+        b"tls_unknown_ca_handshake\n",
+        b"tls_unknown_ca_control_after\n",
         b"tls_wrong_hostname\n",
         b"principal_audiences\n",
         b"witness_sql_permissions\n",
         b"vault_sql_permissions\n",
         b"snapshot_comparison\n",
         b"acknowledge\n",
+    )
+)
+TLS_DIAGNOSTICS = frozenset(
+    (
+        b"handshake_alert\n",
+        b"bad_certificate_alert\n",
+        b"unknown_ca_alert\n",
+        b"client_certificate_required_alert\n",
+        b"unexpected_eof\n",
+        b"other_ssl_error\n",
+        b"timeout\n",
+        b"connection_reset\n",
+        b"other_socket_error\n",
+        b"assertion\n",
     )
 )
 NATIVE_CASES = (
@@ -235,7 +254,12 @@ def wait_driver(lab, driver, file, seconds, report):
             return
         if result.returncode == 42:
             phase = read_role(lab, driver, "/work/failed", 64)
-            need(phase in DRIVER_PHASES)
+            phase_name, divider, category = phase.partition(b":")
+            if divider:
+                need(phase_name.startswith(b"tls_"))
+                need(phase_name + b"\n" in DRIVER_PHASES and category in TLS_DIAGNOSTICS)
+            else:
+                need(phase_name in DRIVER_PHASES and not phase_name.startswith(b"tls_"))
             report["driver_failure"] = phase[:-1].decode("ascii")
             mark(lab, driver, "acknowledge")
             need(

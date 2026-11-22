@@ -92,13 +92,19 @@ Le [run `8dfe562`](https://github.com/pamolive/PamOlive-Platform/actions/runs/45
 franchit la persistance des deux terminaux et des miroirs, les relectures à
 l'identique, la préparation d'une troisième liaison et le contrôle d'en-tête.
 Il s'arrête au groupe des refus TLS, avant le contrôle final des droits SQL.
-La comparaison TLS sur tampons mémoire a confirmé les alertes pour un
-certificat client absent, une autorité inconnue et un nom d'hôte divergent.
-Le laboratoire exige désormais les alertes TLS 1.2 pendant la négociation
-pour les deux premiers cas, avec un contrôle authentifié de même version
-de part et d'autre. Le client du parcours nominal garde sa négociation
-TLS normale. SHA-256 du reçu du run
+La comparaison TLS sur tampons mémoire a confirmé les refus en cas de
+certificat client absent, d'autorité inconnue ou de nom d'hôte divergent.
+SHA-256 du reçu du run
 `3ce9abb2e9c0d34bcae74bceef28c4c52897d2e3b16850810bb2c32f0f0c6abd`.
+
+Le [run `583cdec`](https://github.com/pamolive/PamOlive-Platform/actions/runs/45077750153)
+s'arrête au premier contrôle sans certificat client. L'essai local avec
+`asyncio` montre que le serveur peut fermer le transport pendant le refus
+du certificat avant l'envoi de l'alerte TLS. Le test accepte une fin de flux
+TLS précise ou une réinitialisation uniquement après établissement de TCP
+et pendant la négociation TLS 1.2. Deux connexions TLS 1.2 valides, avec
+validation du nom et de l'empreinte DER du serveur, encadrent le refus. Le
+parcours nominal conserve sa négociation TLS habituelle.
 
 ## Plan des campagnes restantes
 

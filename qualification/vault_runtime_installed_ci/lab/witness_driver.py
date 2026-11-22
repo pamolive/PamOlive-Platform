@@ -50,6 +50,13 @@ CASES = frozenset(
         "identity_header_refused",
     }
 )
+TLS_ALERTS = {
+    "SSLV3_ALERT_HANDSHAKE_FAILURE": "handshake_alert",
+    "SSLV3_ALERT_BAD_CERTIFICATE": "bad_certificate_alert",
+    "TLSV1_ALERT_UNKNOWN_CA": "unknown_ca_alert",
+    "TLSV13_ALERT_CERTIFICATE_REQUIRED": "client_certificate_required_alert",
+    "UNEXPECTED_EOF_WHILE_READING": "unexpected_eof",
+}
 
 
 def require(condition):
@@ -364,18 +371,29 @@ def wait_server(expected_der, expires):
     require({endpoint[4] for endpoint in endpoints} == {(W_ADDRESS, W_PORT)})
 
 
-def denied_tls(expected_der, who, reasons):
+def denied_tls(expected_der, who, reasons, phase, advance):
     # In TLS 1.2, the client's synchronous handshake sees a peer rejection
     # before HTTP. In TLS 1.3 it may first surface on a later read or write.
+    advance(phase + "_control_before")
     verify_server(expected_der, tls12=True)
     client = context(who)
     client.minimum_version = client.maximum_version = ssl.TLSVersion.TLSv1_2
-    try:
-        with socket.create_connection((W_ADDRESS, W_PORT), timeout=3) as transport:
+    advance(phase + "_handshake")
+    with socket.create_connection((W_ADDRESS, W_PORT), timeout=3) as transport:
+        try:
             with client.wrap_socket(transport, server_hostname=W_HOST):
                 raise ValueError("witness_driver_tls_admitted")
-    except ssl.SSLError as error:
-        require(error.reason in reasons)
+        except ConnectionResetError:
+            # asyncio may abort after certificate verification, before
+            # flushing the fatal alert. TCP was already connected here.
+            pass
+        except ssl.SSLError as error:
+            aborted = isinstance(error, ssl.SSLEOFError) and (
+                error.reason == "UNEXPECTED_EOF_WHILE_READING"
+            )
+            if not aborted and error.reason not in reasons:
+                raise
+    advance(phase + "_control_after")
     verify_server(expected_der, tls12=True)
 
 
@@ -406,13 +424,14 @@ def verify_transport(fixture, fixtures, server_der, clients, bind_raw, bound_raw
             else:
                 require(response.status == 200 and response.read(196609) == bound_raw)
 
-    advance("tls_no_client")
     denied_tls(
         server_der,
         None,
         {
             "SSLV3_ALERT_HANDSHAKE_FAILURE",
         },
+        "tls_no_client",
+        advance,
     )
     advance("tls_unknown_ca")
     unknown_ca = fixtures.certificate_authority(fixture.now)
@@ -426,6 +445,8 @@ def verify_transport(fixture, fixtures, server_der, clients, bind_raw, bound_raw
             "TLSV1_ALERT_UNKNOWN_CA",
             "SSLV3_ALERT_BAD_CERTIFICATE",
         },
+        "tls_unknown_ca",
+        advance,
     )
     advance("tls_wrong_hostname")
     try:
@@ -647,6 +668,18 @@ def main():
         try:
             if isinstance(error, DatabaseCheckRefused):
                 phase = error.phase
+            if phase.startswith("tls_"):
+                if isinstance(error, ssl.SSLError):
+                    kind = TLS_ALERTS.get(error.reason, "other_ssl_error")
+                elif isinstance(error, TimeoutError):
+                    kind = "timeout"
+                elif isinstance(error, ConnectionResetError):
+                    kind = "connection_reset"
+                elif isinstance(error, OSError):
+                    kind = "other_socket_error"
+                else:
+                    kind = "assertion"
+                phase += ":" + kind
             publish("failed", (phase + "\n").encode("ascii"))
             wait_for("acknowledge", 15)
         except Exception:

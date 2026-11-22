@@ -5,7 +5,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run_witness_lab as runner  # noqa: E402
@@ -131,6 +131,36 @@ class OrchestrationTests(unittest.TestCase):
             witness_driver.connection_failure(ValueError("could not find digest for NID UNDEF")),
             "database_channel_binding",
         )
+
+    def test_tls_probe_accepts_abort_only_after_tcp_connect_and_before_tls(self):
+        markers = []
+        client = MagicMock()
+        transport = MagicMock()
+        args = (b"public-der", None, set(), "tls_no_client", markers.append)
+        with (
+            patch.object(witness_driver, "verify_server") as valid_control,
+            patch.object(witness_driver, "context", return_value=client),
+            patch.object(witness_driver.socket, "create_connection") as connect,
+        ):
+            connect.side_effect = ConnectionResetError
+            with self.assertRaises(ConnectionResetError):
+                witness_driver.denied_tls(*args)
+            client.wrap_socket.assert_not_called()
+            markers.clear()
+            valid_control.reset_mock()
+            connect.side_effect = None
+            connect.return_value = transport
+            client.wrap_socket.side_effect = ConnectionResetError
+            witness_driver.denied_tls(*args)
+            self.assertEqual(valid_control.call_count, 2)
+            self.assertEqual(
+                markers,
+                [
+                    "tls_no_client_control_before",
+                    "tls_no_client_handshake",
+                    "tls_no_client_control_after",
+                ],
+            )
 
 
 if __name__ == "__main__":
