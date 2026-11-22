@@ -343,9 +343,12 @@ def context(who=None):
     return channel
 
 
-def verify_server(expected_der, *, host=W_HOST):
+def verify_server(expected_der, *, host=W_HOST, tls12=False):
+    client = context("vault")
+    if tls12:
+        client.minimum_version = client.maximum_version = ssl.TLSVersion.TLSv1_2
     with socket.create_connection((W_ADDRESS, W_PORT), timeout=3) as transport:
-        with context("vault").wrap_socket(transport, server_hostname=host) as channel:
+        with client.wrap_socket(transport, server_hostname=host) as channel:
             require(channel.getpeercert(binary_form=True) == expected_der)
 
 
@@ -362,20 +365,18 @@ def wait_server(expected_der, expires):
 
 
 def denied_tls(expected_der, who, reasons):
-    verify_server(expected_der)
-    connection = http.client.HTTPSConnection(W_HOST, W_PORT, context=context(who), timeout=3)
+    # In TLS 1.2, the client's synchronous handshake sees a peer rejection
+    # before HTTP. In TLS 1.3 it may first surface on a later read or write.
+    verify_server(expected_der, tls12=True)
+    client = context(who)
+    client.minimum_version = client.maximum_version = ssl.TLSVersion.TLSv1_2
     try:
-        connection.request(
-            "POST", "/v1/activations/begin", b"{}", {"Content-Type": "application/json"}
-        )
-        connection.getresponse()
+        with socket.create_connection((W_ADDRESS, W_PORT), timeout=3) as transport:
+            with client.wrap_socket(transport, server_hostname=W_HOST):
+                raise ValueError("witness_driver_tls_admitted")
     except ssl.SSLError as error:
         require(error.reason in reasons)
-    else:
-        raise ValueError("witness_driver_tls_admitted")
-    finally:
-        connection.close()
-    verify_server(expected_der)
+    verify_server(expected_der, tls12=True)
 
 
 def verify_transport(fixture, fixtures, server_der, clients, bind_raw, bound_raw, advance):
@@ -405,16 +406,15 @@ def verify_transport(fixture, fixtures, server_der, clients, bind_raw, bound_raw
             else:
                 require(response.status == 200 and response.read(196609) == bound_raw)
 
-    advance("tls_refusals")
+    advance("tls_no_client")
     denied_tls(
         server_der,
         None,
         {
-            "TLSV13_ALERT_CERTIFICATE_REQUIRED",
-            "TLSV1_ALERT_UNKNOWN_CA",
             "SSLV3_ALERT_HANDSHAKE_FAILURE",
         },
     )
+    advance("tls_unknown_ca")
     unknown_ca = fixtures.certificate_authority(fixture.now)
     key, certificate = fixtures.certificate(fixture.now, "urn:pamolive:unknown:w01", ca=unknown_ca)
     publish("unknown.crt", public_certificate(certificate))
@@ -425,9 +425,9 @@ def verify_transport(fixture, fixtures, server_der, clients, bind_raw, bound_raw
         {
             "TLSV1_ALERT_UNKNOWN_CA",
             "SSLV3_ALERT_BAD_CERTIFICATE",
-            "TLSV13_ALERT_CERTIFICATE_REQUIRED",
         },
     )
+    advance("tls_wrong_hostname")
     try:
         verify_server(server_der, host="wrong.synthetic.invalid")
     except ssl.SSLCertVerificationError as error:

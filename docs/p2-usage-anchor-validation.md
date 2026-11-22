@@ -88,6 +88,18 @@ entre l'incarnation, l'empreinte et l'état ouvert. Le laboratoire vérifie auss
 que le rôle ne peut toujours pas verrouiller les réservations.
 [Règles du verrouillage PostgreSQL 17](https://www.postgresql.org/docs/17/sql-select.html#SQL-FOR-UPDATE-SHARE)
 
+Le [run `8dfe562`](https://github.com/pamolive/PamOlive-Platform/actions/runs/45077348076)
+franchit la persistance des deux terminaux et des miroirs, les relectures à
+l'identique, la préparation d'une troisième liaison et le contrôle d'en-tête.
+Il s'arrête au groupe des refus TLS, avant le contrôle final des droits SQL.
+La comparaison TLS sur tampons mémoire a confirmé les alertes pour un
+certificat client absent, une autorité inconnue et un nom d'hôte divergent.
+Le laboratoire exige désormais les alertes TLS 1.2 pendant la négociation
+pour les deux premiers cas, avec un contrôle authentifié de même version
+de part et d'autre. Le client du parcours nominal garde sa négociation
+TLS normale. SHA-256 du reçu du run
+`3ce9abb2e9c0d34bcae74bceef28c4c52897d2e3b16850810bb2c32f0f0c6abd`.
+
 ## Plan des campagnes restantes
 
 Source W1 implémentée localement. La régression HTTP a été exécutée sur
