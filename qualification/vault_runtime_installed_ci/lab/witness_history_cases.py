@@ -164,6 +164,7 @@ def run_recovery_cases(
     advance,
     restart,
     restored=False,
+    source_unavailable=None,
 ):
     from fixtures import uid
     from pamolive_usage_anchor.client import VaultMirror
@@ -174,6 +175,10 @@ def run_recovery_cases(
     check_witness_fence(observer, fixture.slot, "closed", fixture.slot.lease_epoch + 1)
     before = snapshot(observer, vault)
     restart()
+    if source_unavailable is not None:
+        require(restored)
+        advance("restore_source_unavailable")
+        source_unavailable()
     endpoint = observer
     if restored:
         advance("restore_snapshot")
@@ -201,7 +206,12 @@ def run_recovery_cases(
         expect_error("context_refused", 403, client.request, route, raw)
 
     advance(prefix + "_unchanged")
-    require(snapshot(observer, vault) == before)
+    if source_unavailable is None:
+        require(snapshot(observer, vault) == before)
+    else:
+        advance("restore_source_unavailable")
+        source_unavailable()
+        advance(prefix + "_unchanged")
     result = {
         "closed_terminal_exact": True,
         "pending_refused": True,
@@ -211,4 +221,6 @@ def run_recovery_cases(
     if restored:
         require(snapshot(endpoint, vault) == before)
         result.update(restored_context_closed=True, restored_rows_exact=True)
+    if source_unavailable is not None:
+        result["source_pg_unreachable"] = True
     return result

@@ -151,6 +151,30 @@ du contrôleur et les sept tests du stockage passent également.
 [CI ayant détecté l'erreur](https://github.com/pamolive/PamOlive-Platform/actions/runs/45083784603)
 [PR nº 38](https://github.com/pamolive/PamOlive-Platform/pull/38)
 
+## Reprise logique sur un cluster PostgreSQL vierge
+
+L'entrée CI `run_witness_restore_cluster` sélectionne la reprise après
+arrêt du cluster source. Elle exige le scénario de redémarrage fermé. Le
+contrôleur conserve en mémoire l'archive du schéma scellé et vérifie l'état
+source avant de couper le témoin de consultation et le PostgreSQL d'origine.
+Il démarre ensuite un troisième PostgreSQL sur un stockage vierge, vérifie
+que son identifiant système diffère et y restaure l'archive.
+
+Le cluster cible utilise un nouveau nom TLS, une nouvelle autorité SQL et
+un nouveau mot de passe synthétique pour le rôle observateur. Les anciens rôles
+applicatifs nécessaires à la restitution des ACL sont créés sans capacité
+de connexion. Le contrôleur vérifie les empreintes de lignes et de droits
+sur les neuf tables, la fermeture du bail et l'arrêt confirmé du cluster
+source. Le client vérifie aussi que le port PostgreSQL source reste
+inaccessible pendant que le nouveau témoin sert les reçus historiques.
+Le pilote utilise les données de la base Vault restée en service. Le
+certificat mTLS du témoin reste celui du slot signé.
+
+Une copie logique en mémoire a une durée de vie limitée à ce laboratoire.
+L'essai utilise un seul hôte et s'arrête à la consultation. Les sauvegardes
+physiques, la chaîne WAL, le PITR, la rotation du certificat applicatif
+et la reprise multi-hôte demandent des campagnes dédiées.
+
 ## Wheel W1 installée — 18 novembre 2026
 
 La [CI installée](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191)

@@ -10,12 +10,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from lab import postgres_stage, witness_postgres  # noqa: E402
-from lab.witness_restore_storage import WitnessStorageRefused, restore_witness_storage  # noqa: E402
+from lab.witness_restore_storage import (  # noqa: E402
+    WitnessStorageRefused,
+    restore_witness_cluster,
+    restore_witness_storage,
+)
 from lab_docker import (  # noqa: E402
     POSTGRES_IMAGE,
-    WITNESS_ENDPOINTS,
     Container,
     Volume,
+    WitnessClusterRestoreLab,
     WitnessLab,
     WitnessRecoveryLab,
     WitnessRestoreLab,
@@ -25,6 +29,7 @@ from support import load, need, read_regular, sha  # noqa: E402
 
 PYTHON = ("/opt/vault/bin/python", "-I", "-B", "-c")
 PG_ROLES = {"wpg": "w-postgres", "vpg": "v-postgres"}
+RECOVERY_POSTGRES = "w-postgres-restore"
 READY_PG = (
     'test "$(cat /proc/1/comm)" = postgres && '
     "pg_isready -q -h /var/run/postgresql -p 5432 -U postgres -d postgres"
@@ -103,6 +108,7 @@ DRIVER_PHASES = frozenset(
         b"recovery_unchanged\n",
         b"restore_wait\n",
         b"restore_tls\n",
+        b"restore_source_unavailable\n",
         b"restore_snapshot\n",
         b"restore_reads\n",
         b"restore_write_refusal\n",
@@ -161,13 +167,19 @@ RECOVERY_CASES = (
     "historical_rows_unchanged",
 )
 RESTORED_CASES = (*RECOVERY_CASES, "restored_context_closed", "restored_rows_exact")
+CLUSTER_RESTORED_CASES = (*RESTORED_CASES, "source_pg_unreachable")
 STORAGE_CASES = (
     "archive_verified",
     "distinct_database_created",
     "history_and_state_preserved",
     "read_only_grants_verified",
 )
-STORAGE_FAILURES = {"inputs", "source", "archive", "create", "restore", "verify"}
+CLUSTER_STORAGE_CASES = (
+    *STORAGE_CASES, "original_cluster_unavailable", "distinct_cluster_verified"
+)
+STORAGE_FAILURES = {
+    "inputs", "source", "archive", "cutoff", "target", "create", "restore", "verify"
+}
 
 
 def role_command(role, *args):
@@ -191,6 +203,7 @@ def create(
     history=False,
     restart=False,
     restore_witness=False,
+    restore_cluster=False,
 ):
     pg_environment = {
         "PGDATA": "/var/lib/postgresql/data",
@@ -210,6 +223,8 @@ def create(
         driver_args = (*driver_args, "--restart-history")
     if restore_witness:
         driver_args = (*driver_args, "--restore-witness")
+    if restore_cluster:
+        driver_args = (*driver_args, "--restore-cluster")
     specs = [
         Container(
             consumer,
@@ -221,14 +236,17 @@ def create(
             chown=True,
         )
     ]
-    for role, command in (
-        ("w-postgres", pg_cmd),
-        ("v-postgres", pg_cmd),
-        ("witness", role_command("server", *common)),
-        ("driver", role_command("driver", *driver_args)),
-    ):
-        user, address, alias = WITNESS_ENDPOINTS[role]
-        sql = role in PG_ROLES.values()
+    commands = {
+        "w-postgres": pg_cmd,
+        "v-postgres": pg_cmd,
+        "witness": role_command("server", *common),
+        "driver": role_command("driver", *driver_args),
+    }
+    if restore_cluster:
+        commands[RECOVERY_POSTGRES] = pg_cmd
+    for role, command in commands.items():
+        user, address, alias = lab.endpoints[role]
+        sql = role in (*PG_ROLES.values(), RECOVERY_POSTGRES)
         specs.append(
             Container(
                 postgres if sql else consumer,
@@ -275,7 +293,8 @@ def wait(lab, role, command, seconds):
 
 
 def stage(
-    lab, prepare, run_id, phase, marker, *, recovery=False, restore_witness=False, **options
+    lab, prepare, run_id, phase, marker, *,
+    recovery=False, restore_witness=False, restore_cluster=False, **options,
 ):
     args = (phase, "--run", run_id)
     if recovery:
@@ -284,13 +303,18 @@ def stage(
     if restore_witness:
         need(recovery)
         args = (*args, "--restore-witness")
+    if restore_cluster:
+        need(recovery and not restore_witness)
+        args = (*args, "--restore-cluster")
     return checked(
         lab.exec(*prepare, *role_command("prepare", *args), **options),
         marker,
     )
 
 
-def bootstrap(lab, roles, run_id, report, *, restart=False, restore_witness=False):
+def bootstrap(
+    lab, roles, run_id, report, *, restart=False, restore_witness=False, restore_cluster=False
+):
     prepare = roles["preparer"]
     report["phase"] = "postgres_staging"
     stage(
@@ -301,6 +325,7 @@ def bootstrap(lab, roles, run_id, report, *, restart=False, restore_witness=Fals
         b"W01_BASE_READY\n",
         recovery=restart,
         restore_witness=restore_witness,
+        restore_cluster=restore_cluster,
         timeout=25,
     )
     report["phase"] = "postgres_startup"
@@ -395,7 +420,8 @@ def collect_pure(lab, prepare, source_sha, descriptor_sha):
 
 
 def collect_native(
-    raw, source_sha, *, fence=False, history=False, restart=False, restore_witness=False
+    raw, source_sha, *, fence=False, history=False, restart=False,
+    restore_witness=False, restore_cluster=False,
 ):
     # Consume only a closed receipt. No child payload, request, or private
     # material may cross into an uploaded qualification artifact.
@@ -442,17 +468,24 @@ def collect_native(
         need(restart)
         expected["schema"] = "W01-restore-results/1"
         expected["restoration"] = dict.fromkeys(RESTORED_CASES, True)
+    if restore_cluster:
+        need(restart and not restore_witness)
+        expected["schema"] = "W01-restore-cluster-results/1"
+        expected["restoration"] = dict.fromkeys(CLUSTER_RESTORED_CASES, True)
+        expected["postgres"]["clusters"] = 3
     canonical = json.dumps(expected, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
     need(raw == canonical.encode("ascii") + b"\n")
     return expected
 
 
-def start_history_listener(lab, consumer, role, run_id, source_sha):
+def start_history_listener(lab, consumer, role, run_id, source_sha, *, restore_cluster=False):
     need(role in {"witness-recovery", "witness-restored"})
     user, address, alias = lab.endpoints[role]
     args = ("--run", run_id, "--source-sha", source_sha, "--recovery")
     if role == "witness-restored":
-        args = (*args, "--restore-witness")
+        args = (*args, "--restore-cluster" if restore_cluster else "--restore-witness")
+    else:
+        need(not restore_cluster)
     spec = Container(
         consumer,
         role,
@@ -491,28 +524,59 @@ def restart_closed_witness(lab, old, driver, consumer, run_id, source_sha, repor
     return recovery
 
 
-def restore_closed_witness(lab, recovery, driver, wpg, consumer, run_id, source_sha, report):
+def restore_closed_witness(
+    lab, recovery, driver, wpg, consumer, run_id, source_sha, report, *, recovery_pg=None
+):
     report["phase"] = "restoration_ready"
     wait_driver(lab, driver, "restore-ready", 50, report)
     need(read_role(lab, driver, "/work/restore-ready", 64) == b"W01_RESTORE_READY\n")
     report["phase"] = "restoration_storage"
+    restore_cluster = recovery_pg is not None
+
+    def switch_clusters():
+        target, preflight, provision = recovery_pg
+        lab.retire_recovery(*recovery)
+        lab.retire_source(*wpg)
+        lab.start(*target)
+        wait(lab, target, ("/bin/sh", "-ec", READY_PG), 45)
+        prefix = f"W01_{run_id}_wpr_"
+        checked(run_pg(lab, *target, preflight), (prefix + "EMPTY\n").encode("ascii"))
+        report["empty_clusters_verified"] += 1
+        checked(run_pg(lab, *target, provision), (prefix + "PROVISIONED\n").encode("ascii"))
+
     try:
-        storage = restore_witness_storage(lab, *wpg, run_id)
+        if restore_cluster:
+            storage = restore_witness_cluster(
+                lab, *wpg, *recovery_pg[0], run_id, switch_clusters=switch_clusters
+            )
+        else:
+            storage = restore_witness_storage(lab, *wpg, run_id)
     except WitnessStorageRefused as error:
         if error.phase in STORAGE_FAILURES:
             report["storage_failure"] = error.phase
         raise
-    need(type(storage) is dict and set(storage) == set(STORAGE_CASES))
+    cases = CLUSTER_STORAGE_CASES if restore_cluster else STORAGE_CASES
+    need(type(storage) is dict and set(storage) == set(cases))
     need(all(value is True for value in storage.values()))
     report["restoration_storage"] = storage
+    if restore_cluster:
+        report["clusters_provisioned"] += 1
 
     report["phase"] = "restoration_startup"
-    lab.retire_recovery(*recovery)
-    start_history_listener(lab, consumer, "witness-restored", run_id, source_sha)
+    if restore_cluster:
+        start_history_listener(
+            lab, consumer, "witness-restored", run_id, source_sha, restore_cluster=True
+        )
+    else:
+        lab.retire_recovery(*recovery)
+        start_history_listener(lab, consumer, "witness-restored", run_id, source_sha)
     mark(lab, driver, "restored")
 
 
-def run(lab, report, *, fence=False, history=False, restart=False, restore_witness=False):
+def run(
+    lab, report, *, fence=False, history=False, restart=False,
+    restore_witness=False, restore_cluster=False,
+):
     work = lab.work
     stage_root = work / "verified-consumer-context"
     descriptor_sha = sha(read_regular(stage_root / "descriptor.json", 65536))
@@ -535,11 +599,22 @@ def run(lab, report, *, fence=False, history=False, restart=False, restore_witne
         history=history,
         restart=restart,
         restore_witness=restore_witness,
+        restore_cluster=restore_cluster,
     )
     prepare, driver, witness = (roles[name] for name in ("preparer", "driver", "witness"))
     lab.start(*prepare)
     report["installed"] = collect_pure(lab, prepare, source_sha, descriptor_sha)
-    bootstrap(lab, roles, run_id, report, restart=restart, restore_witness=restore_witness)
+    bootstrap(
+        lab, roles, run_id, report, restart=restart,
+        restore_witness=restore_witness, restore_cluster=restore_cluster,
+    )
+    recovery_pg = None
+    if restore_cluster:
+        recovery_pg = (
+            roles[RECOVERY_POSTGRES],
+            read_role(lab, prepare, "/work/wpr-preflight.sql", 8192),
+            read_role(lab, prepare, "/work/wpr-provision.sql", 128 * 1024),
+        )
     report["phase"] = "driver_startup"
     lab.start(*driver)
     # Nine checked connections each have a three-second bound. The signed
@@ -558,6 +633,7 @@ def run(lab, report, *, fence=False, history=False, restart=False, restore_witne
         b"W01_WITNESS_READY\n",
         recovery=restart,
         restore_witness=restore_witness,
+        restore_cluster=restore_cluster,
         data=frame,
         timeout=5,
     )
@@ -572,9 +648,10 @@ def run(lab, report, *, fence=False, history=False, restart=False, restore_witne
             lab, witness, driver, consumer, run_id, source_sha, report
         )
         report["phase"] = "recovery_observation"
-        if restore_witness:
+        if restore_witness or restore_cluster:
             restore_closed_witness(
-                lab, recovery, driver, roles["w-postgres"], consumer, run_id, source_sha, report
+                lab, recovery, driver, roles["w-postgres"], consumer, run_id, source_sha, report,
+                recovery_pg=recovery_pg,
             )
             report["phase"] = "restoration_observation"
     wait_driver(lab, driver, "public.json", 50 if history else 32, report)
@@ -585,6 +662,7 @@ def run(lab, report, *, fence=False, history=False, restart=False, restore_witne
         history=history,
         restart=restart,
         restore_witness=restore_witness,
+        restore_cluster=restore_cluster,
     )
     mark(lab, driver, "acknowledge")
     need(lab.engine.checked("container", "wait", driver[0]["identity"], timeout=5) == b"0\n")
@@ -599,7 +677,9 @@ def main():
     parser.add_argument("--fence", action="store_true")
     parser.add_argument("--history", action="store_true")
     parser.add_argument("--restart-history", action="store_true")
-    parser.add_argument("--restore-witness", action="store_true")
+    restoration = parser.add_mutually_exclusive_group()
+    restoration.add_argument("--restore-witness", action="store_true")
+    restoration.add_argument("--restore-cluster", action="store_true")
     options = parser.parse_args()
     if options.history and not options.fence:
         parser.error("--history requires --fence")
@@ -607,6 +687,8 @@ def main():
         parser.error("--restart-history requires --history")
     if options.restore_witness and not options.restart_history:
         parser.error("--restore-witness requires --restart-history")
+    if options.restore_cluster and not options.restart_history:
+        parser.error("--restore-cluster requires --restart-history")
     report = {
         "schema": "pamolive.witness-installed-dual-cluster/2",
         "phase": "reservation",
@@ -623,9 +705,12 @@ def main():
         report["schema"] = "pamolive.witness-installed-dual-cluster/3"
         report["ordinary_closed_startup_refused"] = False
     lab_type = WitnessRecoveryLab if options.restart_history else WitnessLab
-    if options.restore_witness:
-        lab_type = WitnessRestoreLab
-        report["schema"] = "pamolive.witness-installed-dual-cluster/4"
+    if options.restore_witness or options.restore_cluster:
+        lab_type = WitnessClusterRestoreLab if options.restore_cluster else WitnessRestoreLab
+        report["schema"] = (
+            "pamolive.witness-installed-cluster-recovery/1"
+            if options.restore_cluster else "pamolive.witness-installed-dual-cluster/4"
+        )
         report["restoration_storage"] = None
         report["storage_failure"] = None
     lab = None
@@ -638,6 +723,7 @@ def main():
             history=options.history,
             restart=options.restart_history,
             restore_witness=options.restore_witness,
+            restore_cluster=options.restore_cluster,
         )
     except Exception:
         pass

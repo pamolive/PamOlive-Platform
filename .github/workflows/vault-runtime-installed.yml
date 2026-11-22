@@ -41,6 +41,10 @@ on:
         description: Restore sealed witness evidence to a fresh database and verify read-only recovery
         type: boolean
         default: false
+      run_witness_restore_cluster:
+        description: Stop the original witness database and recover into a fresh PostgreSQL cluster
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -51,7 +55,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     env:
-      VAULT_SOURCES_SHA: b8d3ce9f4c5359c3a532fa4af0872f677500a56f5521140d7fb01bd3a04d522b
+      VAULT_SOURCES_SHA: e7731372821292c91446fd66a1c5df86a2cc0ed8c9c94c672d13c075f057ffb2
       VAULT_ASSETS_SHA: 71d26e9cc4b1c27465f875879fff28c0c657688f70f797b91f174f86fed6a1eb
       VAULT_PAYLOAD_SHA: d9e7ff40d7395a109833225b5051feb1f85f6dc9f7061a07c3fa97110bc6b4a6
     steps:
@@ -118,6 +122,9 @@ jobs:
         run: exit 42
       - name: Require closed restart before qualifying restoration of witness evidence
         if: inputs.run_witness_restore == true && inputs.run_witness_restart != true
+        run: exit 42
+      - name: Require a distinct closed restart scenario before changing witness clusters
+        if: inputs.run_witness_restore_cluster == true && (inputs.run_witness_restart != true || inputs.run_witness_restore == true)
         run: exit 42
       - name: Seventeen existing wheel DATA regressions
         run: python -I -B qualification/vault_reservation/test_wheel.py
@@ -235,6 +242,7 @@ jobs:
           VAULT_WITNESS_HISTORY: ${{ inputs.run_witness_history }}
           VAULT_WITNESS_RESTART: ${{ inputs.run_witness_restart }}
           VAULT_WITNESS_RESTORE: ${{ inputs.run_witness_restore }}
+          VAULT_WITNESS_RESTORE_CLUSTER: ${{ inputs.run_witness_restore_cluster }}
         shell: bash
         run: |
           set -euo pipefail
@@ -250,6 +258,9 @@ jobs:
           fi
           if [[ "$VAULT_WITNESS_RESTORE" == true ]]; then
             options+=(--restore-witness)
+          fi
+          if [[ "$VAULT_WITNESS_RESTORE_CLUSTER" == true ]]; then
+            options+=(--restore-cluster)
           fi
           python -I -B -S qualification/vault_runtime_installed_ci/run_witness_lab.py \
             --work "$VAULT_WORK" "${options[@]}"

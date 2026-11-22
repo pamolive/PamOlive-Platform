@@ -26,6 +26,7 @@ from lab_docker import (  # noqa: E402
     Engine,
     Lab,
     Volume,
+    WitnessClusterRestoreLab,
     WitnessLab,
     WitnessRecoveryLab,
     WitnessRestoreLab,
@@ -52,7 +53,7 @@ def specs(profile=WitnessLab):
     )
     result = [preparer]
     for role, (user, address, alias) in profile.endpoints.items():
-        pg = role in {"w-postgres", "v-postgres"}
+        pg = role in profile.postgres_roles
         tmpfs = PG_TMPFS if pg else ()
         if role == "driver":
             tmpfs = (("/work", "rw,noexec,nosuid,nodev,size=8388608,mode=0700,uid=1000,gid=1000"),)
@@ -572,6 +573,15 @@ class WitnessRecoveryFixture(unittest.TestCase):
         self.witness = self.engine.specs["witness"]
         self.recovery = self.engine.specs["witness-recovery"]
 
+    def start_recovery(self):
+        witness = self.lab.create_container(self.witness)
+        row = self.engine.inspect("container", witness["identity"])
+        row["State"].update(Status="exited", ExitCode=43)
+        self.lab.retire_witness(witness, self.witness)
+        history = self.lab.create_container(self.recovery)
+        self.lab.start(history, self.recovery)
+        return history
+
 
 class WitnessRecoveryOwnershipTests(WitnessRecoveryFixture):
     def test_separate_readonly_mount_with_the_same_authenticated_endpoint(self):
@@ -707,15 +717,6 @@ class WitnessRecoveryOwnershipTests(WitnessRecoveryFixture):
 class WitnessRestoreOwnershipTests(WitnessRecoveryFixture):
     profile = WitnessRestoreLab
 
-    def start_recovery(self):
-        witness = self.lab.create_container(self.witness)
-        row = self.engine.inspect("container", witness["identity"])
-        row["State"].update(Status="exited", ExitCode=43)
-        self.lab.retire_witness(witness, self.witness)
-        history = self.lab.create_container(self.recovery)
-        self.lab.start(history, self.recovery)
-        return history
-
     def test_restore_uses_only_its_volume_and_requires_verified_listener_retirement(self):
         copy_spec = self.engine.specs["witness-restored"]
         self.lab.validate_spec(copy_spec)
@@ -772,6 +773,167 @@ class WitnessRestoreOwnershipTests(WitnessRecoveryFixture):
         self.assertFalse(history.get("removed"))
         with self.assertRaises(ValueError):
             self.lab.create_container(copy_spec)
+
+
+class WitnessClusterRestoreOwnershipTests(WitnessRecoveryFixture):
+    profile = WitnessClusterRestoreLab
+
+    def start_source(self):
+        spec = self.engine.specs["w-postgres"]
+        item = self.lab.create_container(spec)
+        self.lab.start(item, spec)
+        return item, spec
+
+    def test_new_database_starts_only_after_source_exit_and_listener_retirement(self):
+        source, source_spec = self.start_source()
+        target_spec = self.engine.specs["w-postgres-restore"]
+        target = self.lab.create_container(target_spec)
+        self.assertEqual(target_spec.address, "10.253.249.7")
+        self.assertEqual(target_spec.alias, "w-n0-recovery-db.test")
+        self.assertEqual(target_spec.volumes, (Volume("w-postgres-restore", "/lab"),))
+        self.assertEqual(target_spec.tmpfs, source_spec.tmpfs)
+        self.assertEqual(target_spec.entrypoint, "/usr/local/bin/docker-entrypoint.sh")
+        self.assertNotEqual(target["identity"], source["identity"])
+        with self.assertRaises(ValueError):
+            self.lab.start(target, target_spec)
+        with self.assertRaises(ValueError):
+            self.lab.retire_source(source, source_spec)
+        history = self.start_recovery()
+        self.lab.retire_recovery(history, self.recovery)
+        self.engine.stop_exit_code = 0
+        self.lab.retire_source(source, source_spec)
+        self.assertEqual(
+            self.engine.commands[-1][0], ("container", "stop", "--time", "5", source["identity"])
+        )
+        self.assertFalse(source.get("removed"))
+        self.assertTrue(self.engine.identity_exists("container", source["identity"]))
+        with self.assertRaises(ValueError):
+            self.lab.create_container(self.engine.specs["witness-restored"])
+        before = len(self.engine.commands)
+        with self.assertRaises(ValueError):
+            self.lab.start(target, replace(target_spec, environment=()))
+        self.assertEqual(len(self.engine.commands), before)
+        self.lab.start(target, target_spec)
+        restored_spec = self.engine.specs["witness-restored"]
+        restored = self.lab.create_container(restored_spec)
+        source_state = self.engine.inspect("container", source["identity"])["State"]
+        source_state.update(Status="running", Running=True)
+        with self.assertRaises(ValueError):
+            self.lab.start(restored, restored_spec)
+        source_state.update(Status="exited", Running=False)
+        self.lab.start(restored, restored_spec)
+        self.assertTrue(self.lab.cleanup())
+        self.assertEqual(self.engine.rows, {})
+
+    def test_failed_source_shutdown_leaves_target_and_listener_closed(self):
+        source, source_spec = self.start_source()
+        target_spec = self.engine.specs["w-postgres-restore"]
+        target = self.lab.create_container(target_spec)
+        history = self.start_recovery()
+        self.lab.retire_recovery(history, self.recovery)
+        self.engine.stop_exit_code = 137
+        with self.assertRaises(ValueError):
+            self.lab.retire_source(source, source_spec)
+        with self.assertRaises(ValueError):
+            self.lab.start(target, target_spec)
+        with self.assertRaises(ValueError):
+            self.lab.create_container(self.engine.specs["witness-restored"])
+
+    def test_cluster_staging_binds_independent_sql_trust_and_same_witness_slot(self):
+        prepare = witness_prepare
+        run = "0123456789abcdef"
+        ledger = b"inert source ledger"
+        originals = {name: name.encode() for name in prepare.WITNESS_FILES}
+        frame = prepare.encode({
+            "files": {name: prepare.b64(raw) for name, raw in originals.items()},
+            "bindings": {
+                "source_sha256": prepare.sha(ledger),
+                "slot_sha256": prepare.sha(originals["slot.json"]),
+                "materials_sha256": prepare.sha(originals["materials.bin"]),
+            },
+        })
+        repository = Path(__file__).resolve().parents[2]
+        schema_sources = dict(zip(
+            prepare.SCHEMAS.values(),
+            ("components/usage-anchor/sql/schema.sql",
+             "components/vault/runtime/sql/schema.sql", "components/usage-anchor/sql/mirror.sql"),
+            strict=True,
+        ))
+        location = {role: (1, index) for index, role in enumerate(prepare.MOUNTS)}
+        staged, private = {}, {"provision.ready": run.encode()}
+
+        def read(path, _cap):
+            if path in schema_sources:
+                return (repository / schema_sources[path]).read_bytes()
+            if path == prepare.SOURCE_LEDGER:
+                return ledger
+            return private[path.name]
+
+        def stage(_root, role, *, expected=None, files=None, restore_cluster=False):
+            if files is not None:
+                self.assertEqual(expected, list(location[role]))
+                self.assertEqual(files.keys(), prepare.mount_layout(
+                    role, restore_cluster=restore_cluster
+                ).keys())
+                self.assertNotIn(role, staged)
+                staged[role] = files
+            return location[role]
+
+        def tls(host, _now):
+            return {
+                key: f"-----BEGIN {key}-----\n{host}\n-----END {key}-----\n".encode()
+                for key in ("ca", "certificate", "key")
+            }
+
+        synthetic = iter(f"SYNTHETIC_{index}_".ljust(40, "x") for index in range(20))
+        with (
+            patch.object(prepare, "read_regular", side_effect=read),
+            patch.object(prepare.secrets, "token_urlsafe", side_effect=lambda _: next(synthetic)),
+            patch.object(prepare, "certificate_pair", side_effect=tls),
+            patch.object(prepare.role_files, "names", return_value=set()),
+            patch.object(prepare, "stage_directory", side_effect=stage),
+            patch.object(prepare, "write_private",
+                         side_effect=lambda _work, name, raw: private.update({name: raw})),
+        ):
+            for profile in (
+                {"restore_cluster": True},
+                {"recovery": True, "restore_cluster": True, "restore_witness": True},
+            ):
+                with self.assertRaises(ValueError):
+                    prepare.base(2, 3, run, **profile)
+            self.assertEqual(staged, {})
+            self.assertEqual(
+                prepare.base(2, 3, run, recovery=True, restore_cluster=True),
+                "W01_BASE_READY",
+            )
+            with self.assertRaises(ValueError):
+                prepare.stage_witness(2, run, frame, recovery=True, restore_witness=True)
+            self.assertEqual(
+                prepare.stage_witness(2, run, frame, recovery=True, restore_cluster=True),
+                "W01_WITNESS_READY",
+            )
+        config = json.loads(staged["driver"]["driver.json"][0])
+        observer = prepare.OBSERVER
+        wpg, restored = config["databases"]["wpg"], config["database_restored"]
+        self.assertEqual(
+            (restored["host"], restored["hostaddr"]), prepare.witness_postgres.RESTORE_HOST
+        )
+        self.assertEqual(restored["dbname"], f"w01_{run}_wpg_restored")
+        self.assertEqual(set(restored["credentials"]), {observer})
+        self.assertNotEqual(restored["credentials"][observer], wpg["credentials"][observer])
+        self.assertNotIn(restored["dbname"].encode(), staged["w-postgres"]["pg_hba.conf"][0])
+        self.assertIn(f"W01_{run}_wpr_EMPTY".encode(), private["wpr-preflight.sql"])
+        self.assertIn(f"W01_{run}_wpr_PROVISIONED".encode(), private["wpr-provision.sql"])
+        runtime = staged["witness-restored"]
+        self.assertEqual(runtime["slot.json"][0], originals["slot.json"])
+        self.assertEqual(runtime["server.crt"][0], originals["server.crt"])
+        self.assertEqual(runtime["sql-ca.crt"], staged["driver"]["wpr-ca.crt"])
+        self.assertNotEqual(runtime["sql-ca.crt"], staged["witness-recovery"]["sql-ca.crt"])
+        expected = {name: value for name, value in restored.items() if name != "credentials"}
+        self.assertEqual(
+            json.loads(runtime["runtime.json"][0]),
+            {**expected, "user": observer, "password": restored["credentials"][observer]},
+        )
 
 
 if __name__ == "__main__":
