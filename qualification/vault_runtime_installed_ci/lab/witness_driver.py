@@ -182,7 +182,7 @@ def database_connectors(run, advance, *, restore_witness=False):
 
     advance("database_profile_read")
     raw = read_regular(MOUNT / "driver.json", 8192)
-    advance("database_profile_fields")
+    advance("database_profile_canonical")
     config = json.loads(raw)
     require(encode(config) == raw)
     require(type(config) is dict and set(config) == {"run", "databases"} and config["run"] == run)
@@ -234,6 +234,7 @@ def database_connectors(run, advance, *, restore_witness=False):
         return connect
 
     for database, users in ROLES.items():
+        advance("database_profile_endpoint")
         row = databases[database]
         require(
             type(row) is dict and set(row) == {"host", "hostaddr", "port", "dbname", "credentials"}
@@ -245,12 +246,13 @@ def database_connectors(run, advance, *, restore_witness=False):
         ca = MOUNT / (database + "-ca.crt")
         advance("database_profile_ca")
         authorities.add(read_regular(ca, 16384))
-        advance("database_profile_fields")
+        advance("database_profile_credentials")
         for user, password in row["credentials"].items():
             require(type(password) is str and re.fullmatch(r"[A-Za-z0-9_-]{32,128}", password))
             require(password not in passwords)
             passwords.add(password)
             factories[user] = factory(row, user, ca)
+    advance("database_profile_distinct_ca")
     require(len(authorities) == 2)
     if restore_witness:
         advance("database_restore_configuration")
