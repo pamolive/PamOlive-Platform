@@ -54,6 +54,17 @@ DRIVER_PHASES = frozenset(
         b"fixture\n",
         b"execute_wait\n",
         b"native_cases\n",
+        b"witness_tls_ready\n",
+        b"witness_activation\n",
+        b"vertical_round_trip\n",
+        b"pending_binding\n",
+        b"database_snapshot\n",
+        b"forwarded_header\n",
+        b"tls_refusals\n",
+        b"principal_audiences\n",
+        b"witness_sql_permissions\n",
+        b"vault_sql_permissions\n",
+        b"snapshot_comparison\n",
         b"acknowledge\n",
     )
 )

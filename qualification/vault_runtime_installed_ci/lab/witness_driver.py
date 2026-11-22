@@ -12,6 +12,7 @@ import ssl
 import stat
 import sys
 import time
+from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
 
@@ -377,20 +378,23 @@ def denied_tls(expected_der, who, reasons):
     verify_server(expected_der)
 
 
-def verify_transport(fixture, fixtures, server_der, clients, bind_raw, bound_raw):
+def verify_transport(fixture, fixtures, server_der, clients, bind_raw, bound_raw, advance):
     from pamolive_usage_anchor import codec
 
+    advance("forwarded_header")
     path = "/v1/operations/bind"
     for forwarded in (False, True):
-        headers = {"Content-Type": "application/json"}
-        if forwarded:
-            headers["X-Forwarded-Client-Cert"] = "SYNTHETIC-NOT-AN-IDENTITY"
-        with http.client.HTTPSConnection(
-            W_HOST, W_PORT, context=context("vault"), timeout=3
+        with closing(
+            http.client.HTTPSConnection(W_HOST, W_PORT, context=context("vault"), timeout=3)
         ) as conn:
             conn.connect()
             require(conn.sock.getpeercert(binary_form=True) == server_der)
-            conn.request("POST", path, bind_raw, headers)
+            conn.putrequest("POST", path, skip_accept_encoding=True)
+            conn.putheader("Content-Type", "application/json")
+            conn.putheader("Content-Length", str(len(bind_raw)))
+            if forwarded:
+                conn.putheader("X-Forwarded-Client-Cert", "SYNTHETIC-NOT-AN-IDENTITY")
+            conn.endheaders(bind_raw)
             response = conn.getresponse()
             if forwarded:
                 require(response.status == 400)
@@ -401,6 +405,7 @@ def verify_transport(fixture, fixtures, server_der, clients, bind_raw, bound_raw
             else:
                 require(response.status == 200 and response.read(196609) == bound_raw)
 
+    advance("tls_refusals")
     denied_tls(
         server_der,
         None,
@@ -429,6 +434,7 @@ def verify_transport(fixture, fixtures, server_der, clients, bind_raw, bound_raw
         require(error.verify_code == 62)
     else:
         raise ValueError("witness_driver_hostname_admitted")
+    advance("principal_audiences")
     for who, path, body in (
         ("activation", "/v1/operations/bind", bind_raw),
         ("vault", "/v1/activations/begin", codec.encode({"person_id": fixtures.uid(20)}, 4096)),
@@ -464,7 +470,7 @@ def snapshot(observer, vault):
     return read(observer, "pam_usage_anchor", W_TABLES), read(vault, "vault_reservation", V_TABLES)
 
 
-def run_cases(fixture, modules, factories, source_sha):
+def run_cases(fixture, modules, factories, source_sha, advance):
     from cryptography.hazmat.primitives import serialization
     from pamolive_usage_anchor import codec
     from pamolive_usage_anchor.client import MTLSClient, VaultMirror
@@ -474,6 +480,7 @@ def run_cases(fixture, modules, factories, source_sha):
 
     fixtures, scenario, permissions = modules
     server_der = fixture.server_cert.public_bytes(serialization.Encoding.DER)
+    advance("witness_tls_ready")
     wait_server(server_der, fixture.now + 18)
     clients = {
         who: MTLSClient(
@@ -484,8 +491,10 @@ def run_cases(fixture, modules, factories, source_sha):
     runtime = factories["vault_n0_runtime"]
     observer = factories["usage_anchor_observer"]
     witness = factories["usage_anchor_runtime"]
+    advance("witness_activation")
     scenario.activate_over_mtls(clients["activation"], fixture)
     require(time.time() < fixture.now + 24)
+    advance("vertical_round_trip")
     observed = scenario.vertical_round_trip(
         fixture=fixture,
         witness_client=clients["vault"],
@@ -505,6 +514,7 @@ def run_cases(fixture, modules, factories, source_sha):
 
     # Bind a third operation before the short signed lease expires. Probes below
     # work from committed rows and do not extend or refresh the authority.
+    advance("pending_binding")
     draft = replace(fixture.draft, request_id=fixtures.uid(802), idempotency_key=fixtures.uid(803))
     chain, checkpoint = codec.parse_materials(fixture.materials)
     request = encode(
@@ -526,10 +536,12 @@ def run_cases(fixture, modules, factories, source_sha):
             (bound["operation_id"],),
         )
         bind_raw = bytes(cursor.fetchone()[0])
+    advance("database_snapshot")
     before = snapshot(observer, runtime)
     require(tuple(map(len, before[0][:2])) == (3, 5) and tuple(map(len, before[1][:2])) == (3, 3))
 
-    verify_transport(fixture, fixtures, server_der, clients, bind_raw, bound_raw)
+    verify_transport(fixture, fixtures, server_der, clients, bind_raw, bound_raw, advance)
+    advance("witness_sql_permissions")
     credential = fixture.auths[fixtures.uid(20)]["id"]
     checks = permissions.role_boundaries(
         witness_runtime_connect=witness,
@@ -546,9 +558,11 @@ def run_cases(fixture, modules, factories, source_sha):
     )
     require(checks["forbidden_principals"] == 2)
     permissions.terminal_shape_probe(witness, fixture.slot.context_id, bound["operation_id"])
+    advance("vault_sql_permissions")
     for role in ("v_web_probe", "v_worker_probe"):
         permissions.denied(factories[role], "SELECT * FROM vault_reservation.reservations")
         permissions.denied(factories[role], "SELECT * FROM vault_reservation.usage_mirrors")
+    advance("snapshot_comparison")
     require(snapshot(observer, runtime) == before)
     return {
         "schema": "W01-results/2",
@@ -581,6 +595,11 @@ def main():
     parser.add_argument("--source-sha", required=True)
     args = parser.parse_args()
     phase = "boundary"
+
+    def advance(name):
+        nonlocal phase
+        phase = name
+
     try:
         os.environ.clear()
         os.environ.update(LANG="C.UTF-8", LC_ALL="C.UTF-8", PSYCOPG_IMPL="c")
@@ -610,7 +629,7 @@ def main():
         phase = "execute_wait"
         wait_for("execute", max(0, fixture.now + 18 - time.time()))
         phase = "native_cases"
-        report = run_cases(fixture, modules, factories, args.source_sha)
+        report = run_cases(fixture, modules, factories, args.source_sha, advance)
         publish("public.json", encode(report))
         phase = "acknowledge"
         wait_for("acknowledge", 15)

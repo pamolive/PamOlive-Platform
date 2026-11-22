@@ -67,6 +67,16 @@ et de leur autorité propre. La prochaine exécution doit confirmer que la
 négociation et les requêtes des rôles aboutissent.
 [Code de libpq 17.12](https://github.com/postgres/postgres/blob/REL_17_12/src/interfaces/libpq/fe-secure-openssl.c#L390-L426)
 
+Sur [`68b4cd5`](https://github.com/pamolive/PamOlive-Platform/actions/runs/45076401798),
+le pilote franchit les neuf connexions PostgreSQL avec liaison SCRAM au
+certificat, la vérification des rôles et la préparation du témoin. La CI
+s'arrête pendant les essais natifs après préparation. La revue indépendante
+a identifié deux erreurs dans le client HTTP de test. Le contrôle compare
+désormais deux requêtes de liaison valides octet pour octet, dont la seconde
+porte un en-tête d'identité transmis. La première doit réussir et la seconde
+doit être explicitement refusée. SHA-256 du reçu de cet essai
+`186ba70f4772205dddfe59ae6ffe775d04d98a6f02987a270506ab74bc9b521c`.
+
 ## Plan des campagnes restantes
 
 Source W1 implémentée localement. La régression HTTP a été exécutée sur
