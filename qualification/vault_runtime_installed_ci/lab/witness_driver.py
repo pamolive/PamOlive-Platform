@@ -62,6 +62,24 @@ class DatabaseCheckRefused(ValueError):
         self.phase = phase
 
 
+def connection_failure(error):
+    """Project a libpq startup failure to a fixed category before reporting it."""
+    message = str(error).lower()
+    for category, patterns in (
+        ("database_ca", ("root certificate file", "could not read certificate")),
+        ("database_peer", ("certificate verify failed", "does not match host name")),
+        ("database_channel_binding", ("could not find digest for nid", "channel binding")),
+        ("database_tls", ("ssl error:", "tls alert", "does not support ssl", "ssl handshake")),
+        ("database_authentication", ("password authentication failed", "password is required")),
+        ("database_hba", ("pg_hba.conf",)),
+        ("database_startup", ("fatal:",)),
+        ("database_transport", ("connection refused", "timeout expired", "no route to host")),
+    ):
+        if any(pattern in message for pattern in patterns):
+            return category
+    return "database_other_connection"
+
+
 def encode(value):
     return (
         json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("ascii")
@@ -164,18 +182,26 @@ def database_connectors(run):
 
     def factory(row, uid, ca):
         def connect():
-            conn = psycopg.connect(
-                host=row["host"],
-                hostaddr=row["hostaddr"],
-                dbname=row["dbname"],
-                port=5432,
-                user=uid,
-                password=row["credentials"][uid],
-                sslmode="verify-full",
-                sslrootcert=str(ca),
-                connect_timeout=3,
-                options="-c search_path=pg_catalog -c statement_timeout=3000 -c lock_timeout=2000",
-            )
+            try:
+                conn = psycopg.connect(
+                    host=row["host"],
+                    hostaddr=row["hostaddr"],
+                    dbname=row["dbname"],
+                    port=5432,
+                    user=uid,
+                    password=row["credentials"][uid],
+                    sslmode="verify-full",
+                    sslrootcert=str(ca),
+                    channel_binding="require",
+                    connect_timeout=3,
+                    options=(
+                        "-c search_path=pg_catalog -c statement_timeout=3000 -c lock_timeout=2000"
+                    ),
+                )
+            except psycopg.OperationalError as error:
+                raise DatabaseCheckRefused(connection_failure(error)) from None
+            except Exception:
+                raise DatabaseCheckRefused("database_client") from None
             try:
                 require(not conn.autocommit and conn.info.server_version == TLS_EXPECTED)
                 require(
@@ -191,7 +217,7 @@ def database_connectors(run):
                 return conn
             except Exception:
                 conn.close()
-                raise
+                raise DatabaseCheckRefused("database_connection_binding") from None
 
         return connect
 
@@ -221,6 +247,8 @@ def check_database_roles(run, factories):
         for user in users:
             try:
                 connection = factories[user]()
+            except DatabaseCheckRefused:
+                raise
             except Exception:
                 raise DatabaseCheckRefused("database_connection") from None
             try:
@@ -523,13 +551,14 @@ def run_cases(fixture, modules, factories, source_sha):
         permissions.denied(factories[role], "SELECT * FROM vault_reservation.usage_mirrors")
     require(snapshot(observer, runtime) == before)
     return {
-        "schema": "W01-results/1",
+        "schema": "W01-results/2",
         "source_sha256": source_sha,
         "cases": dict.fromkeys(CASES, True),
         "postgres": {
             "clusters": 2,
             "version": TLS_EXPECTED,
             "verify_full": True,
+            "channel_binding_required": True,
             "assigned_roles_verified": True,
             "vault_forbidden_roles": 2,
             "witness_forbidden_roles": 2,

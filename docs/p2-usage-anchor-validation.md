@@ -52,6 +52,20 @@ démarrage du pilote, avant le scénario mTLS. Le reçu public porte le SHA-256
 `792e7e157c6bf599424cd593820896bab6fdc3bd3ff704c064bd3c6428005a56`.
 Le reçu de version 2 indique la phase du pilote en cas d'arrêt. Sa valeur
 provient d'une liste fermée de phases et ne comprend aucun texte d'exception.
+Le [second essai](https://github.com/pamolive/PamOlive-Platform/actions/runs/45075774749)
+sur `5d48a5c` situe l'arrêt dans l'ouverture d'une connexion du pilote à
+PostgreSQL ou dans la vérification de sa liaison, avant la requête de contrôle
+des rôles. Les deux précontrôles, les deux provisionnements et le nettoyage
+sont confirmés. SHA-256 du reçu
+`206e760bfd5aaa88f93994cf626cfca84b5043b0610ebcf829e6722c4cc0ecad`.
+
+Les certificats PostgreSQL du laboratoire sont désormais signés en
+ECDSA P-256 avec SHA-256. PostgreSQL 17.12 dérive la liaison SCRAM au
+canal TLS à partir du condensat utilisé par la signature du certificat.
+Les connexions exigent cette liaison et conservent la validation du nom
+et de leur autorité propre. La prochaine exécution doit confirmer que la
+négociation et les requêtes des rôles aboutissent.
+[Code de libpq 17.12](https://github.com/postgres/postgres/blob/REL_17_12/src/interfaces/libpq/fe-secure-openssl.c#L390-L426)
 
 ## Plan des campagnes restantes
 

@@ -111,12 +111,14 @@ def unb64(value, maximum):
 
 def certificate_pair(hostname, now):
     from cryptography import x509
-    from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
     from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
-    ca_key = Ed25519PrivateKey.generate()
-    server_key = Ed25519PrivateKey.generate()
+    # PostgreSQL 17.12's SCRAM channel binding needs a digest from the
+    # certificate signature algorithm. ECDSA signs with explicit SHA-256.
+    ca_key = ec.generate_private_key(ec.SECP256R1())
+    server_key = ec.generate_private_key(ec.SECP256R1())
     ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Synthetic " + hostname + " CA")])
 
     def builder(name, key, ca):
@@ -138,13 +140,13 @@ def certificate_pair(hostname, now):
             )
         )
 
-    ca = builder(ca_name, ca_key, True).sign(ca_key, None)
+    ca = builder(ca_name, ca_key, True).sign(ca_key, hashes.SHA256())
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, hostname)])
     leaf = (
         builder(name, server_key, False)
         .add_extension(x509.SubjectAlternativeName([x509.DNSName(hostname)]), False)
         .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), False)
-        .sign(ca_key, None)
+        .sign(ca_key, hashes.SHA256())
     )
     return {
         "ca": ca.public_bytes(serialization.Encoding.PEM),

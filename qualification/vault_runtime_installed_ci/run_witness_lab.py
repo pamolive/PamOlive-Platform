@@ -36,6 +36,17 @@ DRIVER_PHASES = frozenset(
         b"database_configuration\n",
         b"database_roles\n",
         b"database_connection\n",
+        b"database_ca\n",
+        b"database_peer\n",
+        b"database_channel_binding\n",
+        b"database_tls\n",
+        b"database_authentication\n",
+        b"database_hba\n",
+        b"database_startup\n",
+        b"database_transport\n",
+        b"database_other_connection\n",
+        b"database_client\n",
+        b"database_connection_binding\n",
         b"database_role_query\n",
         b"database_role_mismatch\n",
         b"initialized_publish\n",
@@ -246,13 +257,14 @@ def collect_native(raw, source_sha):
     # Consume only a closed receipt. No child payload, request, or private
     # material may cross into an uploaded qualification artifact.
     expected = {
-        "schema": "W01-results/1",
+        "schema": "W01-results/2",
         "source_sha256": source_sha,
         "cases": dict.fromkeys(NATIVE_CASES, True),
         "postgres": {
             "clusters": 2,
             "version": 170012,
             "verify_full": True,
+            "channel_binding_required": True,
             "assigned_roles_verified": True,
             "vault_forbidden_roles": 2,
             "witness_forbidden_roles": 2,

@@ -72,6 +72,7 @@ def serve(run, source_sha):
             **database,
             sslmode="verify-full",
             sslrootcert=str(ROOT / "sql-ca.crt"),
+            channel_binding="require",
             connect_timeout=3,
             options="-c search_path=pg_catalog -c statement_timeout=3000 -c lock_timeout=2000",
         )

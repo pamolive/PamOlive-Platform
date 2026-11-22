@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run_witness_lab as runner  # noqa: E402
+from lab import witness_driver  # noqa: E402
 
 RUN = "0123456789abcdef"
 ROLES = {name: (name, None) for name in ("preparer", "w-postgres", "v-postgres")}
@@ -90,8 +91,8 @@ class OrchestrationTests(unittest.TestCase):
     def test_native_receipt_rejects_private_or_incomplete_content(self):
         source = "a" * 64
         for value in (
-            {"schema": "W01-results/1", "source_sha256": source},
-            {"schema": "W01-results/1", "source_sha256": source, "private": "never_publish"},
+            {"schema": "W01-results/2", "source_sha256": source},
+            {"schema": "W01-results/2", "source_sha256": source, "private": "never_publish"},
         ):
             with self.assertRaises(ValueError):
                 runner.collect_native(json.dumps(value).encode(), source)
@@ -116,6 +117,20 @@ class OrchestrationTests(unittest.TestCase):
                     runner.wait_driver(lab, driver, "initialized", 5, report)
                 self.assertEqual(report["driver_failure"], expected)
                 self.assertEqual(mark.call_count, 1 if expected else 0)
+
+    def test_libpq_connection_errors_expose_only_fixed_categories(self):
+        self.assertEqual(
+            witness_driver.connection_failure(ValueError("certificate verify failed: private")),
+            "database_peer",
+        )
+        self.assertEqual(
+            witness_driver.connection_failure(ValueError("unknown private diagnostic")),
+            "database_other_connection",
+        )
+        self.assertEqual(
+            witness_driver.connection_failure(ValueError("could not find digest for NID UNDEF")),
+            "database_channel_binding",
+        )
 
 
 if __name__ == "__main__":
