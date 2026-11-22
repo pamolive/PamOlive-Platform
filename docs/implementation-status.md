@@ -778,9 +778,20 @@ le redémarrage fermé sur `7d37e0d`. Le démarrage ordinaire est refusé,
 puis le nouveau conteneur utilise le même certificat avec un montage et
 un compte SQL de lecture séparés. Les quatre tests de reprise s'ajoutent
 aux 24 scénarios antérieurs et les 77 tests installés passent. Le reçu
-confirme le nettoyage. Le stockage restauré, la rotation de l'identité,
-le serveur Vault distinct et la reprise multi-hôte restent à qualifier.
+confirme le nettoyage. La restauration logique prolonge ce scénario.
+La rotation de l'identité, le serveur Vault distinct et la reprise
+multi-hôte restent à qualifier.
 [CI de redémarrage](https://github.com/pamolive/PamOlive-Platform/actions/runs/45081802652)
+
+La [PR nº 38](https://github.com/pamolive/PamOlive-Platform/pull/38) qualifie
+sur `b4ff379` la restauration logique en lecture seule dans une base vierge du
+même cluster W. Le laboratoire SQL compare les neuf tables et leurs droits.
+Le témoin restauré sert le reçu exact sous la même identité TLS. Le contexte
+et le bail restent fermés. Les données d'origine sont conservées et le
+nettoyage est confirmé. Les 77 tests installés, 34 contrôles natifs et
+quatre constats de restauration SQL passent. La reprise après perte du
+cluster et la qualification multi-hôte restent ouvertes.
+[CI de restauration](https://github.com/pamolive/PamOlive-Platform/actions/runs/45084090436)
 
 Le parent `6c17536` conserve ses résultats distincts : PR fonctionnelle puis
 scan High en échec, push arrêté au timeout TLS d'acquisition avant assertion

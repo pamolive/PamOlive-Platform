@@ -108,8 +108,8 @@ L'archive `14777970828` correspond au digest GitHub et le reçu public porte le
 SHA-256 `a888891dac1a47bca417fe6ec235fff49dec02525dfe44393c98386e6349c9fc`.
 L'étape du laboratoire Vault seul est ignorée pour ce profil. L'essai
 remplace le processus témoin sur un seul runner et conserve ses bases
-PostgreSQL 17.12 et son certificat. Il reste à qualifier la restauration du
-stockage, la rotation d'identité et la reprise multi-hôte.
+PostgreSQL 17.12 et son certificat. La campagne suivante couvre la
+restauration logique du stockage.
 [PR nº 37](https://github.com/pamolive/PamOlive-Platform/pull/37)
 
 ## Restauration logique du stockage du témoin
@@ -133,6 +133,23 @@ L'identité TLS et le rôle observateur synthétiques sont réutilisés. Ce pér
 couvre l'intégrité et les autorisations de la restauration logique. La reprise
 après perte du cluster, le PITR, la rotation d'identité et la reprise multi-hôte
 exigent leurs propres qualifications.
+
+La campagne native de `b4ff379` passe sur PostgreSQL 17.12. Le reçu confirme
+77 tests de la wheel installée, 28 scénarios natifs antérieurs, six contrôles
+de consultation sur la base restaurée, quatre constats de restauration SQL
+et le nettoyage complet. Le profil Vault seul est ignoré dans cette campagne.
+Le ZIP `14777808833` a été vérifié contre le digest GitHub. Le reçu public
+porte le SHA-256 `c8a09771e5cd8c8494116413bbd3f3440e892d3b40573904012af8ac19745420`.
+[CI de restauration](https://github.com/pamolive/PamOlive-Platform/actions/runs/45084090436)
+
+Le candidat `57af79e` échouait à la validation de l'adresse SQL avant toute
+restauration. Une variable de génération des règles de connexion écrasait
+l'adresse du cluster. Le test de régression échoue sur ce candidat et passe
+sur `b4ff379`. La revue indépendante a vérifié cet écart et les 23 tests
+de configuration PostgreSQL. Les 26 tests d'isolation Docker, les 11 tests
+du contrôleur et les sept tests du stockage passent également.
+[CI ayant détecté l'erreur](https://github.com/pamolive/PamOlive-Platform/actions/runs/45083784603)
+[PR nº 38](https://github.com/pamolive/PamOlive-Platform/pull/38)
 
 ## Wheel W1 installée — 18 novembre 2026
 
