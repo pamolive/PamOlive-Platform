@@ -163,6 +163,7 @@ def run_recovery_cases(
     snapshot,
     advance,
     restart,
+    restored=False,
 ):
     from fixtures import uid
     from pamolive_usage_anchor.client import VaultMirror
@@ -173,8 +174,15 @@ def run_recovery_cases(
     check_witness_fence(observer, fixture.slot, "closed", fixture.slot.lease_epoch + 1)
     before = snapshot(observer, vault)
     restart()
+    endpoint = observer
+    if restored:
+        advance("restore_snapshot")
+        endpoint = factories["restored_observer"]
+        check_witness_fence(endpoint, fixture.slot, "closed", fixture.slot.lease_epoch + 1)
+        require(snapshot(endpoint, vault) == before)
 
-    advance("recovery_reads")
+    prefix = "restore" if restored else "recovery"
+    advance(prefix + "_reads")
     mirror = VaultMirror(vault, client)
     original = evidence["bundle_raw"]
     require(
@@ -183,7 +191,7 @@ def run_recovery_cases(
     pending = proof_from(fixture, pending_bound_raw, spaced=True)
     expect_error("context_refused", 403, mirror.observe_terminal, pending_reservation_id, pending)
 
-    advance("recovery_write_refusal")
+    advance(prefix + "_write_refusal")
     for route, raw in (
         ("/v1/operations/bind", bind_raw),
         ("/v1/operations/consume", original),
@@ -192,11 +200,15 @@ def run_recovery_cases(
     ):
         expect_error("context_refused", 403, client.request, route, raw)
 
-    advance("recovery_unchanged")
+    advance(prefix + "_unchanged")
     require(snapshot(observer, vault) == before)
-    return {
+    result = {
         "closed_terminal_exact": True,
         "pending_refused": True,
         "mutation_routes_refused": True,
         "historical_rows_unchanged": True,
     }
+    if restored:
+        require(snapshot(endpoint, vault) == before)
+        result.update(restored_context_closed=True, restored_rows_exact=True)
+    return result

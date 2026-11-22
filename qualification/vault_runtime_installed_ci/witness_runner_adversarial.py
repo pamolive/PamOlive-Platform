@@ -97,6 +97,127 @@ class OrchestrationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 runner.collect_native(json.dumps(value).encode(), source)
 
+    def exercise_restore(self, marker, storage):
+        lab = MagicMock()
+        recovery, driver, wpg = [(object(), object()) for _ in range(3)]
+        report = {"restoration_storage": None, "storage_failure": None}
+        with (
+            patch.object(runner, "wait_driver") as wait,
+            patch.object(runner, "read_role", return_value=marker),
+            patch.object(runner, "restore_witness_storage", return_value=storage) as restore,
+            patch.object(runner, "start_history_listener") as start,
+            patch.object(runner, "mark") as mark,
+        ):
+            ledger = MagicMock()
+            for name, action in (
+                ("restore", restore),
+                ("retire", lab.retire_recovery),
+                ("start", start),
+                ("mark", mark),
+            ):
+                ledger.attach_mock(action, name)
+            args = (lab, recovery, driver, wpg, "consumer", RUN, "a" * 64, report)
+            exact = storage.keys() == set(runner.STORAGE_CASES) and all(
+                value is True for value in storage.values()
+            )
+            if marker != b"W01_RESTORE_READY\n" or not exact:
+                with self.assertRaises(ValueError):
+                    runner.restore_closed_witness(*args)
+                lab.retire_recovery.assert_not_called()
+                start.assert_not_called()
+                mark.assert_not_called()
+            else:
+                runner.restore_closed_witness(*args)
+                self.assertEqual(
+                    [call[0] for call in ledger.mock_calls], ["restore", "retire", "start", "mark"]
+                )
+                restore.assert_called_once_with(lab, *wpg, RUN)
+                lab.retire_recovery.assert_called_once_with(*recovery)
+                start.assert_called_once_with(lab, "consumer", "witness-restored", RUN, "a" * 64)
+                mark.assert_called_once_with(lab, driver, "restored")
+            wait.assert_called_once_with(lab, driver, "restore-ready", 50, report)
+        return report
+
+    def test_restore_replaces_listener_only_after_exact_storage_receipt(self):
+        facts = dict.fromkeys(runner.STORAGE_CASES, True)
+        report = self.exercise_restore(b"W01_RESTORE_READY\n", facts)
+        self.assertEqual(report["restoration_storage"], facts)
+        self.assertEqual(report["phase"], "restoration_startup")
+
+    def test_restore_rejects_wrong_marker_and_noncanonical_storage_facts(self):
+        facts = dict.fromkeys(runner.STORAGE_CASES, True)
+        for marker, storage in (
+            (b"W01_RESTORE_READY\nextra", facts),
+            (b"W01_RESTORE_READY\n", {**facts, "extra": True}),
+            (b"W01_RESTORE_READY\n", {**facts, "archive_verified": False}),
+            (b"W01_RESTORE_READY\n", {**facts, "archive_verified": 1}),
+        ):
+            with self.subTest(marker=marker, storage=storage):
+                self.assertIsNone(self.exercise_restore(marker, storage)["restoration_storage"])
+
+    def test_restore_ready_is_a_checked_driver_marker(self):
+        state = SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+        lab = MagicMock()
+        lab.engine.deadline = float("inf")
+        lab.exec.return_value = state
+        driver = (object(), object())
+        runner.wait_driver(lab, driver, "restore-ready", 5, {})
+        command = lab.exec.call_args.args
+        self.assertEqual(command[:2], driver)
+        self.assertIn("test -f /work/restore-ready", command[-1])
+
+    def test_restored_database_factory_binds_only_observer_and_exact_copy(self):
+        rows = {}
+        for database, users in witness_driver.ROLES.items():
+            host, address = witness_driver.HOSTS[database]
+            rows[database] = {
+                "host": host,
+                "hostaddr": address,
+                "port": 5432,
+                "dbname": f"w01_{RUN}_{database}",
+                "credentials": {user: "fixture-" * 4 + user for user in users},
+            }
+        raw = witness_driver.encode({"run": RUN, "databases": rows})
+
+        def read_regular(path, _cap):
+            return raw if path.name == "driver.json" else path.name.encode("ascii")
+
+        row = rows["wpg"]
+        dbname = row["dbname"] + "_restored"
+        observer = "usage_anchor_observer"
+        connection = SimpleNamespace(
+            autocommit=False,
+            info=SimpleNamespace(
+                user=observer,
+                dbname=dbname,
+                host=row["host"],
+                hostaddr=row["hostaddr"],
+                port=5432,
+                server_version=witness_driver.TLS_EXPECTED,
+            ),
+        )
+        connect = MagicMock(return_value=connection)
+        with patch.dict(sys.modules, {
+            "psycopg": SimpleNamespace(connect=connect),
+            "witness_wheel": SimpleNamespace(read_regular=read_regular),
+        }):
+            plain = witness_driver.database_connectors(RUN, lambda _: None)
+            phases = []
+            factories = witness_driver.database_connectors(
+                RUN, phases.append, restore_witness=True
+            )
+            self.assertEqual(factories.keys() - plain.keys(), {"restored_observer"})
+            self.assertEqual(phases[-1], "database_restore_configuration")
+            connect.assert_not_called()
+            self.assertIs(factories["restored_observer"](), connection)
+        settings = connect.call_args.kwargs
+        self.assertEqual(settings["dbname"], dbname)
+        self.assertEqual(settings["user"], observer)
+        self.assertEqual(settings["password"], row["credentials"][observer])
+        self.assertEqual(settings["sslmode"], "verify-full")
+        self.assertEqual(settings["channel_binding"], "require")
+        self.assertIn("default_transaction_read_only=on", settings["options"])
+
     def test_diagnostic_publishes_only_an_enumerated_phase(self):
         driver = ({"identity": "a" * 64}, None)
         state = SimpleNamespace(returncode=42, stdout=b"", stderr=b"")

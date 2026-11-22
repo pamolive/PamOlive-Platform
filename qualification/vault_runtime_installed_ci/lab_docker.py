@@ -566,6 +566,9 @@ class WitnessRecoveryLab(WitnessLab):
         # No force and no name-based removal. Only retire the owned CID whose
         # closed-context startup refusal has been observed.
         self.engine.checked("container", "rm", item["identity"])
+        self._record_retired_witness(item)
+
+    def _record_retired_witness(self, item):
         self._require_absent_witness(item)
         item["removed"] = True
         self.save()
@@ -575,10 +578,10 @@ class WitnessRecoveryLab(WitnessLab):
         need(not self.engine.exists("container", item["name"]))
         need(not self.engine.identity_exists("container", identifier))
 
-    def _require_retired_witness(self):
+    def _require_retired_witness(self, role="witness"):
         matches = [
             item for item in self.owned
-            if item["kind"] == "container" and item["role"] == "witness"
+            if item["kind"] == "container" and item["role"] == role
         ]
         need(len(matches) == 1 and matches[0].get("removed") is True)
         self._require_absent_witness(matches[0])
@@ -591,4 +594,53 @@ class WitnessRecoveryLab(WitnessLab):
     def start(self, item, spec, **options):
         if spec.role == "witness-recovery":
             self._require_retired_witness()
+        return super().start(item, spec, **options)
+
+
+class WitnessRestoreLab(WitnessRecoveryLab):
+    """Bind the restored listener only after both earlier listeners retire."""
+
+    endpoints = {
+        **WitnessRecoveryLab.endpoints, "witness-restored": WITNESS_ENDPOINTS["witness"]
+    }
+    volume_roles = WitnessRecoveryLab.volume_roles | {"witness-restored"}
+    container_roles = WitnessRecoveryLab.container_roles | {"witness-restored"}
+    preparer_mounts = (
+        *WitnessRecoveryLab.preparer_mounts,
+        Volume("witness-restored", "/stage/witness-restored", False),
+    )
+
+    def retire_recovery(self, item, spec):
+        self._require_retired_witness()
+        need(spec.role == "witness-recovery" and not item.get("removed"))
+        state = self.container_profile(item, spec)["State"]
+        need(
+            state["Status"] == "running"
+            and state["Running"] is True
+            and state["OOMKilled"] is False
+        )
+        identifier = item["identity"]
+        self.engine.checked("container", "stop", "--time", "2", identifier, timeout=5)
+        state = self.container_profile(item, spec)["State"]
+        need(
+            state["Status"] == "exited"
+            and state["Running"] is False
+            and state["OOMKilled"] is False
+            and state["ExitCode"] in (0, 143)
+        )
+        self.engine.checked("container", "rm", identifier)
+        self._record_retired_witness(item)
+
+    def _require_restore_slot(self):
+        self._require_retired_witness()
+        self._require_retired_witness("witness-recovery")
+
+    def create_container(self, spec):
+        if spec.role == "witness-restored":
+            self._require_restore_slot()
+        return super().create_container(spec)
+
+    def start(self, item, spec, **options):
+        if spec.role == "witness-restored":
+            self._require_restore_slot()
         return super().start(item, spec, **options)

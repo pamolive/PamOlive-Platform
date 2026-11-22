@@ -48,6 +48,11 @@ def identifier(value):
     return '"' + value + '"'
 
 
+def restore_database(run_id):
+    need(type(run_id) is str and re.fullmatch(r"[a-f0-9]{16}", run_id))
+    return f"w01_{run_id}_wpg_restored"
+
+
 def password(value):
     need(type(value) is str and re.fullmatch(r"[A-Za-z0-9_-]{32,128}", value))
     return "'" + value + "'"
@@ -235,16 +240,21 @@ def exec_args(container_id):
             "-p 5432 -U postgres -d postgres -f -")
 
 
-def prepare_pair(run_id, *, databases, credentials, tls, schemas, schema_pins, recovery=False):
+def prepare_pair(
+    run_id, *, databases, credentials, tls, schemas, schema_pins,
+    recovery=False, restore_witness=False,
+):
     """Return inert private data only. PEM trust/identity is checked by real TLS.
 
     databases/credentials/tls use exact wpg/vpg keys. Credentials include postgres
     plus each role in ROLES. tls has ca/certificate/key bytes for each cluster.
     The recovery profile permits the observer at W's reserved service address.
+    The restore profile adds an observer-only route to the reserved copy of W.
     No key/password is generated or read here; there is no inherited environment.
     """
     need(type(run_id) is str and re.fullmatch(r"[a-f0-9]{16}", run_id))
     need(type(recovery) is bool)
+    need(type(restore_witness) is bool and (recovery or not restore_witness))
     closed(databases, ROLES)
     closed(credentials, ROLES)
     closed(tls, ROLES)
@@ -278,14 +288,22 @@ def prepare_pair(run_id, *, databases, credentials, tls, schemas, schema_pins, r
                   "hba_file='/lab/pg_hba.conf'\npassword_encryption='scram-sha-256'\n"
                   "fsync=on\nsynchronous_commit=on\nshared_buffers='16MB'\n"
                   "max_connections=16\nlog_statement='none'\nlog_min_messages='fatal'\n")
-        hba = (f"local postgres postgres peer\nlocal {database} postgres peer\n"
-               "local all all reject\n")
+        hba = f"local postgres postgres peer\nlocal {database} postgres peer\n"
+        restored = restore_database(run_id) if restore_witness and role == "wpg" else None
+        if restored:
+            hba += f"local {restored} postgres peer\n"
+        hba += "local all all reject\n"
         for login in ROLES[role]:
             hba += f"hostssl {database} {login} 10.253.249.4/32 scram-sha-256\n"
         runtime_ip = "10.253.249.3" if role == "wpg" else "10.253.249.6"
         hba += f"hostssl {database} {ROLES[role][0]} {runtime_ip}/32 scram-sha-256\n"
         if recovery and role == "wpg":
             hba += f"hostssl {database} usage_anchor_observer {runtime_ip}/32 scram-sha-256\n"
+        if restored:
+            for client_address in (runtime_ip, "10.253.249.4"):
+                hba += (
+                    f"hostssl {restored} usage_anchor_observer {client_address}/32 scram-sha-256\n"
+                )
         hba += "host all all 0.0.0.0/0 reject\nhost all all ::/0 reject\n"
         files = {
             "ca.crt": File(tls[role]["ca"], 0o444),
