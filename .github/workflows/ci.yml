@@ -862,7 +862,7 @@ jobs:
           PAMOLIVE_TEST_DATABASE_NAME: test_pamolive_p1g_browser
           PAMOLIVE_P1G_DISPOSABLE: '1'
           P1G_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          P1G_CHROME_PINS_SHA: f3e631b96bdef42c35cc45539ab7e1d442206e73b6139795865b2d66b37b38cf
+          P1G_CHROME_PINS_SHA: 6be225d28b7adbe3f4c1d255acaa013d4d10ea59feb6366e9c9b50a9463098c4
         shell: bash
         run: |
           set -euo pipefail
@@ -1161,7 +1161,7 @@ jobs:
               assert len(raw) == row.st_size and len(raw) <= cap
               return raw
           name = "qualification/p1g_headless/chrome-bootstrap-pins.json"
-          expected = "f3e631b96bdef42c35cc45539ab7e1d442206e73b6139795865b2d66b37b38cf"
+          expected = "6be225d28b7adbe3f4c1d255acaa013d4d10ea59feb6366e9c9b50a9463098c4"
           raw = read(root / name, 131072)
           assert len(raw) <= 131072 and hashlib.sha256(raw).hexdigest() == expected
           receipt = json.loads(read(receipt_path, 4 * 1024**2))
@@ -1177,7 +1177,7 @@ jobs:
               assert hashlib.sha256(raw).hexdigest() == expected == receipt["files"][name]
           PY
           python -I -B -S "$source/qualification/p1g_headless/run_chrome_pure.py"
-          "$RUNNER_TEMP/p1g-venv/bin/python" -I -B -S "$source/qualification/p1g_headless/chrome_bootstrap.py" --pins-sha f3e631b96bdef42c35cc45539ab7e1d442206e73b6139795865b2d66b37b38cf --native-scope-preflight-required --stage-cleanup-only
+          "$RUNNER_TEMP/p1g-venv/bin/python" -I -B -S "$source/qualification/p1g_headless/chrome_bootstrap.py" --pins-sha 6be225d28b7adbe3f4c1d255acaa013d4d10ea59feb6366e9c9b50a9463098c4 --native-scope-preflight-required --stage-cleanup-only
       - name: HOLD phase A - full UI qualification awaits separate Phase B review
         shell: bash
         run: exit 42

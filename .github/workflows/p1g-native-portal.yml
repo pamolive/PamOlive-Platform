@@ -1,14 +1,14 @@
-name: P1-G isolated native SSH portal
+name: P1-G isolated native portal
 on:
   push:
-    branches: [agent/p1g-native-portal-isolated-ci]
+    branches: [agent/p1g-native-portal-isolated-ci, agent/p1g-native-rdp-portal]
 permissions:
   contents: read
 jobs:
   portal:
     if: github.repository == 'pamolive/PamOlive-Platform'
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -56,6 +56,7 @@ jobs:
             -r "$source/qualification/p1g_headless/requirements-headless-linux-cp312.lock"
           "$python" -m pip check
       - name: Build the native test image from the verified context
+        id: native_build
         timeout-minutes: 90
         shell: bash
         run: |
@@ -79,6 +80,18 @@ jobs:
           [[ "$image" =~ ^sha256:[0-9a-f]{64}$ ]]
           "$RUNNER_TEMP/p1g-native-venv/bin/python" -I -B \
             "$RUNNER_TEMP/p1g-source/qualification/p1g_headless/native_lab.py" --image "$image"
+      - name: Exercise the confined native RDP portal
+        if: ${{ !cancelled() && steps.native_build.outcome == 'success' && github.ref == 'refs/heads/agent/p1g-native-rdp-portal' }}
+        timeout-minutes: 21
+        shell: bash
+        env:
+          P1G_SANDBOX_RUNNER: ubuntu-22.04
+        run: |
+          set -euo pipefail
+          image=$(cat "$RUNNER_TEMP/p1g-context/image-id")
+          [[ "$image" =~ ^sha256:[0-9a-f]{64}$ ]]
+          "$RUNNER_TEMP/p1g-native-venv/bin/python" -I -B \
+            "$RUNNER_TEMP/p1g-source/qualification/p1g_headless/native_lab.py" --image "$image" --protocol rdp
       - name: Confirm the owned services were removed
         if: always()
         shell: bash
@@ -87,7 +100,7 @@ jobs:
           owner="$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           [[ "$owner" =~ ^[0-9a-f]{40}-[1-9][0-9]*-[1-9][0-9]*$ ]]
           residue=0
-          for service in guacd postgres; do
+          for service in rdp guacd postgres; do
             cid=$(timeout 8s /usr/bin/docker --host unix:///var/run/docker.sock ps --all --quiet --no-trunc --filter "label=io.pamolive.p1g-${service}=$owner")
             if test -n "$cid"; then
               [[ "$cid" =~ ^[0-9a-f]{64}$ ]]
@@ -100,6 +113,8 @@ jobs:
         if: always()
         with:
           name: p1g-native-portal-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/pamolive-native-${{ github.run_id }}-${{ github.run_attempt }}.json
+          path: |
+            ${{ runner.temp }}/pamolive-native-ssh-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/pamolive-native-rdp-${{ github.run_id }}-${{ github.run_attempt }}.json
           if-no-files-found: ignore
           retention-days: 7

@@ -15,6 +15,7 @@ HOST = "pam.example.test"
 BRANCH = "agent/p1-g-headless"
 STAGE_BRANCH = "agent/p1g-chrome158-private-stage"
 NATIVE_BRANCH = "agent/p1g-native-portal-isolated-ci"
+NATIVE_RDP_BRANCH = "agent/p1g-native-rdp-portal"
 BOUNDED_SHA = "72b778ad6e441744e8bd9ac84ba7f47b1f6b577b7885a2e0daf3b4584cc0150a"
 SDK_VERSION = "1.65.2"
 RELAY_PATH = r"/ws/pam/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})/"
@@ -42,6 +43,8 @@ def guard(env, *, platform=sys.platform, uid=None, stage_only=False, native_lab=
         stage_only and native_lab
     ), "closed_operation_required")
     branch = NATIVE_BRANCH if native_lab else STAGE_BRANCH if stage_only else BRANCH
+    if native_lab and env.get("GITHUB_REF") == "refs/heads/" + NATIVE_RDP_BRANCH:
+        branch = NATIVE_RDP_BRANCH
     uid = os.getuid() if uid is None and platform == "linux" else uid
     need(platform == "linux" and type(uid) is int and uid > 0, "linux_nonroot_required")
     need(
@@ -312,7 +315,7 @@ def source_binding(repo, receipt, revision, *, additional=()):
     )
     pins = json.loads(pin_raw)
     need(isinstance(pins, dict) and len(pins) == 24, "UI_input_pin_budget")
-    need(len(additional) <= 24 and not set(additional).intersection(pins), "native_input_budget")
+    need(len(additional) <= 26 and not set(additional).intersection(pins), "native_input_budget")
     for name in additional:
         pins[name] = value["files"].get(name)
     result = {}

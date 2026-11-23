@@ -12,6 +12,14 @@ exécution de ce banc reste à valider. Le contrôle de livraison de l'image
 est effectué par sa propre CI.
 [Mesure de la PR #92](https://github.com/pamolive/PamOlive-Platform/actions/runs/45239143671)
 
+La branche RDP utilise la même image native pour guacd et le pair
+FreeRDP. Le pair rejoint le réseau loopback PostgreSQL avec un
+répertoire d'échange privé et le wrapper monté en lecture seule.
+Le test vérifie le certificat configuré, la trace NLA, le rendu
+du canvas avant et après une touche, puis la fermeture WSS et RDP
+pendant l'arrêt administratif. Les reçus SSH et RDP ont chacun
+leur propre verdict. Les essais natifs restent en cours.
+
 ## Vérifications de livraison — 23 novembre 2026
 
 Les deux scans de la PR #72 au commit `bdfacd7` donnent 43 groupes

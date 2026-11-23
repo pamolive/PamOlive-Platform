@@ -13,10 +13,13 @@ constitue une preuve propre à ce candidat.
 
 Pour P1-G, la PR #92 a validé le navigateur sous sandbox non-root
 avec PostgreSQL dans le même espace réseau. Le nouveau banc ajoute
-guacd à cet espace et doit démontrer la demande, les votes, le
-transport SSH et l'arrêt administratif depuis le portail, lecteur
-ouvert. La qualification complète inclura aussi le scénario RDP et
-les parcours de gouvernance restants.
+guacd à cet espace pour tester la demande, les votes, le transport SSH
+et l'arrêt administratif depuis le portail, lecteur ouvert. Le scénario
+RDP réutilise le même portail et ajoute un pair FreeRDP synthétique.
+Il attend la preuve NLA, le rendu du navigateur après une touche et
+la fermeture de la même connexion avant d'admettre le reçu. Les
+parcours de gouvernance restants et la compatibilité Windows ont
+leurs propres qualifications.
 [Admission Chromium et PostgreSQL](https://github.com/pamolive/PamOlive-Platform/pull/92) ·
 [Raccord SSH](../qualification/p1g_headless/NEXT-NATIVE.md)
 

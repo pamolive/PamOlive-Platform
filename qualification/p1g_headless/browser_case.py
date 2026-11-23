@@ -91,6 +91,7 @@ class P1GBrowser(StaticLiveServerTestCase):
     _bind = fixture.IdentityPamJourneyTests._bind
     _endpoint = fixture.IdentityPamJourneyTests._endpoint
     _no_target_secret = fixture.IdentityPamJourneyTests._no_target_secret
+    request_method = "SSH"
 
     def _enroll_authenticator(self, actor, browser):
         # Defer enrollment to the real page JS/Chromium ceremony, never Python VirtualAuthenticator.
@@ -233,7 +234,7 @@ class P1GBrowser(StaticLiveServerTestCase):
             ("resource", self.resource.pk),
         ):
             form.locator(f'[name="{name}"]').select_option(str(pk))
-        form.locator('[name="method"]').fill("SSH")
+        form.locator('[name="method"]').fill(self.request_method)
         form.locator('[name="fulfillment"]').select_option("pam")
         form.locator('[name="reason"]').fill("Synthetic browser bounded maintenance")
         form.locator('[name="reference"]').fill("P1G-BROWSER-SYNTHETIC")
@@ -248,6 +249,7 @@ class P1GBrowser(StaticLiveServerTestCase):
         self.confirm(page)
         intent = AccessIntent.objects.get(organization=self.org, requested_by=self.operator)
         self.assertEqual(intent.status, "pending")
+        self.assertEqual(intent.method.casefold(), self.request_method.casefold())
         self.assertTrue(
             verify_authorization_evidence(
                 intent.pam_trust["request"],

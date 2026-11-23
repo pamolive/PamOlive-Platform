@@ -21,13 +21,14 @@ INSPECT = (
     '"user":{{json .Config.User}},"entrypoint":{{json .Config.Entrypoint}},'
     '"cmd":{{json .Config.Cmd}}}'
 )
-PROFILE = [
-    "--user", "1001:1001", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+NATIVE_LIMITS = [
+    "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
     "--read-only", "--no-healthcheck", "--pull", "never",
     "--tmpfs", "/tmp:rw,nosuid,nodev,size=64m,mode=1777",
     "--memory", "256m", "--memory-swap", "256m", "--cpus", "1", "--pids-limit", "64",
     "--log-driver", "none",
 ]
+PROFILE = ["--user", "1001:1001", *NATIVE_LIMITS]
 
 
 def admit(row, *, cid, owner, image, network):

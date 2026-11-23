@@ -41,7 +41,14 @@ ISOLATED_INPUTS = (
     "qualification/p1g_headless/postgres_namespace.py",
     "qualification/p1g_headless/guacd_namespace.py",
 )
+RDP_INPUTS = (
+    "qualification/p1g_headless/rdp_peer.py",
+    "qualification/p1g_headless/rdp_namespace.py",
+    "tests/fixtures/rdp.py",
+    "tests/fixtures/rdp_fixture.c",
+)
 STOP_PHASE = "same_relay_stop_WSS_SSH_and_verified_partial_capture"
+RDP_STOP_PHASE = "same_relay_stop_WSS_RDP_and_verified_partial_capture"
 
 
 def paths():
@@ -50,9 +57,11 @@ def paths():
     return root / ("p1g-private-" + name), root / ("p1g-headless-" + name)
 
 
-def worker(private, *, native_ssh=False, isolated=False):
+def worker(private, *, native_protocol=None, isolated=False):
     need = support.need
-    need(not isolated or native_ssh, "isolated_worker_requires_native_case")
+    need(native_protocol in (None, "ssh", "rdp") and (
+        isolated or native_protocol != "rdp"
+    ) and (not isolated or native_protocol is not None), "isolated_worker_requires_native_case")
     row = private.lstat()
     need(
         stat.S_ISDIR(row.st_mode)
@@ -71,16 +80,19 @@ def worker(private, *, native_ssh=False, isolated=False):
         "skips": 0,
         "full_P1G_qualified": False,
         "OS_or_VM_resources_released": False,
-        "case": "native_ssh" if native_ssh else "portal",
+        "case": "native_" + native_protocol if native_protocol else "portal",
     }
     result = None
     try:
         value["phase"] = "source_binding"
+        additional = NATIVE_INPUTS if native_protocol else ()
+        if isolated:
+            additional += ISOLATED_INPUTS
+        if native_protocol == "rdp":
+            additional += RDP_INPUTS
         value["source"] = support.source_binding(
             REPO, Path(os.environ["RUNNER_TEMP"]) / "p1g-source.json", os.environ["GITHUB_SHA"],
-            additional=(
-                NATIVE_INPUTS + ISOLATED_INPUTS if isolated else NATIVE_INPUTS if native_ssh else ()
-            ),
+            additional=additional,
         )
         value["phase"] = "resource_preflight"
         value["resources_before_browser"] = support.resources(private)
@@ -98,7 +110,7 @@ def worker(private, *, native_ssh=False, isolated=False):
             )
         else:
             _, chrome_preflight = support.chrome_target(REPO)
-        if native_ssh and not isolated:
+        if native_protocol == "ssh" and not isolated:
             value["phase"] = "guacd_tool_preflight"
             from tests.fixtures.guacd import BINARY
 
@@ -112,6 +124,8 @@ def worker(private, *, native_ssh=False, isolated=False):
                 isolated_chrome=chrome, isolated_chrome_version=admitted_chrome.BROWSER_VERSION,
                 isolated_guacd_port=PORT,
             )
+            if native_protocol == "rdp":
+                tls["isolated_rdp_state"] = private / "rdp-state"
         os.environ["DJANGO_SETTINGS_MODULE"] = "config.settings"
         import django
 
@@ -122,10 +136,13 @@ def worker(private, *, native_ssh=False, isolated=False):
         from qualification.p1g_headless import browser_case
 
         selected = browser_case.P1GBrowser
-        if native_ssh:
-            from qualification.p1g_headless.native_browser_case import NativeSSHBrowser
+        if native_protocol:
+            from qualification.p1g_headless.native_browser_case import (
+                NativeRDPBrowser,
+                NativeSSHBrowser,
+            )
 
-            selected = NativeSSHBrowser
+            selected = NativeRDPBrowser if native_protocol == "rdp" else NativeSSHBrowser
         browser_case.TLS.update(tls)
         value["phase"] = "fresh_PostgreSQL_precondition"
         connection = connections["default"]
@@ -195,12 +212,16 @@ def worker(private, *, native_ssh=False, isolated=False):
             and value["base_database_OID_preserved"] is True,
             "increment_not_complete",
         )
-        if native_ssh:
+        if native_protocol:
+            phase = RDP_STOP_PHASE if native_protocol == "rdp" else STOP_PHASE
             need(
                 value["native_PAM_transport_observed"] is True
-                and STOP_PHASE in value["observed_UI_phases"]
+                and phase in value["observed_UI_phases"]
+                and (
+                    native_protocol != "rdp" or value["native_RDP_display_and_NLA_observed"] is True
+                )
                 and (isolated or value["guacd_tool"] == support.tool_pin(BINARY)),
-                "native_ssh_incomplete",
+                "native_transport_incomplete",
             )
         value["state"] = "OBSERVED_SYNTHETIC_INCREMENT_ONLY"
     except BaseException as error:
@@ -229,7 +250,7 @@ def main():
         "committed_source_directory_required",
     )
     if args.worker:
-        return worker(private, native_ssh=args.native_ssh)
+        return worker(private, native_protocol="ssh" if args.native_ssh else None)
     private.mkdir(mode=0o700)
     public.mkdir(mode=0o700)
     worker_home = private / "worker-home"
