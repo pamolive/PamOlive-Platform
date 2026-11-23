@@ -51,8 +51,11 @@ suite Debian ont ensuite franchi le contrôle du harnais. L'installation
 hors ligne s'est arrêtée lorsque APT a transmis un nom d'archive relatif
 à dpkg. Le laboratoire vérifie désormais l'inventaire exact des neuf
 archives et les installe directement avec dpkg dans le même conteneur
-sans réseau. Le contrôle `dpkg --audit` reste obligatoire.
+sans réseau. Les bibliothèques sont configurées avant le dépaquetage de
+`mount` et `util-linux` pour satisfaire leurs pré-dépendances de version
+exacte. Le contrôle `dpkg --audit` reste obligatoire.
 [Journal de qualification](https://github.com/pamolive/PamOlive-Platform/actions/runs/45141236850)
+· [Journal des pré-dépendances](https://github.com/pamolive/PamOlive-Platform/actions/runs/45142321044)
 
 La qualification compare les exports
 versionnés de cinq bibliothèques et vérifie leurs chemins chargés par

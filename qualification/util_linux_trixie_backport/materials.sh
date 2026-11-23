@@ -6,7 +6,8 @@ export LC_ALL=C LANG=C DEBIAN_FRONTEND=noninteractive
 inputs=/opt/util-linux-inputs
 baseline='2.41.5-0+deb13u1'
 candidate="$baseline+pamolive1"
-packages='bsdutils libblkid1 liblastlog2-2 libmount1 libsmartcols1 libuuid1 login mount util-linux'
+first_install_packages='bsdutils libblkid1 liblastlog2-2 libmount1 libsmartcols1 libuuid1 login'
+packages="$first_install_packages mount util-linux"
 
 case "${1-}" in
   acquire)
@@ -115,12 +116,14 @@ case "${1-}" in
   install)
     cd /packages
     set --
-    for package in $packages; do
+    for package in $first_install_packages; do
       set -- "$@" "./$package.deb"
     done
-    actual_checksums=$(sha256sum ./buildinfo ./test-summary.txt "$@")
+    actual_checksums=$(sha256sum ./buildinfo ./test-summary.txt "$@" ./mount.deb ./util-linux.deb)
     printf '%s\n' "$actual_checksums" | cmp - checksums.sha256
+    # Configure the libraries before unpacking binaries with exact Pre-Depends.
     dpkg --install "$@"
+    dpkg --install ./mount.deb ./util-linux.deb
     audit=$(dpkg --audit)
     test -z "$audit"
     ;;
