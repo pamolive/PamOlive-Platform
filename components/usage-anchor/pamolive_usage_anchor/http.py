@@ -6,16 +6,20 @@ import time
 from pamolive_vault_runtime.asgi import Application as VaultApplication
 
 from .codec import Error, encode, need
+from .service import OBSERVE_TERMINAL
 
 LIMITS = {
     "/v1/operations/bind": 32768,
     "/v1/operations/consume": 2097152,
+    OBSERVE_TERMINAL: 2097152,
     "/v1/activations/begin": 4096,
     "/v1/activations/finish": 131072,
 }
 
 
 class Application(VaultApplication):
+    routes = frozenset(LIMITS)
+
     def __init__(self, service):
         super().__init__(service)
         self.service = service
@@ -58,6 +62,7 @@ class Application(VaultApplication):
                 and scope.get("scheme") == "https"
                 and scope.get("http_version") in ("1.0", "1.1")
             )
+            need(route in self.routes, "context_refused", 403)
             headers = scope.get("headers")
             need(type(headers) is list and len(headers) <= 32)
             parsed, size = {}, 0
@@ -131,3 +136,7 @@ class Application(VaultApplication):
             }
         )
         await send({"type": "http.response.body", "body": raw})
+
+
+class HistoryApplication(Application):
+    routes = frozenset({OBSERVE_TERMINAL})

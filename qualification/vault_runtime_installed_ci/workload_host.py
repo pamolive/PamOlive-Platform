@@ -5,6 +5,7 @@ import time
 
 import host_seam
 import schema
+import wheel_transfer
 import workload_schema
 from support import load, need
 from workload_prepare import s0_pins
@@ -82,11 +83,22 @@ def pull_owned(work, pins, state, entry_raw, entry_sha, *, factory=None):
     return state
 
 
-def run_owned(work, pins, state, entry_raw, entry_sha, *, bindings, factory=None):
+def run_owned(
+    work,
+    pins,
+    state,
+    entry_raw,
+    entry_sha,
+    *,
+    bindings,
+    factory=None,
+):
     """Caller supplies verified/staged RO inputs and prior pinned S0 pull receipt."""
     control, legacy = load("controller.py"), load("legacy_controller.py")
     s0_pins(pins)
     control.ci_guard(work)
+    transfer_verified_wheels = state.get("transfer_verified_wheels", False)
+    need(type(transfer_verified_wheels) is bool)
     need(state["type"] == host_seam.STATE and state["phase"] == host_seam.PHASE)
     need(state["image_config"] == pins["image_config"] and state["user"] == "1000:1000")
     need(bindings == state["bindings"])
@@ -104,6 +116,7 @@ def run_owned(work, pins, state, entry_raw, entry_sha, *, bindings, factory=None
 
     original = None
     packet = None
+    transfer = None
     try:
         control.check_inputs(work, state)
         code, active, stderr = client.command("ps", "--format", "{{.ID}}")
@@ -121,8 +134,12 @@ def run_owned(work, pins, state, entry_raw, entry_sha, *, bindings, factory=None
         need(legacy.owns(row, state["create"]) and row["Running"] is False)
         code, raw, stderr = client.command("start", "--attach", cid, timeout=900)
         need(not stderr and 0 < len(raw) <= schema.MAX_PACKET)
-        value = schema.parse(raw, schema.MAX_PACKET)
-        workload_schema.accept(value, code, **bindings)
+        if transfer_verified_wheels and code == 0:
+            value, _, _ = wheel_transfer.decode(raw, bindings=bindings)
+            transfer = raw
+        else:
+            value = schema.parse(raw, schema.MAX_PACKET)
+            workload_schema.accept(value, code, **bindings)
         packet = value
         state["workload_packet"] = {
             "ok": value["ok"],
@@ -163,7 +180,7 @@ def run_owned(work, pins, state, entry_raw, entry_sha, *, bindings, factory=None
         and control.io_history_released(state)
         and state.get("pull") == "ready"
     )
-    return {
+    result = {
         "schema": "pamolive.vault-installed-host-reception/2",
         "ok": original is None
         and not state.get("failure")
@@ -183,6 +200,13 @@ def run_owned(work, pins, state, entry_raw, entry_sha, *, bindings, factory=None
         "authority": False,
         "attestation_verified": False,
     }
+    if result["ok"] and transfer_verified_wheels:
+        try:
+            wheel_transfer.keep_private(work, transfer)
+        except OSError:
+            result["ok"] = False
+            result["failure"] = "WHEEL_TRANSFER_PERSISTENCE_FAILED"
+    return result
 
 
 def cleanup_owned(work, pins, state, entry_raw, entry_sha, *, factory=None):
@@ -232,12 +256,14 @@ def cleanup_owned(work, pins, state, entry_raw, entry_sha, *, factory=None):
     }
 
 
-def bootstrap(entry_sha, bindings):
+def bootstrap(entry_sha, bindings, *, transfer_verified_wheels=False):
     """Hash/compile the same bounded FD buffer. No runpy re-open or globals patch."""
     need(schema.digest(entry_sha) and all(schema.digest(value) for value in bindings.values()))
     arguments = ["/controller/workload_entry.py"]
     for name in ("source", "input", "sql", "materials"):
         arguments.extend(["--expected-" + name, bindings["expected_" + name]])
+    if transfer_verified_wheels:
+        arguments.append("--transfer-verified-wheels")
     return (
         "import os,stat,hashlib,types,sys\n"
         "p='/controller/workload_entry.py'\n"

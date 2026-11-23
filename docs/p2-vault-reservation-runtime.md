@@ -209,6 +209,26 @@ automatique des matériaux ou prolongation 40 s / 30 s. Une restauration logique
 sur un cluster ne qualifie ni PITR, ni panne PostgreSQL, ni reprise multi-hôte,
 ni détection d'un rollback clandestin sous la même incarnation.
 
+## Restauration logique dans le laboratoire CI installé
+
+Le [run Vault installé](https://github.com/pamolive/PamOlive-Platform/actions/runs/44289749907)
+du commit `58e9ec7` établit le démarrage sur PostgreSQL 17.12 et les dix tests
+SQL et mTLS sans échec ni exclusion. Le workflow Vault propose en plus le
+scénario de restauration avec les trois entrées `transfer_verified_wheels`,
+`run_synthetic_lab` et `run_synthetic_restore`. Cette variante sélectionne une
+nouvelle allocation synthétique dans le même job que la construction des wheels.
+
+Le client reçoit un nouveau slot scellé, avec une nouvelle incarnation. Le dump
+reste en mémoire et porte uniquement sur le schéma `vault_reservation`. Un
+login restreint réimporte dans une seconde base neuve, sous le rôle propriétaire
+NOLOGIN, après fermeture explicite de la source. Le test compare réservations,
+audit et propriétaires et vérifie les refus avant et après le commissionnement
+de la cible.
+Il vérifie ensuite que le runtime peut ajouter une réservation en attente et que
+les rôles Web et worker restent privés de connexion. Seul le reçu public borné
+peut être publié. Le résultat de restauration dépend de l'exécution réelle de
+ce scénario, avec les fenêtres de 40 s pour le contexte et 30 s pour la réservation.
+
 ## Limites et lot suivant
 
 Ni la bibliothèque V1 ni une réservation pending ne sont une capacité de remise.

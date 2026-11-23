@@ -50,6 +50,73 @@ les terminaux positif `consumed_no_release` et négatif `refused_no_release`,
 avec de vraies signatures synthétiques, sans KMS, SDK d'enveloppe ni plaintext.
 Ces terminaux ne deviendront jamais des permissions en activant une option.
 
+### Fermeture concurrente du Vault
+
+Le client Vault vérifie avant l'envoi que la réservation appartient au
+commissionnement ouvert, avec la même incarnation et la même empreinte de
+slot. Après la réponse mTLS, la transaction Vault verrouille cette ligne de
+commissionnement, revalide la réservation puis verrouille ou crée son miroir.
+Les droits d'écriture sur les réservations restent limités à l'insertion.
+Le même contrôle borne l'enregistrement d'un résultat incertain. Un rejeu
+terminal authentifié sous commissionnement ouvert compare les octets et
+conserve la ligne existante.
+
+Un verrou Vault conservé pendant l'aller-retour mTLS retarderait la fermeture
+administrative et ne fournirait pas de commit atomique entre les deux bases.
+Le contrôle avant envoi et avant commit a été retenu. Une fermeture peut
+intervenir pendant un appel déjà envoyé. Le témoin peut alors conserver une
+liaison ou un terminal durable. Vault refuse de publier la réponse et de
+confirmer le miroir lorsque son contrôle local échoue.
+
+Une reprise d'autorité après fermeture exige une nouvelle incarnation. Les
+appels du client vivant restent fermés dans l'ancien
+contexte, y compris les rejeux terminaux. Le contrôle ne garantit pas
+une fermeture suivie d'une réouverture
+sous la même incarnation. L'incertitude locale conserve l'état du miroir
+sans établir l'empreinte de la première tentative de consommation. Une
+révocation qui doit arrêter les mutations de W doit aussi fermer son bail
+sous l'autorité du témoin.
+
+### Consultation des reçus après fermeture
+
+`POST /v1/operations/observe-terminal` présente le bundle d'origine au
+témoin. L'identité mTLS courante doit conserver le service, l'instance et le
+certificat DER de l'opération. Le témoin relit le reçu dans une transaction
+PostgreSQL en lecture seule, sous son contexte courant. Il vérifie
+l'incarnation du témoin, le tenant, l'installation et le commissionnement
+du principal. Il compare le digest et les octets d'origine. Un terminal
+éligible renvoie le reçu exact conservé, avec `authorized=false`. Une
+opération en attente ou absente reçoit un refus. Un bundle différent pour
+un terminal éligible reçoit un conflit.
+
+Le client de consultation Vault vérifie son ancien miroir dans une
+transaction locale en lecture seule. Il laisse le miroir intact lorsque le
+témoin confirme un terminal que Vault avait perdu avant de fermer. La route
+peut répondre quand le bail W est fermé, tant que le service W fonctionne
+et que l'identité mTLS est toujours autorisée. La remise et les écritures
+d'usage restent sous les contrôles du chemin de consommation. La reprise
+au-delà d'une rotation d'identité demandera un mécanisme d'archive distinct.
+
+### Redémarrage d'un témoin fermé
+
+Le mode de consultation au démarrage est explicite et utilise le rôle
+PostgreSQL dédié `usage_anchor_observer`. Il exige le contexte fermé et
+un bail clôturé à un epoch supérieur à celui du slot. Il vérifie le tenant,
+l'installation, l'incarnation, l'empreinte du slot et l'identité du
+principal Vault. Le rôle doit être dépourvu de droits d'écriture effectifs.
+Les consultations revérifient la fermeture dans leur instantané SQL en
+lecture seule. Le processus ne monte que le slot épinglé, ses éléments
+mTLS et les identifiants SQL d'observation.
+
+L'option de démarrage conserve le refus de l'application ordinaire sur un
+contexte fermé. Déduire automatiquement le mode depuis un état SQL
+risquerait de changer l'autorité du processus à son insu. Employer le
+même rôle SQL avec un filtre HTTP préserverait ses droits d'écriture
+sous le filtre. La récupération retient donc une application dédiée, une
+route et un rôle SQL distincts. Le reçu d'origine reste consultable sous
+la même identité autorisée. Le mode de récupération ne peut réarmer un
+bail ni administrer le contexte.
+
 Chaque mutation suit contexte → quota principal → lease → opération → activations
 en ordre ASCII → audit. N0 sérialise les écritures par contexte tenant. Le CAS
 compare toutes les versions et tous les compteurs du snapshot, y compris les
@@ -146,6 +213,99 @@ continuité durable vérifiée hors sauvegarde, nouvelle incarnation et invalida
 des anciennes leases ; si les compteurs ne sont plus fiables, réactivation
 indépendante requise. Le rollback clandestin de W et la collusion V+W restent
 hors de cette garantie, explicitement.
+
+Pour une reprise en consultation, conserver hors de PostgreSQL la référence
+du contexte fermé, l'epoch minimal et le point de reprise attendu. Restaurer
+sur un stockage isolé et vérifier le bail, les reçus et l'intégrité des preuves
+avant d'exposer l'interface. Restreindre la connexion au rôle observateur.
+Si la restauration précède la fermeture attendue ou si des preuves manquent,
+maintenir le service fermé et documenter l'écart. Conserver les archives WAL
+et le manifeste sous les droits de l'opérateur de récupération.
+
+La campagne PITR du témoin démontre ce parcours en laboratoire avec un point
+nommé après fermeture et un commit ultérieur archivé. Elle redémarre le
+service de consultation après vérification de l'état restauré. Le contrôle
+hors sauvegarde et la conservation inter-hôte restent des prérequis
+d'exploitation. [Qualification PITR](p2-usage-anchor-validation.md#restauration-physique-à-un-point-nommé)
+
+Pour vérifier la continuité de l'audit après reprise, conserver un point
+d'ancrage complet hors de la sauvegarde et sous une autorité indépendante de
+la base restaurée. Ce point associe le contexte fermé, l'empreinte du fichier
+de slot, l'organisation, l'installation, la dernière séquence et l'empreinte
+de tête. Conserver ce tuple dans un registre authentifié avec intégrité et
+contrôle d'accès. La preuve couvre la chaîne conservée jusqu'au point d'ancrage.
+Son origine et l'intégrité de la source avant capture relèvent de l'autorité
+qui conserve le point.
+Chaque page demande une tête égale au point d'ancrage. Si une révocation
+administrative avance cette tête après la fermeture, lire l'instantané scellé
+correspondant ou faire authentifier un nouveau point et repartir de la genèse.
+
+L'opérateur utilise `assembly.audit_archive_page` avec le slot épinglé, la
+connexion observateur et le point d'ancrage indépendant. Son premier appel
+part de `after_seq=0`. Il transmet les pages bornées à `ArchiveVerifier` et
+utilise le curseur vérifié pour poursuivre. La validation complète exige
+`finish()`. Les pages `pamolive.vault.usage-audit-archive-page/1` préservent les
+octets historiques et leur chaînage. Elles contiennent des identifiants
+d'audit et suivent les règles de protection des preuves. L'export hors ligne
+s'ajoute au parcours fermé sans migration ni nouvel accès HTTP. La vérification
+d'une chaîne avant et après rotation de slot repose sur des points séparés
+pour chaque contexte.
+
+La capture `assembly.capture_audit_checkpoint` vérifie le fichier de slot
+et lit le bail fermé et la tête d'audit dans la même transaction observateur
+en lecture seule. L'opérateur peut vérifier la chaîne complète à partir de
+cette tête avant de la soumettre à l'autorité qui conserve les points.
+Cette autorité appelle `signed_anchor.sign_checkpoint` avec son service de
+signature Ed25519. La clef privée reste sous sa garde. Le domaine dédié
+et le format signé `pamolive.vault.usage-audit-anchor/1` lient le point
+d'ancrage complet et l'identité de la clef.
+
+Après restauration, l'opérateur choisit la référence attendue dans le
+registre indépendant. Il fournit à `signed_anchor.verify_checkpoint` la
+clef publique attendue et le SHA-256 exact du document signé. Une autre
+signature valide de la même clef doit être refusée si le document diffère.
+Le point vérifié sert à exporter puis à vérifier les pages. Conserver les
+anciens documents, leurs empreintes et les clefs publiques correspondantes
+lors d'une rotation. Cette signature atteste la référence acceptée par son
+détenteur. Le choix de la référence, son authenticité avant capture et la
+durabilité du registre reposent sur sa gouvernance et son hébergement.
+
+Le dépositaire peut conserver les documents dans `anchor_store.AnchorStore`.
+Le dossier Linux doit être précréé en mode `0700` sous un UID dédié non root.
+Ses ancêtres appartiennent à root ou au dépositaire, sans droit d'écriture
+pour le groupe ou les autres utilisateurs. Le mode impose un système de fichiers
+local avec liens durs et synchronisation de répertoires. Le dépositaire garde
+la clef publique attendue et les empreintes de référence hors de ce stockage.
+Un répertoire reconstruit ne détermine jamais quel point doit être relu.
+
+En écriture, le stockage vérifie la signature et l'empreinte, puis synchronise
+le fichier `0600` avant sa publication sans écrasement. Un réessai identique
+synchronise le fichier existant et le répertoire avant de confirmer l'écriture.
+Les exports et restaurations relisent et importent chaque document sous la même
+empreinte attendue, avec la clef publique correspondant à sa génération. Une
+lecture concurrente peut voir le document avant la confirmation d'écriture.
+
+Configurer un espace dédié et un quota côté hébergement. Après une interruption,
+les fichiers temporaires peuvent subsister. Le dépositaire peut les inventorier
+et les retirer pendant une fenêtre sans écrivain, après avoir vérifié les
+références attendues. Le registre ne remplace ni la garde des références ni la
+protection du stockage contre son administrateur. La campagne `run_witness_anchor_store`
+exerce des écritures concurrentes, la relecture après le PITR de PostgreSQL,
+l'import dans un second répertoire et la réouverture par un nouveau processus.
+Les deux dossiers du laboratoire résident sur le même système de fichiers
+temporaire. Une panne électrique, une restauration des bases entre hôtes et une
+séparation opérationnelle des dépositaires demandent une qualification dédiée.
+
+La campagne complémentaire `run_witness_anchor_handoff` transfère le document
+synthétique relu après le PITR vers une seconde VM GitHub hébergée. Le premier
+job transmet la clef publique et le SHA-256 attendu via ses sorties. L'artefact
+contient uniquement le document signé et est téléchargé par son identifiant
+exact. Le second job compare les empreintes de démarrage, vérifie le contenu
+avec les références du producteur, l'importe dans un dossier neuf, puis lance
+un nouveau processus qui relit ce dossier. Le plan de contrôle GitHub est
+commun aux deux jobs. La campagne porte sur le transfert du document et ne
+couvre pas une restauration complète des bases entre hôtes, une panne physique
+ou la garde des preuves par deux autorités administratives distinctes.
 
 Un V compromis disposant d'un unwrap KMS générique peut ignorer W. Avant remise,
 une garde indépendante devra imposer chaque usage W avec claim d'émission unique,
