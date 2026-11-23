@@ -48,7 +48,7 @@ PROFILE = {
 }
 WORK_PREFIX = "pamolive-sandbox-private-"
 CAP_FIELDS = {"CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"}
-SUDO_EXECUTABLES = {"/usr/bin/sudo", "/usr/bin/sudo-rs", "/usr/bin/sudo.ws"}
+SUDO_EXECUTABLES = {"/usr/bin/sudo", "/usr/bin/sudo.ws", "/usr/lib/cargo/bin/sudo"}
 
 
 def run_identity(env):
@@ -431,6 +431,7 @@ class LauncherObservation:
     def __init__(self, io):
         self.io = io
         self.failure = None
+        self.worker_exception = None
 
     def run_capped(self, *args, **kwargs):
         result = self.io.run_capped(*args, **kwargs)
@@ -444,6 +445,15 @@ class LauncherObservation:
                 self.failure = "setpriv_refused"
             elif b"Traceback (most recent call last):" in stderr:
                 self.failure = "worker_exception"
+                frames = re.findall(rb'/chrome_sandbox_probe\.py", line ([0-9]{1,4})\b', stderr)
+                types = re.findall(
+                    rb"(?m)^(AttributeError|FileNotFoundError|OSError|PermissionError|"
+                    rb"RuntimeError|TypeError|ValueError|KeyError|UnicodeDecodeError):", stderr,
+                )
+                self.worker_exception = {
+                    "probe_line": int(frames[-1]) if frames else None,
+                    "exception_type": types[-1].decode("ascii") if types else None,
+                }
             else:
                 self.failure = "launcher_unknown"
         return result
@@ -487,6 +497,8 @@ def supervisor(scratch, identity):
             except (OSError, ValueError):
                 if launcher.failure is not None:
                     report["launcher_failure"] = launcher.failure
+                if launcher.worker_exception is not None:
+                    report["worker_exception"] = launcher.worker_exception
                 if commands.number > previous_number:
                     status = launcher_status(journals, commands.number)
                     if status is not None:

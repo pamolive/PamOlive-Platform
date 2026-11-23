@@ -185,8 +185,9 @@ class SandboxProbeTests(unittest.TestCase):
         )
 
     def test_resolute_selects_only_a_recognized_canonical_sudo_role(self):
-        with patch.object(Path, "resolve", return_value=Path("/usr/bin/sudo-rs")) as resolve:
-            self.assertEqual(probe.sudo_executable("ubuntu-26.04"), "/usr/bin/sudo-rs")
+        provider = Path("/usr/lib/cargo/bin/sudo")
+        with patch.object(Path, "resolve", return_value=provider) as resolve:
+            self.assertEqual(probe.sudo_executable("ubuntu-26.04"), provider.as_posix())
             self.assertEqual(probe.sudo_executable("ubuntu-24.04"), "/usr/bin/sudo")
         resolve.assert_called_once_with(strict=True)
         with patch.object(Path, "resolve", return_value=Path("/tmp/unreviewed")):
@@ -208,6 +209,19 @@ class SandboxProbeTests(unittest.TestCase):
                 observer = probe.LauncherObservation(io)
                 self.assertIs(observer.run_capped(["synthetic"]), result)
                 self.assertEqual(observer.failure, expected)
+
+    def test_worker_exception_report_uses_only_line_and_exception_type(self):
+        io = Mock()
+        io.run_capped.return_value = SimpleNamespace(
+            ok=False, stderr=b'Traceback (most recent call last):\n'
+            b'  File "/private/path/chrome_sandbox_probe.py", line 77, in worker\n'
+            b"ValueError: private diagnostic\n",
+        )
+        observer = probe.LauncherObservation(io)
+        observer.run_capped(["synthetic"])
+        self.assertEqual(
+            observer.worker_exception, {"probe_line": 77, "exception_type": "ValueError"},
+        )
 
     def test_invalid_isolation_produces_refusal_without_loading_browser(self):
         with (
