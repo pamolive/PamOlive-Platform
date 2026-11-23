@@ -208,3 +208,12 @@ or audit evidence. The Ubuntu 22.04 job is a temporary diagnostic.
 Each job publishes only its typed receipt. The application and its synthetic
 user journeys are outside this comparison. A result applies to the exact
 browser package and environment named by the receipt.
+
+Run 45234729103 authenticated the same package and staged tree on all
+three runners. Ubuntu 24.04 created a test user namespace, then refused
+Chromium's sandbox at launch. Ubuntu 22.04 returned exit 1 from the
+isolated launcher. Ubuntu 26.04 stopped at the canonical sudo role check.
+The follow-up measures the launcher failure class and resolves only a
+known sudo provider on Ubuntu 26.04. The original canonical role, mode,
+ownership and digest checks apply to the executable before it runs.
+[First comparison](https://github.com/pamolive/PamOlive-Platform/actions/runs/45234729103)

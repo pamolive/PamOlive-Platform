@@ -48,6 +48,7 @@ PROFILE = {
 }
 WORK_PREFIX = "pamolive-sandbox-private-"
 CAP_FIELDS = {"CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"}
+SUDO_EXECUTABLES = {"/usr/bin/sudo", "/usr/bin/sudo-rs", "/usr/bin/sudo.ws"}
 
 
 def run_identity(env):
@@ -289,6 +290,14 @@ def refused_worker(phase, error):
     }
 
 
+def sudo_executable(runner):
+    path = Path("/usr/bin/sudo")
+    if runner == "ubuntu-26.04":
+        path = path.resolve(strict=True)
+        support.need(path.as_posix() in SUDO_EXECUTABLES, "sudo_provider_refused")
+    return path.as_posix()
+
+
 def worker_command(work, scratch, identity, inherited_net):
     env = {
         "PATH": "/usr/bin:/bin",
@@ -305,7 +314,7 @@ def worker_command(work, scratch, identity, inherited_net):
         "RUNNER_TEMP": str(scratch),
     }
     return [
-        "/usr/bin/sudo",
+        sudo_executable(identity["runner"]),
         "-n",
         "--",
         "/usr/bin/unshare",
@@ -416,6 +425,30 @@ def launcher_status(journals, number):
     return None
 
 
+class LauncherObservation:
+    """Classify the existing command buffer. The authority check still owns the result."""
+
+    def __init__(self, io):
+        self.io = io
+        self.failure = None
+
+    def run_capped(self, *args, **kwargs):
+        result = self.io.run_capped(*args, **kwargs)
+        if not result.ok:
+            stderr = result.stderr or b""
+            if re.search(rb"(?m)^(?:sudo|sudo-rs|sudo\.ws):", stderr):
+                self.failure = "sudo_refused"
+            elif re.search(rb"(?m)^unshare:", stderr):
+                self.failure = "unshare_refused"
+            elif re.search(rb"(?m)^setpriv:", stderr):
+                self.failure = "setpriv_refused"
+            elif b"Traceback (most recent call last):" in stderr:
+                self.failure = "worker_exception"
+            else:
+                self.failure = "launcher_unknown"
+        return result
+
+
 def supervisor(scratch, identity):
     public = scratch / ("pamolive-sandbox-" + identity["run"] + "-" + identity["attempt"] + ".json")
     report = {
@@ -440,17 +473,24 @@ def supervisor(scratch, identity):
             names = prepare(commands, private, report)
             phase = "isolated_worker"
             inherited = os.stat("/proc/self/ns/net").st_ino
+            command = worker_command(private, scratch, identity, inherited)
+            launcher = LauncherObservation(commands.io)
+            commands.io = launcher
+            previous_number = commands.number
             try:
                 response = commands.run(
-                    worker_command(private, scratch, identity, inherited),
+                    command,
                     seconds=75,
                     cap=8192,
                     sudo=True,
                 )
             except (OSError, ValueError):
-                status = launcher_status(journals, commands.number)
-                if status is not None:
-                    report["launcher_exit_status"] = status
+                if launcher.failure is not None:
+                    report["launcher_failure"] = launcher.failure
+                if commands.number > previous_number:
+                    status = launcher_status(journals, commands.number)
+                    if status is not None:
+                        report["launcher_exit_status"] = status
                 raise
             result = chrome_bundle.json_bytes(response)
             support.need(valid_worker_result(result), "sandbox_probe_worker_receipt")

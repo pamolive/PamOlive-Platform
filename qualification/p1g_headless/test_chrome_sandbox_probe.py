@@ -115,7 +115,7 @@ class SandboxProbeTests(unittest.TestCase):
                     "revision": "a" * 40,
                     "run": "25",
                     "attempt": "2",
-                    "runner": "ubuntu-26.04",
+                    "runner": "ubuntu-24.04",
                 },
                 123,
             )
@@ -135,7 +135,7 @@ class SandboxProbeTests(unittest.TestCase):
         self.assertIn("--no-new-privs", command)
         self.assertIn("--bounding-set=-all", command)
         self.assertIn("--clear-groups", command)
-        self.assertIn("P1G_SANDBOX_RUNNER=ubuntu-26.04", command)
+        self.assertIn("P1G_SANDBOX_RUNNER=ubuntu-24.04", command)
         self.assertLess(command.index("--ambient-caps=-all"), command.index("/usr/bin/env"))
         self.assertEqual(
             command[-4:], ["--worker", str(Path("/scratch/work")), "--host-net", "123"]
@@ -183,6 +183,31 @@ class SandboxProbeTests(unittest.TestCase):
             probe.failure_code("launch", RuntimeError("version `GLIBC_2.39' not found")),
             "browser_dependencies_unavailable",
         )
+
+    def test_resolute_selects_only_a_recognized_canonical_sudo_role(self):
+        with patch.object(Path, "resolve", return_value=Path("/usr/bin/sudo-rs")) as resolve:
+            self.assertEqual(probe.sudo_executable("ubuntu-26.04"), "/usr/bin/sudo-rs")
+            self.assertEqual(probe.sudo_executable("ubuntu-24.04"), "/usr/bin/sudo")
+        resolve.assert_called_once_with(strict=True)
+        with patch.object(Path, "resolve", return_value=Path("/tmp/unreviewed")):
+            with self.assertRaisesRegex(ValueError, "sudo_provider_refused"):
+                probe.sudo_executable("ubuntu-26.04")
+
+    def test_launcher_reports_only_component_from_the_same_refusal(self):
+        for stderr, expected in (
+            (b"setpriv: diagnostic details\n", "setpriv_refused"),
+            (b"unshare: diagnostic details\n", "unshare_refused"),
+            (b"sudo-rs: diagnostic details\n", "sudo_refused"),
+            (b"Traceback (most recent call last):\n", "worker_exception"),
+            (b"other diagnostic details\n", "launcher_unknown"),
+        ):
+            with self.subTest(expected=expected):
+                result = SimpleNamespace(ok=False, stderr=stderr)
+                io = Mock()
+                io.run_capped.return_value = result
+                observer = probe.LauncherObservation(io)
+                self.assertIs(observer.run_capped(["synthetic"]), result)
+                self.assertEqual(observer.failure, expected)
 
     def test_invalid_isolation_produces_refusal_without_loading_browser(self):
         with (
