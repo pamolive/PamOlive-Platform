@@ -39,3 +39,29 @@ runtime et le SDK. La CI de l'image doit valider les consommateurs,
 le SBOM, le scan exact, PostgreSQL, la restauration et PAM. Une
 mise à niveau réelle doit conserver le digest précédent et la
 sauvegarde restaurable pour permettre le retour arrière.
+
+La commande `python -B -m qualification.glibc_trixie_backport.runtime_inventory`
+prend le dossier de l'artefact et `--qualification-sha256` obtenu lors de sa
+vérification indépendante. Elle revérifie les reçus et les quatre archives
+runtime. Elle projette les chemins, types, modes, propriétaires, liens et
+empreintes pour comparer les paquets stock et candidat. Le résultat sert à
+attribuer les écarts de l'image finale quand son inventaire sera disponible.
+
+Le run `45208518662` du commit `45f635a` a fourni les quatre paquets amd64
+du build `2.41-12+deb13u5+pamolive1`. Le ZIP, le `.buildinfo`, le reçu et les
+empreintes des archives concordent. Le relevé runtime contient 299 chemins
+pour `libc6` et 58 pour `libc-bin`. Il compte respectivement 3 et 13 chemins
+modifiés, sans ajout ni retrait. Le chargeur et `libc.so.6` correspondent
+aux ELF du reçu natif. L'alias du chargeur conserve le même lien.
+[Artefact natif](https://github.com/pamolive/PamOlive-Platform/actions/runs/45208518662/artifacts/14841015571)
+
+La suite amd64 rapporte 6 123 `PASS`, 16 `XFAIL`, 104 `UNSUPPORTED` et 10
+`XPASS`, avec zéro `FAIL` ou `UNRESOLVED`. La suite i386 rapporte 1 246
+`PASS` et 15 `XFAIL`. Aucun `tests.sum` n'a été émis pour x32. Le résumé
+d'origine classait les `XPASS` sans anomalie. Les marqueurs des dix tests
+figurent bien dans la source authentifiée, quatre dans `sysdeps/x86/Makefile`
+avec lld et six dans `debian/testsuite-xfail-debian.mk`. La vérification
+ABI, le repli gettext, pthread, NSS local et DNS loopback ont réussi.
+La nouvelle fixture de traduction reste à exécuter contre le paquet Trixie.
+[Journaux du build](https://github.com/pamolive/PamOlive-Platform/actions/runs/45208518662) ·
+[Source Debian 2.41-12+deb13u5](https://sources.debian.org/src/glibc/2.41-12%2Bdeb13u5/)

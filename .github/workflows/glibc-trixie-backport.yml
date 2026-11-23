@@ -18,6 +18,8 @@ jobs:
           persist-credentials: false
       - name: Verify test-summary classifications
         run: python3 -B -m unittest qualification.glibc_trixie_backport.test_suite_summary
+      - name: Verify exact runtime package inventory contracts
+        run: python3 -B -m unittest qualification.glibc_trixie_backport.test_runtime_inventory
       - name: Exercise the positive fixture on the hosted runner libc
         if: github.ref == 'refs/heads/agent/glibc-trixie-suite-summary'
         run: >-
