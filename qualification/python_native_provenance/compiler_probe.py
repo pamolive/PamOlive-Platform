@@ -18,6 +18,7 @@ TRIPLE = "x86_64-linux-gnu"
 BUILD_ROOT = Path("/tmp")
 TRACE_ROOT = Path("/opt/trace")
 INCLUDE_ROOTS = (Path("/usr/include"), Path("/usr/local/include"), Path("/usr/lib/gcc"))
+DEPENDENCY_ROOTS = (*INCLUDE_ROOTS, Path("/usr/lib/linux/uapi/x86"))
 LIBRARY_ROOTS = (Path("/usr/lib"), Path("/usr/local/lib"))
 TOOL_ROOTS = (Path("/usr/bin"), Path("/usr/lib/gcc"), Path("/usr/libexec/gcc"))
 MAX_FILE = 64 * 1024**2
@@ -106,7 +107,7 @@ def require(condition, code):
         raise ProbeError(code)
 
 
-def bounded_path(value, cwd, roots, *, output=False):
+def bounded_path(value, cwd, roots, *, output=False, scope_error="path_scope"):
     require(isinstance(value, str) and PATH_WORD.fullmatch(value), "path_shape")
     path = cwd / value
     if output:
@@ -114,7 +115,7 @@ def bounded_path(value, cwd, roots, *, output=False):
         require(not path.exists() and not path.is_symlink(), "output_exists")
     else:
         resolved = path.resolve(strict=True)
-    require(any(resolved.is_relative_to(root) for root in roots), "path_scope")
+    require(any(resolved.is_relative_to(root) for root in roots), scope_error)
     return resolved
 
 
@@ -201,13 +202,14 @@ def measured(path, *, capture=False):
 
 
 def read_dependencies(raw, cwd, source, *, include_roots=None):
-    include_roots = INCLUDE_ROOTS if include_roots is None else include_roots
+    include_roots = DEPENDENCY_ROOTS if include_roots is None else include_roots
     text = raw.decode("ascii").replace("\\\n", " ").strip()
     lines = text.splitlines()
     require(len(lines) == 1 and lines[0].startswith("pamolive-provenance:"), "dependency_shape")
     words = lines[0].removeprefix("pamolive-provenance:").split()
     require(2 <= len(words) <= MAX_ITEMS, "dependency_count")
-    paths = [bounded_path(word, cwd, (cwd, *include_roots)) for word in words]
+    paths = [bounded_path(word, cwd, (cwd, *include_roots), scope_error="dependency_path_scope")
+             for word in words]
     require(paths[0] == source and source not in paths[1:], "dependency_source")
     return [measured(path) for path in dict.fromkeys(paths[1:])]
 
@@ -219,7 +221,7 @@ def read_load_entries(raw, cwd, objects, *, library_roots=None):
         if not line.lstrip().startswith("LOAD "):
             continue
         value = line.lstrip().removeprefix("LOAD ")
-        path = bounded_path(value, cwd, (cwd, *library_roots))
+        path = bounded_path(value, cwd, (cwd, *library_roots), scope_error="link_path_scope")
         if path.is_relative_to(cwd):
             require(path in objects, "link_unexpected_build_input")
         else:
@@ -259,7 +261,7 @@ def gcc_tool(environment):
         require(PATH_WORD.fullmatch(value), "gcc_program_path")
         if not value.startswith("/"):
             value = shutil.which(value, path=environment["PATH"])
-        path = bounded_path(value, Path("/"), TOOL_ROOTS)
+        path = bounded_path(value, Path("/"), TOOL_ROOTS, scope_error="tool_path_scope")
         require(os.access(path, os.X_OK), "gcc_program_executable")
         programs[name] = measured(path)
     path = bounded_path(GCC, Path("/"), TOOL_ROOTS)
