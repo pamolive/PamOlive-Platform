@@ -31,8 +31,10 @@ TEST_MODULES = (
     "test_cold_history",
     "test_audit_archive",
     "test_archive_reader",
+    "test_anchor_capture",
+    "test_signed_anchor",
 )
-TEST_COUNT = 96
+TEST_COUNT = 114
 attempts = []
 
 

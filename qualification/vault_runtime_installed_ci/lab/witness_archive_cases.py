@@ -3,30 +3,52 @@
 from dataclasses import replace
 
 from .witness_fence_cases import expect_error, require
-from .witness_history_cases import check_witness_fence
 
 
 def capture_checkpoint(slot, observer):
-    from pamolive_usage_anchor.audit_archive import Checkpoint
+    from pamolive_usage_anchor.ledger import PostgresHistory
 
-    check_witness_fence(observer, slot, "closed", slot.lease_epoch + 1)
-    with observer() as conn, conn.cursor() as cursor:
-        cursor.execute(
-            """SELECT seq,head_sha256 FROM pam_usage_anchor.audit_heads
-               WHERE context_id=%s""",
-            (slot.context_id,),
-        )
-        head = cursor.fetchone()
-        require(head is not None and cursor.fetchone() is None)
-    expected = slot.expected()
-    return Checkpoint(
-        slot.context_id,
-        slot.source_sha256,
-        expected["organization_id"],
-        expected["installation_id"],
-        head[0],
-        head[1],
+    return PostgresHistory(observer).capture_checkpoint(slot)
+
+
+def sign_lab_checkpoint(checkpoint):
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from pamolive_usage_anchor.audit_archive import GENESIS_SHA256
+    from pamolive_usage_anchor.codec import sha
+    from pamolive_usage_anchor.signed_anchor import sign_checkpoint
+
+    signer = Ed25519PrivateKey.generate()
+    public = signer.public_key().public_bytes_raw()
+    raw = sign_checkpoint(checkpoint, public_key=public, sign=signer.sign)
+    earlier = replace(checkpoint, last_seq=0, head_sha256=GENESIS_SHA256)
+    alternate = sign_checkpoint(earlier, public_key=public, sign=signer.sign)
+    return raw, public, sha(raw), alternate
+
+
+def receive_lab_checkpoint(slot, material, advance):
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from pamolive_usage_anchor.signed_anchor import verify_checkpoint
+
+    raw, public, pin, alternate = material
+    advance("signed_anchor_receive")
+    checkpoint = verify_checkpoint(raw, public_key=public, expected_sha256=pin)
+    checkpoint.require_slot(slot)
+
+    advance("signed_anchor_refusals")
+    wrong_key = Ed25519PrivateKey.generate().public_key().public_bytes_raw()
+    expect_error(
+        "anchor_refused", 403,
+        lambda: verify_checkpoint(raw, public_key=wrong_key, expected_sha256=pin),
     )
+    expect_error(
+        "anchor_refused", 403,
+        lambda: verify_checkpoint(alternate, public_key=public, expected_sha256=pin),
+    )
+    return checkpoint, {
+        "signature_verified": True,
+        "wrong_signer_refused": True,
+        "valid_alternate_refused": True,
+    }
 
 
 def check_restored_archive(slot, checkpoint, factories, snapshot, advance):
