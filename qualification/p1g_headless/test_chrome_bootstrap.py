@@ -762,7 +762,7 @@ class ChromeBootstrapTests(unittest.TestCase):
                     patch.object(boot, "ROOT", base / "p1g-source"),
                     patch.object(boot.os, "getuid", return_value=1001, create=True),
                     patch.object(boot.os, "umask", return_value=0),
-                    patch.dict(boot.os.environ, env),
+                    patch.dict(boot.os.environ, env, clear=True),
                     patch.object(boot.time, "time", return_value=OBSERVED_METADATA_TIME),
                     patch.object(boot, "context", return_value=(PINS, captured)),
                     patch.object(

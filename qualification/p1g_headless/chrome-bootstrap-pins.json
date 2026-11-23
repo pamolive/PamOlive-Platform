@@ -61,7 +61,7 @@
     "qualification/p1g_headless/gpg_fixture/source-pins.json": "90d74d4bfdf2ffb76b4bb93157339906cc07d2594de2715972b88a3f9b75ef04",
     "qualification/p1g_headless/gpg_fixture/test_fixture.py": "7f0800d1c9f9b74eb9b043c727fb7455223c704fe7bd9df75e45811ab8df986c",
     "qualification/p1g_headless/run_chrome_pure.py": "206d6978e673efa5c8ae859d2955a0f85c2e5604b273a70d4989e27056957cde",
-    "qualification/p1g_headless/test_chrome_bootstrap.py": "d2efb63b93e308c8efc76b371e7d93d31f39a591374267dabc9380f7a28b9392",
+    "qualification/p1g_headless/test_chrome_bootstrap.py": "5f39bfa0bfde286ae60e91a7c481022391dc622f8c5d128b23eb3295dc68ab09",
     "qualification/p1g_headless/test_chrome_bundle.py": "2e69ca41737a6993926acdc830cc2c8d5d1df33bf65c365238f35f3b872688cf",
     "qualification/p1g_headless/test_chrome_key_scope.py": "322a7683e0e5434aa16bfaa2ae64e450c0c13d93336755ae62c57b822ecc289e",
     "qualification/p1g_headless/test_chrome_phase_a.py": "6ceb20d91171d569807fe911b59dede4212e8b56dd9cff27a91d0aea2543af92"
