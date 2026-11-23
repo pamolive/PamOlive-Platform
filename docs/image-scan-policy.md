@@ -90,10 +90,13 @@ paquets ont leurs versions binaires exactes, dont deux avec epoch.
 Les PURL OS portent la version source quand elle diffère de la
 version binaire. Le contrôle autorise `fixed_by_backport` pour
 CVE-2026-76642, CVE-2026-78408 et CVE-2026-78410.
-`code_not_present` est réservé à CVE-2026-78409 dans ce lot. La CI
-doit produire les empreintes exactes des signalements avant de les
-enregistrer dans la politique.
-[Preuves par avis](adr-043-util-linux-trixie-backport.md)
+`code_not_present` est réservé à CVE-2026-78409 dans ce lot. Les
+huit entrées couvrent les empreintes OS et SBOM reproduites par les
+deux scans de la PR #69. La nouvelle CI doit relire le vrai TAR et
+contrôler les empreintes ELF, les alias et l'unicité de libmount.
+[Preuves par avis](adr-043-util-linux-trixie-backport.md) ·
+[Scan PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/45149881862/artifacts/14810610408) ·
+[Scan push](https://github.com/pamolive/PamOlive-Platform/actions/runs/45149835034/artifacts/14809623147)
 
 ### Deux justifications GCC bornées
 

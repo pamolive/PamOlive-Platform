@@ -8,10 +8,10 @@ bloqué ce candidat. La PR #69 installe les paquets `util-linux` et
 a terminé la qualification fonctionnelle de l'image. Le scan PR
 retient 27 groupes bloquants, dont huit observations `util-linux`
 sur les deux périmètres. La PR #70 ajoute trois décisions SQLite
-liées aux binaires reconstruits. Le
-changement Expat soumet quatre décisions supplémentaires au même
-principe de vérification dans l'image exacte. Une publication doit
-passer le scan et les contrôles de restauration de sa propre CI.
+liées aux binaires reconstruits. Le candidat suivant soumet quatre
+décisions Expat et huit décisions util-linux à la vérification
+dans l'image exacte. Une publication doit passer le scan et les
+contrôles de restauration de sa propre CI.
 [Scan #68](https://github.com/pamolive/PamOlive-Platform/actions/runs/45147243883/artifacts/14808542038) ·
 [Runtime util-linux](https://github.com/pamolive/PamOlive-Platform/pull/69) ·
 [Décisions SQLite](https://github.com/pamolive/PamOlive-Platform/pull/70) ·

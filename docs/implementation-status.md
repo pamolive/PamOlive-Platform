@@ -17,9 +17,11 @@ La CI PR #69 termine les validations de l'image et produit un
 reçu V4 lié au même identifiant d'image que le scan. Le rapport
 compte 43 groupes High et 27 bloquants. Huit concernent le lot
 `util-linux`, soit les quatre CVE sur chacun des périmètres
-OS et SBOM. La réception de l'archive permet de vérifier les
-conditions individuelles avant leur ajout à la politique.
-[Rapport #69](https://github.com/pamolive/PamOlive-Platform/actions/runs/45149881862/artifacts/14810610408)
+OS et SBOM. Le scan push reproduit les huit empreintes. Les deux
+revues indépendantes approuvent leur ajout à la politique sous
+contrôle de l'archive, du reçu V4 et du SBOM du nouveau candidat.
+[Rapport PR #69](https://github.com/pamolive/PamOlive-Platform/actions/runs/45149881862/artifacts/14810610408) ·
+[Rapport push #69](https://github.com/pamolive/PamOlive-Platform/actions/runs/45149835034/artifacts/14809623147)
 
 La CVE-2026-84786 OpenSSL reste ouverte sur les deux périmètres du
 scan. La correction amont est encore en revue. Les qualifications
