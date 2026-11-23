@@ -8,6 +8,7 @@ deploy/openssl-trixie-backport/dane.patch whitespace=-blank-at-eol
 Dockerfile text eol=lf
 # Preserve mandatory unified-diff context spaces and upstream tab indentation.
 deploy/freerdp-jansson-compat.patch whitespace=-blank-at-eol,-space-before-tab
+deploy/acl-rebuild/consumers/*-descriptor.patch whitespace=-blank-at-eol,-space-before-tab
 # Preserve the published checksum of the unmodified upstream distribution.
 platform_core/static/platform_core/vendor/* -text
 # Public historical oracle and reviewed materials plan are pinned as exact bytes.

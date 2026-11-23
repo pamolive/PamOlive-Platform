@@ -78,6 +78,53 @@ class BuildContextTests(TestCase):
         rows = gate.checked_members(bundle([("deploy/test.sh", "file", b"exit 0\n")]))
         self.assertEqual(rows[-1], ("deploy/test.sh", b"exit 0\n", 0o644))
 
+    def test_acl_consumer_build_uses_public_inputs_in_the_sealed_context(self):
+        root = Path(__file__).resolve().parents[1]
+        prefix = "deploy/acl-rebuild/consumers/"
+        consumers = ("coreutils", "sed", "tar")
+        build_inputs = {"materials.sh", "prepare_consumer.py", "libacl.sha256"}
+        build_inputs.update(
+            f"{package}-{suffix}"
+            for package in consumers
+            for suffix in (
+                "source.sha256", "preimage.sha256", "postimage.sha256", "patch.sha256",
+                "descriptor.patch",
+            )
+        )
+        consumer_inputs = {prefix + name for name in build_inputs | {"package.sha256"}}
+        ignored = "qualification/acl_trixie_build/sed_acl_faults.c"
+        files = [
+            (name, (root / name).read_bytes(), 0o644)
+            for name in set(gate.CONTROLS) | gate.DEBIAN_REFRESH_INPUTS.keys() | consumer_inputs
+        ]
+        selected, _ = gate.selection([*files, (ignored, b"synthetic fixture", 0o644)])
+        self.assertEqual({name for name, _, _ in selected}, {name for name, _, _ in files})
+
+        recipe = (root / "Dockerfile").read_text(encoding="utf-8")
+        inputs, _ = recipe.split("FROM acl-consumer-inputs AS acl-coreutils-source", 1)
+        inputs = inputs.split("FROM debian-rebuild-base AS acl-consumer-inputs", 1)[1]
+        self.assertEqual(
+            {word.removeprefix(prefix) for word in inputs.split() if word.startswith(prefix)},
+            build_inputs,
+        )
+        for package in consumers:
+            start = f"FROM acl-consumer-inputs AS acl-{package}-package"
+            stage = recipe.split(start, 1)[1].split("\nFROM ", 1)[0]
+            self.assertIn(
+                "--mount=from=acl-trixie-package,source=/opt/acl-build,target=/acl-packages,ro",
+                stage,
+            )
+            self.assertIn("USER 65534:65534", stage)
+            self.assertIn(
+                f"RUN --network=none sh /opt/acl-consumer-inputs/materials.sh build {package}",
+                stage,
+            )
+        self.assertIn(
+            "RUN --network=none --mount=from=acl-consumer-packages,source=/,"
+            "target=/tmp/pamolive-acl-consumers,ro",
+            recipe,
+        )
+
     def test_traversal_absolute_alias_and_windows_paths_refused(self):
         for name in (
             "../escape",

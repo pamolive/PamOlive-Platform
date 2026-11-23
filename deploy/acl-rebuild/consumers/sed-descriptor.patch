@@ -1,0 +1,108 @@
+diff --git a/sed/execute.c b/sed/execute.c
+--- a/sed/execute.c
++++ b/sed/execute.c
+@@ -33,6 +33,11 @@
+ #include <selinux/selinux.h>
+ #include <selinux/context.h>
+ #include "acl.h"
++#if defined __linux__ && USE_ACL
++# include "acl-internal.h"
++# include "error.h"
++# include "quote.h"
++#endif
+ #include "ignore-value.h"
+ #include "progname.h"
+ #include "xalloc.h"
+@@ -643,6 +648,77 @@
+ 
+ 
+ /* Clean up an input stream that we are done with. */
++#if defined __linux__ && USE_ACL
++/* Match Gnulib's regular-file ACL and mode fallback using sed's open FDs. */
++static int
++set_regular_acl (int fd, acl_t acl, mode_t mode)
++{
++  bool mode_set = (mode & (S_ISUID | S_ISGID | S_ISVTX)) != 0;
++  if (mode_set && fchmod (fd, mode) < 0)
++    return -1;
++
++  int failure = 0;
++  if (acl)
++    {
++      if (acl_set_fd (fd, acl) == 0)
++        return 0;
++      int acl_error = errno;
++      if (!acl_errno_valid (acl_error))
++        {
++          if (acl_access_nontrivial (acl) != 0)
++            failure = acl_error;
++          goto mode_only;
++        }
++      failure = acl_error;
++    }
++
++  /* Installing a minimal ACL also clears permissions inherited by mkstemp. */
++  acl_t minimal = acl_from_mode (mode);
++  if (minimal)
++    {
++      int result = acl_set_fd (fd, minimal);
++      int minimal_error = errno;
++      acl_free (minimal);
++      if (result == 0)
++        goto done;
++      if (!failure && acl_errno_valid (minimal_error))
++        failure = minimal_error;
++    }
++  else if (!failure)
++    failure = errno;
++
++ mode_only:
++  if (!mode_set && fchmod (fd, mode) < 0 && !failure)
++    failure = errno;
++ done:
++  if (failure)
++    {
++      errno = failure;
++      return -1;
++    }
++  return 0;
++}
++
++static void
++copy_regular_acl (char const *source, int source_fd, char const *target,
++                  int target_fd, mode_t mode)
++{
++  acl_t acl = acl_get_fd (source_fd);
++  if (!acl && acl_errno_valid (errno))
++    {
++      error (0, errno, "%s", quote (source));
++      return;
++    }
++
++  int result = set_regular_acl (target_fd, acl, mode);
++  int saved_errno = errno;
++  if (acl)
++    acl_free (acl);
++  if (result != 0)
++    error (0, saved_errno, _("preserving permissions for %s"), quote (target));
++}
++#endif
++
+ static void
+ closedown (struct input *input)
+ {
+@@ -664,9 +740,14 @@
+       if (fchown (output_fd, input->st.st_uid, input->st.st_gid) == -1)
+         ignore_value (fchown (output_fd, -1, input->st.st_gid));
+ #endif
++#if defined __linux__ && USE_ACL
++      copy_regular_acl (input->in_file_name, input_fd,
++                        input->out_file_name, output_fd, input->st.st_mode);
++#else
+       copy_acl (input->in_file_name, input_fd,
+                 input->out_file_name, output_fd,
+                 input->st.st_mode);
++#endif
+ 
+       ck_fclose (input->fp);
+       ck_fclose (output_file.fp);

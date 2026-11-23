@@ -883,6 +883,26 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
 
 
 
+def bound_archive_facts(archive, metadata, conditions, **options):
+    """Read config, layers and final digest through the same regular descriptor."""
+    from deploy.jansson_image_absence import _regular_input
+
+    with _regular_input(archive, qualified_image.MAX_ARCHIVE_SIZE) as stream:
+        with tarfile.open(fileobj=stream, mode="r:", tarinfo=BoundedTarInfo) as outer:
+            manifest = docker_manifest(outer, require_config=True)
+            config = qualified_image.tar_metadata(outer, manifest["Config"], 2 * 1024**2)
+        require("sha256:" + hashlib.sha256(config).hexdigest() == metadata["image_id"],
+                "archive_config_identity")
+        stream.seek(0)
+        facts = archive_facts(
+            None, conditions, archive_stream=stream,
+            expected_diff_ids=image_diff_ids(config, len(manifest["Layers"])), **options,
+        )
+        require(qualified_image.archive_hash(None, archive_stream=stream)
+                == metadata["archive_sha256"], "archive_checksum")
+    return config, facts
+
+
 def conditions_hold(conditions, facts):
     require(isinstance(conditions, list) and 1 <= len(conditions) <= 32, "conditions_missing")
     names, elves = facts
@@ -1576,6 +1596,55 @@ def verify_expat_sbom(sca_sbom, report, config_id, properties):
             "expat_sbom_binding")
 
 
+def verify_acl_sbom(sca_sbom, report, config_id, properties):
+    from deploy import native_sbom
+
+    components, dependencies, roots = native_sbom.acl_components(
+        report, config_id, "image_config"
+    )
+    refs = {item["bom-ref"] for item in components}
+    prefixes = tuple(native_sbom.PREFIX + suffix for suffix in ("acl-deb:", "acl-elf:"))
+    names = set(report["packages"])
+    purls = tuple(f"pkg:deb/debian/{name}@" for name in names)
+    paths = {path for package in report["packages"].values() for path in package["binaries"]}
+    image_ref = native_sbom.PREFIX + "image:image_config:" + config_id
+    pending = list(sca_sbom["components"])
+    if sca_sbom["metadata"].get("component") is not None:
+        pending.append(sca_sbom["metadata"]["component"])
+    observed = []
+    image_components = 0
+    count = 0
+    while pending:
+        item = pending.pop()
+        count += 1
+        require(count <= 5000, "acl_sbom_component_budget")
+        pending.extend(item.get("components", []))
+        ref = item.get("bom-ref", "")
+        if ref == image_ref:
+            require(item.get("type") == "container", "acl_sbom_image_component")
+            image_components += 1
+        if (ref.startswith(prefixes)
+                or item.get("name") in names
+                or item.get("purl", "").startswith(purls)
+                or any(prop.get("name") == "pamolive:native:path" and prop.get("value") in paths
+                       for prop in item.get("properties", []))):
+            observed.append(item)
+    edges = sca_sbom["dependencies"]
+    package_edges = [row for row in edges if row["ref"] in refs or row["ref"].startswith(prefixes)]
+    image_edges = [row for row in edges if row["ref"] == image_ref]
+    require(sorted(observed, key=canonical) == sorted(components, key=canonical)
+            and sorted(package_edges, key=canonical) == sorted(dependencies, key=canonical)
+            and image_components == len(image_edges) == 1
+            and isinstance(image_edges[0].get("dependsOn"), list)
+            and all(image_edges[0]["dependsOn"].count(ref) == 1 for ref in roots),
+            "acl_sbom_components")
+    expected_hash = hashlib.sha256((canonical(report) + "\n").encode("ascii")).hexdigest()
+    require(properties.get("pamolive:sbom:acl-input-sha256") == expected_hash
+            and properties.get("pamolive:sbom:acl-archive-sha256") == report["archive_sha256"]
+            and properties.get("pamolive:sbom:acl-qualification-sha256")
+            == report["qualification_sha256"], "acl_sbom_binding")
+
+
 def qualify(os_report, compiled_report, positive_report, compiled_sbom, policy, *,
             config_id, config_bytes, facts, repo, now=None, archive=None, revision=None,
             archive_sha256=None):
@@ -1603,6 +1672,19 @@ def qualify(os_report, compiled_report, positive_report, compiled_sbom, policy, 
                      "cpe:2.3:a:apache:guacamole:1.6.0:*:*:*:*:*:*:*"}
     require(expected_cpes <= {item.get("cpe") for item in compiled_sbom.get("components", [])},
             "compiled_inventory_missing")
+    from deploy import acl_consumer_runtime as acl_runtime
+
+    acl_present = acl_runtime.INSTALLED_QUALIFICATION in facts[0]
+    acl_sbom = any(name.startswith("pamolive:sbom:acl-") for name in props)
+    if acl_present or acl_sbom:
+        require(acl_present and acl_sbom and getattr(facts, "elf_linkage", None) is not None
+                and isinstance(revision, str) and qualified_image.REVISION.fullmatch(revision)
+                and isinstance(archive_sha256, str) and SHA.fullmatch(archive_sha256),
+                "acl_product_image_binding")
+        acl_report = acl_runtime.inspect_facts(facts, {
+            "image_id": config_id, "archive_sha256": archive_sha256, "revision": revision,
+        }, repo=repo)
+        verify_acl_sbom(compiled_sbom, acl_report, config_id, props)
     entries = policy.get("findings")
     require(isinstance(entries, list) and len(entries) <= 1000, "policy_findings")
     indexed = {}
@@ -1761,17 +1843,16 @@ def main(argv=None):
         # Read duplicate keys ourselves before reusing the existing read-only verifier.
         metadata = read_json(bundle / qualified_image.METADATA, 8192)
         archive = bundle / qualified_image.ARCHIVE
-        require(hash_file(archive) == metadata.get("archive_sha256"), "archive_checksum")
-        with tarfile.open(archive, mode="r:", tarinfo=BoundedTarInfo) as outer:
-            manifest = docker_manifest(outer, require_config=True)
-            config = qualified_image.tar_metadata(outer, manifest["Config"], 2 * 1024 * 1024)
         require(metadata == qualified_image.verify_bundle(bundle, args.revision), "bundle_identity")
         conditions = [condition for entry in policy["findings"]
                       if entry.get("disposition") in DISPOSITIONS - {"untriaged"}
                       for condition in entry.get("conditions", [])]
-        facts = archive_facts(
-            archive, conditions, capture_elf_set=args.elf_inventory_output is not None,
+        from deploy import acl_consumer_runtime as acl_runtime
+
+        config, facts = bound_archive_facts(
+            archive, metadata, conditions, capture_elf_set=args.elf_inventory_output is not None,
             observe_elf_linkage=args.observe_elf_linkage,
+            read_paths=acl_runtime.READ_PATHS, attribute_paths=acl_runtime.ATTRIBUTES,
         )
         os_report, compiled, positive, sbom = (read_json(path) for path in (
             args.os_report, args.compiled_report, args.positive_report, args.compiled_sbom))
