@@ -48,13 +48,13 @@ WORK_PREFIX = "pamolive-sandbox-private-"
 CAP_FIELDS = {"CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"}
 
 
-def run_identity(env):
+def run_identity(env, *, branch=BRANCH):
     support.need(
         env.get("GITHUB_ACTIONS") == "true"
         and env.get("RUNNER_ENVIRONMENT") == "github-hosted"
         and env.get("GITHUB_REPOSITORY") == chrome_metadata.REPOSITORY
         and env.get("GITHUB_EVENT_NAME") == "push"
-        and env.get("GITHUB_REF") == BRANCH,
+        and env.get("GITHUB_REF") == branch,
         "sandbox_probe_scope",
     )
     fields = {"revision": "GITHUB_SHA", "run": "GITHUB_RUN_ID", "attempt": "GITHUB_RUN_ATTEMPT"}
@@ -163,7 +163,6 @@ def browser_probe(work):
     support.need(
         support.playwright_node_pin(driver) == driver_before,
         "sandbox_probe_driver_changed",
-        "playwright_driver_identity",
     )
     return {
         "state": "SANDBOX_OBSERVED",

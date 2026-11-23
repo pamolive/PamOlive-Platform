@@ -1,7 +1,10 @@
 """Source and synthetic contracts for the relocated sandbox measurement."""
 
+import os
+import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from qualification.p1g_headless import chrome_sandbox_probe as probe
@@ -162,6 +165,34 @@ class SandboxProbeTests(unittest.TestCase):
         with patch.object(lab_support, "tool_pin", return_value={**pin, "sha256": "0" * 64}):
             with self.assertRaisesRegex(ValueError, "playwright_driver_identity"):
                 lab_support.playwright_node_pin(node)
+
+    def test_success_revalidates_both_exact_executables_after_browser_closes(self):
+        browser = Mock(version=probe.BROWSER_VERSION)
+        driver = Path("synthetic-node")
+        distribution = Mock(version=lab_support.SDK_VERSION)
+        distribution.locate_file.return_value = driver
+        launch = Mock(return_value=browser)
+        client = Mock()
+        chromium = SimpleNamespace(launch=launch)
+        client.__enter__ = Mock(return_value=SimpleNamespace(chromium=chromium))
+        client.__exit__ = Mock(return_value=False)
+        executable = {"bytes": probe.CHROME_BYTES, "sha256": probe.CHROME_SHA}
+        evidence = SUCCESS["renderer_evidence"]
+        sync_api = SimpleNamespace(sync_playwright=lambda: client)
+        with (
+            patch.dict(sys.modules, {"playwright.sync_api": sync_api}),
+            patch.dict(os.environ),
+            patch.object(Path, "mkdir"),
+            patch.object(probe.importlib.metadata, "distribution", return_value=distribution),
+            patch.object(lab_support, "tool_pin", return_value=executable) as binary_pin,
+            patch.object(lab_support, "playwright_node_pin", return_value={}) as node_pin,
+            patch.object(lab_support, "observe_browser_sandbox", return_value=evidence),
+        ):
+            self.assertEqual(probe.browser_probe(Path("work")), SUCCESS)
+        self.assertEqual(binary_pin.call_count, 2)
+        self.assertEqual(node_pin.call_count, 2)
+        self.assertTrue(launch.call_args.kwargs["chromium_sandbox"])
+        browser.close.assert_called_once()
 
     def test_shared_browser_observer_refuses_suid_before_renderer_proof_in_probe(self):
         browser = Mock()
