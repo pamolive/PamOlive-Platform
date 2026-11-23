@@ -6,14 +6,22 @@ import socket
 import subprocess
 import tempfile
 import time
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager, nullcontext, suppress
 from pathlib import Path
 
 BINARY = Path("/opt/pamolive-guac/sbin/guacd")
+LOG_TAIL_BYTES = 64 * 1024
+
+
+def read_log_tail(path):
+    with path.open("rb") as stream:
+        stream.seek(0, os.SEEK_END)
+        stream.seek(max(0, stream.tell() - LOG_TAIL_BYTES))
+        return stream.read(LOG_TAIL_BYTES)
 
 
 @contextmanager
-def guacd_fixture(*, owned_by_worker=False):
+def guacd_fixture(*, owned_by_worker=False, log=None):
     if not BINARY.is_file():
         raise RuntimeError("Native engine missing from the admitted test image")
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as reservation:
@@ -21,7 +29,7 @@ def guacd_fixture(*, owned_by_worker=False):
         port = reservation.getsockname()[1]
     with (
         tempfile.TemporaryDirectory(prefix="pamolive-guacd-") as directory,
-        tempfile.TemporaryFile() as log,
+        (tempfile.TemporaryFile() if log is None else nullcontext(log)) as diagnostics,
     ):
         process = subprocess.Popen(
             [
@@ -35,7 +43,7 @@ def guacd_fixture(*, owned_by_worker=False):
                 "HOME": directory,
                 "GUACAMOLE_HOME": directory,
             },
-            stdout=log,
+            stdout=diagnostics,
             stderr=subprocess.STDOUT,
             # The bounded browser worker supervises its own process group.
             start_new_session=not owned_by_worker,

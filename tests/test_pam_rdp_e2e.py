@@ -36,6 +36,7 @@ from platform_modules.pam.sessions import (
     probe_endpoint,
     set_endpoint_enabled,
 )
+from tests.fixtures.guacd import read_log_tail
 from tests.fixtures.paint import PaintProof
 from tests.fixtures.rdp import BINARY as RDP_BINARY
 from tests.fixtures.rdp import RDPFixture
@@ -426,8 +427,10 @@ class NativeRDPRelayTests(RelayHarness):
                     await sync_to_async(verify_capture)()
                     self.assertEqual(trap_connections, [], "RDP attempted an unauthorized target")
                     if mode == "redirect":
-                        self.log.seek(0)
-                        self.assertIn(b"PAMOLIVE_RDP_REDIRECTION_DENIED", self.log.read())
+                        self.assertTrue(
+                            b"PAMOLIVE_RDP_REDIRECTION_DENIED" in read_log_tail(self.native_log),
+                            "The native RDP refusal was not logged.",
+                        )
                     elif mode not in ("pin", "password"):
                         self.assertTrue(
                             any(item.opcode in ("rect", "cfill", "img") for item in received)
@@ -450,12 +453,10 @@ class NativeRDPRelayTests(RelayHarness):
                         and item.arguments[-1].isdecimal()
                     ],
                 }
-                self.log.seek(0, os.SEEK_END)
-                self.log.seek(max(0, self.log.tell() - 2048))
-                native_tail = self.log.read(2048).decode("utf-8", errors="replace")
-                diagnostic["synthetic_native_log_tail"] = native_tail.replace(
-                    peer.password, "[redacted]"
-                ).replace("incorrect-test-password", "[redacted]")
+                try:
+                    diagnostic["native_log_bytes_sampled"] = len(read_log_tail(self.native_log))
+                except OSError as error:
+                    diagnostic["native_log_error_class"] = type(error).__name__
                 if config:
                     connection_id = config["websocket_path"].split("/")[3]
 

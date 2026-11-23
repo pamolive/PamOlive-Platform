@@ -9,6 +9,7 @@ import tempfile
 import threading
 import time
 from datetime import timedelta
+from pathlib import Path
 from unittest import skipUnless
 from unittest.mock import patch
 
@@ -95,7 +96,9 @@ class RelayHarness(TransactionTestCase):
         self.assertTrue(BINARY.is_file(), "PAM_REQUIRE_NATIVE cannot silently skip this gate")
         self.directory = tempfile.TemporaryDirectory(prefix="pamolive-relay-e2e-")
         self.addCleanup(self.directory.cleanup)
-        self.native_port, self.native = self.enterContext(guacd_fixture())
+        self.native_log = Path(self.directory.name) / "guacd.log"
+        with self.native_log.open("xb") as log:
+            self.native_port, self.native = self.enterContext(guacd_fixture(log=log))
         self.overrides = override_settings(
             ALLOWED_HOSTS=["127.0.0.1", "testserver"],
             PAM_PUBLIC_ORIGIN="",
