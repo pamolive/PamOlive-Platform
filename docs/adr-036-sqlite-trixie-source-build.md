@@ -31,8 +31,17 @@ chargée. Le test fonctionnel relit une base synthétique créée avec SQLite
 SESSION. Le reçu inventorie les binaires et les résultats. Il est limité à
 ce laboratoire amd64.
 
-L'adoption dans l'image PamOlive exige une revue du paquet et des imports
-ELF de l'image entière, le scan de cette image, puis les contrôles habituels
-de livraison. Le test vérifie la présence de SESSION et la compatibilité
-courante. Une qualification complète de la fonction SESSION et de l'API
-`liblastlog2` devra exercer les appels avec des données synthétiques.
+Les deux constructions indépendantes du laboratoire reproduisent le même
+SHA-256 du paquet et de la bibliothèque. La variante produit réutilise le
+même procédé et exige ces deux empreintes avant d'admettre le remplacement.
+Elle installe le paquet depuis un montage en lecture seule après le dernier
+APT produit, sans réseau. Le package, les outils de compilation et l'index
+APT des sources Forky restent dans les étapes de construction. Le contrôle
+de la bibliothèque chargée est rejoué sur l'image exacte réimportée par la CI.
+[Première qualification](https://github.com/pamolive/PamOlive-Platform/actions/runs/45113977157) ·
+[Contrôle ELF renforcé](https://github.com/pamolive/PamOlive-Platform/actions/runs/45114107779)
+
+Le scan de l'image produit reste requis avec la même politique. Le test de
+laboratoire vérifie la présence de SESSION, la lecture de la base historique
+et les écritures sur une base neuve. Une qualification complète de la fonction
+SESSION et de l'API `liblastlog2` devra exercer les appels avec des données synthétiques.
