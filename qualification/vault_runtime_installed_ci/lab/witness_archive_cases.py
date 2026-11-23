@@ -4,7 +4,7 @@ import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from .witness_fence_cases import expect_error, require
@@ -82,13 +82,66 @@ def restore_lab_anchor(references, advance):
         stdin=subprocess.DEVNULL, capture_output=True, timeout=8, check=False,
     )
     require(reopened.returncode == 0 and reopened.stdout == b"W01_ANCHOR_REOPENED\n")
+    advance("anchor_store_rotation")
+    qualify_recovery_manifest(store, point, imported_raw, public, pin, alternate)
     return (imported_raw, public, pin, alternate), {
         "concurrent_exact_saves": True,
         "reopened_after_database_recovery": True,
         "restore_copy_exact": True,
         "missing_pin_no_fallback": True,
         "new_process_reopened": True,
+        "checkpoint_key_rotation_verified": True,
     }
+
+
+def qualify_recovery_manifest(store, point, raw, public, pin, alternate):
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from pamolive_usage_anchor import codec, recovery_manifest
+    from pamolive_usage_anchor.signed_anchor import sign_checkpoint
+
+    governor, next_signer = Ed25519PrivateKey.generate(), Ed25519PrivateKey.generate()
+    next_key = next_signer.public_key().public_bytes_raw()
+    scope = recovery_manifest.RecoveryScope.from_checkpoint(point)
+    facts = {"governance_key": governor.public_key().public_bytes_raw(), "scope": scope}
+    first_entry = {"checkpoint_sha256": pin, "generation": 1}
+    body = {
+        "schema": recovery_manifest.SCHEMA,
+        "scope": asdict(scope),
+        "revision": 1,
+        "previous_sha256": recovery_manifest.GENESIS,
+        "keys": [codec.b64(public)],
+        "admissions": [first_entry],
+    }
+    initial = recovery_manifest.sign_manifest(body, sign=governor.sign, **facts)
+    initial_pin = recovery_manifest.verify_initial_manifest(
+        initial, checkpoints={pin: raw}, **facts
+    )
+    signed_next = sign_checkpoint(point, public_key=next_key, sign=next_signer.sign)
+    next_pin = codec.sha(signed_next)
+    next_entry = {"checkpoint_sha256": next_pin, "generation": 2}
+    body.update(
+        revision=2,
+        previous_sha256=initial_pin,
+        keys=[codec.b64(public), codec.b64(next_key)],
+        admissions=sorted((first_entry, next_entry), key=lambda item: item["checkpoint_sha256"]),
+    )
+    rotated = recovery_manifest.sign_manifest(body, sign=governor.sign, **facts)
+    current = recovery_manifest.verify_manifest_successor(
+        initial, rotated, current_sha256=initial_pin, checkpoints={next_pin: signed_next}, **facts,
+    )
+    store.save(signed_next, public_key=next_key, expected_sha256=next_pin)
+    for key, digest in ((public, pin), (next_key, next_pin)):
+        stored, document = store.load(public_key=key, expected_sha256=digest)
+        verified = recovery_manifest.restore_checkpoint(
+            rotated, document, current_sha256=current, checkpoint_sha256=digest, **facts,
+        )
+        require(verified == stored == point)
+    expect_error(
+        "anchor_refused", 403, lambda: recovery_manifest.restore_checkpoint(
+            rotated, alternate, current_sha256=current,
+            checkpoint_sha256=codec.sha(alternate), **facts,
+        )
+    )
 
 
 def receive_lab_checkpoint(slot, material, advance):

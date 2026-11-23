@@ -471,11 +471,13 @@ class AnchorHandoffTests(unittest.TestCase):
         self.pin = handoff.sha(self.raw)
         self.public = "b" * 64
         self.report = {
-            "schema": "pamolive.witness-installed-pitr-anchor-store/1",
+            "schema": "pamolive.witness-installed-pitr-anchor-store/2",
             "ok": True,
             "cleaned_up": True,
             "authority": False,
-            "native": {"anchor_store": {"restore_copy_exact": True}},
+            "native": {"anchor_store": {
+                "restore_copy_exact": True, "checkpoint_key_rotation_verified": True,
+            }},
         }
         self.report_path = self.work / "witness-lab-public.json"
         self.report_path.write_bytes(json.dumps(self.report).encode("ascii"))

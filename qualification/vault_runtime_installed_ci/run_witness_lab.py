@@ -139,6 +139,7 @@ DRIVER_PHASES = frozenset(
         b"anchor_store_retain\n",
         b"anchor_store_transfer\n",
         b"anchor_store_reopen\n",
+        b"anchor_store_rotation\n",
         b"anchor_store_export\n",
         b"acknowledge\n",
     )
@@ -209,6 +210,7 @@ ANCHOR_STORE_CASES = (
     "restore_copy_exact",
     "missing_pin_no_fallback",
     "new_process_reopened",
+    "checkpoint_key_rotation_verified",
 )
 STORAGE_CASES = (
     "archive_verified",
@@ -491,7 +493,7 @@ def collect_pure(lab, prepare, source_sha, descriptor_sha):
     expected = {
         "schema": "pamolive.witness-installed-pure/1",
         "phase": "complete",
-        "tests": 122,
+        "tests": 131,
         "failures": 0,
         "errors": 0,
         "skips": 0,
@@ -574,7 +576,7 @@ def collect_native(
         expected["signed_anchor"] = dict.fromkeys(SIGNED_ANCHOR_CASES, True)
     if anchor_store:
         need(signed_anchor)
-        expected["schema"] = "W01-audit-anchor-store-results/1"
+        expected["schema"] = "W01-audit-anchor-store-results/2"
         expected["anchor_store"] = dict.fromkeys(ANCHOR_STORE_CASES, True)
     canonical = json.dumps(expected, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
     need(raw == canonical.encode("ascii") + b"\n")
@@ -895,7 +897,7 @@ def main():
     if options.signed_audit_anchor:
         report["schema"] = "pamolive.witness-installed-pitr-signed-anchor/1"
     if options.audit_anchor_store:
-        report["schema"] = "pamolive.witness-installed-pitr-anchor-store/1"
+        report["schema"] = "pamolive.witness-installed-pitr-anchor-store/2"
     lab = None
     transfer = None
     try:
