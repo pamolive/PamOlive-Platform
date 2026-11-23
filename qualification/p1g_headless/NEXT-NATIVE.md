@@ -1,4 +1,18 @@
-# Concrete next raccord — full P1-G remains the objective
+# P1-G native browser acceptance
+
+The guarded worker offers a separate `--native-ssh` case for the admitted
+disposable Linux job. It binds the launch, stop and recording sources to
+the committed context. The case verifies the real target public key before
+the authority snapshot, obtains the two browser votes, launches through
+WebAuthn and matches the WSS UUID to the exact intent, endpoint and browser
+session. It sends the keyboard sentinel and submits the stop from another
+tab. It requires WSS closure, closure of the SSH terminal connection and an
+authorized playback of the integrity-checked partial capture.
+
+The combined Linux runner must admit the browser and the installed native
+runtime for that invocation. A browser-only preflight, the loopback unit
+tests and the standalone native transport gates each cover separate
+prerequisites. The combined browser test has yet to run.
 
 The present test is one increment, not a substitute for full P1-G. It has two
 separate subjects: a browser-created PAM intention with two genuine UI votes;
@@ -68,11 +82,9 @@ fixture. No product authentication or synthetic assertion generator is needed.
    server pin, protocol restrictions and encrypted recording oracle. Start with
    SSH to obtain a small real closure receipt; do not transfer that success to RDP.
 
-Run shape after independent source/profile review: the existing Platform
-native-test build and gates remain mandatory; add the native browser case to a
-separate test-only target/job at the exact same source head. The scoped P1-G job
-must return a new artifact with actual start/transport/end/recording facts.
-No such case, image allocation, native process, browser, SQL or artifact was run
-in this preparation. The next prerequisite is the explicit execution-context/
-sandbox decision above, followed by this narrow fixture-lifetime extraction;
-there is no new product route or new service/ADR required to invent authority.
+The existing Platform native-test build continues to exercise SSH and RDP.
+The browser job needs its own admitted Linux context at the same source head.
+Its native receipt requires actual opening, keyboard input, administrative
+stop, both transport closures and verified partial capture playback. Local
+configuration and fixture tests exercise the synthetic target and key exchange.
+The browser and native engine have yet to run together in that job.
