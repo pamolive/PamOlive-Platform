@@ -7,6 +7,8 @@ import os
 import re
 import stat
 import sys
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -24,6 +26,26 @@ SDK_NODE_SHA = "d931c649850ffa7155b8ceffb400dc916ef325866e509cc52ae36e33e8fbb9a9
 BUNDLE_BROWSER_VERSION = "157.0.8103.78"
 SANDBOX_URL = "chrome://sandbox/"
 APPARMOR_MODES = {"enforce", "complain", "unconfined"}
+
+
+class SyncFixture:
+    """Keep synchronous ORM work off the browser driver's event loop."""
+
+    def __init__(self, close_connections):
+        self.close_connections = close_connections
+
+    def __enter__(self):
+        self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="p1g-fixture")
+        return self
+
+    def run(self, operation, *args, **kwargs):
+        return self.executor.submit(copy_context().run, operation, *args, **kwargs).result()
+
+    def __exit__(self, *_):
+        try:
+            self.run(self.close_connections)
+        finally:
+            self.executor.shutdown()
 
 
 def need(value, code):

@@ -105,7 +105,8 @@ class NativePAMBrowser(P1GBrowser):
             "Relais ouvert — affichage enregistré", timeout=15000,
         )
         self.observe_open(page)
-        relay = RelayConnection.unscoped.get(
+        relay = self.database.run(
+            RelayConnection.unscoped.get,
             pk=connection_id, organization=self.org, lease__intent=intent, endpoint=self.endpoint,
             opened_by=self.operator, status="active",
         )
@@ -114,7 +115,9 @@ class NativePAMBrowser(P1GBrowser):
         self.assertEqual(relay.target_snapshot["address"], self.peer.host)
         self.assertEqual(relay.target_snapshot["port"], self.peer.port)
         self.check_target_fingerprint(relay)
-        self.assertTrue(trust.verify_launch(intent, relay.authority_snapshot["pam_trust_launch"]))
+        self.assertTrue(self.database.run(
+            trust.verify_launch, intent, relay.authority_snapshot["pam_trust_launch"],
+        ))
         cookies = page.context.cookies(self.origin)
         session = next(cookie["value"] for cookie in cookies
                        if cookie["name"] == settings.SESSION_COOKIE_NAME)
@@ -141,17 +144,17 @@ class NativePAMBrowser(P1GBrowser):
             "Relais fermé — consultez la fiche pour le motif et la capture.", timeout=10000,
         )
         self.assertTrue(page.locator("#pam-close").is_disabled())
-        relay.refresh_from_db()
+        self.database.run(relay.refresh_from_db)
         self.assertEqual((relay.status, relay.end_reason), ("ended", "stop_requested"))
         self.assertIsNotNone(relay.stop_requested_at)
         self.assertLessEqual(relay.stop_requested_at, relay.ended_at)
         self.assertFalse(relay.recording_complete)
-        self.assertTrue(AuditEvent.objects.filter(
+        self.assertTrue(self.database.run(lambda: AuditEvent.objects.filter(
             organization=self.org, actor=self.operator, object_id=str(relay.pk),
             action="pam.relay.stop_requested.v1",
-        ).exists())
+        ).exists()))
         self.assertTrue(0 < relay.recording_bytes <= CAPTURE_LIMIT)
-        self.assertEqual(self._business_counts(), (1, 2, 1, 1))
+        self.assertEqual(self.database.run(self._business_counts), (1, 2, 1, 1))
         self.verify_capture(details, relay)
         details.close()
         FACTS["observed_UI_phases"].append(
@@ -178,10 +181,10 @@ class NativePAMBrowser(P1GBrowser):
         self.assertFalse(b"4.argv" in body, "Sensitive arguments in capture")
         page.get_by_text("Capture vérifiée", exact=False).wait_for(timeout=10000)
         self.assertTrue(page.locator("#pam-play").is_enabled())
-        self.assertTrue(AuditEvent.objects.filter(
+        self.assertTrue(self.database.run(lambda: AuditEvent.objects.filter(
             organization=self.org, object_id=str(relay.pk), action="pam.recording.viewed.v1",
-        ).exists())
-        self.assertTrue(verify_chain(self.org))
+        ).exists()))
+        self.assertTrue(self.database.run(verify_chain, self.org))
 
 
 class NativeSSHBrowser(NativePAMBrowser):

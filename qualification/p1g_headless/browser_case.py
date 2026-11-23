@@ -12,6 +12,7 @@ from unittest.mock import patch
 import pyotp
 from django.contrib.auth import get_user_model
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
+from django.db import connections
 from django.test import override_settings
 from django.test.testcases import LiveServerThread
 from django.urls import reverse
@@ -124,6 +125,7 @@ class P1GBrowser(StaticLiveServerTestCase):
                 organization=self.other, name="Synthetic foreign sentinel", kind="human"
             )
         self.contexts, self.errors, self.denied = [], [], []
+        self.database = self.enterContext(support.SyncFixture(connections.close_all))
 
     def phase(self, name):
         FACTS["phase"] = name
@@ -142,7 +144,7 @@ class P1GBrowser(StaticLiveServerTestCase):
     def totp(self, actor):
         deadline = time.monotonic() + 35
         while time.monotonic() < deadline:
-            profile = AccountSecurity.objects.get(account=actor)
+            profile = self.database.run(AccountSecurity.objects.get, account=actor)
             if int(time.time()) // 30 > profile.last_counter and time.time() % 30 <= 27:
                 secret = cipher().decrypt(profile.encrypted_secret.encode()).decode()
                 return pyotp.TOTP(secret).now()
@@ -208,9 +210,12 @@ class P1GBrowser(StaticLiveServerTestCase):
         page.locator('#pam-trust-form button[type="submit"]').click()
         page.locator("#pam-trust-enrollment-result").wait_for(state="visible", timeout=20000)
         receipt = json.loads(page.locator("#pam-trust-enrollment-json").inner_text())
-        self.assertEqual(self._business_counts(), (0, 0, 0, 0))
+        self.assertEqual(self.database.run(self._business_counts), (0, 0, 0, 0))
         person = self.trust.people[actor.pk]
-        self.trust.update(lambda body: body["persons"][person]["authenticators"].append(receipt))
+        self.database.run(
+            self.trust.update,
+            lambda body: body["persons"][person]["authenticators"].append(receipt),
+        )
         # The virtual device stays in this page until context.close; no private-key export/CDP seed.
 
     def confirm(self, page):
@@ -224,9 +229,9 @@ class P1GBrowser(StaticLiveServerTestCase):
     def request(self, page):
         self.phase("identity360_request_JS")
         self.goto(page, "identity360-detail", self.person.pk)
-        before = self._business_counts()
+        before = self.database.run(self._business_counts)
         page.get_by_role("link", name="Demander un accès", exact=True).click()
-        self.assertEqual(self._business_counts(), before)
+        self.assertEqual(self.database.run(self._business_counts), before)
         form = page.locator("#record-form")
         for name, pk in (
             ("identity", self.person.pk),
@@ -245,18 +250,22 @@ class P1GBrowser(StaticLiveServerTestCase):
         ):
             form.locator(f'[name="{name}"]').fill(value.strftime("%Y-%m-%dT%H:%M"))
         page.get_by_role("button", name="Enregistrer", exact=True).click()
-        self.assertEqual(self._business_counts(), before)
+        self.assertEqual(self.database.run(self._business_counts), before)
         self.confirm(page)
-        intent = AccessIntent.objects.get(organization=self.org, requested_by=self.operator)
+        intent = self.database.run(
+            AccessIntent.objects.get, organization=self.org, requested_by=self.operator,
+        )
         self.assertEqual(intent.status, "pending")
         self.assertEqual(intent.method.casefold(), self.request_method.casefold())
+        payload = self.database.run(trust.request_payload, intent, intent.pam_trust["policy"])
         self.assertTrue(
-            verify_authorization_evidence(
+            self.database.run(
+                verify_authorization_evidence,
                 intent.pam_trust["request"],
                 actor=self.operator,
                 organization=self.org,
                 action="request",
-                payload=trust.request_payload(intent, intent.pam_trust["policy"]),
+                payload=payload,
             )
         )
         FACTS["observed_UI_phases"].append("Identity360_form_to_signed_request")
@@ -270,16 +279,21 @@ class P1GBrowser(StaticLiveServerTestCase):
             form.locator('[name="comment"]').fill("Synthetic browser review of exact scope")
             form.locator('button[name="decision"][value="approve"]').click()
             self.confirm(page)
-            intent.refresh_from_db()
+            self.database.run(intent.refresh_from_db)
             self.assertEqual(intent.status, "pending" if index == 0 else "approved")
-            self.assertEqual(approval_requirements(intent)["approved"], index + 1)
-            self.assertFalse(SessionLease.unscoped.filter(organization=self.org).exists())
-        self.assertTrue(all(trust.verified_vote(intent, vote) for vote in intent.decisions.all()))
+            requirements = self.database.run(approval_requirements, intent)
+            self.assertEqual(requirements["approved"], index + 1)
+            self.assertFalse(self.database.run(
+                lambda: SessionLease.unscoped.filter(organization=self.org).exists(),
+            ))
+        self.assertTrue(self.database.run(
+            lambda: all(trust.verified_vote(intent, vote) for vote in intent.decisions.all()),
+        ))
         FACTS["observed_UI_phases"].append("two_UI_votes_verified_by_existing_P0")
 
     def negative_boundaries(self, page, intent):
         self.phase("UI_refusals")
-        before = self._business_counts()
+        before = self.database.run(self._business_counts)
         response = page.goto(self.origin + reverse("identity360-detail", args=[self.foreign.pk]))
         self.assertEqual(response.status, 404)
         self.assertNotIn(self.foreign.name, page.content())
@@ -289,15 +303,16 @@ class P1GBrowser(StaticLiveServerTestCase):
         )
         self.assertEqual(response.status, 404)
         with organization_context(self.org):
-            deleted = Identity.objects.create(
+            deleted = self.database.run(
+                Identity.objects.create,
                 organization=self.org, name="Synthetic deleted UI sentinel", kind="human"
             )
             deleted_id = deleted.pk
-            deleted.delete()
+            self.database.run(deleted.delete)
         response = page.goto(self.origin + reverse("identity360-detail", args=[deleted_id]))
         self.assertEqual(response.status, 404)
         self.person.status = "suspended"
-        self.person.save(update_fields=["status"])
+        self.database.run(self.person.save, update_fields=["status"])
         try:
             self.goto(page, "identity360-detail", self.person.pk)
             self.assertEqual(
@@ -312,18 +327,20 @@ class P1GBrowser(StaticLiveServerTestCase):
             self.assertEqual(response.status, 404)
         finally:
             self.person.status = "active"
-            self.person.save(update_fields=["status"])
-        active = ModuleActivation.objects.get(organization=self.org, module_key="access")
+            self.database.run(self.person.save, update_fields=["status"])
+        active = self.database.run(
+            ModuleActivation.objects.get, organization=self.org, module_key="access",
+        )
         active.enabled = False
-        active.save(update_fields=["enabled"])
+        self.database.run(active.save, update_fields=["enabled"])
         try:
             response = page.goto(self.origin + reverse("record-create", args=["intent"]))
             self.assertEqual(response.status, 403)
         finally:
             active.enabled = True
-            active.save(update_fields=["enabled"])
+            self.database.run(active.save, update_fields=["enabled"])
         self.operator.is_active = False
-        self.operator.save(update_fields=["is_active"])
+        self.database.run(self.operator.save, update_fields=["is_active"])
         try:
             response = page.goto(self.origin + reverse("access-contract-detail", args=[intent.pk]))
             self.assertIn(response.status, (200, 403))
@@ -332,17 +349,18 @@ class P1GBrowser(StaticLiveServerTestCase):
             )
         finally:
             self.operator.is_active = True
-            self.operator.save(update_fields=["is_active"])
-        self.assertEqual(self._business_counts(), before)
+            self.database.run(self.operator.save, update_fields=["is_active"])
+        self.assertEqual(self.database.run(self._business_counts), before)
         FACTS["observed_UI_phases"].append("foreign_disabled_module_inactive_user_refused")
 
     def historical_observe_UI(self, browser):
         self.phase("PC483_PC991_recorded_fixture_UI")
-        actor = get_user_model().objects.get(username="observe-demo-operator")
+        actor = self.database.run(get_user_model().objects.get, username="observe-demo-operator")
         org = self.demo["organizations"][0]
         from platform_core.models import Organization
 
-        _, page = self.login(browser, actor, Organization.objects.get(pk=org["id"]), mfa=False)
+        organization = self.database.run(Organization.objects.get, pk=org["id"])
+        _, page = self.login(browser, actor, organization, mfa=False)
         for story in org["observations"][:2]:
             self.goto(page, "observe-detail", story["event_id"])
             self.visible(page, "Parcours de l’observation")
@@ -365,19 +383,9 @@ class P1GBrowser(StaticLiveServerTestCase):
 
         self.phase("local_grant_review_revocation_UI")
         demo = self.demo["organizations"][0]
-        organization = Organization.objects.get(pk=demo["id"])
+        organization = self.database.run(Organization.objects.get, pk=demo["id"])
         with organization_context(organization):
-            existing = AccessIntent.objects.get(pk=demo["intent_id"])
-            grant = Grant.objects.create(
-                organization=organization,
-                identity=existing.identity,
-                account=existing.account,
-                resource=existing.resource,
-                entitlement="Synthetic UI-only local right",
-                justification="No remote provisioning",
-                valid_from=timezone.now(),
-                expires_at=timezone.now() + timedelta(minutes=15),
-            )
+            grant = self.database.run(self.create_synthetic_grant, organization, demo["intent_id"])
             _, page = self.login(browser, self.demo_reviewer, organization)
             self.goto(page, "recertification-home")
             form = page.locator('form:has(input[name="due_at"])')
@@ -388,7 +396,8 @@ class P1GBrowser(StaticLiveServerTestCase):
             form.locator('[name="owner"]').select_option(str(self.demo_reviewer.pk))
             with page.expect_navigation(wait_until="domcontentloaded", timeout=15000):
                 form.get_by_role("button", name="Créer la campagne", exact=True).click()
-            review = Review.objects.get(
+            review = self.database.run(
+                Review.objects.get,
                 grant=grant, campaign__name="Synthetic UI frozen-cohort review"
             )
             decision = page.locator(
@@ -397,28 +406,41 @@ class P1GBrowser(StaticLiveServerTestCase):
             decision.locator('[name="comment"]').fill("Synthetic actual local revocation via UI")
             with page.expect_navigation(wait_until="domcontentloaded", timeout=15000):
                 decision.get_by_role("button", name="Retirer le droit", exact=True).click()
-            grant.refresh_from_db()
-            review.refresh_from_db()
+            self.database.run(grant.refresh_from_db)
+            self.database.run(review.refresh_from_db)
             self.assertEqual(grant.status, "revoked")
             self.assertIsNotNone(grant.revoked_at)
             self.assertEqual(review.decision, "revoke")
             self.visible(page, "Preuve de décision vérifiée.")
-            self.assertTrue(verify_chain(organization))
+            self.assertTrue(self.database.run(verify_chain, organization))
         FACTS["observed_UI_phases"].append("new_local_grant_frozen_review_and_revocation_UI")
         FACTS["local_revocation"] = {"UI_act_observed": True, "provider_effect_proved": False}
+
+    def create_synthetic_grant(self, organization, intent_id):
+        existing = AccessIntent.objects.get(pk=intent_id)
+        return Grant.objects.create(
+            organization=organization,
+            identity=existing.identity,
+            account=existing.account,
+            resource=existing.resource,
+            entitlement="Synthetic UI-only local right",
+            justification="No remote provisioning",
+            valid_from=timezone.now(),
+            expires_at=timezone.now() + timedelta(minutes=15),
+        )
 
     def after_approval(self, browser, pages, intent):
         """Extension seam: later native case overrides this, not request/auth/vote methods."""
         self.goto(pages[0], "access-contract-detail", intent.pk)
         self.visible(pages[0], "Un bail local ne prouve pas")
-        self.assertEqual(self._business_counts(), (1, 2, 0, 0))
+        self.assertEqual(self.database.run(self._business_counts), (1, 2, 0, 0))
         self.goto(pages[0], "audit-log")
         self.visible(pages[0], "access.intent.created.v1")
-        self.assertTrue(verify_chain(self.org))
+        self.assertTrue(self.database.run(verify_chain, self.org))
         self.assertEqual(
-            AuditEvent.objects.filter(
+            self.database.run(lambda: AuditEvent.objects.filter(
                 organization=self.org, action="approvals.intent.decided.v1"
-            ).count(),
+            ).count()),
             2,
         )
 

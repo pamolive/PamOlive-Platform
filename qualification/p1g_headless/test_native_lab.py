@@ -1,6 +1,9 @@
 """Local contracts for the isolated native portal supervisor and inputs."""
 
+import asyncio
+import threading
 import unittest
+from contextvars import ContextVar
 from unittest.mock import patch
 
 from qualification.p1g_headless import guacd_namespace, native_lab, rdp_namespace, rdp_peer
@@ -11,6 +14,30 @@ CONTAINER = "3" * 64
 
 
 class NativeLabContracts(unittest.TestCase):
+    def test_fixture_operations_run_without_browser_loop_and_keep_scope(self):
+        scope = ContextVar("synthetic_scope", default=None)
+        scope.set("synthetic-organization")
+        observed = []
+
+        def sync_operation(*, label):
+            with self.assertRaises(RuntimeError):
+                asyncio.get_running_loop()
+            return label, scope.get(), threading.get_ident()
+
+        async def browser():
+            with native_lab.support.SyncFixture(lambda: observed.append(
+                ("closed", threading.get_ident()),
+            )) as fixture:
+                label, organization, fixture_thread = fixture.run(sync_operation, label="query")
+                self.assertEqual((label, organization), ("query", "synthetic-organization"))
+                self.assertNotEqual(fixture_thread, threading.get_ident())
+                with self.assertRaisesRegex(ValueError, "synthetic_fixture_error"):
+                    fixture.run(lambda: int("synthetic_fixture_error"))
+                self.assertEqual(fixture.run(sync_operation, label="next")[-1], fixture_thread)
+            self.assertEqual(observed, [("closed", fixture_thread)])
+
+        asyncio.run(browser())
+
     def test_receipt_requires_browser_stop_and_database_cleanup(self):
         packet = {
             "schema": "pamolive.p1g-browser-worker/1",

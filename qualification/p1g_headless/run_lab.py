@@ -166,9 +166,23 @@ def worker(private, *, native_protocol=None, isolated=False):
         )
         connection.close()
 
+        class PrivateResult(unittest.TextTestResult):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.exception_types = set()
+
+            def addError(self, test, err):
+                self.exception_types.add(err[0].__name__)
+                super().addError(test, err)
+
+            def addFailure(self, test, err):
+                self.exception_types.add(err[0].__name__)
+                super().addFailure(test, err)
+
         class PrivateRunner(unittest.TextTestRunner):
             def __init__(self, **kwargs):
                 kwargs["stream"] = io.StringIO()
+                kwargs["resultclass"] = PrivateResult
                 super().__init__(**kwargs)
 
             def run(self, suite):
@@ -194,6 +208,10 @@ def worker(private, *, native_protocol=None, isolated=False):
                 for line in re.findall(r'browser_case\.py["\x27], line ([0-9]{1,5})', text)
             }
         )
+        value["test_exception_types"] = sorted(
+            name for name in result.exception_types
+            if re.fullmatch(r"[A-Z][A-Za-z0-9_]{1,62}", name)
+        )[:8]
         after = database_state()
         value["fresh_test_database_absent_after_runner"] = after[2] is None
         value["base_database_OID_preserved"] = before[1] == after[1]
