@@ -35,6 +35,7 @@ MAX_PAGES = 20
 PAGE_SIZE = 100
 MAX_BYTES = 4 * 1024 * 1024
 GRAPH_MAX_BODY = 1024 * 1024
+GRAPH_GROUP_REQUEST_LIMIT = 32
 MAX_GROUPS = 32
 DEADLINE_SECONDS = 45
 _DNS_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="directory-dns")
@@ -97,9 +98,14 @@ def normalize_destination(provider, endpoint, certificate_sha256, scope):
             if parsed.scheme != "https" or parsed.path != "/v1.0/users":
                 raise ValueError
             port = parsed.port or 443
-            if set(scope) != {"tenant_id"}:
+            if "tenant_id" not in scope or set(scope) - {"tenant_id", "collect_direct_groups"}:
                 raise ValueError
             canonical_scope = {"tenant_id": str(UUID(scope["tenant_id"]))}
+            collect = scope.get("collect_direct_groups", False)
+            if type(collect) is not bool:
+                raise ValueError
+            if collect:
+                canonical_scope["collect_direct_groups"] = True
             path = "/v1.0/users"
         else:
             if parsed.scheme == "ldaps":
@@ -307,6 +313,38 @@ def _graph_response(sock, *args, deadline, **kwargs):
     return http.client.HTTPResponse(_DeadlineSocket(sock, deadline), *args, **kwargs)
 
 
+def _graph_next_target(destination, link, *, path, select):
+    try:
+        new = urlsplit(_text(link, 8192))
+        origin = urlsplit(destination["endpoint"])
+        if (
+            new.scheme != origin.scheme
+            or new.hostname != origin.hostname
+            or (new.port or 443) != origin.port
+            or new.path != path
+            or new.fragment
+            or new.username is not None
+            or new.password is not None
+            or "\\" in link
+        ):
+            raise ValueError
+        pairs = parse_qsl(new.query, keep_blank_values=True, max_num_fields=4)
+        params = dict(pairs)
+        cursor_keys = params.keys() & {"$skiptoken", "$skip"}
+        if (
+            len(pairs) != len(params)
+            or len(cursor_keys) != 1
+            or params.keys() != {"$select", "$top"} | cursor_keys
+            or params["$select"] != select
+            or params["$top"] != str(PAGE_SIZE)
+            or not params[next(iter(cursor_keys))]
+        ):
+            raise ValueError
+    except (DirectoryFailure, ValueError):
+        raise DirectoryFailure("directory_next_link_invalid") from None
+    return new.path + "?" + new.query
+
+
 class _GraphReader:
     def __init__(self):
         self.identity = {}
@@ -362,6 +400,41 @@ class _GraphReader:
         finally:
             connection.close()
 
+    def _direct_groups(self, destination, row, secret, before_auth, deadline, budget):
+        try:
+            user_id = str(UUID(_text(row["id"], 36)))
+        except (DirectoryFailure, ValueError):
+            raise DirectoryFailure("directory_record_invalid") from None
+        path = f"/v1.0/users/{user_id}/memberOf"
+        target = f"{path}?$select=id&$top={PAGE_SIZE}"
+        groups, targets = set(), set()
+        for request_count in range(1, budget + 1):
+            if target in targets:
+                raise DirectoryFailure("directory_cursor_cycle")
+            targets.add(target)
+            page = self._request(destination, target, secret, before_auth, deadline)
+            if type(page) is not dict or type(page.get("value")) is not list:
+                raise DirectoryFailure("directory_response_invalid")
+            for item in page["value"]:
+                if type(item) is not dict or not isinstance(item.get("@odata.type"), str):
+                    raise DirectoryFailure("directory_response_invalid")
+                if item["@odata.type"] != "#microsoft.graph.group":
+                    continue
+                try:
+                    group_id = str(UUID(_text(item.get("id"), 36)))
+                except (DirectoryFailure, ValueError):
+                    raise DirectoryFailure("directory_record_invalid") from None
+                if group_id in groups:
+                    raise DirectoryFailure("directory_duplicate_identifier")
+                if len(groups) == MAX_GROUPS:
+                    return sorted(groups), request_count, "directory_group_limit"
+                groups.add(group_id)
+            link = page.get("@odata.nextLink")
+            if not link:
+                return sorted(groups), request_count, None
+            target = _graph_next_target(destination, link, path=path, select="id")
+        return sorted(groups), budget, "graph_group_request_budget"
+
     def pages(self, destination, secret, before_auth, deadline):
         realm = self._request(
             destination, "/v1.0/organization?$select=id", secret, before_auth, deadline
@@ -376,7 +449,11 @@ class _GraphReader:
         ):
             raise DirectoryFailure("directory_realm_mismatch")
         self.identity = {"realm_id": expected}
-        target = "/v1.0/users?$select=id,userPrincipalName,accountEnabled&$top=100"
+        user_select = "id,userPrincipalName,accountEnabled"
+        user_path = "/v1.0/users"
+        target = f"{user_path}?$select={user_select}&$top={PAGE_SIZE}"
+        collect_groups = destination["scope"].get("collect_direct_groups", False)
+        group_budget = GRAPH_GROUP_REQUEST_LIMIT
         seen = set()
         for _ in range(MAX_PAGES):
             if target in seen:
@@ -386,6 +463,11 @@ class _GraphReader:
             if type(page) is not dict or type(page.get("value")) is not list:
                 raise DirectoryFailure("directory_response_invalid")
             rows = []
+            limitation = (
+                "graph_direct_groups_only" if collect_groups
+                else "graph_group_memberships_not_collected"
+            )
+            limitations = {limitation}
             for row in page["value"]:
                 if (
                     type(row) is not dict
@@ -393,39 +475,20 @@ class _GraphReader:
                     or not set(row) <= {"id", "userPrincipalName", "accountEnabled"}
                 ):
                     raise DirectoryFailure("directory_response_invalid")
-                rows.append({**row, "accountEnabled": row.get("accountEnabled"), "groups": []})
+                groups = []
+                if collect_groups:
+                    groups, requests, limit = self._direct_groups(
+                        destination, row, secret, before_auth, deadline, group_budget,
+                    )
+                    group_budget -= requests
+                    if limit:
+                        limitations.add(limit)
+                rows.append({**row, "accountEnabled": row.get("accountEnabled"), "groups": groups})
             next_link = page.get("@odata.nextLink")
-            yield rows, bool(next_link), ("graph_group_memberships_not_collected",)
+            yield rows, bool(next_link), tuple(sorted(limitations))
             if not next_link:
                 return
-            if not isinstance(next_link, str) or len(next_link) > 8192 or "\\" in next_link:
-                raise DirectoryFailure("directory_next_link_invalid")
-            try:
-                new, origin = urlsplit(next_link), urlsplit(destination["endpoint"])
-                next_port = new.port or 443
-            except ValueError:
-                raise DirectoryFailure("directory_next_link_invalid") from None
-            if (
-                new.scheme != origin.scheme
-                or new.hostname != origin.hostname
-                or next_port != origin.port
-                or new.path != origin.path
-                or new.fragment
-                or new.username
-                or new.password
-            ):
-                raise DirectoryFailure("directory_next_link_invalid")
-            pairs = parse_qsl(new.query, keep_blank_values=True)
-            allowed = {"$select", "$top", "$skiptoken", "$skip"}
-            if (
-                len(pairs) != len(dict(pairs))
-                or any(k not in allowed for k, _ in pairs)
-                or dict(pairs).get("$select") != "id,userPrincipalName,accountEnabled"
-                or dict(pairs).get("$top") != "100"
-                or not any(k in {"$skiptoken", "$skip"} for k, _ in pairs)
-            ):
-                raise DirectoryFailure("directory_next_link_invalid")
-            target = new.path + "?" + new.query
+            target = _graph_next_target(destination, next_link, path=user_path, select=user_select)
 
 
 def _one(attributes, name):
@@ -643,7 +706,7 @@ def read_directory(
     finally:
         if hasattr(pages, "close"):
             pages.close()
-    # Users-only Graph preparation cannot claim a complete directory snapshot.
+    # Direct Graph memberships cannot establish exhaustive directory coverage.
     complete = complete and not warnings
     identity = {
         "provider": provider,

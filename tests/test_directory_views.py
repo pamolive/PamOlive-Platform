@@ -1,16 +1,20 @@
-"""Native directory UI/API contracts with synthetic identities and no network."""
+"""Native directory UI/API contracts with synthetic identities and loopback only."""
 
 import json
 import secrets
+import tempfile
 import time
 from html.parser import HTMLParser
+from uuid import uuid4
 
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from platform_core.models import ModuleActivation
-from platform_modules.connectors.directory_models import DirectoryRun
+from platform_modules.connectors.directory_inventory import verify_directory_run
+from platform_modules.connectors.directory_models import DirectoryRun, DirectorySource
 
+from .fixtures.directory import GraphPeer
 from .test_directory_inventory import DirectoryInventoryFixture
 
 
@@ -72,6 +76,56 @@ class DirectoryViewTests(DirectoryInventoryFixture, TestCase):
         self.assertEqual(len(response.json()["items"]), 1)
         self.assertNotIn(self.credential["password"], response.content.decode())
         self.assertFalse(response.json()["can_apply"])
+
+    def test_graph_configuration_collects_and_exports_direct_groups_as_partial_facts(self):
+        folder = self.enterContext(tempfile.TemporaryDirectory(prefix="pamolive-graph-view-"))
+        tenant, user_id, group_id = (str(uuid4()) for _ in range(3))
+        peer = GraphPeer(folder, tenant)
+        self.addCleanup(peer.close)
+        token = secrets.token_urlsafe(32)
+        config = {
+            "name": "Synthetic Graph with direct groups", "provider": "entra",
+            "endpoint": peer.url, "certificate_sha256": peer.pin, "tenant_id": tenant,
+            "token": token, "synthetic": True,
+        }
+        configure = reverse("directory-configure")
+        for collect, status in (("true", 400), (True, 201)):
+            response = self.client.post(
+                configure, data={**config, "collect_direct_groups": collect},
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, status)
+        source = DirectorySource.objects.get(pk=response.json()["source_id"])
+        self.assertEqual(source.destination["scope"], {
+            "tenant_id": tenant, "collect_direct_groups": True,
+        })
+        peer.pages = [{"value": [{
+            "id": user_id, "userPrincipalName": "synthetic@example.invalid", "accountEnabled": True,
+        }]}]
+        peer.membership_pages[f"/v1.0/users/{user_id}/memberOf"] = [
+            {"value": [{"@odata.type": "#microsoft.graph.group", "id": group_id}]},
+        ]
+        enabled = self.post("directory-enabled", {"enabled": True}, source.pk)
+        self.assertEqual(enabled.status_code, 200)
+        with override_settings(
+            CONNECTOR_ALLOWED_HOSTS=(f"localhost:{peer.server.server_port}",),
+            CONNECTOR_ALLOWED_NETWORKS=("127.0.0.1/32", "::1/128"),
+            CONNECTOR_CA_BUNDLE=peer.ca_file,
+        ):
+            run = self.post("directory-collect", {"idempotency_key": "groups"}, source.pk)
+        self.assertEqual(run.status_code, 200)
+        saved = DirectoryRun.objects.get(pk=run.json()["run_id"])
+        self.assertTrue(verify_directory_run(saved))
+        self.assertFalse(saved.complete)
+        self.assertEqual(saved.page_count, 1)
+        self.assertEqual(saved.transport_identity["scope"], source.destination["scope"])
+        self.assertEqual(saved.limitations, ["graph_direct_groups_only"])
+        exported = self.client.get(self.url("directory-export", source.pk))
+        self.assertEqual(exported.status_code, 200)
+        self.assertEqual(exported.json()["items"][0]["groups"], [group_id])
+        self.assertIn("group_observation_incomplete", exported.json()["items"][0]["warnings"])
+        self.assertFalse(exported.json()["can_apply"])
+        self.assertNotIn(token, exported.content.decode())
 
     def test_export_link_keeps_the_reviewed_page_size(self):
         class Links(HTMLParser):

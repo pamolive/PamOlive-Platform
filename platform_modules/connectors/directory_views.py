@@ -73,7 +73,7 @@ def _data(request, fields):
             raise ValueError("JSON nesting exceeds the accepted parser limit") from None
         if type(value) is not dict or set(value) - set(fields):
             raise ValueError("Unexpected JSON schema")
-        for key in ("synthetic", "enabled", "complete"):
+        for key in ("synthetic", "enabled", "complete", "collect_direct_groups"):
             if key in value and type(value[key]) is not bool:
                 raise ValueError("Boolean required")
         return value
@@ -131,6 +131,10 @@ class SourceForm(forms.Form):
         widget=forms.PasswordInput,
     )
     tenant_id = forms.UUIDField(label="Tenant Graph UUID", required=False)
+    collect_direct_groups = forms.BooleanField(
+        label="Lire les appartenances directes aux groupes Graph", required=False,
+        help_text="Collecte de laboratoire limitée à 32 requêtes de groupes par exécution.",
+    )
     token = forms.CharField(
         label="Jeton synthétique Graph",
         max_length=8192,
@@ -156,6 +160,7 @@ class SourceForm(forms.Form):
                 not all(data.get(k) for k in ("base_dn", "bind_dn", "password"))
                 or data.get("tenant_id")
                 or data.get("token")
+                or data.get("collect_direct_groups")
             ):
                 raise forms.ValidationError(
                     "Utilisez seulement la base DN et les identifiants LDAP/AD."
@@ -165,15 +170,19 @@ class SourceForm(forms.Form):
     def service_data(self):
         d = self.cleaned_data
         graph = d["provider"] == "entra"
+        scope = (
+            {"tenant_id": str(d["tenant_id"])} if graph
+            else {"base_dn": d["base_dn"], "bind_dn": d["bind_dn"]}
+        )
+        if graph and d["collect_direct_groups"]:
+            scope["collect_direct_groups"] = True
         return dict(
             name=d["name"],
             provider=d["provider"],
             endpoint=d["endpoint"],
             certificate_sha256=d["certificate_sha256"],
             synthetic=d["synthetic"],
-            scope={"tenant_id": str(d["tenant_id"])}
-            if graph
-            else {"base_dn": d["base_dn"], "bind_dn": d["bind_dn"]},
+            scope=scope,
             credential={"token": d["token"]}
             if graph
             else {"bind_dn": d["bind_dn"], "password": d["password"]},

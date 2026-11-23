@@ -29,6 +29,7 @@ class GraphPeer:
         certificate = x509.load_pem_x509_certificate(Path(self.ca_file).read_bytes())
         self.pin = hashlib.sha256(certificate.public_bytes(serialization.Encoding.DER)).hexdigest()
         self.tenant_id, self.requests, self.pages = tenant_id, [], []
+        self.membership_pages = {}
         self.redirect = None
         self.error_status = None
         self.interrupt_response = False
@@ -67,8 +68,11 @@ class GraphPeer:
                 if peer.error_status is not None:
                     self.send_error(peer.error_status)
                     return
-                if urlsplit(self.path).path == "/v1.0/organization":
+                path = urlsplit(self.path).path
+                if path == "/v1.0/organization":
                     value = {"value": [{"id": peer.tenant_id}]}
+                elif path in peer.membership_pages:
+                    value = peer.membership_pages[path].pop(0)
                 elif peer.pages:
                     value = peer.pages.pop(0)
                 else:
