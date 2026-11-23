@@ -392,7 +392,10 @@ class ImageScanPolicyTests(TestCase):
                     archive = self.repo / "pruned-synthetic.tar"
                     names = [f"{i}.tar" for i in range(len(layers))]
                     archive.write_bytes(expat_test.tar_bytes({
-                        **dict(zip(names, map(expat_test.tar_bytes, layers), strict=True)),
+                        **dict(zip(names, (
+                            layer if isinstance(layer, bytes) else expat_test.tar_bytes(layer)
+                            for layer in layers
+                        ), strict=True)),
                         "manifest.json": json.dumps([{"Layers": names}]).encode(),
                     }))
                     return gate.archive_facts(archive, entry["conditions"])
@@ -422,6 +425,50 @@ class ImageScanPolicyTests(TestCase):
                                           "Status: install ok installed\n").encode()
                     with self.assertRaisesRegex(gate.ScanPolicyError, "pruned_runtime_dpkg"):
                         self.evaluate(archive_facts([{**files, gate.DPKG_STATUS: installed}]))
+                    if cve == "CVE-2026-82560":
+                        path = "/usr/share/perl5/Debconf/Element/Dialog/Text.pm"
+                        module = b"synthetic Debconf module"
+                        debconf = (
+                            b"\nPackage: debconf\nVersion: 1.5.91\n"
+                            b"Status: install ok installed\nArchitecture: all\n"
+                        )
+                        reviewed = {**files, gate.DPKG_STATUS: status + debconf, path: module}
+                        dirpath = str(PurePosixPath(path).parent)
+
+                        def altered_module(**fields):
+                            layer = io.BytesIO()
+                            with tarfile.open(fileobj=layer, mode="w") as inner:
+                                member = tarfile.TarInfo(path.lstrip("/"))
+                                for field, value in fields.items():
+                                    setattr(member, field, value)
+                                is_file = member.isfile()
+                                member.size = len(module) if is_file else 0
+                                inner.addfile(member, io.BytesIO(module) if is_file else None)
+                            return layer.getvalue()
+
+                        with patch.dict(gate.DEBCONF_TEXT_SHA256, {
+                            path: hashlib.sha256(module).hexdigest(),
+                        }, clear=True):
+                            self.assertTrue(self.evaluate(archive_facts([reviewed]))["passed"])
+                            refused = (
+                                [{**files, path: module}],
+                                [{**reviewed, path: ("symlink", "elsewhere")}],
+                                [{**reviewed, "/opt/Pod/Text.pm": module}],
+                                [{path: b"unreviewed historical bytes"}, reviewed],
+                                [{path: b"unreviewed historical bytes"},
+                                 {**reviewed, f"{dirpath}/.wh.Text.pm": b""}],
+                                [reviewed, altered_module(mode=0o640)],
+                                [reviewed, altered_module(uid=1000)],
+                                [reviewed, altered_module(
+                                    type=tarfile.LNKTYPE, linkname="bin/sh",
+                                )],
+                                [reviewed, altered_module(type=tarfile.CONTTYPE)],
+                                [reviewed, altered_module(
+                                    pax_headers={"SCHILY.acl.access": "synthetic"},
+                                )],
+                            )
+                            for layers in refused:
+                                self.assertFalse(self.evaluate(archive_facts(layers))["passed"])
 
     def test_pruned_runtime_cannot_exempt_sibling_finding_or_change_disposition(self):
         cve = "CVE-2026-54370"
@@ -921,8 +968,15 @@ class ImageScanPolicyTests(TestCase):
             "org.opencontainers.image.revision": revision,
             "io.pamolive.source.license": "AGPL-3.0-or-later"}}}
         layer = io.BytesIO()
-        with tarfile.open(fileobj=layer, mode="w"):
-            pass
+        binary = expat_test.elf(b"synthetic runtime")
+        with tarfile.open(fileobj=layer, mode="w") as layer_tar:
+            member = tarfile.TarInfo("usr/bin/probe")
+            member.size = len(binary)
+            layer_tar.addfile(member, io.BytesIO(binary))
+            alias = tarfile.TarInfo("usr/bin/probe-alias")
+            alias.type = tarfile.SYMTYPE
+            alias.linkname = "probe"
+            layer_tar.addfile(alias)
         config["rootfs"] = {"type": "layers", "diff_ids": [
             "sha256:" + hashlib.sha256(layer.getvalue()).hexdigest()]}
         self.config = gate.canonical(config).encode()
@@ -977,13 +1031,53 @@ class ImageScanPolicyTests(TestCase):
         self.assertTrue(result["passed"])
         self.assertEqual(result["config_id"], self.config_id)
         self.assertEqual(result["input_sha256"]["archive"], gate.hash_file(archive))
+
+        self.os["matches"] = [self.match("CVE-2026-999999", state="wont-fix")]
+        write(self.repo / "os-report.json", self.os)
+        blocked = list(args)
+        rejected = self.repo / "blocked.json"
+        inventory_path = self.repo / "inventory.json"
+        blocked[blocked.index("--output") + 1] = str(rejected)
+        blocked.extend(["--elf-inventory-output", str(inventory_path)])
+        with patch.object(gate, "TOOL_SHA256", scanner_sha):
+            self.assertEqual(gate.main(blocked), 2)
+        inventory = gate.read_json(inventory_path)
+        failed_policy = gate.read_json(rejected)
+        self.assertFalse(failed_policy["passed"])
+        self.assertEqual(inventory["revision"], revision)
+        self.assertEqual(inventory["config_id"], self.config_id)
+        self.assertEqual(inventory["archive_sha256"], gate.hash_file(archive))
+        self.assertEqual(inventory["layer_diff_ids"], config["rootfs"]["diff_ids"])
+        self.assertEqual(inventory["policy_result_sha256"], gate.hash_file(rejected))
+        self.assertEqual(inventory["elf_set"], failed_policy["elf_set"])
+        self.assertEqual(
+            inventory["entries"],
+            [
+                {"path": "/usr/bin/probe", "type": "elf", "class": 64, "machine": 62,
+                 "sha256": hashlib.sha256(binary).hexdigest()},
+                {"path": "/usr/bin/probe-alias", "type": "symlink", "target": "probe"},
+            ],
+        )
+        self.assertFalse(inventory["build_verified"])
+        self.assertFalse(inventory["cryptographic_build_attestation_verified"])
+        self.assertFalse(inventory["cxx_template_instantiation_verified"])
+        same_inventory = inventory_path.read_bytes()
+        collision = list(blocked)
+        collision[collision.index("--output") + 1] = str(self.repo / "collision.json")
+        with patch.object(gate, "TOOL_SHA256", scanner_sha):
+            self.assertEqual(gate.main(collision), 1)
+        self.assertEqual(inventory_path.read_bytes(), same_inventory)
+
         scanner.write_bytes(b"tampered synthetic release")
-        changed = list(args)
+        changed = list(blocked)
         changed[changed.index("--output") + 1] = str(self.repo / "rejected.json")
+        absent_inventory = self.repo / "rejected-inventory.json"
+        changed[changed.index("--elf-inventory-output") + 1] = str(absent_inventory)
         with patch.object(gate, "TOOL_SHA256", scanner_sha):
             self.assertEqual(gate.main(changed), 1)
         self.assertEqual(gate.read_json(self.repo / "rejected.json")["error"],
                          "scanner_archive_hash")
+        self.assertFalse(absent_inventory.exists())
 
     def layered_facts(self, changes, capture_set=False):
         binary = b"\x7fELF\x02\x01" + b"synthetic compiled bytes"

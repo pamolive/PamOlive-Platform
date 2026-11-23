@@ -119,6 +119,17 @@ reste bloquant pour ces builds, dans l'attente d'une preuve couvrant les
 consommateurs ELF de cette image.
 [Preuve GCC](../.github/qualification/evidence/gcc-95619-trixie.v1.json)
 
+Le scan GitHub retient `elf-inventory.json` pour la revue de
+CVE-2026-102010. Ce relevé contient les ELF et les liens finaux
+triés par chemin, la révision, l'identité de configuration et les
+empreintes du TAR, des couches et du rapport de politique. Le
+même relevé est produit lorsque le scan retourne des groupes
+High bloquants, après vérification des entrées. Le reçu reste une
+mesure de l'image. Sa lecture exige le rapport de politique exact
+et la concordance de son empreinte avec celle du reçu.
+La provenance des consommateurs modifiés
+et l'absence d'instanciation PBDS exigent une revue distincte.
+
 ### Modules Perl exclus de l’image
 
 Les constats OS CVE-2026-82560 et CVE-2026-9538 concernent respectivement
@@ -128,6 +139,16 @@ modules dans `perl-modules-5.40`. L'image conserve le paquet essentiel
 exige ce groupe Debian 13.8 amd64 exact et lit le statut dpkg du TAR.
 Il refuse aussi les noms Perl correspondants dans toutes les couches,
 y compris les liens et les chemins masqués ensuite par un whiteout.
+Le scan de la #76 confirme l'absence d'`Archive::Tar`. Les sept
+fichiers `Text.pm` de Debian `debconf` 1.5.91 appartiennent à
+d'autres espaces de noms. La décision `Pod::Text` peut les écarter
+uniquement si dpkg enregistre cette version de `debconf` et si les
+chemins, les octets, les propriétaires et les modes réguliers
+épinglés concordent dans toutes les couches. Un lien ou un fichier
+altéré à ces chemins reste bloquant.
+[Scan #76](https://github.com/pamolive/PamOlive-Platform/actions/runs/45201290816/artifacts/14834239768)
+· [Relevé du paquet debconf](../.github/qualification/evidence/perl-debconf-text.v1.json)
+
 Grype conserve les deux constats High. La vérification porte sur les
 couches de l'image qualifiée. Tout ajout de modules Perl par montage
 ou par une autre distribution de logiciels exige sa propre revue.
