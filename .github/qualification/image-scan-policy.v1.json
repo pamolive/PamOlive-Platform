@@ -9,6 +9,234 @@
   "coverage": "OS archive plus declared FreeRDP/Guacamole and application SBOM; bundled wheel libraries are not automatically covered",
   "findings": [
     {
+      "analysis": "CVE-2026-113351 is corrected in upstream Expat 2.10.0 and the corresponding Debian source package. The pinned Trixie rebuild contains that source. Admission requires the installed OS package, rebuilt source receipts, exact ELF identities and matching Expat SBOM projection from the archive scanned by Grype.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "expat_rebuild",
+          "sha256": "f24eef7b48bb8f5c52139b5affd941df9505765aa8c07289d55df97a48d68084"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T10:45:04+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-113351",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libexpat1",
+            "purl": "pkg:deb/debian/libexpat1@2.10.0-1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=expat",
+            "type": "deb",
+            "version": "2.10.0-1+pamolive2"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "expat",
+        "vulnerability_id": "CVE-2026-113351"
+      },
+      "fingerprint": "sha256:4e547f5034607497ebe3029aeea40cce60b589cb9439d01a838b5eec50e48ba7",
+      "local_evidence": [
+        {
+          "path": "deploy/expat-remediation/authenticate.py",
+          "sha256": "ee2fa56b745671af2e2349f663220ed16d1b6389f79c376801eed9bedbd1c803"
+        },
+        {
+          "path": "deploy/expat-remediation/materials.json",
+          "sha256": "f24eef7b48bb8f5c52139b5affd941df9505765aa8c07289d55df97a48d68084"
+        },
+        {
+          "path": "deploy/expat-remediation/source_audit.py",
+          "sha256": "7a0f98e4c36ce3c7a9d3c21493986236a3db72e6aa7a9d281e781ee025e2e3a1"
+        }
+      ],
+      "reviewed_at": "2026-11-23T10:45:04+00:00",
+      "reviewers": [
+        "codex:/root/expat_release_review",
+        "codex:/root/openssl_next_release"
+      ],
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-113351",
+        "https://github.com/libexpat/libexpat/blob/R_2_10_0/expat/Changes"
+      ]
+    },
+    {
+      "analysis": "CVE-2026-115506 is corrected in upstream Expat 2.10.0 and the corresponding Debian source package. The pinned Trixie rebuild contains that source. Admission requires the installed OS package, rebuilt source receipts, exact ELF identities and matching Expat SBOM projection from the archive scanned by Grype.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "expat_rebuild",
+          "sha256": "f24eef7b48bb8f5c52139b5affd941df9505765aa8c07289d55df97a48d68084"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T10:45:04+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-115506",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libexpat1",
+            "purl": "pkg:deb/debian/libexpat1@2.10.0-1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=expat",
+            "type": "deb",
+            "version": "2.10.0-1+pamolive2"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "expat",
+        "vulnerability_id": "CVE-2026-115506"
+      },
+      "fingerprint": "sha256:bdd717541ae8415fc3ade7ad1b5314af5e0c335744d880a6566951df2246aeb3",
+      "local_evidence": [
+        {
+          "path": "deploy/expat-remediation/authenticate.py",
+          "sha256": "ee2fa56b745671af2e2349f663220ed16d1b6389f79c376801eed9bedbd1c803"
+        },
+        {
+          "path": "deploy/expat-remediation/materials.json",
+          "sha256": "f24eef7b48bb8f5c52139b5affd941df9505765aa8c07289d55df97a48d68084"
+        },
+        {
+          "path": "deploy/expat-remediation/source_audit.py",
+          "sha256": "7a0f98e4c36ce3c7a9d3c21493986236a3db72e6aa7a9d281e781ee025e2e3a1"
+        }
+      ],
+      "reviewed_at": "2026-11-23T10:45:04+00:00",
+      "reviewers": [
+        "codex:/root/expat_release_review",
+        "codex:/root/openssl_next_release"
+      ],
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-115506",
+        "https://github.com/libexpat/libexpat/blob/R_2_10_0/expat/Changes"
+      ]
+    },
+    {
+      "analysis": "CVE-2026-117610 is corrected in upstream Expat 2.10.0 and the corresponding Debian source package. The pinned Trixie rebuild contains that source. Admission requires the installed OS package, rebuilt source receipts, exact ELF identities and matching Expat SBOM projection from the archive scanned by Grype.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "expat_rebuild",
+          "sha256": "f24eef7b48bb8f5c52139b5affd941df9505765aa8c07289d55df97a48d68084"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T10:45:04+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-117610",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libexpat1",
+            "purl": "pkg:deb/debian/libexpat1@2.10.0-1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=expat",
+            "type": "deb",
+            "version": "2.10.0-1+pamolive2"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "expat",
+        "vulnerability_id": "CVE-2026-117610"
+      },
+      "fingerprint": "sha256:0ba0bb5e85df8773e6549006b35c628c3bb90d62e52a1144c4cdce74dec3529a",
+      "local_evidence": [
+        {
+          "path": "deploy/expat-remediation/authenticate.py",
+          "sha256": "ee2fa56b745671af2e2349f663220ed16d1b6389f79c376801eed9bedbd1c803"
+        },
+        {
+          "path": "deploy/expat-remediation/materials.json",
+          "sha256": "f24eef7b48bb8f5c52139b5affd941df9505765aa8c07289d55df97a48d68084"
+        },
+        {
+          "path": "deploy/expat-remediation/source_audit.py",
+          "sha256": "7a0f98e4c36ce3c7a9d3c21493986236a3db72e6aa7a9d281e781ee025e2e3a1"
+        }
+      ],
+      "reviewed_at": "2026-11-23T10:45:04+00:00",
+      "reviewers": [
+        "codex:/root/expat_release_review",
+        "codex:/root/openssl_next_release"
+      ],
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-117610",
+        "https://github.com/libexpat/libexpat/blob/R_2_10_0/expat/Changes"
+      ]
+    },
+    {
+      "analysis": "CVE-2026-118370 is corrected in upstream Expat 2.10.0 and the corresponding Debian source package. The pinned Trixie rebuild contains that source. Admission requires the installed OS package, rebuilt source receipts, exact ELF identities and matching Expat SBOM projection from the archive scanned by Grype.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "expat_rebuild",
+          "sha256": "f24eef7b48bb8f5c52139b5affd941df9505765aa8c07289d55df97a48d68084"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T10:45:04+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-118370",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libexpat1",
+            "purl": "pkg:deb/debian/libexpat1@2.10.0-1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=expat",
+            "type": "deb",
+            "version": "2.10.0-1+pamolive2"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "expat",
+        "vulnerability_id": "CVE-2026-118370"
+      },
+      "fingerprint": "sha256:897a8186eec3a0d93bc26792fed749ff868df5cd0750be194b400f7c425b103f",
+      "local_evidence": [
+        {
+          "path": "deploy/expat-remediation/authenticate.py",
+          "sha256": "ee2fa56b745671af2e2349f663220ed16d1b6389f79c376801eed9bedbd1c803"
+        },
+        {
+          "path": "deploy/expat-remediation/materials.json",
+          "sha256": "f24eef7b48bb8f5c52139b5affd941df9505765aa8c07289d55df97a48d68084"
+        },
+        {
+          "path": "deploy/expat-remediation/source_audit.py",
+          "sha256": "7a0f98e4c36ce3c7a9d3c21493986236a3db72e6aa7a9d281e781ee025e2e3a1"
+        }
+      ],
+      "reviewed_at": "2026-11-23T10:45:04+00:00",
+      "reviewers": [
+        "codex:/root/expat_release_review",
+        "codex:/root/openssl_next_release"
+      ],
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-118370",
+        "https://github.com/libexpat/libexpat/blob/R_2_10_0/expat/Changes"
+      ]
+    },
+    {
       "analysis": "CVE-2026-119373 is corrected in SQLite 3.54.0 and in Debian source 3.54.1-2. Trixie installs the reviewed rebuild of that authenticated source. This decision requires the exact amd64 DPKG entry, the matching ELF and SONAME alias from the scanned archive, and the source and build evidence.",
       "analyst": "codex:/root",
       "conditions": [

@@ -215,3 +215,28 @@ decisions. Its checks cover named SQLite shared libraries on the final
 filesystem and the identified Debian package. Static SQLite code in
 unrelated binaries, other platforms and other CVEs need their own
 evidence and decisions.
+
+### Expat 2.10.0 rebuilt for Trixie
+
+Expat 2.10.0 and its Debian source package 2.10.0-1 contain the fixes
+for CVE-2026-113351, CVE-2026-115506, CVE-2026-117610 and
+CVE-2026-118370. The reviewed Trixie rebuild is libexpat1
+2.10.0-1+pamolive2 on amd64.
+[Upstream release](https://github.com/libexpat/libexpat/releases/tag/R_2_10_0) |
+[Debian tracking](https://security-tracker.debian.org/tracker/source-package/expat)
+
+The policy reads the installed package, the source audit and the
+rebuild receipt from the exact archive. It checks the four reviewed
+ELF identities and the absence of the four previous ELF hashes across
+all layers. It reconstructs the Expat report and checks the combined
+SBOM for the same archive, report digest, five Expat components, five
+dependency records and three image roots. These checks apply only to
+the four matching OS package groups on Debian 13.8.
+[Source audit evidence](https://github.com/pamolive/PamOlive-Platform/actions/runs/43918797136/artifacts/14252167998) |
+[Example image evidence](https://github.com/pamolive/PamOlive-Platform/actions/runs/45147243883/artifacts/14808542038)
+
+The four findings remain visible in the scan output. The archive
+checks are repeated when a matching Expat decision applies. The report
+retains its existing limits on build attestation and operational
+authority. The two local Expat patches and findings from other
+versions, builds or scan scopes require separate decisions.
