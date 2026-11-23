@@ -2,9 +2,11 @@
 
 from contextlib import contextmanager
 
+from psycopg import Error as PsycopgError
 from psycopg.rows import dict_row
 
-from .codec import encode, need, sha
+from .audit_archive import GENESIS_SHA256, MAX_PAGE_EVENTS, Checkpoint, encode_archive_page
+from .codec import Error, encode, integer, need, sha
 
 
 def role_guard(cursor, *, observer=False):
@@ -164,6 +166,54 @@ class PostgresHistory:
         with _read_transaction(self.connect, observer=True) as cursor:
             _closed_fence(cursor, slot)
             return _terminal_row(cursor, slot, peer, operation_id)
+
+    def archive_page(self, slot, checkpoint, after_seq, *, limit=MAX_PAGE_EVENTS):
+        """Read a bounded page anchored to the caller's independently pinned head."""
+        need(type(checkpoint) is Checkpoint)
+        checkpoint.require_slot(slot)
+        integer(after_seq, 0, checkpoint.last_seq)
+        integer(limit, 1, MAX_PAGE_EVENTS)
+        need(after_seq < checkpoint.last_seq or checkpoint.last_seq == 0)
+
+        try:
+            with _read_transaction(self.connect, observer=True) as cursor:
+                _closed_fence(cursor, slot)
+                cursor.execute(
+                    "SELECT seq,head_sha256 FROM pam_usage_anchor.audit_heads WHERE context_id=%s",
+                    (slot.context_id,),
+                )
+                head = cursor.fetchone()
+                need(
+                    head is not None
+                    and type(head["seq"]) is int
+                    and head["seq"] == checkpoint.last_seq
+                    and head["head_sha256"] == checkpoint.head_sha256,
+                    "context_refused",
+                    403,
+                )
+
+                previous_sha256 = GENESIS_SHA256
+                if after_seq:
+                    cursor.execute(
+                        """SELECT event_sha256 FROM pam_usage_anchor.audit_events
+                           WHERE context_id=%s AND seq=%s""",
+                        (slot.context_id, after_seq),
+                    )
+                    previous = cursor.fetchone()
+                    need(previous is not None, "context_refused", 403)
+                    previous_sha256 = previous["event_sha256"]
+
+                cursor.execute(
+                    """SELECT seq,event_bytes,previous_sha256,event_sha256
+                       FROM pam_usage_anchor.audit_events
+                       WHERE context_id=%s AND seq>%s AND seq<=%s ORDER BY seq LIMIT %s""",
+                    (slot.context_id, after_seq, checkpoint.last_seq, limit),
+                )
+                rows = cursor.fetchall()
+        except (PsycopgError, OSError):
+            raise Error("unavailable", 503) from None
+
+        return encode_archive_page(checkpoint, after_seq, previous_sha256, rows, limit=limit)
 
 
 class PostgresLedger:

@@ -15,6 +15,7 @@ MODULES = frozenset(
         "__init__",
         "administration",
         "assembly",
+        "audit_archive",
         "authority",
         "client",
         "codec",
@@ -36,11 +37,14 @@ RECEPTION = {
     "tests/golden/codec.json",
     "tests/test_history.py",
     "tests/test_cold_history.py",
+    "tests/test_audit_archive.py",
+    "tests/test_archive_reader.py",
     "tests/test_http_client.py",
     "tests/test_pure.py",
     "tests/test_r2.py",
 }
 LAB = {
+    "lab/witness_archive_cases.py",
     "lab/witness_driver.py",
     "lab/witness_fence_cases.py",
     "lab/witness_history_cases.py",

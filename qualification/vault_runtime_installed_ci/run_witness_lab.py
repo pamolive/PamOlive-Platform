@@ -129,6 +129,10 @@ DRIVER_PHASES = frozenset(
         b"restore_reads\n",
         b"restore_write_refusal\n",
         b"restore_unchanged\n",
+        b"audit_archive_checkpoint\n",
+        b"audit_archive_pages\n",
+        b"audit_archive_refusals\n",
+        b"audit_archive_unchanged\n",
         b"acknowledge\n",
     )
 )
@@ -184,6 +188,13 @@ RECOVERY_CASES = (
 )
 RESTORED_CASES = (*RECOVERY_CASES, "restored_context_closed", "restored_rows_exact")
 CLUSTER_RESTORED_CASES = (*RESTORED_CASES, "source_pg_unreachable")
+AUDIT_ARCHIVE_CASES = (
+    "checkpoint_from_original",
+    "restored_pages_match",
+    "wrong_head_refused",
+    "foreign_organization_refused",
+    "databases_unchanged",
+)
 STORAGE_CASES = (
     "archive_verified",
     "distinct_database_created",
@@ -236,6 +247,7 @@ def create(
     restore_witness=False,
     restore_cluster=False,
     pitr=False,
+    audit_archive=False,
 ):
     pg_environment = {
         "PGDATA": "/var/lib/postgresql/data",
@@ -257,6 +269,9 @@ def create(
         driver_args = (*driver_args, "--restore-witness")
     if restore_cluster:
         driver_args = (*driver_args, "--restore-cluster")
+    if audit_archive:
+        need(pitr)
+        driver_args = (*driver_args, "--audit-archive")
     specs = [
         Container(
             consumer,
@@ -449,7 +464,7 @@ def collect_pure(lab, prepare, source_sha, descriptor_sha):
     expected = {
         "schema": "pamolive.witness-installed-pure/1",
         "phase": "complete",
-        "tests": 77,
+        "tests": 96,
         "failures": 0,
         "errors": 0,
         "skips": 0,
@@ -469,7 +484,7 @@ def collect_pure(lab, prepare, source_sha, descriptor_sha):
 
 def collect_native(
     raw, source_sha, *, fence=False, history=False, restart=False,
-    restore_witness=False, restore_cluster=False,
+    restore_witness=False, restore_cluster=False, audit_archive=False,
 ):
     # Consume only a closed receipt. No child payload, request, or private
     # material may cross into an uploaded qualification artifact.
@@ -521,6 +536,10 @@ def collect_native(
         expected["schema"] = "W01-restore-cluster-results/1"
         expected["restoration"] = dict.fromkeys(CLUSTER_RESTORED_CASES, True)
         expected["postgres"]["clusters"] = 3
+    if audit_archive:
+        need(restore_cluster)
+        expected["schema"] = "W01-audit-archive-results/1"
+        expected["audit_archive"] = dict.fromkeys(AUDIT_ARCHIVE_CASES, True)
     canonical = json.dumps(expected, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
     need(raw == canonical.encode("ascii") + b"\n")
     return expected
@@ -646,7 +665,7 @@ def restore_closed_witness(
 
 def run(
     lab, report, *, fence=False, history=False, restart=False,
-    restore_witness=False, restore_cluster=False, pitr=False,
+    restore_witness=False, restore_cluster=False, pitr=False, audit_archive=False,
 ):
     work = lab.work
     stage_root = work / "verified-consumer-context"
@@ -672,6 +691,7 @@ def run(
         restore_witness=restore_witness,
         restore_cluster=restore_cluster,
         pitr=pitr,
+        audit_archive=audit_archive,
     )
     prepare, driver, witness = (roles[name] for name in ("preparer", "driver", "witness"))
     lab.start(*prepare)
@@ -751,6 +771,7 @@ def run(
         restart=restart,
         restore_witness=restore_witness,
         restore_cluster=restore_cluster,
+        audit_archive=audit_archive,
     )
     mark(lab, driver, "acknowledge")
     need(lab.engine.checked("container", "wait", driver[0]["identity"], timeout=5) == b"0\n")
@@ -769,6 +790,7 @@ def main():
     restoration.add_argument("--restore-witness", action="store_true")
     restoration.add_argument("--restore-cluster", action="store_true")
     parser.add_argument("--pitr", action="store_true")
+    parser.add_argument("--audit-archive", action="store_true")
     options = parser.parse_args()
     if options.history and not options.fence:
         parser.error("--history requires --fence")
@@ -780,6 +802,8 @@ def main():
         parser.error("--restore-cluster requires --restart-history")
     if options.pitr and not options.restore_cluster:
         parser.error("--pitr requires --restore-cluster")
+    if options.audit_archive and not options.pitr:
+        parser.error("--audit-archive requires --pitr")
     report = {
         "schema": "pamolive.witness-installed-dual-cluster/2",
         "phase": "reservation",
@@ -807,6 +831,8 @@ def main():
     if options.pitr:
         lab_type = WitnessPitrLab
         report["schema"] = "pamolive.witness-installed-pitr/1"
+    if options.audit_archive:
+        report["schema"] = "pamolive.witness-installed-pitr-audit/1"
     lab = None
     try:
         lab = lab_type(options.work)
@@ -819,6 +845,7 @@ def main():
             restore_witness=options.restore_witness,
             restore_cluster=options.restore_cluster,
             pitr=options.pitr,
+            audit_archive=options.audit_archive,
         )
     except Exception:
         pass
