@@ -315,3 +315,31 @@ Le laboratoire actif est limité à la branche Chrome 158. Le bootstrap
 y impose le mode de staging et de nettoyage, côté runner et processus
 Root. L'essai doit confirmer la libération du préfixe et des
 descripteurs. Le workflow conserve l'arrêt avant le parcours UI.
+
+## Mesure Phase B du sandbox de Chrome 158 déplacé
+
+La campagne de staging a vérifié la signature, les cas négatifs et
+le nettoyage dans les jobs push et PR. Le Chrome préinstallé sur
+l'image Ubuntu GitHub peut avoir une autre version ou un autre chemin
+d'exécution. La mesure Phase B réauthentifie le paquet 158, vérifie
+l'arbre épinglé et crée une copie privée sous l'UID du runner.
+Elle exclut le helper set-ID. Elle vérifie de nouveau les fichiers
+après la fermeture du navigateur.
+[Reçu de staging](https://github.com/pamolive/PamOlive-Platform/actions/runs/45198963823/artifacts/14831685472)
+· [Image Ubuntu publiée par GitHub](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md)
+
+Un job distinct crée un espace réseau Linux éphémère sans interface
+externe. Seuls les outils système créent l'espace. Python, Playwright
+et Chrome s'exécutent sous l'UID du runner avec groupes et capacités
+supprimés et `NoNewPrivs` actif. La mesure lit le diagnostic local
+`chrome://sandbox/` et ouvre une page inerte. Elle exige le sandbox
+de type Namespace et vérifie les processus du renderer. Le mode
+AppArmor est relevé séparément. Un refus de l'hôte ou du navigateur
+donne un reçu de refus. Le job ne change aucun profil système.
+L'espace réseau isole le trafic IP. Les sockets Unix nommées
+partagent encore le système de fichiers du runner éphémère.
+
+Le reçu décrit la copie déplacée sur le runner observé. Le profil
+opérationnel et le `HOLD` de la CI UI restent inchangés. Le parcours
+Identity et les essais PAM de bout en bout gardent leurs propres
+critères de qualification.

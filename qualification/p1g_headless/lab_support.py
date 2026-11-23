@@ -110,6 +110,7 @@ def sandbox_diagnostic(rows, evaluation):
         and all(flags.get(name) == "Yes" for name in required),
         "chromium_sandbox_not_active",
     )
+    return flags["Layer 1 Sandbox"]
 
 
 def process_ids(packet):
@@ -225,7 +226,7 @@ def sandbox_receipt(value):
     )
 
 
-def observe_browser_sandbox(browser, executable):
+def observe_browser_sandbox(browser, executable, *, namespace_only=False):
     """Check the running browser before navigations to the synthetic application."""
     uid = os.getuid()
     context = browser.new_context(ignore_https_errors=False, service_workers="block")
@@ -248,7 +249,8 @@ def observe_browser_sandbox(browser, executable):
                     .map(cell => cell.textContent.trim().slice(0, 81)))"""
         )
         evaluation = diagnostic.locator("#evaluation").text_content(timeout=5000)
-        sandbox_diagnostic(rows, evaluation)
+        layer_one = sandbox_diagnostic(rows, evaluation)
+        need(not namespace_only or layer_one == "Namespace", "sandbox_namespace_required")
         inert = context.new_page()
         inert.set_content("<title>PamOlive sandbox probe</title>", timeout=5000)
         session = browser.new_browser_cdp_session()

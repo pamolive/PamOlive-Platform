@@ -1,0 +1,47 @@
+name: P1-G relocated Chrome sandbox measurement
+on:
+  push:
+    branches: [agent/p1g-chrome158-sandbox-probe]
+permissions:
+  contents: read
+jobs:
+  sandbox-measurement:
+    if: github.repository == 'pamolive/PamOlive-Platform'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 13
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Verify sandbox measurement source contracts
+        run: >-
+          python -B -m unittest
+          qualification.p1g_headless.test_chrome_sandbox_probe
+          qualification.p1g_headless.test_chrome_probe_stage
+          qualification.p1g_headless.test_chrome_metadata
+      - name: Prepare the pinned browser driver
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          python -m venv "$RUNNER_TEMP/pamolive-sandbox-venv"
+          driver_python="$RUNNER_TEMP/pamolive-sandbox-venv/bin/python"
+          "$driver_python" -m pip --isolated --disable-pip-version-check install --only-binary=:all: --no-deps --require-hashes -r qualification/p1g_headless/requirements-headless-linux-cp312.lock
+          "$driver_python" -m pip check
+      - name: Verify authenticated Chrome 158 and measure its sandbox without application traffic
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          "$RUNNER_TEMP/pamolive-sandbox-venv/bin/python" -I -B qualification/p1g_headless/chrome_sandbox_probe.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: p1g-relocated-sandbox-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pamolive-sandbox-${{ github.run_id }}-${{ github.run_attempt }}.json
+          if-no-files-found: error
+          retention-days: 7
