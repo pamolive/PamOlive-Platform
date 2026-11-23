@@ -1,8 +1,12 @@
 """Source and synthetic contracts for the relocated sandbox measurement."""
 
+import os
+import sys
+import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from types import SimpleNamespace
+from unittest.mock import Mock, mock_open, patch
 
 from qualification.p1g_headless import chrome_sandbox_probe as probe
 from qualification.p1g_headless import lab_support
@@ -16,6 +20,7 @@ ENV = {
     "GITHUB_SHA": "a" * 40,
     "GITHUB_RUN_ID": "25",
     "GITHUB_RUN_ATTEMPT": "1",
+    "P1G_SANDBOX_RUNNER": "ubuntu-24.04",
 }
 STATUS = b"NoNewPrivs:\t1\nUid:\t1001\t1001\t1001\t1001\nGroups:\t\n" + b"".join(
     f"{cap}:\t0000000000000000\n".encode() for cap in sorted(probe.CAP_FIELDS)
@@ -25,6 +30,10 @@ SUCCESS = {
     "layer_one": "Namespace",
     "version": "158.0.8127.36",
     "ip_network_isolated": True,
+    "namespace_control": {
+        "create_user_namespace": "created",
+        "sysctls": dict.fromkeys(probe.NAMESPACE_SYSCTLS, "absent"),
+    },
     "renderer_evidence": {
         "schema": "pamolive.p1g-active-sandbox/1",
         "browser_apparmor": "unconfined",
@@ -35,9 +44,39 @@ SUCCESS = {
 
 
 class SandboxProbeTests(unittest.TestCase):
+    def test_successful_launch_rechecks_both_tools_and_returns_renderer_evidence(self):
+        browser = Mock(version=probe.BROWSER_VERSION)
+        playwright = Mock()
+        playwright.chromium.launch.return_value = browser
+        manager = Mock()
+        manager.__enter__ = Mock(return_value=playwright)
+        manager.__exit__ = Mock(return_value=False)
+        sync_api = SimpleNamespace(sync_playwright=lambda: manager)
+        binary_pin = {"sha256": probe.CHROME_SHA, "bytes": probe.CHROME_BYTES}
+        distribution = Mock(version=lab_support.SDK_VERSION)
+        distribution.locate_file.return_value = Path("driver/node")
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.dict(sys.modules, {"playwright.sync_api": sync_api}),
+            patch.dict(os.environ, {}, clear=True),
+            patch.object(probe.importlib.metadata, "distribution", return_value=distribution),
+            patch.object(lab_support, "tool_pin", return_value=binary_pin) as binary,
+            patch.object(lab_support, "playwright_node_pin", return_value={"bytes": 1}) as node,
+            patch.object(lab_support, "observe_browser_sandbox",
+                         return_value=SUCCESS["renderer_evidence"]),
+        ):
+            observed = probe.browser_probe(Path(directory))
+        browser.close.assert_called_once_with()
+        self.assertEqual(binary.call_count, 2)
+        self.assertEqual(node.call_count, 2)
+        self.assertTrue(probe.valid_worker_result({
+            **observed, "namespace_control": SUCCESS["namespace_control"],
+        }))
+
     def test_scope_refuses_other_runners_forks_and_branches(self):
         self.assertEqual(
-            probe.run_identity(ENV), {"revision": "a" * 40, "run": "25", "attempt": "1"}
+            probe.run_identity(ENV),
+            {"revision": "a" * 40, "run": "25", "attempt": "1", "runner": "ubuntu-24.04"},
         )
         for key, value in {
             "RUNNER_ENVIRONMENT": "self-hosted",
@@ -45,9 +84,38 @@ class SandboxProbeTests(unittest.TestCase):
             "GITHUB_EVENT_NAME": "pull_request",
             "GITHUB_REF": "refs/heads/main",
             "GITHUB_SHA": "main",
+            "P1G_SANDBOX_RUNNER": "ubuntu-latest",
         }.items():
             with self.subTest(key=key), self.assertRaises(ValueError):
                 probe.run_identity({**ENV, key: value})
+
+    def test_host_version_and_machine_are_measured_separately_from_label(self):
+        release = b'NAME="Ubuntu"\nID=ubuntu\nVERSION_ID="22.04"\n'
+        uname = SimpleNamespace(machine="x86_64", release="6.8.0-azure")
+        with (
+            patch("builtins.open", mock_open(read_data=release)),
+            patch.object(probe.os, "uname", return_value=uname, create=True),
+        ):
+            self.assertEqual(probe.runner_facts("ubuntu-22.04")["kernel"], uname.release)
+            with self.assertRaisesRegex(ValueError, "runner_os_mismatch"):
+                probe.runner_facts("ubuntu-24.04")
+            uname.machine = "aarch64"
+            with self.assertRaisesRegex(ValueError, "runner_kernel"):
+                probe.runner_facts("ubuntu-22.04")
+
+    def test_namespace_control_records_without_writing_sysctls_or_elevating(self):
+        failed = SimpleNamespace(returncode=1)
+        with (
+            patch("builtins.open", mock_open(read_data=b"1\n")) as read,
+            patch.object(probe.subprocess, "run", return_value=failed) as run,
+        ):
+            result = probe.namespace_control()
+        self.assertEqual(result, {"create_user_namespace": "command_failed",
+                                  "sysctls": dict.fromkeys(probe.NAMESPACE_SYSCTLS, 1)})
+        self.assertTrue(all(call.args[1] == "rb" for call in read.call_args_list))
+        command = ["/usr/bin/unshare", "--user", "--", "/usr/bin/true"]
+        self.assertEqual(run.call_args.args[0], command)
+        self.assertEqual(run.call_args.kwargs["timeout"], 4)
 
     def test_isolation_requires_fresh_network_namespace_and_unprivileged_status(self):
         arguments = (STATUS, [(1, "lo")], 23, 27, [], 1001)
@@ -79,6 +147,7 @@ class SandboxProbeTests(unittest.TestCase):
                     "revision": "a" * 40,
                     "run": "25",
                     "attempt": "2",
+                    "runner": "ubuntu-24.04",
                 },
                 123,
             )
@@ -98,6 +167,7 @@ class SandboxProbeTests(unittest.TestCase):
         self.assertIn("--no-new-privs", command)
         self.assertIn("--bounding-set=-all", command)
         self.assertIn("--clear-groups", command)
+        self.assertIn("P1G_SANDBOX_RUNNER=ubuntu-24.04", command)
         self.assertLess(command.index("--ambient-caps=-all"), command.index("/usr/bin/env"))
         self.assertEqual(
             command[-4:], ["--worker", str(Path("/scratch/work")), "--host-net", "123"]
@@ -112,6 +182,7 @@ class SandboxProbeTests(unittest.TestCase):
                     "phase": "launch",
                     "ip_network_isolated": True,
                     "code": "namespace_startup_refused",
+                    "namespace_control": SUCCESS["namespace_control"],
                 }
             )
         )
@@ -121,6 +192,12 @@ class SandboxProbeTests(unittest.TestCase):
             {"ip_network_isolated": False},
             {"operational_GO": True},
             {"renderer_evidence": {}},
+            {"namespace_control": {}},
+            {"namespace_control": {
+                "create_user_namespace": "created",
+                "sysctls": {**SUCCESS["namespace_control"]["sysctls"],
+                            "max_user_namespaces": True},
+            }},
         ):
             with self.subTest(update=update):
                 self.assertFalse(probe.valid_worker_result({**SUCCESS, **update}))
@@ -134,6 +211,49 @@ class SandboxProbeTests(unittest.TestCase):
             probe.failure_code("launch", RuntimeError("unclassified error details")),
             "browser_measurement_refused",
         )
+        self.assertEqual(
+            probe.failure_code("launch", RuntimeError("version `GLIBC_2.39' not found")),
+            "browser_dependencies_unavailable",
+        )
+
+    def test_resolute_selects_only_a_recognized_canonical_sudo_role(self):
+        provider = Path("/usr/lib/cargo/bin/sudo")
+        with patch.object(Path, "resolve", return_value=provider) as resolve:
+            self.assertEqual(probe.sudo_executable("ubuntu-26.04"), provider.as_posix())
+            self.assertEqual(probe.sudo_executable("ubuntu-24.04"), "/usr/bin/sudo")
+        resolve.assert_called_once_with(strict=True)
+        with patch.object(Path, "resolve", return_value=Path("/tmp/unreviewed")):
+            with self.assertRaisesRegex(ValueError, "sudo_provider_refused"):
+                probe.sudo_executable("ubuntu-26.04")
+
+    def test_launcher_reports_only_component_from_the_same_refusal(self):
+        for stderr, expected in (
+            (b"setpriv: diagnostic details\n", "setpriv_refused"),
+            (b"unshare: diagnostic details\n", "unshare_refused"),
+            (b"sudo-rs: diagnostic details\n", "sudo_refused"),
+            (b"Traceback (most recent call last):\n", "worker_exception"),
+            (b"other diagnostic details\n", "launcher_unknown"),
+        ):
+            with self.subTest(expected=expected):
+                result = SimpleNamespace(ok=False, stderr=stderr)
+                io = Mock()
+                io.run_capped.return_value = result
+                observer = probe.LauncherObservation(io)
+                self.assertIs(observer.run_capped(["synthetic"]), result)
+                self.assertEqual(observer.failure, expected)
+
+    def test_worker_exception_report_uses_only_line_and_exception_type(self):
+        io = Mock()
+        io.run_capped.return_value = SimpleNamespace(
+            ok=False, stderr=b'Traceback (most recent call last):\n'
+            b'  File "/private/path/chrome_sandbox_probe.py", line 77, in worker\n'
+            b"ValueError: private diagnostic\n",
+        )
+        observer = probe.LauncherObservation(io)
+        observer.run_capped(["synthetic"])
+        self.assertEqual(
+            observer.worker_exception, {"probe_line": 77, "exception_type": "ValueError"},
+        )
 
     def test_invalid_isolation_produces_refusal_without_loading_browser(self):
         with (
@@ -143,9 +263,11 @@ class SandboxProbeTests(unittest.TestCase):
                 side_effect=ValueError("sandbox_probe_network_namespace"),
             ),
             patch.object(probe, "browser_probe") as browser,
+            patch.object(probe, "namespace_control") as control,
         ):
             refusal = probe.worker(Path("synthetic"), 35)
         browser.assert_not_called()
+        control.assert_not_called()
         self.assertEqual(refusal["code"], "sandbox_probe_network_namespace")
         self.assertTrue(probe.valid_worker_result(refusal))
         self.assertFalse(probe.valid_worker_result({**refusal, "ip_network_isolated": True}))

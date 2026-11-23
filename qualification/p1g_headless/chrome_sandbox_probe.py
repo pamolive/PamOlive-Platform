@@ -6,6 +6,7 @@ import os
 import re
 import socket
 import stat
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -27,8 +28,9 @@ from qualification.p1g_headless import (  # noqa: E402
     lab_support as support,
 )
 
-BRANCH = "refs/heads/agent/p1g-chrome158-sandbox-probe"
-PURPOSE = "RELOCATED_SANDBOX_MEASUREMENT_ONLY"
+BRANCH = "refs/heads/agent/p1g-chrome-sandbox-runner-comparison"
+PURPOSE = "RELOCATED_SANDBOX_RUNNER_COMPARISON_ONLY"
+RUNNERS = {"ubuntu-22.04": "22.04", "ubuntu-24.04": "24.04", "ubuntu-26.04": "26.04"}
 PACKAGE_VERSION = "158.0.8127.36-1"
 BROWSER_VERSION = PACKAGE_VERSION.removesuffix("-1")
 CHROME_SHA = "08d5a3fba3197010b28113da201bd31a49b4439619dbf558f8040e4015c787bb"
@@ -46,6 +48,7 @@ PROFILE = {
 }
 WORK_PREFIX = "pamolive-sandbox-private-"
 CAP_FIELDS = {"CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"}
+SUDO_EXECUTABLES = {"/usr/bin/sudo", "/usr/bin/sudo.ws", "/usr/lib/cargo/bin/sudo"}
 
 
 def run_identity(env):
@@ -57,14 +60,71 @@ def run_identity(env):
         and env.get("GITHUB_REF") == BRANCH,
         "sandbox_probe_scope",
     )
-    fields = {"revision": "GITHUB_SHA", "run": "GITHUB_RUN_ID", "attempt": "GITHUB_RUN_ATTEMPT"}
+    fields = {
+        "revision": "GITHUB_SHA", "run": "GITHUB_RUN_ID", "attempt": "GITHUB_RUN_ATTEMPT",
+        "runner": "P1G_SANDBOX_RUNNER",
+    }
     result = {name: env.get(var, "") for name, var in fields.items()}
     support.need(
         re.fullmatch(r"[0-9a-f]{40}", result["revision"])
-        and all(re.fullmatch(r"[1-9][0-9]{0,19}", result[name]) for name in ("run", "attempt")),
+        and all(re.fullmatch(r"[1-9][0-9]{0,19}", result[name]) for name in ("run", "attempt"))
+        and result["runner"] in RUNNERS,
         "sandbox_probe_identity",
     )
     return result
+
+
+def runner_facts(requested):
+    with open("/etc/os-release", "rb") as stream:
+        raw = stream.read(4097)
+    support.need(0 < len(raw) <= 4096, "runner_os_release_budget")
+    lines = raw.decode("ascii").splitlines()
+    support.need(lines.count("ID=ubuntu") == 1 and
+                 [line for line in lines if line.startswith("VERSION_ID=")]
+                 == [f'VERSION_ID="{RUNNERS[requested]}"'], "runner_os_mismatch")
+    system = os.uname()
+    support.need(system.machine == "x86_64" and re.fullmatch(r"[A-Za-z0-9.+_-]{1,128}",
+                                                            system.release), "runner_kernel")
+    image = os.environ.get("ImageVersion", "")
+    return {
+        "distribution": "ubuntu",
+        "version": RUNNERS[requested],
+        "kernel": system.release,
+        "architecture": system.machine,
+        "reported_image_version": image if re.fullmatch(r"[0-9.]{1,32}", image) else None,
+    }
+
+
+NAMESPACE_SYSCTLS = {
+    "apparmor_restrict_unprivileged_userns": (
+        "/proc/sys/kernel/apparmor_restrict_unprivileged_userns"
+    ),
+    "unprivileged_userns_clone": "/proc/sys/kernel/unprivileged_userns_clone",
+    "max_user_namespaces": "/proc/sys/user/max_user_namespaces",
+}
+
+
+def namespace_control():
+    knobs = {}
+    for name, path in NAMESPACE_SYSCTLS.items():
+        try:
+            with open(path, "rb") as stream:
+                raw = stream.read(33).strip()
+            knobs[name] = int(raw) if re.fullmatch(rb"[0-9]{1,12}", raw) else "unknown"
+        except FileNotFoundError:
+            knobs[name] = "absent"
+        except OSError:
+            knobs[name] = "unknown"
+    try:
+        result = subprocess.run(
+            ["/usr/bin/unshare", "--user", "--", "/usr/bin/true"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}, timeout=4, check=False,
+        )
+        status = "created" if result.returncode == 0 else "command_failed"
+    except (OSError, subprocess.TimeoutExpired):
+        status = "unknown"
+    return {"create_user_namespace": status, "sysctls": knobs}
 
 
 def check_isolation(status, interfaces, inherited_net, current_net, socket_descriptors, uid):
@@ -114,10 +174,12 @@ def worker(work, inherited_net):
         isolated_worker_status(inherited_net)
     except (OSError, ValueError) as exc:
         return refused_worker("isolation", exc)
+    control = namespace_control()
     try:
-        return browser_probe(work)
+        result = browser_probe(work)
     except (ImportError, OSError, ValueError) as exc:
-        return refused_worker("prerequisites", exc)
+        result = refused_worker("prerequisites", exc)
+    return {**result, "namespace_control": control}
 
 
 def browser_probe(work):
@@ -163,7 +225,6 @@ def browser_probe(work):
     support.need(
         support.playwright_node_pin(driver) == driver_before,
         "sandbox_probe_driver_changed",
-        "playwright_driver_identity",
     )
     return {
         "state": "SANDBOX_OBSERVED",
@@ -213,7 +274,8 @@ def failure_code(phase, error):
             )
         ):
             return "namespace_startup_refused"
-        if "error while loading shared libraries" in detail:
+        if ("error while loading shared libraries" in detail
+                or re.search(r"\bGLIBC_(?:[0-9]+\.)+[0-9]+['\x60]? not found", detail)):
             return "browser_dependencies_unavailable"
     return "browser_measurement_refused"
 
@@ -225,6 +287,14 @@ def refused_worker(phase, error):
         "code": failure_code(phase, error),
         "ip_network_isolated": phase != "isolation",
     }
+
+
+def sudo_executable(runner):
+    path = Path("/usr/bin/sudo")
+    if runner == "ubuntu-26.04":
+        path = path.resolve(strict=True)
+        support.need(path.as_posix() in SUDO_EXECUTABLES, "sudo_provider_refused")
+    return path.as_posix()
 
 
 def worker_command(work, scratch, identity, inherited_net):
@@ -239,10 +309,11 @@ def worker_command(work, scratch, identity, inherited_net):
         "GITHUB_SHA": identity["revision"],
         "GITHUB_RUN_ID": identity["run"],
         "GITHUB_RUN_ATTEMPT": identity["attempt"],
+        "P1G_SANDBOX_RUNNER": identity["runner"],
         "RUNNER_TEMP": str(scratch),
     }
     return [
-        "/usr/bin/sudo",
+        sudo_executable(identity["runner"]),
         "-n",
         "--",
         "/usr/bin/unshare",
@@ -310,6 +381,17 @@ def prepare(commands, private, receipt):
 def valid_worker_result(result):
     if type(result) is not dict:
         return False
+    if result.get("phase") != "isolation":
+        packet = result.get("namespace_control")
+        if (type(packet) is not dict or set(packet) != {"create_user_namespace", "sysctls"}
+                or packet["create_user_namespace"] not in ("created", "command_failed", "unknown")
+                or type(packet["sysctls"]) is not dict
+                or set(packet["sysctls"]) != set(NAMESPACE_SYSCTLS)
+                or any(not (type(value) is int and 0 <= value < 10**12
+                            or value in ("absent", "unknown"))
+                       for value in packet["sysctls"].values())):
+            return False
+        result = {key: value for key, value in result.items() if key != "namespace_control"}
     if result.get("state") == "REFUSED":
         phase, code = result.get("phase"), result.get("code")
         return (
@@ -342,6 +424,40 @@ def launcher_status(journals, number):
     return None
 
 
+class LauncherObservation:
+    """Classify the existing command buffer. The authority check still owns the result."""
+
+    def __init__(self, io):
+        self.io = io
+        self.failure = None
+        self.worker_exception = None
+
+    def run_capped(self, *args, **kwargs):
+        result = self.io.run_capped(*args, **kwargs)
+        if not result.ok:
+            stderr = result.stderr or b""
+            if re.search(rb"(?m)^(?:sudo|sudo-rs|sudo\.ws):", stderr):
+                self.failure = "sudo_refused"
+            elif re.search(rb"(?m)^unshare:", stderr):
+                self.failure = "unshare_refused"
+            elif re.search(rb"(?m)^setpriv:", stderr):
+                self.failure = "setpriv_refused"
+            elif b"Traceback (most recent call last):" in stderr:
+                self.failure = "worker_exception"
+                frames = re.findall(rb'/chrome_sandbox_probe\.py", line ([0-9]{1,4})\b', stderr)
+                types = re.findall(
+                    rb"(?m)^(AttributeError|FileNotFoundError|OSError|PermissionError|"
+                    rb"RuntimeError|TypeError|ValueError|KeyError|UnicodeDecodeError):", stderr,
+                )
+                self.worker_exception = {
+                    "probe_line": int(frames[-1]) if frames else None,
+                    "exception_type": types[-1].decode("ascii") if types else None,
+                }
+            else:
+                self.failure = "launcher_unknown"
+        return result
+
+
 def supervisor(scratch, identity):
     public = scratch / ("pamolive-sandbox-" + identity["run"] + "-" + identity["attempt"] + ".json")
     report = {
@@ -354,6 +470,7 @@ def supervisor(scratch, identity):
     }
     phase = "source"
     try:
+        report["runner_facts"] = runner_facts(identity["runner"])
         with tempfile.TemporaryDirectory(dir=scratch, prefix=WORK_PREFIX) as temporary:
             private = Path(temporary)
             journals = private / "journals"
@@ -365,17 +482,26 @@ def supervisor(scratch, identity):
             names = prepare(commands, private, report)
             phase = "isolated_worker"
             inherited = os.stat("/proc/self/ns/net").st_ino
+            command = worker_command(private, scratch, identity, inherited)
+            launcher = LauncherObservation(commands.io)
+            commands.io = launcher
+            previous_number = commands.number
             try:
                 response = commands.run(
-                    worker_command(private, scratch, identity, inherited),
+                    command,
                     seconds=75,
                     cap=8192,
                     sudo=True,
                 )
             except (OSError, ValueError):
-                status = launcher_status(journals, commands.number)
-                if status is not None:
-                    report["launcher_exit_status"] = status
+                if launcher.failure is not None:
+                    report["launcher_failure"] = launcher.failure
+                if launcher.worker_exception is not None:
+                    report["worker_exception"] = launcher.worker_exception
+                if commands.number > previous_number:
+                    status = launcher_status(journals, commands.number)
+                    if status is not None:
+                        report["launcher_exit_status"] = status
                 raise
             result = chrome_bundle.json_bytes(response)
             support.need(valid_worker_result(result), "sandbox_probe_worker_receipt")
