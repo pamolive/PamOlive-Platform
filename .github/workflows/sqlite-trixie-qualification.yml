@@ -2,7 +2,7 @@ name: SQLite Trixie source qualification
 
 on:
   push:
-    branches: [agent/sqlite-trixie-qualification]
+    branches: [agent/sqlite-trixie-qualification, agent/sqlite-product-runtime]
 
 permissions:
   contents: read
@@ -26,16 +26,21 @@ jobs:
           context="$RUNNER_TEMP/pamolive-sqlite-context-$GITHUB_RUN_ID"
           evidence="$RUNNER_TEMP/pamolive-sqlite-evidence-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           test ! -e "$evidence"
-          (set -o noclobber; git archive "$GITHUB_SHA:qualification/sqlite_trixie_build" > "$archive")
+          (
+            set -o noclobber
+            git archive "$GITHUB_SHA" deploy/sqlite-rebuild qualification/sqlite_trixie_build > "$archive"
+          )
           mkdir -m 700 "$context"
           tar -x -f "$archive" --directory "$context" --no-same-owner
           docker build --platform=linux/amd64 --no-cache --progress=plain \
-            --target sqlite-qualification --output "type=local,dest=$evidence" "$context"
+            --target sqlite-qualification --output "type=local,dest=$evidence" \
+            --file "$context/qualification/sqlite_trixie_build/Dockerfile" "$context"
           cmp <(find "$evidence" -mindepth 1 -printf '%f\n' | LC_ALL=C sort) - <<'EXPECTED'
           baseline-abi.json
           baseline-smoke.json
           candidate-abi.json
           candidate-package.sha256
+          candidate-runtime.json
           candidate-smoke.json
           EXPECTED
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

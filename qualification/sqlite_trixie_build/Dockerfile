@@ -3,28 +3,15 @@ RUN test "$(dpkg --print-architecture)" = amd64 \
  && test -s /usr/share/keyrings/debian-archive-keyring.gpg
 
 FROM trixie AS source
-COPY source-apt.conf forky.sources source.sha256 /opt/sqlite-inputs/
+COPY deploy/sqlite-rebuild/source-apt.conf deploy/sqlite-rebuild/forky.sources deploy/sqlite-rebuild/materials.sh /opt/sqlite-inputs/
 WORKDIR /opt/sqlite-source
-RUN mkdir -m 0755 /var/lib/apt/sqlite-source-lists \
- && chown _apt:root /opt/sqlite-source \
- && apt-get -c /opt/sqlite-inputs/source-apt.conf update \
- && apt-get -c /opt/sqlite-inputs/source-apt.conf --download-only source sqlite3=3.54.1-2
-RUN --network=none sha256sum --check --strict /opt/sqlite-inputs/source.sha256 \
- && test "$(find . -maxdepth 1 -type f | wc -l)" = 4
+RUN sh /opt/sqlite-inputs/materials.sh acquire
 
 FROM trixie AS toolchain
-RUN apt-get update \
- && apt-get install -y --no-install-recommends --no-remove \
-    build-essential debhelper autoconf libtool automake pkgconf chrpath lynx fakeroot libreadline-dev \
-    tcl8.6-dev tcl9.0-dev libtommath-dev libicu-dev \
- && rm -rf /var/lib/apt/lists/*
+COPY deploy/sqlite-rebuild/materials.sh deploy/sqlite-rebuild/source.sha256 deploy/sqlite-rebuild/prepare.py /opt/sqlite-inputs/
+RUN sh /opt/sqlite-inputs/materials.sh toolchain
 COPY --from=source /opt/sqlite-source/ /opt/sqlite-build/
-COPY prepare.py /opt/sqlite-build/prepare.py
-WORKDIR /opt/sqlite-build
-RUN --network=none dpkg-source -x sqlite3_3.54.1-2.dsc tree \
- && python -I -B -S prepare.py tree \
- && chmod -R u+rwX,go-w /opt/sqlite-build \
- && chown -R 65534:65534 /opt/sqlite-build
+RUN --network=none sh /opt/sqlite-inputs/materials.sh prepare
 USER 65534:65534
 WORKDIR /opt/sqlite-build/tree
 ENV HOME=/opt/sqlite-build LC_ALL=C.UTF-8
@@ -36,7 +23,7 @@ RUN apt-get update \
     libc6=2.41-12+deb13u5 libc-bin=2.41-12+deb13u5 \
     libsqlite3-0=3.46.1-7+deb13u2 liblastlog2-2 binutils \
  && rm -rf /var/lib/apt/lists/*
-COPY smoke.py abi.py /opt/sqlite-checks/
+COPY qualification/sqlite_trixie_build/smoke.py qualification/sqlite_trixie_build/abi.py deploy/sqlite-rebuild/check_runtime.py /opt/sqlite-checks/
 ENV LC_ALL=C.UTF-8
 
 FROM runtime AS baseline
@@ -50,6 +37,7 @@ COPY --from=toolchain /opt/sqlite-build/libsqlite3-0_3.54.1-2~pamolive13u1_amd64
 COPY --from=baseline /baseline/ /baseline/
 RUN --network=none set -eu; \
     package=/tmp/libsqlite3-0_3.54.1-2~pamolive13u1_amd64.deb; \
+    python -I -B -S /opt/sqlite-checks/check_runtime.py --package "$package"; \
     test "$(dpkg-deb -f "$package" Package)" = libsqlite3-0; \
     test "$(dpkg-deb -f "$package" Source)" = sqlite3; \
     test "$(dpkg-deb -f "$package" Version)" = '3.54.1-2~pamolive13u1'; \
@@ -58,6 +46,7 @@ RUN --network=none set -eu; \
     test -z "$(dpkg --audit)"; \
     test "$(dpkg-query -W -f='${Version}' libsqlite3-0)" = '3.54.1-2~pamolive13u1'; \
     mkdir -m 0755 /evidence; \
+    python -I -B -S /opt/sqlite-checks/check_runtime.py > /evidence/candidate-runtime.json; \
     sha256sum "$package" | cut -d' ' -f1 > /evidence/candidate-package.sha256; \
     python -I -B /opt/sqlite-checks/smoke.py candidate /baseline/history.sqlite \
       > /evidence/candidate-smoke.json; \

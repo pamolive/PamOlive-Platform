@@ -38,6 +38,25 @@ RUN --mount=from=debian-refresh-inputs,source=/opt/pamolive-apt-cache,target=/tm
   && rm -rf /var/lib/apt/lists/*
 RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --root / --output /tmp/debian-refresh-base.json && rm /tmp/debian-refresh-base.json
 
+FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS sqlite-trixie-base
+RUN test "$(dpkg --print-architecture)" = amd64 \
+ && test -s /usr/share/keyrings/debian-archive-keyring.gpg
+
+FROM sqlite-trixie-base AS sqlite-trixie-source
+COPY deploy/sqlite-rebuild/source-apt.conf deploy/sqlite-rebuild/forky.sources deploy/sqlite-rebuild/materials.sh /opt/sqlite-inputs/
+WORKDIR /opt/sqlite-source
+RUN sh /opt/sqlite-inputs/materials.sh acquire
+
+FROM sqlite-trixie-base AS sqlite-trixie-package
+COPY deploy/sqlite-rebuild/materials.sh deploy/sqlite-rebuild/source.sha256 deploy/sqlite-rebuild/prepare.py /opt/sqlite-inputs/
+RUN sh /opt/sqlite-inputs/materials.sh toolchain
+COPY --from=sqlite-trixie-source /opt/sqlite-source/ /opt/sqlite-build/
+RUN --network=none sh /opt/sqlite-inputs/materials.sh prepare
+USER 65534:65534
+WORKDIR /opt/sqlite-build/tree
+ENV HOME=/opt/sqlite-build LC_ALL=C.UTF-8
+RUN --network=none dpkg-checkbuilddeps && dpkg-buildpackage -b -us -uc -j2
+
 FROM debian-runtime AS expat-prepared
 RUN --mount=from=debian-refresh-inputs,source=/opt/pamolive-apt-cache,target=/tmp/debian-refresh-archives,ro \
   archives=/tmp/debian-refresh-archives && apt-get update \
@@ -152,6 +171,13 @@ COPY platform_modules/ ./platform_modules/
 COPY templates/ ./templates/
 COPY tests/ ./tests/
 COPY third_party/ ./third_party/
+RUN --network=none --mount=from=sqlite-trixie-package,source=/opt/sqlite-build,target=/tmp/pamolive-sqlite-build,ro \
+  set -eu; \
+  package=/tmp/pamolive-sqlite-build/libsqlite3-0_3.54.1-2~pamolive13u1_amd64.deb; \
+  python -I -B -S deploy/sqlite-rebuild/check_runtime.py --package "$package"; \
+  dpkg --install "$package"; \
+  test -z "$(dpkg --audit)"; \
+  python -I -B -S deploy/sqlite-rebuild/check_runtime.py
 RUN python deploy/native_inventory.py --capture --output /opt/pamolive-native-manifest.json
 RUN --network=none python -B -m deploy.debian_refresh_inventory --root / --output /tmp/debian-refresh-runtime.json && rm /tmp/debian-refresh-runtime.json
 RUN python manage.py collectstatic --noinput
