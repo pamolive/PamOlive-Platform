@@ -189,3 +189,22 @@ and600s+60s/browser. Every negative lane shares the frontend deadline and keeps
 UNKNOWN sticky. Only fixed typed metadata/H1 JSON and the six public TEST files
 are uploaded; homes, UID, stderr and raw status stay private. Real GPG/agent,
 installation, browser/UI/native SSH/RDP and product qualification remain PENDING.
+
+## Hosted runner sandbox comparison
+
+The hosted runner matrix checks the same authenticated Chrome 158 package,
+staged tree, driver pin and non-root network isolation on Ubuntu 22.04,
+24.04 and 26.04. Each receipt identifies its runner and kernel. It records
+the public user-namespace settings and a temporary user-namespace creation
+check with the same dropped privileges as the browser.
+
+The control records whether the worker can create one user namespace. The
+Chrome verdict still requires the genuine namespace sandbox and renderer
+checks. Differences between runners establish evidence about those runner
+environments. Attribution to AppArmor would require matching effective policy
+or audit evidence. The Ubuntu 22.04 job is a temporary diagnostic.
+[GitHub runner lifecycle](https://github.com/actions/runner-images/issues/14254)
+
+Each job publishes only its typed receipt. The application and its synthetic
+user journeys are outside this comparison. A result applies to the exact
+browser package and environment named by the receipt.

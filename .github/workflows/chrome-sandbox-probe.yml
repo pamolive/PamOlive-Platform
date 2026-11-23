@@ -1,13 +1,17 @@
-name: P1-G relocated Chrome sandbox measurement
+name: P1-G hosted runner sandbox comparison
 on:
   push:
-    branches: [agent/p1g-chrome158-sandbox-probe]
+    branches: [agent/p1g-chrome-sandbox-runner-comparison]
 permissions:
   contents: read
 jobs:
   sandbox-measurement:
     if: github.repository == 'pamolive/PamOlive-Platform'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-22.04, ubuntu-24.04, ubuntu-26.04]
     timeout-minutes: 13
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
@@ -15,7 +19,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
-          python-version: '3.12'
+          python-version: '3.12.16'
       - name: Verify sandbox measurement source contracts
         run: >-
           python -B -m unittest
@@ -33,6 +37,8 @@ jobs:
           "$driver_python" -m pip check
       - name: Verify authenticated Chrome 158 and measure its sandbox without application traffic
         shell: bash
+        env:
+          P1G_SANDBOX_RUNNER: ${{ matrix.runner }}
         run: |
           set -euo pipefail
           umask 077
@@ -41,7 +47,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
-          name: p1g-relocated-sandbox-${{ github.run_id }}-${{ github.run_attempt }}
+          name: p1g-relocated-sandbox-${{ matrix.runner }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pamolive-sandbox-${{ github.run_id }}-${{ github.run_attempt }}.json
           if-no-files-found: error
           retention-days: 7
