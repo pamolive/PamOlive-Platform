@@ -30,7 +30,7 @@ Les redirects sont refusés. Un nextLink doit conserver origine, port, chemin us
 
 ## Bornes et limites
 
-La collecte est limitée à 1 000 objets, 20 pages, 100 objets demandés par page et 32 groupes par compte. Le budget de 45 s fixe le délai restant avant chaque opération réseau, plafonné à 8 s par attente. Le lecteur HTTP recalcule ce délai entre lectures du corps. L'analyse des en-têtes et des trailers par `http.client` peut effectuer plusieurs lectures internes. Le budget de 45 s reste donc une limite entre opérations, avec une borne totale à qualifier. L'inventaire décodé est limité à 4 Mio. Un dépassement produit une collecte incomplète ou un refus explicite, sans preuve d'absence.
+La collecte est limitée à 1 000 objets, 20 pages, 100 objets demandés par page et 32 groupes par compte. Le budget réseau de 45 s fixe le délai restant avant chaque opération réseau, plafonné à 8 s par attente. Le lecteur Entra le recalcule séparément avant TCP et TLS puis à chaque lecture sous-jacente du flux HTTPS, y compris pendant l'analyse des en-têtes et des trailers par `http.client`. Le résultat est contrôlé de nouveau après le décodage. L'inventaire décodé est limité à 4 Mio. Un dépassement produit une collecte incomplète ou un refus explicite, sans preuve d'absence.
 
 La limite LDAP de4Mio s'applique **après décodage d'une page par OpenLDAP** : elle n'est pas une borne dure de mémoire contre une réponse native malveillante. Les limites de processus/conteneur et la future isolation du reader restent nécessaires. Les range AD non terminaux et membres tronqués restent incomplets ; cette v1 ne récupère pas tous les ranges ni tokenGroups. Une lecture sous ACL restreintes n'est pas un audit exhaustif d'AD.
 

@@ -8,6 +8,7 @@ A server-side service owns credentials, policy and persistence.
 import hashlib
 import hmac
 import http.client
+import io
 import ipaddress
 import json
 import re
@@ -17,6 +18,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import dataclass
+from functools import partial
 from threading import BoundedSemaphore
 from urllib.parse import parse_qsl, unquote, urlsplit, urlunsplit
 from uuid import UUID
@@ -269,6 +271,42 @@ def _graph_body_length(response):
     return expected
 
 
+class _DeadlineRead(io.RawIOBase):
+    def __init__(self, sock, stream, deadline):
+        self.sock = sock
+        self.stream = stream
+        self.deadline = deadline
+
+    def readable(self):
+        return True
+
+    def readinto(self, buffer):
+        self.sock.settimeout(_remaining(self.deadline))
+        return self.stream.readinto(buffer)
+
+    def close(self):
+        try:
+            self.stream.close()
+        finally:
+            super().close()
+
+
+class _DeadlineSocket:
+    """Give the standard HTTP parser a deadline-aware view of its TLS socket."""
+
+    def __init__(self, sock, deadline):
+        self.sock = sock
+        self.deadline = deadline
+
+    def makefile(self, mode):
+        stream = self.sock.makefile(mode, buffering=0)
+        return io.BufferedReader(_DeadlineRead(self.sock, stream, self.deadline))
+
+
+def _graph_response(sock, *args, deadline, **kwargs):
+    return http.client.HTTPResponse(_DeadlineSocket(sock, deadline), *args, **kwargs)
+
+
 class _GraphReader:
     def __init__(self):
         self.identity = {}
@@ -281,9 +319,9 @@ class _GraphReader:
         except (OSError, ssl.SSLError):
             raise DirectoryFailure("directory_tls_configuration_invalid") from None
         connection = PinnedHTTPSConnection(parsed.hostname, parsed.port, address, context)
-        connection.timeout = _remaining(deadline)
+        connection.response_class = partial(_graph_response, deadline=deadline)
         try:
-            connection.connect()
+            connection.connect(remaining_timeout=lambda: _remaining(deadline))
             tls_socket = connection.sock
             _pin(tls_socket.getpeercert(binary_form=True), destination["certificate_sha256"])
             before_auth()
@@ -305,8 +343,7 @@ class _GraphReader:
                 expected = _graph_body_length(response)
                 content = bytearray()
                 while not response.isclosed():
-                    # Refresh the remaining time between bounded payload reads.
-                    tls_socket.settimeout(_remaining(deadline))
+                    _remaining(deadline)
                     chunk = response.read1(min(65536, GRAPH_MAX_BODY + 1 - len(content)))
                     if not chunk:
                         break
@@ -315,7 +352,9 @@ class _GraphReader:
                         raise DirectoryFailure("directory_response_too_large")
                 if expected is not None and len(content) != expected:
                     raise DirectoryFailure("directory_network_failed", retryable=True)
-                return _strict_json(content)
+                result = _strict_json(content)
+                _remaining(deadline)
+                return result
         except ssl.SSLError:
             raise DirectoryFailure("directory_tls_verification_failed") from None
         except (OSError, TimeoutError, http.client.HTTPException):
