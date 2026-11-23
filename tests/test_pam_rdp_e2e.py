@@ -18,7 +18,6 @@ from django.contrib.sessions.models import Session
 from django.db import connections
 from django.test import override_settings
 from django.utils import timezone
-from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 
 from platform_core.authorization import recent_authentication
@@ -260,16 +259,7 @@ class NativeRDPRelayTests(RelayHarness):
                         password="incorrect-test-password" if mode == "password" else peer.password,
                         shared=shared,
                     )
-                    async with connect(
-                        f"ws://127.0.0.1:{self.web_port}" + config["websocket_path"],
-                        proxy=None,
-                        origin=f"http://127.0.0.1:{self.web_port}",
-                        subprotocols=["guacamole"],
-                        additional_headers={
-                            "Cookie": f"{settings.SESSION_COOKIE_NAME}={self.session_key}"
-                        },
-                        max_size=4 * 1024 * 1024,
-                    ) as websocket:
+                    async with self.connect_relay(config["websocket_path"]) as websocket:
                         await websocket.send(
                             json.dumps({"ticket": config["ticket"], "width": 1280, "height": 720})
                         )

@@ -6,6 +6,7 @@ import os
 import re
 import signal
 import socket
+import ssl
 import subprocess
 import tempfile
 import threading
@@ -16,7 +17,6 @@ from unittest import skipUnless
 from unittest.mock import patch
 
 import pyotp
-import uvicorn
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -52,6 +52,8 @@ from platform_modules.pam.protocol import Instruction, Parser
 from platform_modules.pam.recordings import issue_recording_grant, recording_page
 from platform_modules.pam.trust import launch_payload
 
+from .fixtures.asgi import TLSASGIServer
+from .fixtures.oidc import write_loopback_tls_files
 from .fixtures.ssh import INPUT, SSHFixture
 from .pam_trust_fixtures import TrustFixture
 from .person_fixtures import bind_person
@@ -102,8 +104,10 @@ class RelayHarness(TransactionTestCase):
     def setUp(self):
         self.assertTrue(BINARY.is_file(), "PAM_REQUIRE_NATIVE cannot silently skip this gate")
         self.directory = tempfile.TemporaryDirectory(prefix="pamolive-relay-e2e-")
+        self.addCleanup(self.directory.cleanup)
         self.log = tempfile.TemporaryFile()
-        self.native_port, self.web_port = unused_port(), unused_port()
+        self.addCleanup(self.log.close)
+        self.native_port = unused_port()
         self.native = subprocess.Popen(
             [
                 str(BINARY),
@@ -127,6 +131,7 @@ class RelayHarness(TransactionTestCase):
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
+        self.addCleanup(self.stop_native)
         self.overrides = override_settings(
             ALLOWED_HOSTS=["127.0.0.1", "testserver"],
             PAM_PUBLIC_ORIGIN="",
@@ -134,26 +139,17 @@ class RelayHarness(TransactionTestCase):
             PAM_GUACD_PORT=self.native_port,
         )
         self.overrides.enable()
-        self.server = uvicorn.Server(
-            uvicorn.Config(
-                "config.asgi:application",
-                host="127.0.0.1",
-                port=self.web_port,
-                log_level="critical",
-                proxy_headers=False,
-                ws_max_size=65536,
-            )
-        )
-        self.thread = threading.Thread(target=self.server.run, daemon=True)
-        self.thread.start()
+        self.addCleanup(self.overrides.disable)
+        certificate, key = write_loopback_tls_files(self.directory.name)
+        self.web = self.enterContext(TLSASGIServer(certificate, key))
+        self.web_tls = ssl.create_default_context(cafile=str(certificate))
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
-            if self.server.started:
-                try:
-                    with socket.create_connection(("127.0.0.1", self.native_port), timeout=0.1):
-                        break
-                except OSError:
-                    pass
+            try:
+                with socket.create_connection(("127.0.0.1", self.native_port), timeout=0.1):
+                    break
+            except OSError:
+                pass
             time.sleep(0.02)
         else:
             self.fail("Native/ASGI fixture did not start")
@@ -205,9 +201,7 @@ class RelayHarness(TransactionTestCase):
         session.save()
         self.session_key = session.session_key
 
-    def tearDown(self):
-        self.server.should_exit = True
-        self.thread.join(timeout=10)
+    def stop_native(self):
         try:
             os.killpg(self.native.pid, signal.SIGTERM)
         except ProcessLookupError:
@@ -217,9 +211,17 @@ class RelayHarness(TransactionTestCase):
         except subprocess.TimeoutExpired:
             os.killpg(self.native.pid, signal.SIGKILL)
             self.native.wait(timeout=5)
-        self.log.close()
-        self.directory.cleanup()
-        self.overrides.disable()
+
+    def connect_relay(self, path):
+        return connect(
+            self.web.websocket_origin + path,
+            ssl=self.web_tls,
+            proxy=None,
+            origin=self.web.origin,
+            subprotocols=["guacamole"],
+            additional_headers={"Cookie": f"{settings.SESSION_COOKIE_NAME}={self.session_key}"},
+            max_size=4 * 1024 * 1024,
+        )
 
     def make_endpoint(
         self, host_key, target_port, private_key, protocol, certificate_pin, password
@@ -433,16 +435,7 @@ class NativeRelayTests(RelayHarness):
                     shared=shared,
                 )
                 connection_id = config["websocket_path"].split("/")[3]
-                async with connect(
-                    f"ws://127.0.0.1:{self.web_port}" + config["websocket_path"],
-                    proxy=None,
-                    origin=f"http://127.0.0.1:{self.web_port}",
-                    subprotocols=["guacamole"],
-                    additional_headers={
-                        "Cookie": f"{settings.SESSION_COOKIE_NAME}={self.session_key}"
-                    },
-                    max_size=4 * 1024 * 1024,
-                ) as websocket:
+                async with self.connect_relay(config["websocket_path"]) as websocket:
                     await websocket.send(
                         json.dumps({"ticket": config["ticket"], "width": 1280, "height": 720})
                     )

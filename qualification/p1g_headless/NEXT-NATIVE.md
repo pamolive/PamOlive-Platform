@@ -18,14 +18,14 @@ fixture. No product authentication or synthetic assertion generator is needed.
    before the test authority snapshot is frozen. Keep the private target
    credential on the server side. The browser must create its own request, two
    votes and launch through the shipped forms and pam-trust.js.
-2. Replace the initial WSGI TLS thread with TLS Uvicorn serving config.asgi plus
-   Django's ASGI static-files wrapper. Reuse the same private CA/server-key/NSS
-   trust handling; configure the exact HTTPS/WSS origin and synthetic RP ID.
-   The current WSGI thread cannot serve WebSockets. Do not treat a mocked socket
-   or driver WebSocket interception as the real transport. The native follow-up
-   disables the current fail-on-any-WebSocket test policy only inside its owned
-   fixture network, permits the actual same-origin /ws/pam/<connection-id>/ path,
-   and observes native browser socket closure.
+2. Reuse `tests.fixtures.asgi.TLSASGIServer` in the separate browser native case.
+   It owns a TLS listener on a kernel-selected loopback port and serves the
+   static wrapper and the real `config.asgi` application. The synthetic SSH
+   and RDP test clients use certificate verification for their WSS connection.
+   Pass the browser lab leaf and key to this listener. Keep the private NSS
+   trust database and use the exact DNS name and port for the HTTPS origin and
+   synthetic RP ID. The browser case must allow only the actual same-origin
+   `/ws/pam/<connection-id>/` socket and observe its closure.
 3. Use the delivered native-test image for guacd/FreeRDP and its ABI closure;
    do not extract Debian-native ELF onto the Ubuntu host and assume ABI equality.
    A test-only derivative with browser tooling is one concrete execution context.
