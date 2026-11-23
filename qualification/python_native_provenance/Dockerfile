@@ -7,9 +7,9 @@ RUN test "$(dpkg --print-architecture)" = amd64 \
     libsasl2-dev libpq-dev=17.12-0+deb13u1 libpq5=17.12-0+deb13u1 \
  && rm -rf /var/lib/apt/lists/*
 
-COPY deploy/python_materials.py deploy/native_inventory.py deploy/python-materials.linux-amd64.json ./
-COPY requirements-bootstrap.lock requirements-python-runtime-linux.lock requirements-python-build-tools-linux.lock requirements-python-native-sources-linux.lock requirements-python-native-test-linux.lock ./
-RUN python -B python_materials.py acquire --manifest python-materials.linux-amd64.json \
+COPY --chmod=0444 deploy/python_materials.py deploy/native_inventory.py deploy/python-materials.linux-amd64.json ./
+COPY --chmod=0444 requirements-bootstrap.lock requirements-python-runtime-linux.lock requirements-python-build-tools-linux.lock requirements-python-native-sources-linux.lock requirements-python-native-test-linux.lock ./
+RUN umask 022 && python -B python_materials.py acquire --manifest python-materials.linux-amd64.json \
     --locks . --output /opt/python-inputs
 RUN --network=none python -m pip install --no-compile --no-cache-dir --no-index \
     --find-links=/opt/python-inputs/bootstrap --only-binary=:all: --no-deps --require-hashes \
