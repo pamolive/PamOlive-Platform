@@ -1,0 +1,55 @@
+name: glibc Trixie backport qualification
+
+on:
+  push:
+    branches: [agent/glibc-trixie-qualification]
+
+permissions:
+  contents: read
+
+jobs:
+  glibc-trixie-backport:
+    if: github.repository == 'pamolive/PamOlive-Platform'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Rebuild the authenticated Trixie glibc and compare its installed ABI
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          context=$(mktemp -d "$RUNNER_TEMP/glibc-trixie-context.XXXXXX")
+          evidence="$RUNNER_TEMP/glibc-trixie-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test ! -e "$evidence"
+          git archive "$GITHUB_SHA" qualification/glibc_trixie_backport deploy/glibc-trixie-backport \
+            | tar -x -C "$context" --no-same-owner
+          docker build --platform linux/amd64 --no-cache --progress plain \
+            --target glibc-trixie-backport-evidence --output "type=local,dest=$evidence" \
+            --file "$context/qualification/glibc_trixie_backport/Dockerfile" "$context"
+          cmp <(find "$evidence" -mindepth 1 -printf '%y %P\n' | LC_ALL=C sort) - <<'EXPECTED'
+          f buildinfo
+          f candidate.json
+          f checksums.sha256
+          f libc-bin.deb
+          f libc-dev-bin.deb
+          f libc6-dev.deb
+          f libc6.deb
+          f qualification.json
+          f stock-libc-bin.deb
+          f stock-libc-dev-bin.deb
+          f stock-libc6-dev.deb
+          f stock-libc6.deb
+          f stock.json
+          f test-summary.txt
+          EXPECTED
+          (cd "$evidence" && sha256sum --check --strict checksums.sha256)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: glibc-trixie-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/glibc-trixie-${{ github.run_id }}-${{ github.run_attempt }}/
+          retention-days: 7
+          if-no-files-found: error
