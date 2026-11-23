@@ -13,7 +13,7 @@ sys.path.insert(0, str(CHECKS))
 from abi_data import elf_exports  # noqa: E402
 
 BASELINE = "3.5.9-1~deb13u1"
-CANDIDATE = BASELINE + "+pamolive1"
+CANDIDATE = BASELINE + "+pamolive2"
 PACKAGES = ("libssl3t64", "libssl-dev", "openssl", "openssl-provider-legacy")
 EVIDENCE = Path("/evidence")
 LIB = Path("/usr/lib/x86_64-linux-gnu")
@@ -111,6 +111,24 @@ def sha(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def dane_source_inputs(inputs):
+    provenance = json.loads((inputs / "dane-provenance.json").read_bytes())
+    path = "crypto/x509/x509_vfy.c"
+    if (
+        provenance["source_status"] != "proposed_upstream"
+        or provenance["path"] != path
+        or provenance["delta_sha256"] != sha(inputs / "dane.patch")
+        or (inputs / "dane-preimage.sha256").read_text().split()
+        != [provenance["trixie_preimage_sha256"], path]
+        or [
+            row.split() for row in (inputs / "postimage.sha256").read_text().splitlines()
+            if row.rsplit(maxsplit=1)[-1] == path
+        ] != [[provenance["trixie_postimage_sha256"], path]]
+    ):
+        raise ValueError("dane_source_metadata_mismatch")
+    return provenance
+
+
 def main(args):
     if args == ["stock"]:
         record("stock.json", capture(BASELINE))
@@ -126,11 +144,12 @@ def main(args):
             raise ValueError("openssl_library_unchanged")
     record("candidate.json", after)
     record("qualification.json", {
-        "schema": "pamolive.openssl-trixie-backport-qualification/1",
+        "schema": "pamolive.openssl-trixie-backport-qualification/2",
         "baseline": BASELINE,
         "candidate": CANDIDATE,
         "exports_preserved": True,
         "native_sdk_and_tls13_verified": True,
+        "dane_source": dane_source_inputs(Path("/opt/openssl-inputs")),
         "archives": {name: sha(EVIDENCE / (name + ".deb")) for name in PACKAGES},
         "buildinfo_sha256": sha(EVIDENCE / "buildinfo"),
         "test_summary_sha256": sha(EVIDENCE / "test-summary.txt"),

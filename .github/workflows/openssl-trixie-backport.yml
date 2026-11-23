@@ -1,8 +1,8 @@
-name: OpenSSL Trixie seven-fix qualification
+name: OpenSSL Trixie DANE candidate qualification
 
 on:
   push:
-    branches: [agent/openssl-trixie-seven-fixes]
+    branches: [agent/openssl-dane-trixie-qualification]
 
 permissions:
   contents: read
@@ -16,6 +16,11 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           persist-credentials: false
+      - name: Verify the DANE source receipt contract
+        shell: bash
+        run: |
+          PYTHONPATH="$GITHUB_WORKSPACE/deploy/krb5-remediation" \
+            python3 -B -m unittest qualification.openssl_trixie_backport.test_check
       - name: Rebuild Debian OpenSSL and qualify the same native ABI and TLS runtime
         shell: bash
         run: |

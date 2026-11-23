@@ -1,0 +1,14 @@
+{
+  "schema": "pamolive.openssl-dane-source/1",
+  "advisory": "CVE-2026-84786",
+  "review_url": "https://github.com/openssl/openssl/pull/33634",
+  "source_status": "proposed_upstream",
+  "path": "crypto/x509/x509_vfy.c",
+  "upstream_ancestor": "39ca9f8824c065bae773e603d5b9547855d0b6ce",
+  "upstream_ancestor_sha256": "0981559c994e80d56fc368ed42dfa356c36a4a5159548b0d9f73e114dbafda99",
+  "upstream_head": "d54155a80a4fa8d2ebc2a5a850e7ea8270818217",
+  "upstream_head_sha256": "bdc2d2bf569bcd3894f76dc46c1d7b18a76ff9fa7e7d24254784485340d2fb16",
+  "trixie_preimage_sha256": "1c825c2b2f17a1f6c47d3fba483fb4cae540d1dc29f6786f8f45d8f1940907bd",
+  "trixie_postimage_sha256": "0ef96f292f8fc84e01bc1486bcc9fc6cc52fd0b79930725aa24501fcd16eeccb",
+  "delta_sha256": "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"
+}

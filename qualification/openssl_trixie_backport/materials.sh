@@ -5,7 +5,7 @@ export LC_ALL=C LANG=C DEBIAN_FRONTEND=noninteractive
 
 inputs=/opt/openssl-inputs
 baseline='3.5.9-1~deb13u1'
-candidate="$baseline+pamolive1"
+candidate="$baseline+pamolive2"
 packages='libssl3t64 libssl-dev openssl openssl-provider-legacy'
 
 summarize_tests() {
@@ -31,6 +31,8 @@ case "${1-}" in
     sha256sum --check --strict "$inputs/source.sha256"
     test "$(find . -maxdepth 1 -type f | wc -l)" -eq 4
     python -I -B -S "$inputs/patches.py" acquire
+    cd "$inputs"
+    sha256sum --check --strict dane-patch.sha256
     ;;
   build)
     cd /work
@@ -42,11 +44,16 @@ case "${1-}" in
     sha256sum --check --strict "$inputs/preimage.sha256"
     python -I -B -S "$inputs/patches.py" prepare
     QUILT_PATCHES=debian/patches QUILT_PATCH_OPTS='--fuzz=0' quilt push -a
+    sha256sum --check --strict "$inputs/dane-preimage.sha256"
+    (cd "$inputs" && sha256sum --check --strict dane-patch.sha256)
+    install -m 0644 "$inputs/dane.patch" debian/patches/pamolive-CVE-2026-84786.patch
+    printf '%s\n' pamolive-CVE-2026-84786.patch >> debian/patches/series
+    QUILT_PATCHES=debian/patches QUILT_PATCH_OPTS='--fuzz=0' quilt push
     sha256sum --check --strict "$inputs/postimage.sha256"
 
     printf '%s\n' \
       "openssl ($candidate) trixie; urgency=medium" '' \
-      '  * Apply the reviewed OpenSSL 3.5 security deltas.' '' \
+      '  * Qualify the proposed DANE correction on the existing OpenSSL backport.' '' \
       ' -- PamOlive Build <pamolive-automation@users.noreply.github.com>  Mon, 23 Nov 2026 00:00:00 +0000' '' \
       > debian/pamolive-changelog
     cat debian/changelog >> debian/pamolive-changelog
