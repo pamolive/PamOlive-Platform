@@ -12,6 +12,12 @@ trois paquets et le scan le recalcule depuis l'archive. Les preuves V1 restent
 lisibles et les seuils de scans High et Critical sont conservés.
 [Laboratoire](https://github.com/pamolive/PamOlive-Platform/actions/runs/45259464754/artifacts/14860895292)
 
+Le périmètre des dépendances ACL inclut le contrôle du seul objet
+relogeable observé dans l'image de référence, `python.o`. La preuve exige
+son chemin et son empreinte exacts ainsi qu'un en-tête ELF sans programme
+chargeable. Tout autre résultat de lecture inconclusif bloque la preuve ACL.
+[Inventaire de référence](https://github.com/pamolive/PamOlive-Platform/actions/runs/45228222491/artifacts/14850657219)
+
 La validation de cette composition dépend de la CI de l'image intégrée. Le
 constat ACL et la qualification GCC du nouveau périmètre restent ouverts.
 

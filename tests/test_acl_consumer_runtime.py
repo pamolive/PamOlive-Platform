@@ -2,6 +2,7 @@
 
 import copy
 import hashlib
+import struct
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 from unittest import TestCase
@@ -96,6 +97,50 @@ class AclConsumerRuntimeTests(TestCase):
         self.assertEqual(report["qualification_sha256"], digest(self.raw))
         self.assertEqual(report["image_config_id"], IMAGE["image_id"])
         self.assertEqual(report["archive_sha256"], IMAGE["archive_sha256"])
+
+    def test_pinned_python_relocatable_has_no_runtime_program_headers(self):
+        path = runtime.PYTHON_OBJECT
+        ident = b"\x7fELF\x02\x01\x01" + b"\x00" * 9
+        data = struct.pack("<16sHHIQQQIHHHHHH", ident, 1, 62, 1, 0, 0, 64, 0,
+                           64, 0, 0, 64, 0, 0)
+        identity = digest(data)
+        self.facts.captured[path] = data
+        self.facts.entries[path] = {
+            "path": path, "type": "elf", "class": 64, "machine": 62, "sha256": identity,
+        }
+        self.facts.elf_linkage[identity] = {"status": "unsupported"}
+        with patch.object(runtime, "PYTHON_OBJECT_SHA256", identity):
+            self.assertEqual(self.measure()["relocatable_objects"], {path: identity})
+            self.facts.entries["/usr/local/bin/other.o"] = {
+                **self.facts.entries[path], "type": "hardlink", "target": path,
+            }
+            with self.assertRaisesRegex(acl.InventoryError, "acl_consumer_relocatable_identity"):
+                self.measure()
+            self.facts.entries.pop("/usr/local/bin/other.o")
+            self.facts.elf_linkage["f" * 64] = {"status": "budget_exceeded"}
+            with self.assertRaisesRegex(acl.InventoryError, "acl_consumer_linkage_incomplete"):
+                self.measure()
+        with self.assertRaisesRegex(acl.InventoryError, "acl_consumer_linkage_incomplete"):
+            self.measure()
+
+    def test_relocatable_header_check_rejects_program_headers_and_executables(self):
+        path = runtime.PYTHON_OBJECT
+        ident = b"\x7fELF\x02\x01\x01" + b"\x00" * 9
+        for kind, program_offset, program_size, program_count in (
+            (1, 64, 56, 1), (2, 0, 0, 0),
+        ):
+            with self.subTest(kind=kind, program_count=program_count):
+                data = struct.pack("<16sHHIQQQIHHHHHH", ident, kind, 62, 1, 0, program_offset,
+                                   64, 0, 64, program_size, program_count, 64, 0, 0)
+                identity = digest(data)
+                self.facts.captured[path] = data
+                self.facts.entries[path] = {"path": path, "type": "elf", "sha256": identity}
+                linkage = self.facts.elf_linkage
+                with (patch.dict(linkage, {identity: {"status": "unsupported"}}),
+                      patch.object(runtime, "PYTHON_OBJECT_SHA256", identity),
+                      self.assertRaisesRegex(acl.InventoryError,
+                                             "acl_consumer_relocatable_header")):
+                    self.measure()
 
     def test_layer_facts_require_the_exact_configuration_and_archive(self):
         data, config_id = test_expat_product.fixture()

@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import os
+import struct
 import subprocess
 import tarfile
 from pathlib import Path, PurePosixPath
@@ -27,7 +28,9 @@ FD_ONLY = {"/usr/sbin/useradd", "/usr/sbin/usermod"}
 ALL_CONSUMERS = CONSUMERS | FD_ONLY
 LIBRARY_ALIAS = str(PurePosixPath(acl.LIBRARY).with_name(acl.SONAME))
 MANAGED = (acl.LIBRARY, *sorted(ALL_CONSUMERS))
-READ_PATHS = (*MANAGED, INSTALLED_QUALIFICATION, acl.STATUS)
+PYTHON_OBJECT = "/usr/local/lib/python3.12/config-3.12-x86_64-linux-gnu/python.o"
+PYTHON_OBJECT_SHA256 = "e0507addc8c9a1a1f258bd92b378dd5bea005e55882828d55e846f36381c71fc"
+READ_PATHS = (*MANAGED, INSTALLED_QUALIFICATION, acl.STATUS, PYTHON_OBJECT)
 ATTRIBUTES = (*MANAGED, INSTALLED_QUALIFICATION)
 
 
@@ -87,12 +90,30 @@ def require_installed(facts, packages):
              "acl_consumer_library_identity")
 
 
+def relocatable_objects(facts):
+    unresolved = {checksum: observation["status"]
+                  for checksum, observation in facts.elf_linkage.items()
+                  if observation["status"] not in {"observed", "no_dynamic_segment"}}
+    if not unresolved:
+        return {}
+    acl.need(unresolved == {PYTHON_OBJECT_SHA256: "unsupported"},
+             "acl_consumer_linkage_incomplete")
+    paths = [path for path, row in facts.entries.items()
+             if row.get("sha256") == PYTHON_OBJECT_SHA256]
+    data = facts.captured.get(PYTHON_OBJECT, b"")
+    acl.need(paths == [PYTHON_OBJECT] and facts.entries[PYTHON_OBJECT]["type"] == "elf"
+             and data.startswith(b"\x7fELF\x02\x01\x01") and len(data) >= 64
+             and hashlib.sha256(data).hexdigest() == PYTHON_OBJECT_SHA256,
+             "acl_consumer_relocatable_identity")
+    header = struct.unpack_from("<16sHHIQQQIHHHHHH", data)
+    acl.need(header[1:4] == (1, 62, 1) and header[5] == 0 and header[9:11] == (0, 0),
+             "acl_consumer_relocatable_header")
+    return {PYTHON_OBJECT: PYTHON_OBJECT_SHA256}
+
+
 def inspect_consumers(facts, packages, target):
     expected = {path: binary for package in packages.values()
                 for path, binary in package["binaries"].items()}
-    for observation in facts.elf_linkage.values():
-        acl.need(observation["status"] in {"observed", "no_dynamic_segment"},
-                 "acl_consumer_linkage_incomplete")
     direct = {path for path, item in facts.entries.items() if item.get("class") is not None
               and acl.SONAME in facts.elf_linkage[item["sha256"]].get("needed", [])}
     acl.need(direct == ALL_CONSUMERS, "acl_consumer_dependency_scope")
@@ -144,6 +165,7 @@ def measure(facts, qualification_bytes, metadata, target):
         if path.name.startswith("libacl.so."):
             acl.need(name in {acl.LIBRARY, LIBRARY_ALIAS}, "acl_consumer_duplicate_library")
     require_installed(facts, packages)
+    relocatable = relocatable_objects(facts)
     observed = inspect_consumers(facts, packages, target)
     return {
         "schema": SCHEMA,
@@ -155,6 +177,7 @@ def measure(facts, qualification_bytes, metadata, target):
         "qualification": qualification["qualification"],
         "packages": packages,
         "consumers": observed,
+        "relocatable_objects": relocatable,
     }
 
 

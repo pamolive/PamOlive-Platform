@@ -80,6 +80,16 @@ Condition : hash du DSO exact et même corps/relocation, puis contre-revue du d�
 
 ### CVE-2026-102010 — type GNU PBDS précis
 
+La comparaison des inventaires exacts `0e58357` et `dc46333` conserve
+les chemins et alias. Quinze ELF diffèrent par leur empreinte. Douze sont
+des sorties glibc. Trois sont les extensions Python `_ldap`,
+`psycopg_c._psycopg` et `psycopg_c.pq`. Les 25 utilisateurs directs de
+`libstdc++.so.6` mesurés sur la référence gardent les mêmes empreintes.
+L'attribution des extensions et l'inventaire de la candidate de livraison
+restent requis avant toute décision de scan pour cette image.
+[Inventaire de liaison](https://github.com/pamolive/PamOlive-Platform/actions/runs/45228222491/artifacts/14850657219) ·
+[Inventaire glibc](https://github.com/pamolive/PamOlive-Platform/actions/runs/45223383511/artifacts/14854463532)
+
 Identité G et consommateurs ICU/APT/HarfBuzz liés dans la preuve C++. Le [correctif GCC officiel aaa8351f4d2e636f9680a1f0a8ebc2f0a60611e6](https://github.com/gcc-mirror/gcc/commit/aaa8351f4d2e636f9680a1f0a8ebc2f0a60611e6.patch) vise `__gnu_pbds::priority_queue<..., binary_heap_tag>::erase_if`, dans le header `ext/pb_ds/detail/binary_heap_/erase_fn_imps.hpp`. Il ne vise pas toutes les files de priorité, ni std::priority_queue. [Debian](https://security-tracker.debian.org/tracker/CVE-2026-102010) indique la plage du paquet source.
 
 La proposition `code_not_present` porte sur **les instanciations vulnérables dans les consommateurs identifiés de cet ensemble exact**, pas sur l'absence du header dans toutes les distributions. L'examen ne repose pas sur l'absence de symbole dynamique : les sources et patches Debian ont été examinés, y compris les fichiers .hh et templates. ICU ne référence pas PBDS ; APT utilise vector avec les algorithmes standard de tas ; HarfBuzz utilise son propre hb_priority_queue_t/hb_vector_t. Aucun nouveau consommateur concret de PBDS n'a été identifié pendant cette relecture.
