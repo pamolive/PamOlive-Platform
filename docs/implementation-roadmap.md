@@ -1,5 +1,17 @@
 # Roadmap d’implémentation et qualification
 
+## Image intégrée — qualification des dépendances Trixie
+
+La qualification Kerberos exige la reproduction des paquets et
+l'installation des mêmes octets dans l'image complète. Le laboratoire
+OpenSSL qualifie sa reconstruction séparément. Le backport util-linux
+doit passer la compilation Debian puis les contrôles d'ABI et des
+consommateurs. La publication reste conditionnée au résultat du scan
+sur l'image de livraison et aux preuves de restauration P2.
+[Kerberos produit](https://github.com/pamolive/PamOlive-Platform/pull/65) ·
+[OpenSSL](https://github.com/pamolive/PamOlive-Platform/pull/64) ·
+[ADR-043](adr-043-util-linux-trixie-backport.md)
+
 ## P2 — Checkpoint signé et candidat de livraison intégré
 
 Les PR nº 47 à 49 ajoutent la signature externe du checkpoint, sa conservation
