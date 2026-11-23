@@ -32,5 +32,24 @@ en-têtes doit intégrer le correctif Debian de collision des noms.
 Les outils ACL du runner LDAP restent disponibles pour la qualification.
 [Compatibilité GNU tar](https://bugs.debian.org/1141146)
 
-Le laboratoire laisse l'image de livraison et le seuil du scan inchangés.
-Il n'établit aucune correction automatique des anciens appels ACL.
+Le candidat produit reconstruit le même paquet et exige son SHA-256 avant
+installation hors réseau depuis un montage en lecture seule. Il laisse les
+utilitaires et en-têtes ACL hors de l'image. Après réimportation de l'image
+exacte, la CI inspecte le système de fichiers d'un conteneur jamais démarré.
+La création utilise l'identifiant Docker Engine obtenu après rechargement
+et vérification de l'archive. Le moteur containerd peut référencer un
+descripteur OCI, tandis que le reçu utilise le SHA-256 de la configuration
+archivée, lié au descripteur lors de la vérification de l'archive.
+L'inventaire relie l'identité dpkg, le lien et le SHA-256 ELF au config ID de l'image
+et recense les dépendances et imports dynamiques ACL des fichiers ELF
+réguliers, avec leurs modes et propriétaires. Le relevé n'exécute pas ces
+binaires et laisse le scan de l'image et sa politique inchangés.
+
+Le portage de libacl fournit les nouvelles API sans migrer les appels
+historiques. La revue applicative n'a trouvé aucun flux qui transmet un
+chemin de locataire à ces utilitaires. Ce constat couvre les commandes du
+produit et son profil supervisé, hors commandes d'opérateur, extensions
+ajoutées et montages personnalisés. L'inventaire direct ne couvre pas les
+alias par lien dur, les résolutions dynamiques indirectes ou le code
+statiquement incorporé.
+[Qualification du paquet](https://github.com/pamolive/PamOlive-Platform/actions/runs/45116526133)

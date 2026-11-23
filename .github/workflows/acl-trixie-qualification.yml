@@ -2,7 +2,7 @@ name: ACL Trixie source qualification
 
 on:
   push:
-    branches: [agent/acl-trixie-qualification]
+    branches: [agent/acl-trixie-qualification, agent/acl-product-runtime]
 
 permissions:
   contents: read
@@ -26,11 +26,15 @@ jobs:
           context="$RUNNER_TEMP/pamolive-acl-context-$GITHUB_RUN_ID"
           evidence="$RUNNER_TEMP/pamolive-acl-evidence-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           test ! -e "$evidence"
-          (set -o noclobber; git archive "$GITHUB_SHA:qualification/acl_trixie_build" > "$archive")
+          (
+            set -o noclobber
+            git archive "$GITHUB_SHA" deploy/acl-rebuild qualification/acl_trixie_build > "$archive"
+          )
           mkdir -m 700 "$context"
           tar --extract --file "$archive" --directory "$context" --no-same-owner
           docker build --platform=linux/amd64 --no-cache --progress=plain \
-            --target acl-qualification --output "type=local,dest=$evidence" "$context"
+            --target acl-qualification --output "type=local,dest=$evidence" \
+            --file "$context/qualification/acl_trixie_build/Dockerfile" "$context"
           cmp <(find "$evidence" -mindepth 1 -printf '%f\n' | LC_ALL=C sort) - <<'EXPECTED'
           baseline.json
           buildinfo
@@ -38,7 +42,8 @@ jobs:
           libacl1.deb
           qualification.json
           EXPECTED
-          python3 -I -B -S "$context/compare.py" "$evidence" | cmp "$evidence/qualification.json" -
+          python3 -I -B -S "$context/qualification/acl_trixie_build/compare.py" "$evidence" \
+            | cmp "$evidence/qualification.json" -
           expected=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["elf_sha256"])' "$evidence/qualification.json")
           actual=$(dpkg-deb --fsys-tarfile "$evidence/libacl1.deb" \
             | tar --extract --to-stdout --file - ./usr/lib/x86_64-linux-gnu/libacl.so.1.2.2400 \
