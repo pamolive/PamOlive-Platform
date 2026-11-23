@@ -15,6 +15,9 @@ HOST = "pam.example.test"
 BRANCH = "agent/p1-g-headless"
 BOUNDED_SHA = "72b778ad6e441744e8bd9ac84ba7f47b1f6b577b7885a2e0daf3b4584cc0150a"
 SDK_VERSION = "1.65.2"
+BUNDLE_BROWSER_VERSION = "157.0.8103.78"
+SANDBOX_URL = "chrome://sandbox/"
+APPARMOR_MODES = {"enforce", "complain", "unconfined"}
 
 
 def need(value, code):
@@ -80,6 +83,194 @@ def same_origin(url, origin):
         )
     except ValueError:
         return False
+
+
+def sandbox_diagnostic(rows, evaluation):
+    need(type(rows) is list and 5 <= len(rows) <= 16, "sandbox_diagnostic_rows")
+    flags = {}
+    for row in rows:
+        need(
+            type(row) is list
+            and len(row) == 2
+            and isinstance(row[0], str)
+            and 0 < len(row[0]) <= 80
+            and row[0] not in flags
+            and row[1]
+            in (("SUID", "Namespace", "None") if row[0] == "Layer 1 Sandbox" else ("Yes", "No")),
+            "sandbox_diagnostic_shape",
+        )
+        flags[row[0]] = row[1]
+    required = ("PID namespaces", "Network namespaces", "Seccomp-BPF sandbox")
+    need(
+        evaluation == "You are adequately sandboxed."
+        and flags.get("Layer 1 Sandbox") in ("SUID", "Namespace")
+        and all(flags.get(name) == "Yes" for name in required),
+        "chromium_sandbox_not_active",
+    )
+
+
+def process_ids(packet):
+    need(type(packet) is dict, "sandbox_process_packet")
+    rows = packet.get("processInfo")
+    need(type(rows) is list and 1 <= len(rows) <= 64, "sandbox_process_list")
+    browsers, renderers, seen = [], set(), set()
+    for row in rows:
+        need(type(row) is dict, "sandbox_process_item")
+        pid, kind = row.get("id"), row.get("type")
+        need(type(pid) is int and 1 < pid < 2**31 and pid not in seen, "sandbox_process_id")
+        seen.add(pid)
+        if kind == "browser":
+            browsers.append(pid)
+        elif kind == "renderer":
+            renderers.add(pid)
+    need(len(browsers) == 1 and renderers, "sandbox_renderer_missing")
+    return browsers[0], renderers
+
+
+def process_sandbox_status(raw, pid, uid):
+    need(type(raw) is bytes and 0 < len(raw) <= 16384, "sandbox_status_budget")
+    wanted = {"Pid", "Uid", "NSpid", "CapEff", "NoNewPrivs", "Seccomp", "Seccomp_filters"}
+    fields = {}
+    for line in raw.decode("ascii").splitlines():
+        field, _, value = line.partition(":")
+        if field in wanted:
+            need(field not in fields, "sandbox_status_duplicate")
+            fields[field] = value.strip()
+    need(
+        fields.keys() == wanted
+        and fields["Pid"] == str(pid)
+        and fields["Uid"].split() == [str(uid)] * 4
+        and uid > 0
+        and re.fullmatch(r"[1-9][0-9]*(?:\s+[1-9][0-9]*){0,7}", fields["NSpid"])
+        and fields["NSpid"].split()[0] == str(pid)
+        and fields["Seccomp"] in ("0", "1", "2")
+        and fields["NoNewPrivs"] in ("0", "1")
+        and re.fullmatch(r"[0-9a-f]{16}", fields["CapEff"])
+        and re.fullmatch(r"[0-9]{1,8}", fields["Seccomp_filters"]),
+        "sandbox_status_identity",
+    )
+    return {
+        "pid_depth": len(fields["NSpid"].split()),
+        "filters": int(fields["Seccomp_filters"]),
+        "restricted": fields["Seccomp"] == "2"
+        and fields["NoNewPrivs"] == "1"
+        and int(fields["CapEff"], 16) == 0,
+    }
+
+
+def apparmor_mode(raw):
+    need(type(raw) is bytes and 0 < len(raw) <= 4096, "sandbox_apparmor_budget")
+    label = raw.decode("ascii").strip()
+    if label == "unconfined":
+        return label
+    mode = re.fullmatch(r"[^\x00-\x1f\x7f]+ \((enforce|complain|unconfined)\)", label)
+    need(mode is not None, "sandbox_apparmor_unknown")
+    return mode.group(1)
+
+
+def read_process_field(directory, name, cap):
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK
+    with os.fdopen(os.open(name, flags, dir_fd=directory), "rb") as stream:
+        need(stat.S_ISREG(os.fstat(stream.fileno()).st_mode), "sandbox_proc_field_type")
+        raw = stream.read(cap + 1)
+    need(0 < len(raw) <= cap, "sandbox_proc_field_budget")
+    return raw
+
+
+def observe_process(pid, uid, *, executable=None):
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
+    directory = os.open(f"/proc/{pid}", flags)
+    try:
+        if executable is not None:
+            running = os.stat("exe", dir_fd=directory)
+            reviewed = executable.lstat()
+            need(
+                stat.S_ISREG(reviewed.st_mode)
+                and (running.st_dev, running.st_ino) == (reviewed.st_dev, reviewed.st_ino),
+                "sandbox_running_binary_changed",
+            )
+        result = process_sandbox_status(read_process_field(directory, "status", 16384), pid, uid)
+        result["apparmor"] = apparmor_mode(
+            read_process_field(directory, "attr/apparmor/current", 4096)
+        )
+        return result
+    finally:
+        os.close(directory)
+
+
+def renderer_sandboxed(renderer, browser):
+    return (
+        renderer["restricted"]
+        and renderer["filters"] > browser["filters"]
+        and renderer["pid_depth"] > browser["pid_depth"]
+    )
+
+
+def sandbox_receipt(value):
+    return (
+        type(value) is dict
+        and value.keys() == {"schema", "browser_apparmor", "renderer_apparmor", "renderers_checked"}
+        and value["schema"] == "pamolive.p1g-active-sandbox/1"
+        and type(value["browser_apparmor"]) is str
+        and value["browser_apparmor"] in APPARMOR_MODES
+        and type(value["renderer_apparmor"]) is list
+        and 0 < len(value["renderer_apparmor"]) <= 3
+        and all(type(mode) is str and mode in APPARMOR_MODES for mode in value["renderer_apparmor"])
+        and len(set(value["renderer_apparmor"])) == len(value["renderer_apparmor"])
+        and type(value["renderers_checked"]) is int
+        and len(value["renderer_apparmor"]) <= value["renderers_checked"] < 64
+    )
+
+
+def observe_browser_sandbox(browser, executable):
+    """Check the running browser before navigations to the synthetic application."""
+    uid = os.getuid()
+    context = browser.new_context(ignore_https_errors=False, service_workers="block")
+    try:
+
+        def restrict(route):
+            parsed = urlsplit(route.request.url)
+            if parsed.scheme == "chrome" and parsed.netloc in {"sandbox", "resources"}:
+                route.continue_()
+            else:
+                route.abort()
+
+        context.route("**/*", restrict)
+        diagnostic = context.new_page()
+        diagnostic.goto(SANDBOX_URL, wait_until="load", timeout=10000)
+        need(diagnostic.url == SANDBOX_URL, "sandbox_internal_origin")
+        rows = diagnostic.locator("#sandbox-status tr").evaluate_all(
+            """rows => rows.slice(0, 17).map(row =>
+                Array.from(row.cells).slice(0, 3)
+                    .map(cell => cell.textContent.trim().slice(0, 81)))"""
+        )
+        evaluation = diagnostic.locator("#evaluation").text_content(timeout=5000)
+        sandbox_diagnostic(rows, evaluation)
+        inert = context.new_page()
+        inert.set_content("<title>PamOlive sandbox probe</title>", timeout=5000)
+        session = browser.new_browser_cdp_session()
+        try:
+            pid, renderers = process_ids(session.send("SystemInfo.getProcessInfo"))
+            host = observe_process(pid, uid, executable=executable)
+            apparmor = set()
+            for renderer in renderers:
+                facts = observe_process(renderer, uid)
+                need(renderer_sandboxed(facts, host), "renderer_sandbox_not_active")
+                apparmor.add(facts["apparmor"])
+            later_pid, later_renderers = process_ids(session.send("SystemInfo.getProcessInfo"))
+            need(pid == later_pid and renderers <= later_renderers, "sandbox_process_set_changed")
+        finally:
+            session.detach()
+        proof = {
+            "schema": "pamolive.p1g-active-sandbox/1",
+            "browser_apparmor": host["apparmor"],
+            "renderer_apparmor": sorted(apparmor),
+            "renderers_checked": len(renderers),
+        }
+        need(sandbox_receipt(proof), "sandbox_receipt_invalid")
+        return proof
+    finally:
+        context.close()
 
 
 def source_binding(repo, receipt, revision):

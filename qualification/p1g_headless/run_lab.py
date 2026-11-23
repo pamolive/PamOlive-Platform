@@ -128,6 +128,7 @@ def worker(private):
             and not value["skips"]
             and value["SDK_cleanup_completed"] is True
             and value["browser_E2E_executed"] is True
+            and support.sandbox_receipt(value["browser_sandbox"])
             and value["live_server_thread_closed"] is True
             and value["fresh_test_database_absent_after_runner"] is True
             and value["base_database_OID_preserved"] is True,
@@ -232,7 +233,8 @@ def main():
                 in {"FAILED_OR_UNKNOWN", "OBSERVED_SYNTHETIC_INCREMENT_ONLY"},
                 "worker_diagnostic_shape",
             )
-            support.fresh_write(public / "worker-data.json", raw)
+            if packet["state"] == "FAILED_OR_UNKNOWN":
+                support.fresh_write(public / "worker-data.json", raw)
         support.need(
             outcome.ok
             and outcome.spawn_attempted
@@ -247,9 +249,11 @@ def main():
             report.get("schema") == "pamolive.p1g-browser-worker/1"
             and report.get("state") == "OBSERVED_SYNTHETIC_INCREMENT_ONLY"
             and report.get("tests") == 1
+            and support.sandbox_receipt(report.get("browser_sandbox"))
             and report.get("full_P1G_qualified") is False,
             "worker_packet_refused",
         )
+        support.fresh_write(public / "worker-data.json", raw)
         support.fresh_write(public / "report.json", raw)
         return 0
     except BaseException as error:
