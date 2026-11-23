@@ -799,7 +799,7 @@ def run_cases(
                             if anchor_store:
                                 from .witness_archive_cases import restore_lab_anchor
 
-                                report["schema"] = "W01-audit-anchor-store-results/2"
+                                report["schema"] = "W01-audit-anchor-store-results/3"
                                 signed_material, report["anchor_store"] = restore_lab_anchor(
                                     signed_material, advance
                                 )

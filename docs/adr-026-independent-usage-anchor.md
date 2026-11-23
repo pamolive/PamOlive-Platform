@@ -344,11 +344,30 @@ prédécesseur exigent donc un arbitrage **au moment de la publication**. Une
 restauration conserve le pin courant. Sa perte impose une récupération sous
 l'autorité du dépositaire, avec les références retenues hors sauvegarde.
 
-Le code qualifie le contrat cryptographique et la reprise de checkpoints
-synthétiques après rotation. Le provisionnement du pin atomique, la garde des
-clés de gouvernance et la récupération entre autorités opérationnellement
-indépendantes restent des étapes d'intégration. La signature atteste une
-admission par le dépositaire depuis une révision donnée.
+La signature atteste une admission par le dépositaire depuis une révision
+donnée. Le stockage de garde utilise un dossier Linux dédié par périmètre,
+sur un système de fichiers local administré par le dépositaire. Le verrou
+consultatif sur le dossier arbitre les publications et permet de relire un
+état stable. Les documents et manifestes vérifiés sont conservés par empreinte
+sans remplacement. Le stockage les synchronise avant de remplacer `current`,
+puis synchronise à nouveau le dossier avant de confirmer la révision.
+
+Après un résultat d'écriture incertain, le dépositaire représente le même
+prédécesseur, les mêmes octets et les mêmes nouvelles admissions. Si la
+référence courante a déjà avancé vers cette proposition, le stockage vérifie
+la transition et resynchronise les objets. Si elle a avancé vers une autre
+proposition, il refuse le réessai. Un commissionnement interrompu peut
+laisser des objets sans pointeur. La procédure d'incident du dépositaire
+doit rapprocher ces objets avec les références détenues hors restauration.
+Un dossier non vide refuse un nouveau commissionnement.
+
+Un pin extérieur en retard peut temporairement empêcher la reprise après
+une publication locale. Le dépositaire doit confirmer la révision puis
+actualiser cette référence avant de rétablir le service. Un même UID qui
+écrit en dehors du protocole, un rollback complet du disque de garde et un
+système de fichiers partagé entre hôtes ne sont pas couverts par le verrou.
+La garde des clés et la reprise entre autorités administrées séparément
+restent à qualifier sur l'infrastructure cible.
 
 ## Contrats et validation
 

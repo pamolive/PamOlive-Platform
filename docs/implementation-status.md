@@ -1,5 +1,14 @@
 # État réel de l’implémentation
 
+## Rotation du témoin après PITR — 23 novembre 2026
+
+Sur `96740d3`, les 131 tests de la wheel installée passent sans test ignoré.
+Le pilote de reprise relit les deux générations de checkpoints et rejette
+une ancienne signature portant sur un document jamais admis. Le transfert
+vers le second runner porte sur le checkpoint original. Les trois archives
+et le SHA-256 du checkpoint correspondent au reçu de cette exécution.
+[Qualification de la rotation](https://github.com/pamolive/PamOlive-Platform/actions/runs/45127628710)
+
 ## Reprise installée du Vault et du témoin — 23 novembre 2026
 
 Sur `b588ae0`, les 122 tests de la wheel du témoin passent sans test ignoré.

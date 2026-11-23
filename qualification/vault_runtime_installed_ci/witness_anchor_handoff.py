@@ -26,12 +26,13 @@ def publish(work):
     """Expose the pins through job outputs, separately from the signed document."""
     report = json.loads(read_regular(work / "witness-lab-public.json", 8192))
     need(
-        report["schema"] == "pamolive.witness-installed-pitr-anchor-store/2"
+        report["schema"] == "pamolive.witness-installed-pitr-anchor-store/3"
         and report["ok"] is True
         and report["cleaned_up"] is True
         and report["authority"] is False
         and report["native"]["anchor_store"]["restore_copy_exact"] is True
         and report["native"]["anchor_store"]["checkpoint_key_rotation_verified"] is True
+        and report["native"]["anchor_store"]["custody_atomic_rotation_verified"] is True
     )
     references = read_regular(work / "anchor-reference", 130)
     need(re.fullmatch(rb"[0-9a-f]{64}\n[0-9a-f]{64}\n", references) is not None)
