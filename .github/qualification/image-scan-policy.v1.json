@@ -4217,7 +4217,7 @@
       ]
     },
     {
-      "analysis": "The reviewed Debian .deb places Pod::Text in perl-modules-5.40. The exact perl-base package omits it. The image gate requires the matching installed perl-base identity, refuses the companion package and other known suppliers, and checks every image layer for the module filenames, including links and whiteouts. The High finding remains visible in Grype.",
+      "analysis": "Debian ships Pod::Text in perl-modules-5.40. The gate requires the exact perl-base package and refuses the module filenames, including files hidden by whiteouts. It admits only the seven reviewed Debconf homonyms when their bytes, regular-file type and permissions agree in every layer and the matching Debconf package is installed. Grype retains the High finding.",
       "analyst": "codex:/root",
       "conditions": [
         {
@@ -4253,6 +4253,10 @@
         {
           "path": ".github/qualification/evidence/perl-base-trixie-module-split.v1.json",
           "sha256": "a13f83a74d51eba4c220b32d0a1005d39b8852f89967d3bacfa0faacbe8d45f4"
+        },
+        {
+          "path": ".github/qualification/evidence/perl-debconf-text.v1.json",
+          "sha256": "ff94902c6f16d33ffd79b3994af91403eb0726429aa7228ba97c289fb11ec0c4"
         }
       ],
       "reviewed_at": "2026-11-23T15:03:23+00:00",

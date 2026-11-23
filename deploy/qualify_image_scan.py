@@ -130,6 +130,19 @@ PERL_BASE_PROOFS = {
     ".github/qualification/evidence/perl-base-trixie-module-split.v1.json":
         "a13f83a74d51eba4c220b32d0a1005d39b8852f89967d3bacfa0faacbe8d45f4",
 }
+DEBCONF_TEXT_SHA256 = {
+    f"/usr/share/perl5/Debconf/{name}/Text.pm": digest
+    for name, digest in {
+        "Element/Dialog": "58f7fd84f1bb43f997ed248b21eceb319be83029d0e92e321e6b359507fa5052",
+        "Element/Editor": "2c3949a7aeeea2202c99aa158b269fd8980c2313d96c9559c8efe8c436f8c2b4",
+        "Element/Gnome": "04d3e093b9bb5b054a0f6b30c343d7f469106427b3706a6a2f1d66747db04293",
+        "Element/Noninteractive":
+            "c71f33fce010170d5f914d2dbf15f0e4b7bc1b96b1dde51f26853d5fb31ce7f1",
+        "Element/Teletype": "21204c75925e1c4f42eb30f9ad0ffc17ec51e23dd64b5b19e41388be91adf60b",
+        "Element/Web": "142e2c3004fb2d0c42e6a0093aabcbf15ebcceba5d1db43de0f69541597faff4",
+        "FrontEnd": "e0aac882da15de83d9eb5306d9f0b86f1418821d67924d647e109faafd30855f",
+    }.items()
+}
 PRUNED_RUNTIME = {
     "CVE-2026-82560": {
         "source": "perl",
@@ -138,7 +151,11 @@ PRUNED_RUNTIME = {
         "additional_package_globs": ("perl", "perl-modules-*", "libperl*", "libpod-lators-perl"),
         "disposition": "code_not_present",
         "vendor": "https://github.com/rra/podlators/commit/70510174f69eb54aa6d617bde4e1402cd9b7c61f",
-        "proofs": PERL_BASE_PROOFS,
+        "proofs": {
+            **PERL_BASE_PROOFS,
+            ".github/qualification/evidence/perl-debconf-text.v1.json":
+                "ff94902c6f16d33ffd79b3994af91403eb0726429aa7228ba97c289fb11ec0c4",
+        },
         "forbidden": ("Text.pm", "Text.pmc"),
         "providers": (),
     },
@@ -259,7 +276,7 @@ class ArchiveFacts(tuple):
     """Preserve the existing (names, files) interface, with an optional sentinel."""
 
     def __new__(cls, names, files, elf_set=None, *, entries=None, contents=None, captured=None,
-                layer_digests=None, attributes=None):
+                layer_digests=None, attributes=None, verified_debconf_text=frozenset()):
         value = super().__new__(cls, (names, files))
         value.elf_set = elf_set
         value.entries = entries
@@ -267,6 +284,7 @@ class ArchiveFacts(tuple):
         value.captured = captured
         value.layer_digests = layer_digests
         value.attributes = attributes
+        value.verified_debconf_text = verified_debconf_text
         return value
 
     def __getnewargs__(self):
@@ -500,9 +518,10 @@ class LayerReader:
 
 def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                   archive_stream=None, forbidden_elf_sha256=(), reject_cjson_elf=False,
-                  attribute_paths=()):
+                  attribute_paths=(), capture_elf_set=False):
     """Stream final file/ELF/link identities, without extraction or following links."""
     require(type(reject_cjson_elf) is bool, "archive_cjson_option")
+    require(type(capture_elf_set) is bool, "archive_elf_set_option")
     requested = {checked_path(item["path"]) for item in conditions
                  if item.get("kind") in ("elf", "file_sha256")}
     require(isinstance(read_paths, (list, tuple, set)) and len(read_paths) <= 32,
@@ -520,8 +539,14 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
             and len(forbidden_elf_sha256) <= 16
             and all(isinstance(value, str) and SHA.fullmatch(value)
                     for value in forbidden_elf_sha256), "forbidden_elf_hashes")
-    capture_set = reject_cjson_elf or bool(forbidden_elf_sha256) or bool(read_paths) or any(
-        item.get("kind") == "elf_set" for item in conditions)
+    capture_set = (
+        capture_elf_set or reject_cjson_elf or bool(forbidden_elf_sha256)
+        or bool(read_paths) or any(item.get("kind") == "elf_set" for item in conditions)
+    )
+    debconf_text = DEBCONF_TEXT_SHA256 if {
+        "kind": "pruned_debian_runtime", "source": "perl"
+    } in conditions else {}
+    changed_debconf_text = set()
     names, elves, entries = set(), {}, {}
     captured, attributes = {}, {}
     # Hardlinks retain bytes even after their original path is removed. Track
@@ -586,6 +611,13 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                         normalized = str(PurePosixPath(member.name)).lstrip("/")
                         name = checked_path("/" if normalized == "." else "/" + normalized)
                         names.add(name)
+                        expected_text = debconf_text.get(name)
+                        if expected_text and (
+                            member.type not in (tarfile.REGTYPE, tarfile.AREGTYPE)
+                            or member.linkname
+                            or member.pax_headers.keys() - {"mtime", "atime", "ctime"}
+                        ):
+                            changed_debconf_text.add(name)
                         pure = PurePosixPath(name)
                         blocked = any(str(parent) in non_directories for parent in pure.parents)
                         # We do not emulate writes through directory symlinks. Such
@@ -682,6 +714,11 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                                         tail = combined[-32:]
                                     if parts is not None:
                                         parts.append(block)
+                                if expected_text and (
+                                    sha.hexdigest() != expected_text
+                                    or (member.uid, member.gid, member.mode) != (0, 0, 0o644)
+                                ):
+                                    changed_debconf_text.add(name)
                                 if parts is not None:
                                     captured[name] = b"".join(parts)
                                     require(sum(map(len, captured.values())) <= 128 * 1024**2,
@@ -721,7 +758,9 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                         entries=entries if capture_set else None,
                         contents={name: {key: item[key] for key in ("sha256", "class", "machine")}
                                   for name, item in contents.items()} if capture_set else None,
-                        captured=captured, layer_digests=layer_digests, attributes=attributes)
+                        captured=captured, layer_digests=layer_digests, attributes=attributes,
+                        verified_debconf_text=frozenset(
+                            (debconf_text.keys() & names) - changed_debconf_text))
 
 
 
@@ -1106,7 +1145,8 @@ def pruned_runtime_holds(entry, finding, *, facts, proofs):
                     for path, digest in rule["proofs"].items()), "pruned_runtime_evidence")
     raw_status = (getattr(facts, "captured", None) or {}).get(DPKG_STATUS, b"")
     require(0 < len(raw_status) <= 8 * 1024**2, "pruned_runtime_dpkg")
-    installed = [row for row in controls(raw_status)
+    status_rows = list(controls(raw_status))
+    installed = [row for row in status_rows
                  if row.get("Status", "").endswith(" installed")
                  and (row.get("Package") in rule["packages"]
                       or row.get("Source", row.get("Package", "")).partition(" ")[0] == source
@@ -1118,8 +1158,15 @@ def pruned_runtime_holds(entry, finding, *, facts, proofs):
                     and row.get("Source") in (source, f"{source} ({version})")
                     and row.get("Status") == "install ok installed" for row in installed),
             "pruned_runtime_dpkg")
+    names, files = facts
+    if cve == "CVE-2026-82560":
+        debconf = [row for row in status_rows if row.get("Package") == "debconf"]
+        if len(debconf) == 1 and all(debconf[0].get(field) == value for field, value in {
+            "Version": "1.5.91", "Architecture": "all", "Status": "install ok installed",
+        }.items()) and debconf[0].get("Source", "debconf") in ("debconf", "debconf (1.5.91)"):
+            names = names - facts.verified_debconf_text
     if not conditions_hold([{"kind": "absent_basename_glob", "pattern": pattern}
-                            for pattern in rule["forbidden"]], facts):
+                            for pattern in rule["forbidden"]], (names, files)):
         return False
     entries = facts.entries or {}
     for target, aliases, digest in rule["providers"]:
@@ -1457,13 +1504,34 @@ def referenced(policy_path, item):
     return path
 
 
+def elf_inventory_bytes(metadata, facts, policy_report):
+    inventory = {
+        "schema": "pamolive.image-elf-inventory.v1",
+        "revision": metadata["revision"],
+        "platform": metadata["platform"],
+        "config_id": metadata["image_id"],
+        "archive_sha256": metadata["archive_sha256"],
+        "layer_diff_ids": facts.layer_digests,
+        "policy_result_sha256": hashlib.sha256(policy_report).hexdigest(),
+        "elf_set": facts.elf_set,
+        "entries": [facts.entries[path] for path in sorted(facts.entries)],
+        "build_verified": False,
+        "cryptographic_build_attestation_verified": False,
+        "cxx_template_instantiation_verified": False,
+    }
+    raw = (canonical(inventory) + "\n").encode()
+    require(len(raw) <= 4 * 1024**2, "elf_inventory_budget")
+    return raw
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("bundle", "revision", "os-report", "compiled-sbom", "compiled-report",
                  "positive-report", "scanner-archive", "policy", "output"):
         parser.add_argument("--" + name, required=True)
+    parser.add_argument("--elf-inventory-output", type=Path)
     args = parser.parse_args(argv)
-    fd = None
+    fd, inventory_fd = None, None
     try:
         fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         policy_path = Path(args.policy).resolve(strict=True)
@@ -1492,7 +1560,9 @@ def main(argv=None):
         conditions = [condition for entry in policy["findings"]
                       if entry.get("disposition") in DISPOSITIONS - {"untriaged"}
                       for condition in entry.get("conditions", [])]
-        facts = archive_facts(archive, conditions)
+        facts = archive_facts(
+            archive, conditions, capture_elf_set=args.elf_inventory_output is not None,
+        )
         os_report, compiled, positive, sbom = (read_json(path) for path in (
             args.os_report, args.compiled_report, args.positive_report, args.compiled_sbom))
         compiled_target = compiled["source"]["target"]
@@ -1514,9 +1584,18 @@ def main(argv=None):
             ("scanner_pin", tool_path))}
         result["source_targets"] = {"compiled": compiled_target, "positive": positive_target,
                                     "binding": "fixed read-only CI mounts or identical host paths"}
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        policy_report = (canonical(result) + "\n").encode()
+        if args.elf_inventory_output is not None:
+            inventory = elf_inventory_bytes(metadata, facts, policy_report)
+            inventory_fd = os.open(args.elf_inventory_output,
+                                   os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as stream:
             fd = None
-            stream.write(canonical(result) + "\n")
+            stream.write(policy_report)
+        if inventory_fd is not None:
+            with os.fdopen(inventory_fd, "wb") as stream:
+                inventory_fd = None
+                stream.write(inventory)
     except (ValueError, OSError, KeyError, TypeError, AttributeError, RecursionError,
             tarfile.TarError, EOFError) as exc:
         if fd is not None:
@@ -1526,6 +1605,9 @@ def main(argv=None):
         print(json.dumps({"passed": False, "error": str(exc) if isinstance(
             exc, ScanPolicyError) else "qualification_failed"}))
         return 1
+    finally:
+        if inventory_fd is not None:
+            os.close(inventory_fd)
     print(json.dumps({"passed": result["passed"], "high_groups": result["high_finding_groups"],
                       "blockers": len(result["blockers"]), "all_findings_clear":
                       result["all_findings_clear"]}))
