@@ -81,6 +81,13 @@ class DebianRuntimeInventoryTests(TestCase):
         self.root = Path(tmp.name)
         self.files = native_files()
         self.receipt = make_receipt(self.files)
+        receipt = json.loads(self.receipt)
+        expected = {"installed_elf_sha256": receipt["installed_elf_sha256"],
+                    "packages": receipt["selection"]["packages"]}
+        raw = (json.dumps(expected, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
+        pin = patch.object(refresh, "REVIEWED_MATERIALS_SHA256", refresh.sha(raw))
+        pin.start()
+        self.addCleanup(pin.stop)
         self.aliases = {path: PurePosixPath(target).name
                         for path, target in inventory.KRB5_ALIASES.items()}
         self.payload = {
@@ -243,4 +250,22 @@ class DebianRuntimeInventoryTests(TestCase):
         path = next(iter(self.files))
         self.bundle({**self.payload, path: self.files[path] + b"changed"})
         with self.assertRaisesRegex(inventory.InventoryError, "installed_elf_changed"):
+            inventory.inspect_bundle(self.root, REVISION)
+
+    def test_image_rejects_agreeing_fabricated_receipt_and_elf(self):
+        path = next(iter(self.files))
+        changed = {**self.files, path: self.files[path] + b"replacement"}
+        payload = {**self.payload, **changed, inventory.RECEIPT: make_receipt(changed)}
+        self.bundle(payload)
+        with self.assertRaisesRegex(inventory.InventoryError, "unreviewed_debian_materials"):
+            inventory.inspect_bundle(self.root, REVISION)
+
+    def test_image_rejects_repacked_deb_and_allows_new_signed_index_digest(self):
+        receipt = json.loads(self.receipt)
+        receipt["selection"]["releases"]["trixie"] = "c" * 64
+        self.bundle({**self.payload, inventory.RECEIPT: json.dumps(receipt).encode("ascii")})
+        self.assertEqual(inventory.inspect_bundle(self.root, REVISION)["revision"], REVISION)
+        receipt["selection"]["packages"][0]["archive_sha256"] = "e" * 64
+        self.bundle({**self.payload, inventory.RECEIPT: json.dumps(receipt).encode("ascii")})
+        with self.assertRaisesRegex(inventory.InventoryError, "unreviewed_debian_materials"):
             inventory.inspect_bundle(self.root, REVISION)

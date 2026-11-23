@@ -135,6 +135,32 @@ de configuration. Le SBOM relie les paquets et les fichiers ELF vérifiés et
 le scan OS porte toujours sur l'archive complète. Les preuves du précédent
 backport restent consultables dans l'historique du dépôt.
 
+Avant l'installation dans le stage de qualification, puis lors des lectures
+du runtime et de l'archive, les 14 identités d'archives de paquets et les six
+empreintes ELF sont comparées au lot Debian authentifié par APT et installé
+dans le laboratoire indépendant.
+La projection associe `selection.packages` sous la clé `packages` et
+`installed_elf_sha256`. Son JSON compact ASCII a des clés triées et
+se termine par un saut de ligne. Son empreinte SHA-256 est
+`60fddfe334dea69f2982980360ad5899418b5dedf16b8586c1e67311296e8b66`.
+Une actualisation des index signés peut conserver ces mêmes octets.
+Une nouvelle version ou un nouveau contenu de paquet exige une nouvelle
+qualification d'acquisition et une revue de la projection.
+[Reçu de référence](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087805069)
+
+Le rapport de l'image de la PR nº 42 confirme les mêmes six paquets
+runtime et les mêmes ELF que ce reçu. Les scans OS et SBOM rapportent
+encore six CVE de DSA-6650-1 sur les quatre mêmes bibliothèques Kerberos,
+soit douze groupes et 48 correspondances. CVE-2026-107778 reste ouverte
+pour les mêmes paquets et représente deux autres groupes. La décision
+du scanner conserve ces groupes comme bloquants.
+[Scan du candidat](https://github.com/pamolive/PamOlive-Platform/actions/runs/45089228559) ·
+[Avis Debian](https://security-tracker.debian.org/tracker/DSA-6650-1)
+
+Le test de fusion de la PR nº 44 reproduit cette projection des binaires,
+les 12 groupes couverts par l'avis et les 45 groupes bloquants au total.
+[Scan du candidat intégré](https://github.com/pamolive/PamOlive-Platform/actions/runs/45104576157)
+
 ## Inventaire et scanner
 
 Retirer un paquet Debian vulnérable peut supprimer un match du scanner tout en le rendant aveugle à son remplacement compilé. Produire donc un inventaire explicite de version, archive/signature/hash, options et fichiers compilés. Vérifier les dépendances réellement chargées par guacd, son plugin RDP et le pair de test ; un fichier de version isolé ne suffit pas. Le SBOM et le rapport de livraison doivent distinguer composants PyPI, Debian et compilés.

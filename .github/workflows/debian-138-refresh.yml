@@ -2,7 +2,7 @@ name: Debian 13.8 library refresh
 
 on:
   push:
-    branches: [agent/release-debian-138-security, agent/release-debian-138-product]
+    branches: [agent/release-debian-138-security, agent/release-debian-138-product, agent/debian-release-materials]
 
 permissions:
   contents: read
@@ -22,7 +22,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           cd qualification/debian_138_refresh
-          printf '%s  source-checksums.sha256\n' b31443e2a347fe7e403c98de21306605341c9027e79b28d8fe20488fc94b3bd7 | sha256sum --check --strict
+          printf '%s  source-checksums.sha256\n' 67e7e828f13e802ef6dd55aecf76c01bbca27e45153050db88ebe83d939edfe4 | sha256sum --check --strict
           sha256sum --check --strict source-checksums.sha256
           python3 -I -B -S test_refresh.py
       - name: Qualify the Debian runtime and SDK packages on amd64
@@ -47,7 +47,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
   product-debian-base:
-    if: github.repository == 'pamolive/PamOlive-Platform' && github.ref == 'refs/heads/agent/release-debian-138-product'
+    if: github.repository == 'pamolive/PamOlive-Platform' && (github.ref == 'refs/heads/agent/release-debian-138-product' || github.ref == 'refs/heads/agent/debian-release-materials')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -79,3 +79,16 @@ jobs:
           libkrb5-3 1.21.3-5+deb13u2 amd64
           libkrb5support0 1.21.3-5+deb13u2 amd64
           EXPECTED
+          docker run --rm --pull never --no-healthcheck --user "$(id -u):$(id -g)" \
+            --network none --cpus 1 --memory 256m --memory-swap 256m --pids-limit 32 \
+            --cap-drop ALL --security-opt no-new-privileges --read-only \
+            --tmpfs /tmp:size=16m,mode=1777,nosuid,nodev,noexec --workdir /app \
+            --entrypoint /bin/sh "$image" -ec \
+            'python -B -m deploy.debian_refresh_inventory --root / --output /tmp/debian.json && cat /tmp/debian.json' \
+            > "$RUNNER_TEMP/pamolive-debian-base-inventory.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: debian-product-base-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pamolive-debian-base-inventory.json
+          if-no-files-found: error
+          retention-days: 7

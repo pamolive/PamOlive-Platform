@@ -97,6 +97,8 @@ def verified_report(raw, status, files, *, sdk=False):
     receipt = refresh.validate_receipt(json.loads(raw, object_pairs_hook=refresh.unique_dict))
     verify_status(status, sdk=sdk)
     need(files == receipt["installed_elf_sha256"], "installed_elf_changed")
+    need(refresh.materials_sha256(receipt["selection"], files) == refresh.REVIEWED_MATERIALS_SHA256,
+         "unreviewed_debian_materials")
     return validate_report({
         "schema": SCHEMA,
         "architecture": "amd64",

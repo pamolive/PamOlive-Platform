@@ -62,6 +62,8 @@ EXECUTION_ENV = {
     "KRB5_CCNAME": "MEMORY:pamolive-release",
 }
 PACKAGE_FIELDS = ("package", "source", "version", "suite", "archive_sha256", "archive_bytes")
+# Projected from the independent signed-APT lab, run 45087805069, artifact 14780245532.
+REVIEWED_MATERIALS_SHA256 = "60fddfe334dea69f2982980360ad5899418b5dedf16b8586c1e67311296e8b66"
 
 
 class Refused(ValueError):
@@ -75,6 +77,13 @@ def need(condition, code):
 
 def sha(raw):
     return hashlib.sha256(raw).hexdigest()
+
+
+def materials_sha256(selection, files):
+    """Bind the verified archive identities and ELF bytes across signed index rotations."""
+    materials = {"packages": selection["packages"], "installed_elf_sha256": files}
+    encoded = json.dumps(materials, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return sha((encoded + "\n").encode("ascii"))
 
 
 def is_sha(value):
@@ -278,6 +287,8 @@ def qualify():
         names = NATIVE_FILES.get(item["package"])
         if names:
             file_hashes.update(archive_bytes_by_file(path, names))
+    need(materials_sha256(selection, file_hashes) == REVIEWED_MATERIALS_SHA256,
+         "unreviewed_debian_materials")
     command(apt_install("--no-download"), phase="apt_install", timeout=240)
     fmt = (
         "${binary:Package}|\t${Version}|\t${Architecture}|\t"

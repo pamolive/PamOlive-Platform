@@ -127,6 +127,21 @@ class RefreshTests(unittest.TestCase):
         self.assertEqual(len((HERE / "debian.list").read_text().splitlines()), 2)
         self.assertIn('APT::Update::Error-Mode "any";', (HERE / "apt.conf").read_text())
 
+    def test_unreviewed_bytes_are_refused_before_apt_install(self):
+        value = receipt()
+        with (
+            patch.object(refresh, "load_json", return_value=value["selection"]),
+            patch.object(refresh, "verify_archive", return_value=Path("/sample.deb")),
+            patch.object(
+                refresh, "archive_bytes_by_file",
+                side_effect=lambda _, names: {name: "6" * 64 for name in names},
+            ),
+            patch.object(refresh, "command") as command,
+            self.assertRaisesRegex(refresh.Refused, "unreviewed_debian_materials"),
+        ):
+            refresh.qualify()
+        command.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
