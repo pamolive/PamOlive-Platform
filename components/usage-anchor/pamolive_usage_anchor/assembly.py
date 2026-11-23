@@ -1,5 +1,6 @@
 """Trusted startup only; construction performs no migrations and starts no listener."""
 
+from .audit_archive import MAX_PAGE_EVENTS
 from .authority import Authority
 from .codec import MAX_MATERIALS
 from .http import Application, HistoryApplication
@@ -27,3 +28,20 @@ def history_application(*, slot_path, slot_sha256, connect, owner_uid=0):
     ledger = PostgresHistory(connect)
     ledger.startup(guard.check())
     return HistoryApplication(HistoryService(guard, ledger))
+
+
+def audit_archive_page(
+    *,
+    slot_path,
+    slot_sha256,
+    connect,
+    checkpoint,
+    after_seq=0,
+    limit=MAX_PAGE_EVENTS,
+    owner_uid=0,
+):
+    """Export one observer page through the trusted, pinned slot path."""
+    guard = SlotFile(slot_path, slot_sha256, owner_uid)
+    page = PostgresHistory(connect).archive_page(guard.check(), checkpoint, after_seq, limit=limit)
+    guard.check()
+    return page

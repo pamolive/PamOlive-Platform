@@ -23,8 +23,16 @@ from witness_wheel import (  # noqa: E402
 
 FIXTURES = ROOT / "fixtures"
 TESTS = FIXTURES / "tests"
-TEST_MODULES = ("test_pure", "test_r2", "test_http_client", "test_history", "test_cold_history")
-TEST_COUNT = 77
+TEST_MODULES = (
+    "test_pure",
+    "test_r2",
+    "test_http_client",
+    "test_history",
+    "test_cold_history",
+    "test_audit_archive",
+    "test_archive_reader",
+)
+TEST_COUNT = 96
 attempts = []
 
 

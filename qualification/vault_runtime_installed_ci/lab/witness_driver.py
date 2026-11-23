@@ -555,6 +555,7 @@ def run_cases(
     restart_history=False,
     restore_witness=False,
     restore_cluster=False,
+    audit_archive=False,
 ):
     from cryptography.hazmat.primitives import serialization
     from pamolive_usage_anchor import codec
@@ -738,6 +739,13 @@ def run_cases(
                     restart=restart,
                 )
                 if restore_witness or restore_cluster:
+                    checkpoint = None
+                    if audit_archive:
+                        from .witness_archive_cases import capture_checkpoint
+
+                        advance("audit_archive_checkpoint")
+                        checkpoint = capture_checkpoint(fixture.slot, observer)
+
                     def restore():
                         advance("restore_wait")
                         publish("restore-ready", b"W01_RESTORE_READY\n")
@@ -767,6 +775,13 @@ def run_cases(
                     )
                     if restore_cluster:
                         report["postgres"]["clusters"] = 3
+                    if audit_archive:
+                        from .witness_archive_cases import check_restored_archive
+
+                        report["schema"] = "W01-audit-archive-results/1"
+                        report["audit_archive"] = check_restored_archive(
+                            fixture.slot, checkpoint, factories, snapshot, advance
+                        )
     return report
 
 
@@ -780,6 +795,7 @@ def main():
     restoration = parser.add_mutually_exclusive_group()
     restoration.add_argument("--restore-witness", action="store_true")
     restoration.add_argument("--restore-cluster", action="store_true")
+    parser.add_argument("--audit-archive", action="store_true")
     args = parser.parse_args()
     phase = "boundary"
 
@@ -792,6 +808,7 @@ def main():
         require(not args.restart_history or args.history)
         require(not args.restore_witness or args.restart_history)
         require(not args.restore_cluster or args.restart_history)
+        require(not args.audit_archive or args.restore_cluster)
         os.environ.clear()
         os.environ.update(LANG="C.UTF-8", LC_ALL="C.UTF-8", PSYCOPG_IMPL="c")
         require(
@@ -834,6 +851,7 @@ def main():
             restart_history=args.restart_history,
             restore_witness=args.restore_witness,
             restore_cluster=args.restore_cluster,
+            audit_archive=args.audit_archive,
         )
         publish("public.json", encode(report))
         phase = "acknowledge"

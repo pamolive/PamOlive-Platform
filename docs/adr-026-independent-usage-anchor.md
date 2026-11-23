@@ -228,6 +228,26 @@ service de consultation après vérification de l'état restauré. Le contrôle
 hors sauvegarde et la conservation inter-hôte restent des prérequis
 d'exploitation. [Qualification PITR](p2-usage-anchor-validation.md#restauration-physique-à-un-point-nommé)
 
+Pour vérifier la continuité de l'audit après reprise, conserver un point
+d'ancrage complet hors de la sauvegarde et sous une autorité indépendante de
+la base restaurée. Ce point associe le contexte fermé, l'empreinte du fichier
+de slot, l'organisation, l'installation, la dernière séquence et l'empreinte
+de tête. Conserver ce tuple dans un registre authentifié avec intégrité et
+contrôle d'accès. La preuve couvre la chaîne conservée jusqu'au point d'ancrage.
+Son origine et l'intégrité de la source avant capture relèvent de l'autorité
+qui conserve le point.
+
+L'opérateur utilise `assembly.audit_archive_page` avec le slot épinglé, la
+connexion observateur et le point d'ancrage indépendant. Son premier appel
+part de `after_seq=0`. Il transmet les pages bornées à `ArchiveVerifier` et
+utilise le curseur vérifié pour poursuivre. La validation complète exige
+`finish()`. Les pages `pamolive.vault.usage-audit-archive-page/1` préservent les
+octets historiques et leur chaînage. Elles contiennent des identifiants
+d'audit et suivent les règles de protection des preuves. L'export hors ligne
+s'ajoute au parcours fermé sans migration ni nouvel accès HTTP. La vérification
+d'une chaîne avant et après rotation de slot repose sur des points séparés
+pour chaque contexte.
+
 Un V compromis disposant d'un unwrap KMS générique peut ignorer W. Avant remise,
 une garde indépendante devra imposer chaque usage W avec claim d'émission unique,
 tenant/destination/broker/version/certificat exacts et aucun chemin générique

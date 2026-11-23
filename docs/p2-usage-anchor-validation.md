@@ -237,6 +237,22 @@ La sauvegarde et la reprise utilisent un seul hôte. La conservation durable
 des archives, la restauration multi-hôte et le rétablissement d'une autorité
 de service nécessitent leurs propres procédures et validations.
 
+## Archive d'audit vérifiée après PITR
+
+La campagne `run_witness_audit_archive` ajoute une vérification de l'archive
+à la restauration physique. Le pilote conserve en mémoire le point d'ancrage
+du témoin original scellé avant son arrêt. Il lit la chaîne restaurée avec le
+rôle observateur et vérifie la progression à partir de la genèse avec trois
+événements par page. Il vérifie aussi le rejet d'une tête différente et d'une
+organisation étrangère, ainsi que l'identité des instantanés W et V avant et
+après lecture. Le rapport CI contient les cinq constats booléens.
+
+Les tests hors ligne vérifient les formats canoniques, les bornes, les refus
+de pages incomplètes ou réordonnées et la conservation des octets historiques.
+La campagne sur un seul hôte qualifie la comparaison à une référence
+capturée avant restauration. L'authenticité et la durabilité d'un registre de
+points d'ancrage exploité séparément demandent une qualification dédiée.
+
 ## Wheel W1 installée — 18 novembre 2026
 
 La [CI installée](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191)
