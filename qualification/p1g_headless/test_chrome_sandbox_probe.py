@@ -150,6 +150,19 @@ class SandboxProbeTests(unittest.TestCase):
         self.assertTrue(probe.valid_worker_result(refusal))
         self.assertFalse(probe.valid_worker_result({**refusal, "ip_network_isolated": True}))
 
+    def test_node_pin_accepts_only_the_locked_linux_wheel_driver(self):
+        node = Path("synthetic")
+        pin = {
+            "bytes": lab_support.SDK_NODE_BYTES,
+            "sha256": lab_support.SDK_NODE_SHA,
+        }
+        with patch.object(lab_support, "tool_pin", return_value=pin) as reader:
+            self.assertEqual(lab_support.playwright_node_pin(node), pin)
+        reader.assert_called_once_with(node, root_owner=False, cap=lab_support.SDK_NODE_BYTES)
+        with patch.object(lab_support, "tool_pin", return_value={**pin, "sha256": "0" * 64}):
+            with self.assertRaisesRegex(ValueError, "playwright_driver_identity"):
+                lab_support.playwright_node_pin(node)
+
     def test_shared_browser_observer_refuses_suid_before_renderer_proof_in_probe(self):
         browser = Mock()
         context = browser.new_context.return_value

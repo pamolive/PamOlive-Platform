@@ -137,7 +137,7 @@ def browser_probe(work):
     distribution = importlib.metadata.distribution("playwright")
     support.need(distribution.version == support.SDK_VERSION, "sandbox_probe_playwright_version")
     driver = Path(distribution.locate_file("playwright/driver/node"))
-    driver_before = support.tool_pin(driver, root_owner=False, cap=128 * 1024**2)
+    driver_before = support.playwright_node_pin(driver)
     phase = "launch"
     try:
         with sync_playwright() as playwright:
@@ -161,8 +161,9 @@ def browser_probe(work):
         support.tool_pin(binary, root_owner=False) == before, "sandbox_probe_binary_changed"
     )
     support.need(
-        support.tool_pin(driver, root_owner=False, cap=128 * 1024**2) == driver_before,
+        support.playwright_node_pin(driver) == driver_before,
         "sandbox_probe_driver_changed",
+        "playwright_driver_identity",
     )
     return {
         "state": "SANDBOX_OBSERVED",
