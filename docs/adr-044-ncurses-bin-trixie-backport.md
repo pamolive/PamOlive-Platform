@@ -1,0 +1,54 @@
+# ADR-044 — Backport de ncurses-bin sur Debian Trixie
+
+Les scans de la PR #72 incluent CVE-2025-69720 dans un groupe OS
+de quatre paquets issus du même source Debian. L'avis concerne
+l'utilitaire `infocmp` livré par `ncurses-bin`. Le correctif du
+mainteneur tient dans deux modifications fonctionnelles de
+`progs/infocmp.c`. Le paquet source Trixie `6.5+20250216-2`
+est la base de compilation.
+[Avis Debian](https://security-tracker.debian.org/tracker/CVE-2025-69720)
+· [Correctif amont](https://github.com/ThomasDickey/ncurses-snapshots/commit/6f6db0e8fd14e40096a0ee6f8bdf32dedbd3fc9e)
+· [Scan #72](https://github.com/pamolive/PamOlive-Platform/actions/runs/45163015819/artifacts/14818645061)
+
+## Décision
+
+Le backport produit `ncurses-bin` en version
+`6.5+20250216-2+pamolive1` avec la recette Debian. Il
+conserve le paquet Essential, les chemins attendus par dpkg et
+les outils de maintenance terminal. Le paquet pré-dépend de
+`libtinfo6` avec une borne minimale. `libncursesw6` et
+`libtinfo6` gardent leurs versions Trixie exactement alignées.
+`ncurses-base` conserve les données terminfo de la distribution.
+[Paquet essentiel](https://packages.debian.org/trixie/ncurses-bin)
+· [Dépendances de libncursesw6](https://packages.debian.org/trixie/libncursesw6)
+
+Supprimer `infocmp` retirerait un outil d'un paquet Essential
+installé et demanderait une preuve d'absence de toutes ses copies
+dans l'image. Une mise à niveau depuis Forky modifierait aussi la
+recette et les bibliothèques de terminal. Le backport réduit le
+changement au paquet qui fournit le code concerné.
+
+## Qualification
+
+La campagne GitHub résout les entrées Debian sur APT authentifié.
+Les empreintes épinglent le source, l'archive stock et les fichiers
+avant et après l'application exacte du correctif. La compilation
+s'exécute sans réseau sous un UID non privilégié. L'archive
+candidate, le buildinfo et le résumé de construction sont liés
+par un manifeste SHA-256.
+
+Le laboratoire installe successivement le paquet stock et le
+paquet candidat dans deux étapes de l'image. Il contrôle les
+pré-dépendances et l'état dpkg, compare les programmes et leurs
+alias, puis exerce `infocmp`, `tic` et `tput` sur des entrées
+terminfo ordinaires de test. Le reçu concerne Debian Trixie
+`linux/amd64` et le paquet vérifié.
+
+L'intégration au produit exige de reproduire le paquet qualifié, de
+vérifier l'ELF installé dans le TAR final et d'exécuter les tests
+SSH et la CI complète. Le rapport d'image doit encore associer
+le groupe exact à un paquet local et aux trois paquets Trixie.
+Cette campagne laisse le signalement High dans les scans bruts.
+La procédure de restauration reposera sur le dernier digest
+qualifié et sa sauvegarde. Le paquet stock est la référence
+du laboratoire.
