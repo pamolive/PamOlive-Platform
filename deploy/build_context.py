@@ -232,10 +232,10 @@ DEBIAN_REFRESH_INPUTS = {
         "debian.list": "faafef0e0c43bbb8d6722c0e512f7054c803c6470be99d9e9cfe076faa2cbc40",
         "smoke.c": "ba5180eb3384cb2b2720056ab983601f65a9e1eaecbadbfb9be0b2003b922fa1",
         "source-checksums.sha256": (
-            "b31443e2a347fe7e403c98de21306605341c9027e79b28d8fe20488fc94b3bd7"
+            "67e7e828f13e802ef6dd55aecf76c01bbca27e45153050db88ebe83d939edfe4"
         ),
-        "test_refresh.py": "63ee205b5b615f4a986b28c00d4972bdacdcf2f966e9067d762d3d9df6ac4a5d",
-        "verify_refresh.py": "7bd0f4a7fc82cb30fcdbcb302bdf1f03f8cbbb87899c58f3550d72be548cf304",
+        "test_refresh.py": "f02a44ec50125fcd85bf6ff6da25aa78ba99c3ae95921ef1c9859a7c627c57c0",
+        "verify_refresh.py": "6e72d4897a81e980a6ccfe4668efe1b7a0be8e402029e3b4d84a728000d43119",
     }.items()
 }
 EXCLUDED_COMPONENTS = (

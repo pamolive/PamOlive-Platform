@@ -12,8 +12,8 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import patch
 
+from deploy import build_context, qualified_image
 from deploy import debian_refresh_inventory as inventory
-from deploy import qualified_image
 from qualification.debian_138_refresh import verify_refresh as refresh
 
 REVISION = "a" * 40
@@ -164,6 +164,12 @@ class DebianRuntimeInventoryTests(TestCase):
             [item["package"] for item in report["packages"]], sorted(inventory.RUNTIME_PACKAGES)
         )
         self.assertEqual(set(report["installed_elf_sha256"]), inventory.ELF_PATHS)
+
+    def test_committed_context_pins_match_the_debian_qualification_sources(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = {name: refresh.sha((root / name).read_bytes())
+                  for name in build_context.DEBIAN_REFRESH_INPUTS}
+        self.assertEqual(actual, build_context.DEBIAN_REFRESH_INPUTS)
 
     def test_root_entry_point_imports_in_the_two_file_builder_context(self):
         for module, target in (
