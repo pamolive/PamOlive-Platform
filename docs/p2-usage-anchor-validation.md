@@ -259,6 +259,19 @@ public de l'artefact GitHub `14783493475` a été vérifié et porte l'empreinte
 SHA-256 `4d6acf3b2555aa9454cde112e2f60e0b11e3fa8038a9ee98f39eb968ac9f1205`.
 [CI de l'archive](https://github.com/pamolive/PamOlive-Platform/actions/runs/45096782576)
 
+## Point d'ancrage externe signé après PITR
+
+La campagne `run_witness_signed_anchor` active la suite de l'archive. Elle
+capture la tête du témoin d'origine sous le rôle observateur et demande une
+signature à une clef synthétique détenue par le pilote. Après reprise, le
+pilote vérifie la signature avec la clef et l'empreinte conservées avant
+l'arrêt. Il se sert du point vérifié pour parcourir les pages, et teste
+le rejet d'une autre clef et d'un document différent signé par la même clef.
+Le reçu public contient trois constats booléens sur cette étape. Le pilote
+sur un hôte partagé qualifie le transfert et la vérification cryptographique.
+L'exploitation d'un registre persistant sous administration indépendante
+demande une campagne multi-hôte distincte.
+
 ## Wheel W1 installée — 18 novembre 2026
 
 La [CI installée](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191)

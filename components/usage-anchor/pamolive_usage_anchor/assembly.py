@@ -30,6 +30,14 @@ def history_application(*, slot_path, slot_sha256, connect, owner_uid=0):
     return HistoryApplication(HistoryService(guard, ledger))
 
 
+def capture_audit_checkpoint(*, slot_path, slot_sha256, connect, owner_uid=0):
+    """Capture the audit head through the trusted, pinned slot path."""
+    guard = SlotFile(slot_path, slot_sha256, owner_uid)
+    checkpoint = PostgresHistory(connect).capture_checkpoint(guard.check())
+    guard.check()
+    return checkpoint
+
+
 def audit_archive_page(
     *,
     slot_path,

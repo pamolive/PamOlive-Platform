@@ -1,32 +1,120 @@
 """Check the PITR archive against a checkpoint retained by the lab driver."""
 
+import os
+import subprocess
+import sys
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from pathlib import Path
 
 from .witness_fence_cases import expect_error, require
-from .witness_history_cases import check_witness_fence
 
 
 def capture_checkpoint(slot, observer):
-    from pamolive_usage_anchor.audit_archive import Checkpoint
+    from pamolive_usage_anchor.ledger import PostgresHistory
 
-    check_witness_fence(observer, slot, "closed", slot.lease_epoch + 1)
-    with observer() as conn, conn.cursor() as cursor:
-        cursor.execute(
-            """SELECT seq,head_sha256 FROM pam_usage_anchor.audit_heads
-               WHERE context_id=%s""",
-            (slot.context_id,),
-        )
-        head = cursor.fetchone()
-        require(head is not None and cursor.fetchone() is None)
-    expected = slot.expected()
-    return Checkpoint(
-        slot.context_id,
-        slot.source_sha256,
-        expected["organization_id"],
-        expected["installation_id"],
-        head[0],
-        head[1],
+    return PostgresHistory(observer).capture_checkpoint(slot)
+
+
+def sign_lab_checkpoint(checkpoint):
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from pamolive_usage_anchor.audit_archive import GENESIS_SHA256
+    from pamolive_usage_anchor.codec import sha
+    from pamolive_usage_anchor.signed_anchor import sign_checkpoint
+
+    signer = Ed25519PrivateKey.generate()
+    public = signer.public_key().public_bytes_raw()
+    raw = sign_checkpoint(checkpoint, public_key=public, sign=signer.sign)
+    earlier = replace(checkpoint, last_seq=0, head_sha256=GENESIS_SHA256)
+    alternate = sign_checkpoint(earlier, public_key=public, sign=signer.sign)
+    return raw, public, sha(raw), alternate
+
+
+def retain_lab_anchor(material, advance):
+    from pamolive_usage_anchor.anchor_store import AnchorStore
+
+    advance("anchor_store_retain")
+    raw, public, pin, alternate = material
+    original = Path("/work/anchor-original")
+    original.mkdir(mode=0o700)
+    store = AnchorStore(original, owner_uid=os.geteuid())
+    with ThreadPoolExecutor(max_workers=3) as writers:
+        futures = [
+            writers.submit(store.save, raw, public_key=public, expected_sha256=pin)
+            for _ in range(3)
+        ]
+        for future in futures:
+            future.result(timeout=5)
+    require({path.name for path in original.iterdir()} == {pin + ".json"})
+    return public, pin, alternate
+
+
+def restore_lab_anchor(references, advance):
+    from pamolive_usage_anchor.anchor_store import AnchorStore
+    from pamolive_usage_anchor.codec import sha
+
+    advance("anchor_store_transfer")
+    public, pin, alternate = references
+    owner = os.geteuid()
+    original = AnchorStore("/work/anchor-original", owner_uid=owner)
+    point, raw = original.load(public_key=public, expected_sha256=pin)
+    restored = Path("/work/anchor-restored")
+    restored.mkdir(mode=0o700)
+    store = AnchorStore(restored, owner_uid=owner)
+    store.save(alternate, public_key=public, expected_sha256=sha(alternate))
+    expect_error(
+        "unavailable", 503, lambda: store.load(public_key=public, expected_sha256=pin)
     )
+    store.save(raw, public_key=public, expected_sha256=pin)
+    imported, imported_raw = store.load(public_key=public, expected_sha256=pin)
+    require(imported == point and imported_raw == raw)
+
+    advance("anchor_store_reopen")
+    code = (
+        "import os, sys\n"
+        "from pamolive_usage_anchor.anchor_store import AnchorStore\n"
+        "AnchorStore(sys.argv[1], owner_uid=os.geteuid()).load(\n"
+        "    public_key=bytes.fromhex(sys.argv[2]), expected_sha256=sys.argv[3])\n"
+        "print('W01_ANCHOR_REOPENED')\n"
+    )
+    reopened = subprocess.run(
+        [sys.executable, "-I", "-B", "-c", code, str(restored), public.hex(), pin],
+        stdin=subprocess.DEVNULL, capture_output=True, timeout=8, check=False,
+    )
+    require(reopened.returncode == 0 and reopened.stdout == b"W01_ANCHOR_REOPENED\n")
+    return (imported_raw, public, pin, alternate), {
+        "concurrent_exact_saves": True,
+        "reopened_after_database_recovery": True,
+        "restore_copy_exact": True,
+        "missing_pin_no_fallback": True,
+        "new_process_reopened": True,
+    }
+
+
+def receive_lab_checkpoint(slot, material, advance):
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from pamolive_usage_anchor.signed_anchor import verify_checkpoint
+
+    raw, public, pin, alternate = material
+    advance("signed_anchor_receive")
+    checkpoint = verify_checkpoint(raw, public_key=public, expected_sha256=pin)
+    checkpoint.require_slot(slot)
+
+    advance("signed_anchor_refusals")
+    wrong_key = Ed25519PrivateKey.generate().public_key().public_bytes_raw()
+    expect_error(
+        "anchor_refused", 403,
+        lambda: verify_checkpoint(raw, public_key=wrong_key, expected_sha256=pin),
+    )
+    expect_error(
+        "anchor_refused", 403,
+        lambda: verify_checkpoint(alternate, public_key=public, expected_sha256=pin),
+    )
+    return checkpoint, {
+        "signature_verified": True,
+        "wrong_signer_refused": True,
+        "valid_alternate_refused": True,
+    }
 
 
 def check_restored_archive(slot, checkpoint, factories, snapshot, advance):

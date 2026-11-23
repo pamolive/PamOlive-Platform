@@ -1,5 +1,25 @@
 # État réel de l’implémentation
 
+## Candidat intégré Cairo et reprise du témoin — 23 novembre 2026
+
+La qualification autonome sur `a26337c` reproduit les quatre paquets Cairo,
+préserve 394 symboles exportés, retire 26 symboles Xlib/XCB et reproduit le
+PNG de référence. Le contrôle de l'image produit vérifie séparément les
+bibliothèques réellement présentes et leurs dépendances ELF.
+[Qualification Cairo](https://github.com/pamolive/PamOlive-Platform/actions/runs/45125072638)
+
+Le candidat intègre aussi `dd28c74`. Le témoin restauré par PITR vérifie
+l'archive contre le checkpoint signé conservé séparément. Un second runner
+réimporte les octets exacts du checkpoint et vérifie leur signature sous une
+nouvelle instance. Ce transfert est une qualification GitHub sur données
+synthétiques. L'indépendance des autorités, des clés et du stockage reste à
+qualifier sur l'infrastructure cible.
+[Qualification du transfert](https://github.com/pamolive/PamOlive-Platform/actions/runs/45112995334)
+
+Les preuves précédentes portent sur leurs commits respectifs. La composition
+doit passer la CI PostgreSQL et les tests natifs de l'image, la campagne de
+reprise du témoin et le scan Grype sur l'image exacte avant promotion.
+
 ## Dépendances natives du candidat de livraison — 23 novembre 2026
 
 Les reconstructions isolées SQLite 3.54.1 et ACL 2.4.0 reproduisent les

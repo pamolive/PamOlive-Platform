@@ -53,6 +53,18 @@ on:
         description: Verify the restored audit chain against the original witness checkpoint
         type: boolean
         default: false
+      run_witness_signed_anchor:
+        description: Verify the signed external checkpoint after restoring the witness
+        type: boolean
+        default: false
+      run_witness_anchor_store:
+        description: Reopen and transfer a separately retained checkpoint after PostgreSQL recovery
+        type: boolean
+        default: false
+      run_witness_anchor_handoff:
+        description: Reimport the signed synthetic PITR checkpoint on another GitHub runner
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -62,8 +74,13 @@ jobs:
   installed-vault-runtime:
     runs-on: ubuntu-24.04
     timeout-minutes: 70
+    outputs:
+      anchor_sha: ${{ steps.anchor_refs.outputs.anchor_sha }}
+      anchor_public_hex: ${{ steps.anchor_refs.outputs.public_hex }}
+      anchor_boot_sha: ${{ steps.anchor_refs.outputs.boot_sha }}
+      anchor_artifact_id: ${{ steps.anchor_artifact.outputs.artifact-id }}
     env:
-      VAULT_SOURCES_SHA: 783dd1d317a3bec43f7cfd791f9c9dcd5254d1bcde0955c51557d82aaa139dfb
+      VAULT_SOURCES_SHA: 62bc870d158fcf02eb04a1e0ca77d5436f169146591b3293b664c362b5d74ba6
       VAULT_ASSETS_SHA: 71d26e9cc4b1c27465f875879fff28c0c657688f70f797b91f174f86fed6a1eb
       VAULT_PAYLOAD_SHA: d9e7ff40d7395a109833225b5051feb1f85f6dc9f7061a07c3fa97110bc6b4a6
     steps:
@@ -140,6 +157,15 @@ jobs:
         run: exit 42
       - name: Require PITR before comparing the restored audit chain
         if: inputs.run_witness_audit_archive == true && inputs.run_witness_pitr != true
+        run: exit 42
+      - name: Require the archive campaign for a signed checkpoint
+        if: inputs.run_witness_signed_anchor == true && inputs.run_witness_audit_archive != true
+        run: exit 42
+      - name: Require a signed checkpoint before qualifying its custody
+        if: inputs.run_witness_anchor_store == true && inputs.run_witness_signed_anchor != true
+        run: exit 42
+      - name: Require recovered custody before a synthetic cross-runner handoff
+        if: inputs.run_witness_anchor_handoff == true && (inputs.run_witness_anchor_store != true || github.repository != 'pamolive/PamOlive-Platform')
         run: exit 42
       - name: Seventeen existing wheel DATA regressions
         run: python -I -B qualification/vault_reservation/test_wheel.py
@@ -260,6 +286,9 @@ jobs:
           VAULT_WITNESS_RESTORE_CLUSTER: ${{ inputs.run_witness_restore_cluster }}
           VAULT_WITNESS_PITR: ${{ inputs.run_witness_pitr }}
           VAULT_WITNESS_AUDIT_ARCHIVE: ${{ inputs.run_witness_audit_archive }}
+          VAULT_WITNESS_SIGNED_ANCHOR: ${{ inputs.run_witness_signed_anchor }}
+          VAULT_WITNESS_ANCHOR_STORE: ${{ inputs.run_witness_anchor_store }}
+          VAULT_WITNESS_ANCHOR_HANDOFF: ${{ inputs.run_witness_anchor_handoff }}
         shell: bash
         run: |
           set -euo pipefail
@@ -285,8 +314,30 @@ jobs:
           if [[ "$VAULT_WITNESS_AUDIT_ARCHIVE" == true ]]; then
             options+=(--audit-archive)
           fi
+          if [[ "$VAULT_WITNESS_SIGNED_ANCHOR" == true ]]; then
+            options+=(--signed-audit-anchor)
+          fi
+          if [[ "$VAULT_WITNESS_ANCHOR_STORE" == true ]]; then
+            options+=(--audit-anchor-store)
+          fi
+          if [[ "$VAULT_WITNESS_ANCHOR_HANDOFF" == true ]]; then
+            options+=(--audit-anchor-handoff)
+          fi
           python -I -B -S qualification/vault_runtime_installed_ci/run_witness_lab.py \
             --work "$VAULT_WORK" "${options[@]}"
+      - name: Publish the references as separate job outputs
+        if: inputs.run_witness_anchor_handoff == true
+        id: anchor_refs
+        run: python -I -B -S qualification/vault_runtime_installed_ci/witness_anchor_handoff.py publish "$VAULT_WORK"
+      - name: Upload only the synthetic signed checkpoint
+        if: inputs.run_witness_anchor_handoff == true
+        id: anchor_artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: witness-synthetic-anchor-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.VAULT_WORK }}/anchor-handoff.json
+          if-no-files-found: error
+          retention-days: 1
       - name: Run the installed Vault tests on dedicated PostgreSQL and mutual TLS
         if: inputs.run_synthetic_lab == true && inputs.transfer_verified_wheels == true
         timeout-minutes: 10
@@ -314,5 +365,64 @@ jobs:
             ${{ env.VAULT_WORK }}/witness-lab-public.json
             qualification/vault_runtime_installed_ci/checkout-capture.json
             ${{ env.VAULT_MATERIALS }}/acquisition.json
+          if-no-files-found: error
+          retention-days: 7
+  restore-witness-anchor:
+    if: github.repository == 'pamolive/PamOlive-Platform' && inputs.run_witness_anchor_handoff == true
+    needs: installed-vault-runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      ANCHOR_ARTIFACT_ID: ${{ needs.installed-vault-runtime.outputs.anchor_artifact_id }}
+      ANCHOR_SHA: ${{ needs.installed-vault-runtime.outputs.anchor_sha }}
+      ANCHOR_PUBLIC_HEX: ${{ needs.installed-vault-runtime.outputs.anchor_public_hex }}
+      ANCHOR_SOURCE_BOOT: ${{ needs.installed-vault-runtime.outputs.anchor_boot_sha }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Verify the exact checkout and required job outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          [[ "$ANCHOR_ARTIFACT_ID" =~ ^[1-9][0-9]{0,18}$ ]]
+          [[ "$ANCHOR_SHA" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$ANCHOR_PUBLIC_HEX" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$ANCHOR_SOURCE_BOOT" =~ ^[0-9a-f]{64}$ ]]
+          cd qualification/vault_runtime_installed_ci
+          sha256sum --check --strict source-checksums.sha256
+          cd ../../components/usage-anchor
+          sha256sum --check --strict ../../qualification/vault_runtime_installed_ci/witness-source.sha256
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install only the locked crypto test dependencies and create private state
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          state=$(mktemp -d "$HOME/pamolive-anchor-handoff-XXXXXXXX")
+          mkdir -m 700 "$state/incoming"
+          python -m venv "$state/venv"
+          "$state/venv/bin/python" -m pip install --only-binary=:all: --no-deps --require-hashes -r requirements-p2-test-linux.lock
+          printf 'ANCHOR_STATE=%s\n' "$state" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ env.ANCHOR_ARTIFACT_ID }}
+          path: ${{ env.ANCHOR_STATE }}/incoming
+          digest-mismatch: error
+      - name: Restore and open the exact signed checkpoint in a fresh process
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          module=qualification/vault_runtime_installed_ci/witness_anchor_handoff.py
+          "$ANCHOR_STATE/venv/bin/python" -I -B "$module" import "$ANCHOR_STATE/incoming" "$ANCHOR_STATE/store"
+          "$ANCHOR_STATE/venv/bin/python" -I -B "$module" reopen "$ANCHOR_STATE/store" "$ANCHOR_STATE/receipt.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: witness-synthetic-handoff-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.ANCHOR_STATE }}/receipt.json
           if-no-files-found: error
           retention-days: 7

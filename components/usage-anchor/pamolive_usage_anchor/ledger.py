@@ -152,6 +152,16 @@ def _closed_fence(cursor, slot):
     need(row is not None and row["fenced"] is True, "context_refused", 403)
 
 
+def _audit_head(cursor, context_id):
+    cursor.execute(
+        "SELECT seq,head_sha256 FROM pam_usage_anchor.audit_heads WHERE context_id=%s",
+        (context_id,),
+    )
+    head = cursor.fetchone()
+    need(type(head) is dict and set(head) == {"seq", "head_sha256"}, "context_refused", 403)
+    return head
+
+
 class PostgresHistory:
     """Cold reader with an observer connection and no write transaction API."""
 
@@ -167,6 +177,27 @@ class PostgresHistory:
             _closed_fence(cursor, slot)
             return _terminal_row(cursor, slot, peer, operation_id)
 
+    def capture_checkpoint(self, slot):
+        """Capture the closed audit head and its scope from one observer snapshot."""
+        expected = slot.expected()
+        try:
+            with _read_transaction(self.connect, observer=True) as cursor:
+                _closed_fence(cursor, slot)
+                head = _audit_head(cursor, slot.context_id)
+                try:
+                    return Checkpoint(
+                        context_id=slot.context_id,
+                        slot_sha256=slot.source_sha256,
+                        organization_id=expected["organization_id"],
+                        installation_id=expected["installation_id"],
+                        last_seq=head["seq"],
+                        head_sha256=head["head_sha256"],
+                    )
+                except Error:
+                    raise Error("context_refused", 403) from None
+        except (PsycopgError, OSError):
+            raise Error("unavailable", 503) from None
+
     def archive_page(self, slot, checkpoint, after_seq, *, limit=MAX_PAGE_EVENTS):
         """Read a bounded page anchored to the caller's independently pinned head."""
         need(type(checkpoint) is Checkpoint)
@@ -178,14 +209,9 @@ class PostgresHistory:
         try:
             with _read_transaction(self.connect, observer=True) as cursor:
                 _closed_fence(cursor, slot)
-                cursor.execute(
-                    "SELECT seq,head_sha256 FROM pam_usage_anchor.audit_heads WHERE context_id=%s",
-                    (slot.context_id,),
-                )
-                head = cursor.fetchone()
+                head = _audit_head(cursor, slot.context_id)
                 need(
-                    head is not None
-                    and type(head["seq"]) is int
+                    type(head["seq"]) is int
                     and head["seq"] == checkpoint.last_seq
                     and head["head_sha256"] == checkpoint.head_sha256,
                     "context_refused",

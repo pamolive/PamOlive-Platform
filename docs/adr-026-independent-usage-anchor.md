@@ -251,6 +251,62 @@ s'ajoute au parcours fermé sans migration ni nouvel accès HTTP. La vérificati
 d'une chaîne avant et après rotation de slot repose sur des points séparés
 pour chaque contexte.
 
+La capture `assembly.capture_audit_checkpoint` vérifie le fichier de slot
+et lit le bail fermé et la tête d'audit dans la même transaction observateur
+en lecture seule. L'opérateur peut vérifier la chaîne complète à partir de
+cette tête avant de la soumettre à l'autorité qui conserve les points.
+Cette autorité appelle `signed_anchor.sign_checkpoint` avec son service de
+signature Ed25519. La clef privée reste sous sa garde. Le domaine dédié
+et le format signé `pamolive.vault.usage-audit-anchor/1` lient le point
+d'ancrage complet et l'identité de la clef.
+
+Après restauration, l'opérateur choisit la référence attendue dans le
+registre indépendant. Il fournit à `signed_anchor.verify_checkpoint` la
+clef publique attendue et le SHA-256 exact du document signé. Une autre
+signature valide de la même clef doit être refusée si le document diffère.
+Le point vérifié sert à exporter puis à vérifier les pages. Conserver les
+anciens documents, leurs empreintes et les clefs publiques correspondantes
+lors d'une rotation. Cette signature atteste la référence acceptée par son
+détenteur. Le choix de la référence, son authenticité avant capture et la
+durabilité du registre reposent sur sa gouvernance et son hébergement.
+
+Le dépositaire peut conserver les documents dans `anchor_store.AnchorStore`.
+Le dossier Linux doit être précréé en mode `0700` sous un UID dédié non root.
+Ses ancêtres appartiennent à root ou au dépositaire, sans droit d'écriture
+pour le groupe ou les autres utilisateurs. Le mode impose un système de fichiers
+local avec liens durs et synchronisation de répertoires. Le dépositaire garde
+la clef publique attendue et les empreintes de référence hors de ce stockage.
+Un répertoire reconstruit ne détermine jamais quel point doit être relu.
+
+En écriture, le stockage vérifie la signature et l'empreinte, puis synchronise
+le fichier `0600` avant sa publication sans écrasement. Un réessai identique
+synchronise le fichier existant et le répertoire avant de confirmer l'écriture.
+Les exports et restaurations relisent et importent chaque document sous la même
+empreinte attendue, avec la clef publique correspondant à sa génération. Une
+lecture concurrente peut voir le document avant la confirmation d'écriture.
+
+Configurer un espace dédié et un quota côté hébergement. Après une interruption,
+les fichiers temporaires peuvent subsister. Le dépositaire peut les inventorier
+et les retirer pendant une fenêtre sans écrivain, après avoir vérifié les
+références attendues. Le registre ne remplace ni la garde des références ni la
+protection du stockage contre son administrateur. La campagne `run_witness_anchor_store`
+exerce des écritures concurrentes, la relecture après le PITR de PostgreSQL,
+l'import dans un second répertoire et la réouverture par un nouveau processus.
+Les deux dossiers du laboratoire résident sur le même système de fichiers
+temporaire. Une panne électrique, une restauration des bases entre hôtes et une
+séparation opérationnelle des dépositaires demandent une qualification dédiée.
+
+La campagne complémentaire `run_witness_anchor_handoff` transfère le document
+synthétique relu après le PITR vers une seconde VM GitHub hébergée. Le premier
+job transmet la clef publique et le SHA-256 attendu via ses sorties. L'artefact
+contient uniquement le document signé et est téléchargé par son identifiant
+exact. Le second job compare les empreintes de démarrage, vérifie le contenu
+avec les références du producteur, l'importe dans un dossier neuf, puis lance
+un nouveau processus qui relit ce dossier. Le plan de contrôle GitHub est
+commun aux deux jobs. La campagne porte sur le transfert du document et ne
+couvre pas une restauration complète des bases entre hôtes, une panne physique
+ou la garde des preuves par deux autorités administratives distinctes.
+
 Un V compromis disposant d'un unwrap KMS générique peut ignorer W. Avant remise,
 une garde indépendante devra imposer chaque usage W avec claim d'émission unique,
 tenant/destination/broker/version/certificat exacts et aucun chemin générique

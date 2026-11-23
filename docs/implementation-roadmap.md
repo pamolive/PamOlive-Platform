@@ -1,5 +1,18 @@
 # Roadmap d’implémentation et qualification
 
+## P2 — Checkpoint signé et candidat de livraison intégré
+
+Les PR nº 47 à 49 ajoutent la signature externe du checkpoint, sa conservation
+sans remplacement et son transfert vérifié vers un second runner. Le candidat
+intégré associe ces étapes de reprise PostgreSQL à la composition native Cairo
+de la PR nº 58. La campagne suivante doit vérifier la reprise sur la révision
+intégrée et scanner l'image exacte avant toute fusion de livraison ou
+publication. La reprise sur plusieurs hôtes administrés séparément, la rotation
+des clés du témoin et la conservation opérationnelle des archives restent à
+qualifier pour P2.
+[Transfert du checkpoint](https://github.com/pamolive/PamOlive-Platform/pull/49) ·
+[Cairo produit](https://github.com/pamolive/PamOlive-Platform/pull/58)
+
 ## Intégration du témoin et de l'image Debian — 23 novembre 2026
 
 Le candidat de livraison rassemble la reprise du témoin de la PR nº 43 et le

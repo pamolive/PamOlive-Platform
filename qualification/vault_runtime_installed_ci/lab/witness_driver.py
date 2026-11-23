@@ -556,6 +556,9 @@ def run_cases(
     restore_witness=False,
     restore_cluster=False,
     audit_archive=False,
+    signed_anchor=False,
+    anchor_store=False,
+    anchor_handoff=False,
 ):
     from cryptography.hazmat.primitives import serialization
     from pamolive_usage_anchor import codec
@@ -740,11 +743,21 @@ def run_cases(
                 )
                 if restore_witness or restore_cluster:
                     checkpoint = None
+                    signed_material = None
                     if audit_archive:
                         from .witness_archive_cases import capture_checkpoint
 
                         advance("audit_archive_checkpoint")
                         checkpoint = capture_checkpoint(fixture.slot, observer)
+                    if signed_anchor:
+                        from .witness_archive_cases import sign_lab_checkpoint
+
+                        advance("signed_anchor_capture")
+                        signed_material = sign_lab_checkpoint(checkpoint)
+                        if anchor_store:
+                            from .witness_archive_cases import retain_lab_anchor
+
+                            signed_material = retain_lab_anchor(signed_material, advance)
 
                     def restore():
                         advance("restore_wait")
@@ -779,9 +792,30 @@ def run_cases(
                         from .witness_archive_cases import check_restored_archive
 
                         report["schema"] = "W01-audit-archive-results/1"
+                        if signed_anchor:
+                            from .witness_archive_cases import receive_lab_checkpoint
+
+                            report["schema"] = "W01-signed-audit-anchor-results/1"
+                            if anchor_store:
+                                from .witness_archive_cases import restore_lab_anchor
+
+                                report["schema"] = "W01-audit-anchor-store-results/1"
+                                signed_material, report["anchor_store"] = restore_lab_anchor(
+                                    signed_material, advance
+                                )
+                            verified, report["signed_anchor"] = receive_lab_checkpoint(
+                                fixture.slot, signed_material, advance
+                            )
+                            require(checkpoint == verified)
+                            checkpoint = verified
                         report["audit_archive"] = check_restored_archive(
                             fixture.slot, checkpoint, factories, snapshot, advance
                         )
+                        if anchor_handoff:
+                            raw, public, pin, _ = signed_material
+                            advance("anchor_store_export")
+                            publish("anchor-handoff.json", raw)
+                            publish("anchor-reference", f"{public.hex()}\n{pin}\n".encode("ascii"))
     return report
 
 
@@ -796,6 +830,9 @@ def main():
     restoration.add_argument("--restore-witness", action="store_true")
     restoration.add_argument("--restore-cluster", action="store_true")
     parser.add_argument("--audit-archive", action="store_true")
+    parser.add_argument("--signed-audit-anchor", action="store_true")
+    parser.add_argument("--audit-anchor-store", action="store_true")
+    parser.add_argument("--audit-anchor-handoff", action="store_true")
     args = parser.parse_args()
     phase = "boundary"
 
@@ -809,6 +846,9 @@ def main():
         require(not args.restore_witness or args.restart_history)
         require(not args.restore_cluster or args.restart_history)
         require(not args.audit_archive or args.restore_cluster)
+        require(not args.signed_audit_anchor or args.audit_archive)
+        require(not args.audit_anchor_store or args.signed_audit_anchor)
+        require(not args.audit_anchor_handoff or args.audit_anchor_store)
         os.environ.clear()
         os.environ.update(LANG="C.UTF-8", LC_ALL="C.UTF-8", PSYCOPG_IMPL="c")
         require(
@@ -852,6 +892,9 @@ def main():
             restore_witness=args.restore_witness,
             restore_cluster=args.restore_cluster,
             audit_archive=args.audit_archive,
+            signed_anchor=args.signed_audit_anchor,
+            anchor_store=args.audit_anchor_store,
+            anchor_handoff=args.audit_anchor_handoff,
         )
         publish("public.json", encode(report))
         phase = "acknowledge"

@@ -14,6 +14,7 @@ MODULES = frozenset(
     for name in (
         "__init__",
         "administration",
+        "anchor_store",
         "assembly",
         "audit_archive",
         "authority",
@@ -23,6 +24,7 @@ MODULES = frozenset(
         "ledger",
         "proofs",
         "service",
+        "signed_anchor",
         "slot",
         "transport",
     )
@@ -39,6 +41,9 @@ RECEPTION = {
     "tests/test_cold_history.py",
     "tests/test_audit_archive.py",
     "tests/test_archive_reader.py",
+    "tests/test_anchor_capture.py",
+    "tests/test_anchor_store.py",
+    "tests/test_signed_anchor.py",
     "tests/test_http_client.py",
     "tests/test_pure.py",
     "tests/test_r2.py",
