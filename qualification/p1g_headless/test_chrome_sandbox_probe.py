@@ -30,6 +30,7 @@ SUCCESS = {
     "layer_one": "Namespace",
     "version": "158.0.8127.36",
     "ip_network_isolated": True,
+    "postgres": {"server_version_num": "170012", "verified_loopback_SQL": True},
     "namespace_control": {
         "create_user_namespace": "created",
         "sysctls": dict.fromkeys(probe.NAMESPACE_SYSCTLS, "absent"),
@@ -44,6 +45,19 @@ SUCCESS = {
 
 
 class SandboxProbeTests(unittest.TestCase):
+    def test_namespace_inode_uses_only_the_admitted_root_owned_handle(self):
+        commands = Mock()
+        commands.run.return_value = b"456\n"
+        path = "/var/run/docker/netns/123456789abc"
+        self.assertEqual(probe.read_namespace_inode(commands, path, "ubuntu-22.04"), 456)
+        commands.run.assert_called_once_with(
+            ["/usr/bin/sudo", "-n", "--", "/usr/bin/stat", "-L", "-c", "%i", path],
+            seconds=5, cap=64, sudo=True,
+        )
+        with self.assertRaisesRegex(ValueError, "postgres_namespace_path"):
+            probe.read_namespace_inode(commands, "/proc/1/ns/net", "ubuntu-22.04")
+        self.assertEqual(commands.run.call_count, 1)
+
     def test_successful_launch_rechecks_both_tools_and_returns_renderer_evidence(self):
         browser = Mock(version=probe.BROWSER_VERSION)
         playwright = Mock()
@@ -71,6 +85,7 @@ class SandboxProbeTests(unittest.TestCase):
         self.assertEqual(node.call_count, 2)
         self.assertTrue(probe.valid_worker_result({
             **observed, "namespace_control": SUCCESS["namespace_control"],
+            "postgres": SUCCESS["postgres"],
         }))
 
     def test_scope_refuses_other_runners_forks_and_branches(self):
@@ -150,6 +165,8 @@ class SandboxProbeTests(unittest.TestCase):
                     "runner": "ubuntu-24.04",
                 },
                 123,
+                "/var/run/docker/netns/123456789abc",
+                456,
             )
         self.assertEqual(
             command[:8],
@@ -157,8 +174,8 @@ class SandboxProbeTests(unittest.TestCase):
                 "/usr/bin/sudo",
                 "-n",
                 "--",
-                "/usr/bin/unshare",
-                "--net",
+                "/usr/bin/nsenter",
+                "--net=/var/run/docker/netns/123456789abc",
                 "--",
                 "/usr/bin/setpriv",
                 "--reuid",
@@ -170,7 +187,8 @@ class SandboxProbeTests(unittest.TestCase):
         self.assertIn("P1G_SANDBOX_RUNNER=ubuntu-24.04", command)
         self.assertLess(command.index("--ambient-caps=-all"), command.index("/usr/bin/env"))
         self.assertEqual(
-            command[-4:], ["--worker", str(Path("/scratch/work")), "--host-net", "123"]
+            command[-6:],
+            ["--worker", str(Path("/scratch/work")), "--host-net", "123", "--expected-net", "456"],
         )
 
     def test_synthetic_probe_cannot_accept_suid_or_ambiguous_results(self):
@@ -183,6 +201,7 @@ class SandboxProbeTests(unittest.TestCase):
                     "ip_network_isolated": True,
                     "code": "namespace_startup_refused",
                     "namespace_control": SUCCESS["namespace_control"],
+                    "postgres": SUCCESS["postgres"],
                 }
             )
         )
@@ -193,6 +212,7 @@ class SandboxProbeTests(unittest.TestCase):
             {"operational_GO": True},
             {"renderer_evidence": {}},
             {"namespace_control": {}},
+            {"postgres": {"server_version_num": "170012", "verified_loopback_SQL": 1}},
             {"namespace_control": {
                 "create_user_namespace": "created",
                 "sysctls": {**SUCCESS["namespace_control"]["sysctls"],
@@ -265,7 +285,7 @@ class SandboxProbeTests(unittest.TestCase):
             patch.object(probe, "browser_probe") as browser,
             patch.object(probe, "namespace_control") as control,
         ):
-            refusal = probe.worker(Path("synthetic"), 35)
+            refusal = probe.worker(Path("synthetic"), 35, 45)
         browser.assert_not_called()
         control.assert_not_called()
         self.assertEqual(refusal["code"], "sandbox_probe_network_namespace")
