@@ -12,7 +12,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest import TestCase
 from unittest.mock import patch
+from urllib.parse import quote
 
+from deploy import debian_refresh_inventory, native_sbom, openssl_trixie_materials, qualified_image
 from deploy import qualify_image_scan as gate
 from tests import test_krb5_inventory as krbtest
 
@@ -68,10 +70,10 @@ class ImageScanPolicyTests(TestCase):
                     "namespace": "debian:distro:debian:13",
                     "dataSource": "https://security-tracker.debian.org/tracker/" + cve}}
 
-    def evaluate(self, facts=None):
+    def evaluate(self, facts=None, **bundle):
         return gate.qualify(self.os, self.compiled, self.positive, self.sbom, self.policy,
                             config_id=self.config_id, config_bytes=self.config,
-                            facts=facts or (set(), {}), repo=self.repo, now=self.now)
+                            facts=facts or (set(), {}), repo=self.repo, now=self.now, **bundle)
 
     def add_exception(self):
         self.os["matches"] = [self.match()]
@@ -92,6 +94,128 @@ class ImageScanPolicyTests(TestCase):
             "conditions": [{"kind": "absent_basename_glob", "pattern": "synthetic-absent.so*"}]}
         self.policy["findings"] = [entry]
         return entry
+
+    def trixie_exception(self, scope, cve="CVE-2026-124709"):
+        entry = self.add_exception()
+        self.os["matches"] = []
+        report = self.os if scope == "os" else self.compiled
+        distro = "13.8" if scope == "os" else "13"
+        report["distro"]["version"] = distro
+        material = openssl_trixie_materials
+        for name in material.RUNTIME_PACKAGES:
+            row = self.match(cve, name=name, version=material.VERSION, source="openssl")
+            suffix = "&upstream=openssl" if scope == "compiled" or name != "openssl" else ""
+            row["artifact"]["purl"] = (
+                f"pkg:deb/debian/{name}@{quote(material.VERSION, safe='')}"
+                f"?arch=amd64&distro=debian-{distro}{suffix}"
+            )
+            report["matches"].append(row)
+        key, finding = next(iter(gate.high_groups(report, scope).items()))
+        receipt = "deploy/openssl-trixie-backport/qualification.json"
+        recipe = "deploy/openssl-trixie-backport/patches.txt"
+        source_root = Path(__file__).resolve().parents[1]
+        for name in (receipt, recipe):
+            target = self.repo / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((source_root / name).read_bytes())
+            entry["local_evidence"].append({"path": name, "sha256": gate.hash_file(target)})
+        entry.update(
+            fingerprint=key, finding=finding, disposition="fixed_by_backport",
+            trixie_backport_receipt=entry["local_evidence"][1],
+            conditions=[{"kind": "debian_trixie_backport", "sha256": material.SHA256}],
+        )
+        entry["vendor_evidence"].append(gate.TRIXIE_BACKPORT_COMMITS["openssl"]["CVE-2026-124709"])
+        return entry
+
+    def trixie_fixture(self):
+        receipt = openssl_trixie_materials.SHA256
+        archive_digest = "a" * 64
+        self.sbom["metadata"]["properties"].extend([
+            {"name": "pamolive:sbom:debian-archive-sha256", "value": archive_digest},
+            {"name": "pamolive:sbom:openssl-receipt-sha256", "value": receipt},
+        ])
+        report = {
+            "image_config_id": self.config_id, "archive_sha256": archive_digest,
+            "openssl_receipt_sha256": receipt,
+        }
+        component = {
+            "bom-ref": "synthetic-native-ref", "name": "synthetic ssl", "purl": "pkg:deb/ssl@1",
+        }
+        dependency = {"ref": component["bom-ref"]}
+        self.sbom["components"].append(component)
+        self.sbom["dependencies"] = [dependency]
+        checker = patch.object(debian_refresh_inventory, "inspect_bundle", return_value=report)
+        builder = patch.object(
+            native_sbom, "debian_components",
+            return_value=([copy.deepcopy(component)], [copy.deepcopy(dependency)], []),
+        )
+        self.addCleanup(checker.stop)
+        self.addCleanup(builder.stop)
+        builder.start()
+        bundle = {"archive": self.repo / qualified_image.ARCHIVE, "revision": "a" * 40}
+        return bundle, checker.start()
+
+    def test_trixie_backport_binds_to_archive_and_individual_scanner_scope(self):
+        entry = self.trixie_exception("compiled")
+        bundle, inspector = self.trixie_fixture()
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        inspector.assert_called_once_with(self.repo, bundle["revision"],
+                                          kerberos_backport=True, openssl_backport=True)
+        self.assertEqual(self.evaluate(**bundle)["decisions"], [{
+            "fingerprint": entry["fingerprint"], "disposition": "fixed_by_backport",
+        }])
+
+        self.os["matches"] = copy.deepcopy(self.compiled["matches"])
+        result = self.evaluate(**bundle)
+        self.assertFalse(result["passed"])
+        self.assertEqual(len(result["blockers"]), 1)
+        self.assertEqual(result["blockers"][0]["finding"]["scope"], "os")
+
+    def test_trixie_review_cannot_override_a_distributed_fix(self):
+        self.trixie_exception("os")
+        bundle, _ = self.trixie_fixture()
+        self.os["matches"][0]["vulnerability"]["fix"]["versions"] = ["3.5.10"]
+        result = self.evaluate(**bundle)
+        self.assertFalse(result["passed"])
+        self.assertEqual([row["code"] for row in result["blockers"]], ["high_fix_available"])
+
+    def test_trixie_exception_refuses_missing_or_mismatched_image_proof(self):
+        self.trixie_exception("os")
+        bundle, inspector = self.trixie_fixture()
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_bundle"):
+            self.evaluate()
+        inspector.return_value["image_config_id"] = "sha256:" + "b" * 64
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_config"):
+            self.evaluate(**bundle)
+
+    def test_trixie_exception_refuses_unpatched_cve_and_static_python_distribution(self):
+        entry = self.trixie_exception("compiled", "CVE-2026-84786")
+        bundle, _ = self.trixie_fixture()
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_fix"):
+            self.evaluate(**bundle)
+        entry["finding"]["vulnerability_id"] = "CVE-2026-124709"
+        entry["finding"]["packages"][0].update(
+            name="cryptography", type="python", purl="pkg:pypi/cryptography@50.0.2",
+        )
+        proof = entry["local_evidence"]
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_scope"):
+            gate.trixie_backport_holds(entry, entry["finding"], proofs=proof, report=None)
+        entry["finding"]["data_source"] = "https://security-tracker.debian.org/tracker/CVE-2026-124709"
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_packages"):
+            gate.trixie_backport_holds(entry, entry["finding"], proofs=proof, report=None)
+
+    def test_trixie_exception_refuses_modified_or_duplicate_sbom_component(self):
+        self.trixie_exception("compiled")
+        bundle, _ = self.trixie_fixture()
+        subject = self.sbom["components"][-1]
+        self.sbom["components"].append({**subject, "bom-ref": "wrong-native-ref"})
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_sbom_components"):
+            self.evaluate(**bundle)
+        self.sbom["components"].pop()
+        subject["name"] = "changed"
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_sbom_components"):
+            self.evaluate(**bundle)
 
     def test_complete_empty_reports_with_positive_control_pass(self):
         result = self.evaluate()
