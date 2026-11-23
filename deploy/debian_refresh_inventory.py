@@ -14,9 +14,14 @@ from qualification.debian_138_refresh import verify_refresh as refresh
 SCHEMA = "pamolive.debian-refresh-runtime/1"
 SCHEMA_V2 = "pamolive.debian-refresh-runtime/2"
 SCHEMA_V3 = "pamolive.debian-refresh-runtime/3"
+SCHEMA_V4 = "pamolive.debian-refresh-runtime/4"
 BACKPORT_SUITE = "pamolive-trixie"
 KERBEROS_SUITE = BACKPORT_SUITE
-RECEIPT_FIELDS = {"krb5": "kerberos_receipt_sha256", "openssl": "openssl_receipt_sha256"}
+RECEIPT_FIELDS = {
+    "krb5": "kerberos_receipt_sha256",
+    "openssl": "openssl_receipt_sha256",
+    "util-linux": "util_linux_receipt_sha256",
+}
 RECEIPT = "/usr/share/pamolive/debian-refresh/debian-138-refresh.json"
 DPKG_STATUS = "/var/lib/dpkg/status"
 ELF_PATHS = frozenset(path for paths in refresh.NATIVE_FILES.values() for path in paths)
@@ -52,8 +57,9 @@ def expected_packages(sdk):
     return frozenset(refresh.PACKAGES) if sdk else RUNTIME_PACKAGES
 
 
-def _backport_modules(kerberos_backport, openssl_backport):
+def _backport_modules(kerberos_backport, openssl_backport, util_linux_backport=False):
     need(not openssl_backport or kerberos_backport, "openssl_requires_kerberos")
+    need(not util_linux_backport or openssl_backport, "util_linux_requires_openssl")
     modules = {}
     if kerberos_backport:
         from deploy import krb5_trixie_materials
@@ -63,19 +69,26 @@ def _backport_modules(kerberos_backport, openssl_backport):
         from deploy import openssl_trixie_materials
 
         modules["openssl"] = openssl_trixie_materials
+    if util_linux_backport:
+        from deploy import util_linux_trixie_materials
+
+        modules["util-linux"] = util_linux_trixie_materials
     return modules
 
 
 def _schema(modules):
+    if "util-linux" in modules:
+        return SCHEMA_V4
     if "openssl" in modules:
         return SCHEMA_V3
     return SCHEMA_V2 if "krb5" in modules else SCHEMA
 
 
-def _openssl_paths(modules):
-    if "openssl" in modules:
-        return frozenset().union(*modules["openssl"].ELF_BY_PACKAGE.values())
-    return frozenset()
+def _extra_elf_paths(modules):
+    return frozenset(
+        path for source in ("openssl", "util-linux") if source in modules
+        for paths in modules[source].ELF_BY_PACKAGE.values() for path in paths
+    )
 
 
 def _package_profiles(sdk, modules):
@@ -91,19 +104,28 @@ def _package_profiles(sdk, modules):
         if sdk:
             names += openssl.SDK_PACKAGES
         profiles.update(dict.fromkeys(names, ("openssl", openssl.VERSION, BACKPORT_SUITE)))
+    if "util-linux" in modules:
+        profiles.update({
+            name: ("util-linux", version, BACKPORT_SUITE)
+            for name, version in modules["util-linux"].PACKAGE_VERSIONS.items()
+        })
     return profiles
 
 
 def validate_report(value, *, archive=False, sdk=False):
     """Validate the closed report before combining it with other image evidence."""
     schema = value.get("schema") if type(value) is dict else None
-    modules = _backport_modules(schema in (SCHEMA_V2, SCHEMA_V3), schema == SCHEMA_V3)
+    modules = _backport_modules(
+        schema in (SCHEMA_V2, SCHEMA_V3, SCHEMA_V4), schema in (SCHEMA_V3, SCHEMA_V4),
+        schema == SCHEMA_V4,
+    )
     receipts = {source: module.load_reviewed() for source, module in modules.items()}
     return _validate_report(value, modules, receipts, archive=archive, sdk=sdk)
 
 
 def _validate_report(value, modules, receipts, *, archive=False, sdk=False):
     need(not (archive and sdk), "archive_sdk_mode")
+    need(not (sdk and "util-linux" in modules), "util_linux_runtime_only")
     fields = REPORT_FIELDS | {RECEIPT_FIELDS[source] for source in modules}
     if archive:
         fields |= IMAGE_FIELDS
@@ -113,17 +135,15 @@ def _validate_report(value, modules, receipts, *, archive=False, sdk=False):
     )
     need(refresh.is_sha(value["receipt_sha256"]), "report_receipt_hash")
     paths = value["installed_elf_sha256"]
-    openssl_paths = _openssl_paths(modules)
-    need(type(paths) is dict and set(paths) == ELF_PATHS | openssl_paths
+    need(type(paths) is dict and set(paths) == ELF_PATHS | _extra_elf_paths(modules)
          and all(refresh.is_sha(sha) for sha in paths.values()), "report_elf")
-    if "openssl" in receipts:
-        installed_openssl_paths = set(receipts["openssl"]["installed_elf_sha256"])
-        need(installed_openssl_paths == openssl_paths, "report_openssl_elf")
     for source, module in modules.items():
         receipt_field = RECEIPT_FIELDS[source]
         label = receipt_field.removesuffix("_receipt_sha256")
         need(value[receipt_field] == module.SHA256, f"report_{label}_receipt_hash")
         installed = receipts[source]["installed_elf_sha256"]
+        if source in ("openssl", "util-linux"):
+            need(set(installed) == _extra_elf_paths({source: module}), f"report_{label}_elf")
         need(all(paths[path] == sha for path, sha in installed.items()), f"report_{label}_elf")
     profiles = _package_profiles(sdk, modules)
     names, packages = sorted(profiles), value["packages"]
@@ -154,12 +174,14 @@ def _validate_report(value, modules, receipts, *, archive=False, sdk=False):
     return value
 
 
-def verify_status(raw, *, sdk=False, kerberos_backport=False, openssl_backport=False):
-    modules = _backport_modules(kerberos_backport, openssl_backport)
+def verify_status(raw, *, sdk=False, kerberos_backport=False, openssl_backport=False,
+                  util_linux_backport=False):
+    modules = _backport_modules(kerberos_backport, openssl_backport, util_linux_backport)
     _verify_status(raw, sdk, modules)
 
 
 def _verify_status(raw, sdk, modules):
+    need(not (sdk and "util-linux" in modules), "util_linux_runtime_only")
     need(0 < len(raw) <= MAX_STATUS, "status_size")
     selected, profiles = set(), _package_profiles(sdk, modules)
     known = _package_profiles(True, modules)
@@ -169,8 +191,9 @@ def _verify_status(raw, sdk, modules):
             continue
         need(name in profiles and name not in selected, "status_package_overlap")
         source, version, _ = profiles[name]
-        source_matches = row.get("Source") in (source, f"{source} ({version})")
-        if name == source == "openssl" and "Source" not in row:
+        source_version = modules[source].VERSION if source in modules else version
+        source_matches = row.get("Source") in (source, f"{source} ({source_version})")
+        if name == source and source in ("openssl", "util-linux") and "Source" not in row:
             source_matches = True
         need(row.get("Status") == "install ok installed"
              and row.get("Architecture") == "amd64" and row.get("Version") == version
@@ -179,15 +202,19 @@ def _verify_status(raw, sdk, modules):
     need(selected == profiles.keys(), "status_missing")
 
 
-def verified_report(raw, status, files, *, sdk=False, kerberos_raw=None, openssl_raw=None):
-    modules = _backport_modules(kerberos_raw is not None, openssl_raw is not None)
+def verified_report(raw, status, files, *, sdk=False, kerberos_raw=None, openssl_raw=None,
+                    util_linux_raw=None):
+    modules = _backport_modules(
+        kerberos_raw is not None, openssl_raw is not None, util_linux_raw is not None,
+    )
     need(0 < len(raw) <= MAX_RECEIPT, "receipt_size")
     receipt = refresh.validate_receipt(json.loads(raw, object_pairs_hook=refresh.unique_dict))
     official_files = receipt["installed_elf_sha256"]
     installed_files = dict(official_files)
     receipts = {}
+    raw_receipts = {"krb5": kerberos_raw, "openssl": openssl_raw, "util-linux": util_linux_raw}
     for source, module in modules.items():
-        backport_raw = kerberos_raw if source == "krb5" else openssl_raw
+        backport_raw = raw_receipts[source]
         label = RECEIPT_FIELDS[source].removesuffix("_receipt_sha256")
         need(0 < len(backport_raw) <= MAX_RECEIPT and refresh.sha(backport_raw) == module.SHA256,
              f"{label}_receipt_hash")
@@ -219,12 +246,20 @@ def verified_report(raw, status, files, *, sdk=False, kerberos_raw=None, openssl
     return _validate_report(report, modules, receipts, sdk=sdk)
 
 
-def verify_alias_target(target, canonical):
-    need(target in (canonical, PurePosixPath(canonical).name), "kerberos_alias")
+def verify_alias_target(target, canonical, *, code="kerberos_alias"):
+    need(target in (canonical, PurePosixPath(canonical).name), code)
 
 
-def inspect_root(root, *, sdk=False, kerberos_backport=False, openssl_backport=False):
-    modules = _backport_modules(kerberos_backport, openssl_backport)
+def _aliases(modules):
+    yield from ((alias, path, "kerberos_alias") for alias, path in KRB5_ALIASES.items())
+    if "util-linux" in modules:
+        yield from ((alias, path, "util_linux_alias")
+                    for alias, path in modules["util-linux"].ALIASES.items())
+
+
+def inspect_root(root, *, sdk=False, kerberos_backport=False, openssl_backport=False,
+                 util_linux_backport=False):
+    modules = _backport_modules(kerberos_backport, openssl_backport, util_linux_backport)
     root = Path(root)
     need(root.is_dir() and not root.is_symlink(), "runtime_root")
     root = root.resolve(strict=True)
@@ -238,17 +273,27 @@ def inspect_root(root, *, sdk=False, kerberos_backport=False, openssl_backport=F
         for source, module in modules.items()
     }
     files = {}
-    for name in sorted(ELF_PATHS | _openssl_paths(modules)):
+    for name in sorted(ELF_PATHS | _extra_elf_paths(modules)):
         data = refresh.read_regular(
             root / name.lstrip("/"), 8 * refresh.MIB, installed=True
         )
         need(len(data) >= 20 and data[:6] == b"\x7fELF\x02\x01"
              and data[18:20] == b"\x3e\x00", "installed_elf_platform")
         files[name] = refresh.sha(data)
-    for alias, canonical in KRB5_ALIASES.items():
-        verify_alias_target(os.readlink(root / alias.lstrip("/")), canonical)
+    for alias, canonical, code in _aliases(modules):
+        verify_alias_target(os.readlink(root / alias.lstrip("/")), canonical, code=code)
+    if util_linux_backport:
+        util_linux = modules["util-linux"]
+        for name in util_linux.SPECIAL_MODE_PATHS:
+            path = root / name.lstrip("/")
+            info = path.lstat()
+            need(stat.S_ISREG(info.st_mode) and path.resolve(strict=True) == path and
+                 {"mode": stat.S_IMODE(info.st_mode), "uid": info.st_uid, "gid": info.st_gid,
+                  "has_capability": util_linux.has_capability(path)} ==
+                 util_linux.SPECIAL_FILE_METADATA, "util_linux_special_mode")
     return verified_report(raw, status, files, sdk=sdk,
-                           kerberos_raw=receipts.get("krb5"), openssl_raw=receipts.get("openssl"))
+                           kerberos_raw=receipts.get("krb5"), openssl_raw=receipts.get("openssl"),
+                           util_linux_raw=receipts.get("util-linux"))
 
 
 def file_identity(info):
@@ -258,11 +303,12 @@ def file_identity(info):
     )
 
 
-def inspect_bundle(directory, revision, *, kerberos_backport=False, openssl_backport=False):
+def inspect_bundle(directory, revision, *, kerberos_backport=False, openssl_backport=False,
+                   util_linux_backport=False):
     from deploy import qualified_image
     from deploy import qualify_image_scan as archive_reader
 
-    modules = _backport_modules(kerberos_backport, openssl_backport)
+    modules = _backport_modules(kerberos_backport, openssl_backport, util_linux_backport)
     backport_paths = {source: str(module.PATH) for source, module in modules.items()}
     receipt_paths = {RECEIPT, DPKG_STATUS, *backport_paths.values()}
     directory = Path(directory)
@@ -282,22 +328,28 @@ def inspect_bundle(directory, revision, *, kerberos_backport=False, openssl_back
             config = qualified_image.tar_metadata(outer, manifest["Config"], 2 * refresh.MIB)
         need("sha256:" + refresh.sha(config) == metadata["image_id"], "archive_image_id")
         stream.seek(0)
+        attribute_paths = modules["util-linux"].SPECIAL_MODE_PATHS if util_linux_backport else ()
         facts = archive_reader.archive_facts(
-            None, [{"kind": "elf_set"}], read_paths=receipt_paths, archive_stream=stream
+            None, [{"kind": "elf_set"}], read_paths=receipt_paths, archive_stream=stream,
+            attribute_paths=attribute_paths,
         )
         need(set(facts.captured) == receipt_paths, "archive_evidence")
         need(all(name != LEGACY_PREFIX and not name.startswith(LEGACY_PREFIX + "/")
                  for name in facts[0]), "legacy_backport")
         files = {}
-        for name in sorted(ELF_PATHS | _openssl_paths(modules)):
+        for name in sorted(ELF_PATHS | _extra_elf_paths(modules)):
             entry = facts.entries.get(name, {})
             need(entry.get("type") == "elf" and entry.get("class") == 64
                  and entry.get("machine") == 62, "archive_elf_identity")
             files[name] = entry["sha256"]
-        for alias, canonical in KRB5_ALIASES.items():
+        for alias, canonical, code in _aliases(modules):
             entry = facts.entries.get(alias, {})
-            need(entry.get("type") == "symlink", "kerberos_alias")
-            verify_alias_target(entry.get("target"), canonical)
+            need(entry.get("type") == "symlink", code)
+            verify_alias_target(entry.get("target"), canonical, code=code)
+        if util_linux_backport:
+            need(facts.attributes == dict.fromkeys(
+                attribute_paths, modules["util-linux"].SPECIAL_FILE_METADATA,
+            ), "archive_util_linux_special_mode")
         archive_sha = qualified_image.archive_hash(None, archive_stream=stream)
         after_fd, after_path = os.fstat(stream.fileno()), path.lstat()
         need(archive_sha == metadata["archive_sha256"]
@@ -308,6 +360,7 @@ def inspect_bundle(directory, revision, *, kerberos_backport=False, openssl_back
         facts.captured[RECEIPT], facts.captured[DPKG_STATUS], files,
         kerberos_raw=facts.captured.get(backport_paths.get("krb5")),
         openssl_raw=facts.captured.get(backport_paths.get("openssl")),
+        util_linux_raw=facts.captured.get(backport_paths.get("util-linux")),
     )
     return validate_report({
         **report,
@@ -326,28 +379,35 @@ def main(argv=None):
     parser.add_argument("--sdk", action="store_true")
     parser.add_argument("--kerberos-backport", action="store_true")
     parser.add_argument("--openssl-backport", action="store_true")
+    parser.add_argument("--util-linux-backport", action="store_true")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args(argv)
     if (args.bundle is not None) != (args.revision is not None) or (args.bundle and args.sdk):
         parser.error("--revision is required with --bundle and --sdk is only valid with --root")
     if args.openssl_backport and not args.kerberos_backport:
         parser.error("--openssl-backport requires --kerberos-backport")
+    if args.util_linux_backport and (not args.openssl_backport or args.sdk):
+        parser.error("--util-linux-backport requires the OpenSSL runtime")
     try:
         if args.bundle is not None:
             report = inspect_bundle(
                 args.bundle, args.revision, kerberos_backport=args.kerberos_backport,
                 openssl_backport=args.openssl_backport,
+                util_linux_backport=args.util_linux_backport,
             )
         else:
             report = inspect_root(
                 args.root, sdk=args.sdk, kerberos_backport=args.kerberos_backport,
                 openssl_backport=args.openssl_backport,
+                util_linux_backport=args.util_linux_backport,
             )
         with args.output.open("x", encoding="ascii") as stream:
             json.dump(report, stream, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
             stream.write("\n")
     except (ValueError, OSError, KeyError, TypeError, tarfile.TarError, RecursionError) as error:
-        if args.openssl_backport:
+        if args.util_linux_backport:
+            message = "Debian runtime inventory with util-linux refused."
+        elif args.openssl_backport:
             message = "Debian, Kerberos and OpenSSL refresh inventory refused."
         elif args.kerberos_backport:
             message = "Debian and Kerberos refresh inventory refused."

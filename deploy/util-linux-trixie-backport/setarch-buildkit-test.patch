@@ -1,0 +1,19 @@
+--- a/tests/ts/misc/setarch
++++ b/tests/ts/misc/setarch
+@@ -22,6 +22,16 @@
+ ts_skip_docker
+
+ ARCH=$(uname -m)
++
++# BuildKit build steps may have no /.dockerenv. Honor the existing
++# Docker exclusion only if this test's actual personality flags are denied.
++if grep -Eq '^Seccomp:[[:space:]]+2$' /proc/self/status; then
++	probe=$("$TS_CMD_SETARCH" "$ARCH" -RFZLXBIST3 /usr/bin/true 2>&1)
++	status=$?
++	if [ "$status" -eq 1 ] && 	   [ "$probe" = "setarch: failed to set personality to $ARCH: Operation not permitted" ]; then
++		ts_skip "personality operation denied in the BuildKit sandbox"
++	fi
++fi
+
+ ts_init_subtest options
+ ts_log_both "###### unknown arch"

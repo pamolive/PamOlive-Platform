@@ -1,0 +1,69 @@
+{
+  "installed_elf_sha256": {
+    "/usr/bin/findmnt": "9e6d1b89c2c11c71151f34272e89e7d8b3b1d0513b958720c69a7def65b02927",
+    "/usr/bin/mount": "2f55e8150e5a4bec3e2d1d91b126f29ca2750b4821d6a15d6e8dbb7c4b22ef09",
+    "/usr/bin/nsenter": "3bb22aef2375f12bcc471ec7856b7431f555add989fe7ef5ab8d5b29811a2dd4",
+    "/usr/bin/unshare": "948a154b3af34e1b8b52a7083591b1ae09e5dbeb604ae9efe57f8ac23244eb62",
+    "/usr/lib/x86_64-linux-gnu/libblkid.so.1.1.0": "45a208eea92d9169c658f9438cc9892bf711d678402af75eacdd08b368156c52",
+    "/usr/lib/x86_64-linux-gnu/liblastlog2.so.2.0.0": "3233bd95275d69c3c46abc97fc5551ac0ae5353b9b988b2b4d1f3595088c670f",
+    "/usr/lib/x86_64-linux-gnu/libmount.so.1.1.0": "4d9664a3a9cea4bdb53a85b95bf73bfcb92c942d361eb577371836aa10b0a4e8",
+    "/usr/lib/x86_64-linux-gnu/libsmartcols.so.1.1.0": "6eeb24479d9e93729a85cba55d8fd3fe12918b2fbe665f6cda5b3f8984ce5bcf",
+    "/usr/lib/x86_64-linux-gnu/libuuid.so.1.3.0": "cd00431b78b0192d08c691f0c8dd8f014a670a852ae5bfeda146defebe9036ab"
+  },
+  "packages": {
+    "bsdutils": {
+      "bytes": 110548,
+      "sha256": "a5830b48abd1b08810ea8bccfabda44372f67afd40a4b0c09feec61c4431a301",
+      "version": "1:2.41.5-0+deb13u1+pamolive1"
+    },
+    "libblkid1": {
+      "bytes": 172152,
+      "sha256": "3b5dcc876371d3a47419145b6f72182088c50705177451d0b863717e51c1e862",
+      "version": "2.41.5-0+deb13u1+pamolive1"
+    },
+    "liblastlog2-2": {
+      "bytes": 28908,
+      "sha256": "231ba06ea7752b6623344056be4c8a6366ed0de4247a1a283e8fd00d01eb8335",
+      "version": "2.41.5-0+deb13u1+pamolive1"
+    },
+    "libmount1": {
+      "bytes": 210884,
+      "sha256": "5556b7eed8cf97a5200f58eb36a3053faa7027b2c2d39c7fd3471027a62d4eb1",
+      "version": "2.41.5-0+deb13u1+pamolive1"
+    },
+    "libsmartcols1": {
+      "bytes": 143340,
+      "sha256": "baab88121a480ae84ebbd7cb5c0d7505e5b9823e467e1650e84631d8159150f4",
+      "version": "2.41.5-0+deb13u1+pamolive1"
+    },
+    "libuuid1": {
+      "bytes": 37992,
+      "sha256": "3f54527d04e8d1281e26b86f16cbb5f5592ced81501ef7fc6f308ac9ea2cf338",
+      "version": "2.41.5-0+deb13u1+pamolive1"
+    },
+    "login": {
+      "bytes": 114904,
+      "sha256": "de6bb18c3c60d73ac84f2beee5dd4eafbd417a40aafd65a4b484c9fbb8bc4f2a",
+      "version": "1:4.16.0-2+really2.41.5-0+deb13u1+pamolive1"
+    },
+    "mount": {
+      "bytes": 163396,
+      "sha256": "c584e5bbff4b1175b94dd14a0aa4cd77b61d8a54cff40c9b35735493afdddb55",
+      "version": "2.41.5-0+deb13u1+pamolive1"
+    },
+    "util-linux": {
+      "bytes": 1243256,
+      "sha256": "3f40c372f24e0d1a8d7cd98fc921bd6cf0f46705fe6192e16d0507cd280e0b9c",
+      "version": "2.41.5-0+deb13u1+pamolive1"
+    }
+  },
+  "qualification": {
+    "artifact_digest": "sha256:5c81234a9392440f6b1f6dd2b4a18460db66b8157635b30bc6eed84c58156d7f",
+    "artifact_id": 14803063902,
+    "commit": "146377cabcdfa9d2db57f4590040c981ed81c21a",
+    "run_id": 45143461959
+  },
+  "schema": "pamolive.util-linux-trixie-materials/1",
+  "source": "util-linux",
+  "version": "2.41.5-0+deb13u1+pamolive1"
+}

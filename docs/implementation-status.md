@@ -40,6 +40,15 @@ rapporte 4 932 tests comptabilisés. Les essais du SDK et de TLS 1.3
 passent. L'intégration à l'image reste soumise à la CI et au verdict
 du scan. Le suivi de CVE-2026-84786 reste ouvert.
 [Qualification](https://github.com/pamolive/PamOlive-Platform/actions/runs/45134682372)
+## Reproductibilité Kerberos — 23 novembre 2026
+
+Sur `86f959f`, une seconde construction Kerberos reproduit à l'octet près
+les dix paquets de la première qualification. Le pipeline produit vérifie
+ces mêmes empreintes avant installation. La campagne de ce commit s'est
+arrêtée au contrôle des binaires avant le scan. La PR #67 a franchi
+ce contrôle avec le même reçu Kerberos.
+[Reconstruction Kerberos](https://github.com/pamolive/PamOlive-Platform/actions/runs/45134426528) ·
+[CI produit](https://github.com/pamolive/PamOlive-Platform/actions/runs/45134477903)
 
 ## Kerberos Trixie et chantier OpenSSL — 23 novembre 2026
 

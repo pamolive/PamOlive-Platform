@@ -12,8 +12,16 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import patch
 
-from deploy import build_context, krb5_trixie_materials, openssl_trixie_materials, qualified_image
+from deploy import (
+    build_context,
+    krb5_trixie_materials,
+    native_sbom,
+    openssl_trixie_materials,
+    qualified_image,
+    util_linux_trixie_materials,
+)
 from deploy import debian_refresh_inventory as inventory
+from deploy import qualify_image_scan as scan
 from qualification.debian_138_refresh import verify_refresh as refresh
 
 REVISION = "a" * 40
@@ -26,16 +34,19 @@ def native_files(paths=inventory.ELF_PATHS):
     return {path: bytes(header) + path.encode("ascii") for path in sorted(paths)}
 
 
-def installed_status(names, *, kerberos_version=None, openssl_version=None):
+def installed_status(names, *, kerberos_version=None, openssl_version=None, util_linux=False):
     rows = []
     for package in sorted(names):
         if package in refresh.PACKAGES:
             source, version, _, _ = refresh.PACKAGES[package]
             if source == "krb5" and kerberos_version is not None:
                 version = kerberos_version
+        elif util_linux and package in util_linux_trixie_materials.PACKAGE_VERSIONS:
+            source, version = "util-linux", util_linux_trixie_materials.PACKAGE_VERSIONS[package]
         else:
             source, version = "openssl", openssl_version
-        source_field = "" if package == "openssl" else f"Source: {source} ({version})\n"
+        source_version = util_linux_trixie_materials.VERSION if source == "util-linux" else version
+        source_field = "" if package == source else f"Source: {source} ({source_version})\n"
         rows.append(
             f"Package: {package}\nStatus: install ok installed\n"
             f"Architecture: amd64\n{source_field}Version: {version}\n"
@@ -65,12 +76,14 @@ def make_receipt(files):
     return json.dumps(instance, sort_keys=True).encode("ascii")
 
 
-def write_tar(files, *, aliases=None):
+def write_tar(files, *, aliases=None, attributes=None):
     stream = io.BytesIO()
     with tarfile.open(fileobj=stream, mode="w") as tar:
         for path, data in files.items():
             info = tarfile.TarInfo(path.lstrip("/"))
             info.size = len(data)
+            for field, value in (attributes or {}).get(path, {}).items():
+                setattr(info, field, value)
             tar.addfile(info, io.BytesIO(data))
         for path, target in (aliases or {}).items():
             info = tarfile.TarInfo(path.lstrip("/"))
@@ -167,8 +180,9 @@ class DebianRuntimeInventoryTests(TestCase):
                 openssl_backport=openssl_backport,
             )
 
-    def bundle(self, payload, *, declared_image=None, aliases=None):
-        layer = write_tar(payload, aliases=self.aliases if aliases is None else aliases)
+    def bundle(self, payload, *, declared_image=None, aliases=None, attributes=None):
+        layer = write_tar(payload, aliases=self.aliases if aliases is None else aliases,
+                          attributes=attributes)
         config = json.dumps({
             "os": "linux",
             "architecture": "amd64",
@@ -439,6 +453,87 @@ class DebianRuntimeInventoryTests(TestCase):
                 ])
         self.assertEqual(rejected.exception.code, 2)
         self.assertIn("--openssl-backport requires --kerberos-backport", stderr.getvalue())
+
+    def util_linux_fixture(self):
+        payload, _ = self.openssl_fixture()
+        material = util_linux_trixie_materials
+        reviewed = material.load_reviewed()
+        files = native_files(reviewed["installed_elf_sha256"])
+        raw = self.pin_backport_fixture(material, reviewed, files)
+        names = {*inventory.RUNTIME_PACKAGES, *openssl_trixie_materials.RUNTIME_PACKAGES,
+                 *material.RUNTIME_PACKAGES}
+        self.aliases.update({alias: PurePosixPath(path).name
+                             for alias, path in material.ALIASES.items()})
+        payload.update({
+            **native_files(material.SPECIAL_MODE_PATHS),
+            **files,
+            material.PATH: raw,
+            inventory.DPKG_STATUS: installed_status(
+                names, kerberos_version=krb5_trixie_materials.VERSION,
+                openssl_version=openssl_trixie_materials.VERSION, util_linux=True,
+            ),
+        })
+        attributes = {path: {"mode": 0o4755} for path in material.SPECIAL_MODE_PATHS}
+        return payload, attributes
+
+    def test_util_linux_report_binds_epoch_versions_elfs_and_sbom(self):
+        payload, attributes = self.util_linux_fixture()
+        material = util_linux_trixie_materials
+        self.bundle(payload, attributes=attributes)
+        mode = {"kerberos_backport": True, "openssl_backport": True}
+        stock = inventory.inspect_bundle(self.root, REVISION, **mode)
+        report = inventory.inspect_bundle(self.root, REVISION, util_linux_backport=True, **mode)
+        self.assertEqual(report["schema"], inventory.SCHEMA_V4)
+        self.assertEqual(report["util_linux_receipt_sha256"], material.SHA256)
+        self.assertEqual(report["image_config_id"], stock["image_config_id"])
+        self.assertEqual(report["archive_sha256"], stock["archive_sha256"])
+        self.assertEqual({row["package"]: row["version"] for row in report["packages"]
+                          if row["source"] == "util-linux"}, material.PACKAGE_VERSIONS)
+        components, dependencies, _ = native_sbom.debian_components(
+            report, report["image_config_id"], "image_config",
+        )
+        login = next(row for row in components if row["name"] == "login")
+        self.assertIn("login@1%3A4.16.0-2%2Breally", login["purl"])
+        self.assertIn("upstream=util-linux", login["purl"])
+        scan.verify_trixie_sbom(
+            {"components": components, "dependencies": dependencies}, stock,
+            report["image_config_id"], {
+                "pamolive:sbom:debian-archive-sha256": report["archive_sha256"],
+                "pamolive:sbom:openssl-receipt-sha256": report["openssl_receipt_sha256"],
+            },
+        )
+        with self.assertRaisesRegex(inventory.InventoryError, "util_linux_runtime_only"):
+            inventory.validate_report(report, sdk=True)
+
+    def test_util_linux_archive_refuses_wrong_privilege_or_library_alias(self):
+        payload, attributes = self.util_linux_fixture()
+        mode = {"kerberos_backport": True, "openssl_backport": True, "util_linux_backport": True}
+        material = util_linux_trixie_materials
+        target = "/usr/bin/newgrp"
+        for change in ({"mode": 0o755}, {"uid": 1},
+                       {"pax_headers": {"SCHILY.xattr.security.capability": "synthetic"}}):
+            with self.subTest(change=change):
+                tampered = {**attributes, target: {**attributes[target], **change}}
+                self.bundle(payload, attributes=tampered)
+                with self.assertRaisesRegex(inventory.InventoryError, "archive_util_linux_special"):
+                    inventory.inspect_bundle(self.root, REVISION, **mode)
+        alias = next(iter(material.ALIASES))
+        self.bundle(payload, attributes=attributes,
+                    aliases={**self.aliases, alias: "unreviewed.so"})
+        with self.assertRaisesRegex(inventory.InventoryError, "util_linux_alias"):
+            inventory.inspect_bundle(self.root, REVISION, **mode)
+
+    def test_util_linux_checks_both_source_and_binary_versions(self):
+        payload, attributes = self.util_linux_fixture()
+        mode = {"kerberos_backport": True, "openssl_backport": True, "util_linux_backport": True}
+        status = payload[inventory.DPKG_STATUS]
+        version = util_linux_trixie_materials.PACKAGE_VERSIONS["bsdutils"].encode("ascii")
+        for before, after in ((b"Version: " + version, b"Version: " + version[2:]),
+                              (b"Source: util-linux (", b"Source: unexpected (")):
+            self.bundle({**payload, inventory.DPKG_STATUS: status.replace(before, after, 1)},
+                        attributes=attributes)
+            with self.assertRaisesRegex(inventory.InventoryError, "status_identity"):
+                inventory.inspect_bundle(self.root, REVISION, **mode)
 
     def test_cli_reports_permission_failure_without_disclosing_path(self):
         with (
