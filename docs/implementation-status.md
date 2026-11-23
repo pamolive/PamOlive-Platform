@@ -1,5 +1,36 @@
 # État réel de l’implémentation
 
+## Image Trixie intégrée et décisions Grype — 23 novembre 2026
+
+La PR #67 a exécuté les tests sur son commit de fusion
+`27bb774125e96cbd92f6a42c028a272a68fdd6c5`, depuis la tête `11e20a6`.
+PostgreSQL compte 1 750 réussites et 42 tests ignorés. Les 130 tests
+annuaire, les essais SSH/RDP, HA, restauration, mise à niveau et
+installation Compose ont passé. Les inventaires en exécution et dans
+l'archive concordent avec le SBOM. Grype signale 39 groupes High
+bloquants.
+[CI intégrée](https://github.com/pamolive/PamOlive-Platform/actions/runs/45139526427) ·
+[Rapports et SBOM](https://github.com/pamolive/PamOlive-Platform/actions/runs/45139526427/artifacts/14804171538)
+
+Deux agents indépendants ont revu les sept correctifs OpenSSL et le
+correctif Kerberos. Seize décisions individuelles couvrent leurs
+empreintes OS et SBOM exactes. L'analyse des rapports déjà retenus
+retrouve 23 groupes hors de ces décisions, dont CVE-2026-84786 dans
+les deux périmètres. La CI de la nouvelle branche doit relire le TAR
+du candidat pour valider ces décisions. Les identifiants de revue
+déclarent des revues d'agents. Le résultat de publication dépend
+toujours du scan complet.
+[Politique image](image-scan-policy.md) ·
+[CVE-2026-84786](https://security-tracker.debian.org/tracker/CVE-2026-84786)
+
+Le laboratoire `util-linux` de la PR #66 a installé les neuf paquets
+du candidat `146377c` hors réseau. La revue indépendante a vérifié
+les neuf binaires installés et l'ABI de cinq bibliothèques. Le
+harnais conserve les exclusions, dont le refus de personnalité
+noyau observé avec `setarch` sous BuildKit. L'intégration produit
+de ces paquets reste à qualifier.
+[Artefact du laboratoire](https://github.com/pamolive/PamOlive-Platform/actions/runs/45143461959/artifacts/14803063902)
+
 ## OpenSSL qualifié en laboratoire — 23 novembre 2026
 
 Le candidat `7fc4465` passe la compilation Debian et la vérification

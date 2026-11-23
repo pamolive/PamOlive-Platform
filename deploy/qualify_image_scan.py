@@ -17,7 +17,7 @@ import tarfile
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 try:
     from deploy import build_recipe, krb5_inventory, qualified_image
@@ -36,6 +36,39 @@ MAX_JSON = 32 * 1024 * 1024
 SHA = re.compile(r"[0-9a-f]{64}\Z")
 DISPOSITIONS = {"untriaged", "not_reachable", "fixed_by_backport",
                 "not_affected_build", "code_not_present"}
+TRIXIE_BACKPORT_COMMITS = {
+    "krb5": {
+        "CVE-2026-107778": "https://github.com/krb5/krb5/commit/62196e2b269159a5465f5b8d0ed7cf6f29c3282a",
+    },
+    "openssl": {
+        "CVE-2026-88823": "https://github.com/openssl/openssl/commit/159e1de0c448d7b9f09ad768c8e141def4aa1eb4",
+        "CVE-2026-107496": "https://github.com/openssl/openssl/commit/a0051cfe699bf5a047bc1c4faef65f80f7987366",
+        "CVE-2026-95692": "https://github.com/openssl/openssl/commit/257a3427aa0ef8d9dd2ef5b3e2d1c021a221b116",
+        "CVE-2026-95691": "https://github.com/openssl/openssl/commit/f6244675833e097c2429a40d1b206d95385bd42f",
+        "CVE-2026-107493": "https://github.com/openssl/openssl/commit/c8f6d04f8e6d40b1bf83334e4a2ec9daf5943a3d",
+        "CVE-2026-124709": "https://github.com/openssl/openssl/commit/f3acb0a3328046741479482c51cec815839e1b05",
+        "CVE-2026-121482": "https://github.com/openssl/openssl/commit/468c287cf451a834b370b69ab321b8ffdfac23aa",
+    },
+}
+TRIXIE_BACKPORT_FIELDS = {
+    "krb5": "kerberos_receipt_sha256",
+    "openssl": "openssl_receipt_sha256",
+}
+# Scope each CVE catalog to the exact materials and output independently reviewed.
+TRIXIE_BACKPORT_PINS = {
+    "krb5": {
+        "recipe": (
+            "source.sha256", "337ba110e94364cdcc8fa60fd6598649c21c0dbb349b07307e169eef024e2047",
+        ),
+        "receipt": "115ba95dff1152115bfbc03d84eed5c30061c7fe72f97038616cd8f8dc3b65b4",
+    },
+    "openssl": {
+        "recipe": (
+            "patches.txt", "e3a4ccb061ed8da5772bb647ea4300fd16967b0b54547050af2e8972f64b47b7",
+        ),
+        "receipt": "b04eb9567f8353f766028862b2482599cb3e2ba95b5060b37c805e758574d6a0",
+    },
+}
 ELF_SET_SCHEMA = "pamolive.elf-set.v1"
 GCC_VERSION = "14.2.0-19"
 GCC_PACKAGES = {"gcc-14-base", "libatomic1", "libgcc-s1", "libstdc++6"}
@@ -798,7 +831,55 @@ def gcc_conditions(entry, finding, *, proofs, repo):
     return conditions
 
 
-def reviewed_exception(entry, finding, *, facts, repo, now, archive=None, artifact_cache=None):
+def trixie_backport_holds(entry, finding, *, proofs, report):
+    from deploy import krb5_trixie_materials, openssl_trixie_materials
+
+    source = finding["source_package"]
+    cve = finding["vulnerability_id"]
+    expected_commit = TRIXIE_BACKPORT_COMMITS.get(source, {}).get(cve)
+    require(expected_commit and expected_commit in entry["vendor_evidence"], "trixie_backport_fix")
+    module = {"krb5": krb5_trixie_materials, "openssl": openssl_trixie_materials}[source]
+    scope = finding["scope"]
+    version = {"os": "13.8", "compiled": "13"}.get(scope)
+    require(version is not None and finding["severity"] == "High" and
+            finding["distro"] == {"name": "debian", "version": version} and
+            finding["namespace"] == "debian:distro:debian:13" and
+            finding["data_source"] == "https://security-tracker.debian.org/tracker/" + cve and
+            finding["fix_state"] in ("not-fixed", "wont-fix"), "trixie_backport_scope")
+
+    packages = {item["name"]: item for item in finding["packages"]}
+    require(set(packages) == set(module.RUNTIME_PACKAGES) and
+            len(finding["packages"]) == len(packages), "trixie_backport_packages")
+    for name, item in packages.items():
+        purl = (
+            f"pkg:deb/debian/{name}@{quote(module.VERSION, safe='')}"
+            f"?arch=amd64&distro=debian-{version}"
+        )
+        # Grype's OS inventory omits upstream when the binary name is the source name.
+        if name != source or scope == "compiled":
+            purl += "&upstream=" + source
+        require(item == {"name": name, "version": module.VERSION, "type": "deb", "purl": purl},
+                "trixie_backport_package_identity")
+
+    directory = f"deploy/{source}-trixie-backport"
+    pins = TRIXIE_BACKPORT_PINS[source]
+    recipe, recipe_hash = pins["recipe"]
+    receipt_hash = pins["receipt"]
+    expected = {"path": f"{directory}/qualification.json", "sha256": receipt_hash}
+    condition = {"kind": "debian_trixie_backport", "sha256": receipt_hash}
+    require(module.SHA256 == receipt_hash and
+            {"path": f"{directory}/{recipe}", "sha256": recipe_hash} in proofs and
+            entry["trixie_backport_receipt"] == expected and expected in proofs and
+            entry.get("conditions") == [condition] and
+            "backport_inventory" not in entry and "build_recipe" not in entry,
+            "trixie_backport_receipt")
+    require(report is not None and report.get(TRIXIE_BACKPORT_FIELDS[source]) == receipt_hash,
+            "trixie_backport_image")
+    return True
+
+
+def reviewed_exception(entry, finding, *, facts, repo, now, archive=None, artifact_cache=None,
+                       trixie_report=None):
     require(entry.get("fingerprint") == fingerprint(entry.get("finding")), "policy_fingerprint")
     require(entry["finding"] == finding, "policy_finding_changed")
     if entry.get("disposition") == "untriaged":
@@ -833,6 +914,9 @@ def reviewed_exception(entry, finding, *, facts, repo, now, archive=None, artifa
         path = candidate.resolve(strict=True)
         require(path.is_relative_to(repo) and hash_file(path, 2 * 1024 * 1024) ==
                 proof.get("sha256"), "proof_changed")
+    if "trixie_backport_receipt" in entry:
+        require(entry["disposition"] == "fixed_by_backport", "trixie_backport_disposition")
+        return trixie_backport_holds(entry, finding, proofs=proofs, report=trixie_report)
     if entry["disposition"] == "fixed_by_backport":
         require(finding.get("scope") == "os" and finding.get("source_package") == "krb5" and
                 finding.get("vulnerability_id") == "CVE-2026-119079" and
@@ -892,8 +976,30 @@ def check_fixture(fixture):
         "positive_fixture_identity")
 
 
+def verify_trixie_sbom(sca_sbom, report, config_id, properties):
+    from deploy import native_sbom
+
+    expected, dependencies, _ = native_sbom.debian_components(report, config_id, "image_config")
+    refs = {item["bom-ref"] for item in expected}
+    purls = {item["purl"] for item in expected if "purl" in item}
+    pending = list(sca_sbom["components"])
+    observed = []
+    while pending:
+        item = pending.pop()
+        pending.extend(item.get("components", []))
+        if item.get("bom-ref") in refs or item.get("purl") in purls:
+            observed.append(item)
+    require(sorted(observed, key=canonical) == sorted(expected, key=canonical) and
+            sorted((row for row in sca_sbom["dependencies"] if row["ref"] in refs), key=canonical)
+            == sorted(dependencies, key=canonical), "trixie_backport_sbom_components")
+    require(properties.get("pamolive:sbom:debian-archive-sha256") == report["archive_sha256"]
+            and properties.get("pamolive:sbom:openssl-receipt-sha256")
+            == report["openssl_receipt_sha256"],
+            "trixie_backport_sbom_binding")
+
+
 def qualify(os_report, compiled_report, positive_report, compiled_sbom, policy, *,
-            config_id, config_bytes, facts, repo, now=None, archive=None):
+            config_id, config_bytes, facts, repo, now=None, archive=None, revision=None):
     """Pure policy evaluation after files/archive identities have been checked."""
     now = now or datetime.now(UTC)
     require(policy.get("schema") == SCHEMA and policy.get("version") == 1, "policy_version")
@@ -949,11 +1055,25 @@ def qualify(os_report, compiled_report, positive_report, compiled_sbom, policy, 
                 blockers.append({"code": "high_fix_available", "scope": scope,
                                  "id": vulnerability["id"]})
         groups.update(high_groups(report, scope))
+    trixie_report = None
+    if any("trixie_backport_receipt" in indexed.get(key, {})
+           and indexed[key]["disposition"] == "fixed_by_backport" for key in groups):
+        from deploy import debian_refresh_inventory
+
+        require(archive is not None and Path(archive).name == qualified_image.ARCHIVE and
+                isinstance(revision, str) and qualified_image.REVISION.fullmatch(revision),
+                "trixie_backport_bundle")
+        trixie_report = debian_refresh_inventory.inspect_bundle(
+            Path(archive).parent, revision, kerberos_backport=True, openssl_backport=True,
+        )
+        require(trixie_report["image_config_id"] == config_id, "trixie_backport_config")
+        verify_trixie_sbom(compiled_sbom, trixie_report, config_id, props)
     artifact_cache = {}
     for key, finding in groups.items():
         entry = indexed.get(key)
         if entry is None or not reviewed_exception(entry, finding, facts=facts, repo=repo, now=now,
-                                                   archive=archive, artifact_cache=artifact_cache):
+                                                   archive=archive, artifact_cache=artifact_cache,
+                                                   trixie_report=trixie_report):
             blockers.append({"code": "untriaged_high", "fingerprint": key, "finding": finding})
     require(all(item[2]["image_config_id"] == config_id for item in artifact_cache.values()),
             "recipe_image_config_changed")
@@ -1026,7 +1146,7 @@ def main(argv=None):
                 control_path.resolve(), "positive_control_source")
         result = qualify(os_report, compiled, positive, sbom, policy,
                          config_id=metadata["image_id"], config_bytes=config, facts=facts,
-                         repo=repo, archive=archive)
+                         repo=repo, archive=archive, revision=args.revision)
         require(hash_file(archive) == metadata["archive_sha256"], "archive_changed_during_scan")
         result["input_sha256"] = {name: hash_file(path) for name, path in (
             ("qualified_image", bundle / qualified_image.METADATA), ("archive", archive),

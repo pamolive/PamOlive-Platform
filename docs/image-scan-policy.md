@@ -60,9 +60,29 @@ Une classification « composant absent » ne s’étend pas aux fonctions prése
 
 ### Backport Kerberos distinct d'une absence de chemin
 
-`fixed_by_backport` est réservé au scope OS, source krb5, CVE-2026-119079 et aux quatre paquets Debian locaux de version exacte définis dans `krb5_inventory`. L'entrée doit référencer un inventaire revu dans `local_evidence`, à la même empreinte SHA. Le gate valide son contrat typé puis exige exactement les conditions générées par cet inventaire : manifeste, provenance, toutes les preuves et les quatre ELF de l'archive qualifiée. Les versions, sources, patch MIT, ABI et résultats ASN.1 ne peuvent être remplacés par une absence supposée d'atteignabilité. Les Critical et High avec correctif distribué disponible restent bloquants.
+La voie historique de `fixed_by_backport` couvre le scope OS, source krb5, CVE-2026-119079 et les quatre paquets Debian locaux de version exacte définis dans `krb5_inventory`. L'entrée doit référencer un inventaire revu dans `local_evidence`, à la même empreinte SHA. Le contrôle valide son contrat typé puis exige le manifeste, la provenance, les preuves et les quatre ELF de l'archive qualifiée. Les Critical et High avec correctif distribué disponible restent bloquants.
 
 Les exclusions de tests KEYRING documentées par l'inventaire ne qualifient pas le trousseau noyau. Les logs makecheck peuvent également révéler d'autres tests amont non exécutés, notamment LDAP KDB absent ou résolution DNS externe interdite dans N0. Leur inventaire complet et leurs limites doivent figurer au rapport réel de B3 ; les seules exclusions KEYRING typées ne doivent pas être présentées comme une couverture complète des capacités Kerberos. Le lecteur de politique ne modifie ni seccomp, ni DNS, ni les résultats amont.
+
+### Backports qualifiés sur Debian Trixie
+
+La condition `debian_trixie_backport` couvre les sept correctifs OpenSSL
+de l'ADR-042 et CVE-2026-107778 de l'ADR-041. Une décision individuelle
+référence le commit amont, le manifeste des sources correctives et le
+reçu de qualification épinglés. Les empreintes des signalements OS et
+SBOM sont distinctes. Chaque empreinte inclut la source Debian, les
+versions et PURL exactes et tous les paquets runtime de la famille.
+
+Le contrôle relit les couches de l'archive du commit testé. L'inventaire
+v3 vérifie les deux reçus, le statut dpkg, les ELF et les alias Kerberos.
+Le contrôle exige ensuite les mêmes composants Debian, empreintes de
+fichiers et dépendances dans le SBOM effectivement soumis au scanner.
+Les résultats bruts restent disponibles et les décisions expirent selon
+les mêmes règles de revue. Le paquet Python `cryptography` possède son
+propre OpenSSL statique. CVE-2026-84786 et les autres avis hors des huit
+correctifs exigent leur propre qualification.
+[ADR-041](adr-041-kerberos-trixie-backport.md) ·
+[ADR-042](adr-042-openssl-trixie-seven-fixes.md)
 
 ### Deux justifications GCC bornées
 
