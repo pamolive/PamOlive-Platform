@@ -217,6 +217,44 @@ PRUNED_RUNTIME = {
     },
 }
 ELF_SET_SCHEMA = "pamolive.elf-set.v1"
+NCURSES_CONDITION = {"kind": "ncurses_bin_backport"}
+NCURSES_FINDING = "sha256:bc138193eda6df98a18353c620c4ceb8a7dea311db9ecde20063ebc54b833107"
+NCURSES_FIX = (
+    "https://github.com/ThomasDickey/ncurses-snapshots/commit/6f6db0e8fd14e40096a0ee6f8bdf32dedbd3fc9e"
+)
+NCURSES_STOCK_VERSION = "6.5+20250216-2"
+NCURSES_STOCK_INFOCMP = "934ce418360bd162a188f22310509640f3b0c14a858ec4ec04c25df64f97feb0"
+NCURSES_INFOCMP = "/usr/bin/infocmp"
+NCURSES_RECEIPT = "/usr/share/pamolive/ncurses-trixie/qualification.json"
+NCURSES_RECEIPT_LIMIT = 16 * 1024
+NCURSES_PACKAGE_IDENTITIES = {
+    "libncursesw6": (NCURSES_STOCK_VERSION, "amd64"),
+    "libtinfo6": (NCURSES_STOCK_VERSION, "amd64"),
+    "ncurses-base": (NCURSES_STOCK_VERSION, "all"),
+    "ncurses-bin": (NCURSES_STOCK_VERSION + "+pamolive1", "amd64"),
+}
+NCURSES_ELFS = {
+    NCURSES_INFOCMP: "06a15e9ba1dfbe0f1223e10292f0220a9d98d3c3577cd27b025e7c15ab275b39",
+    "/usr/lib/x86_64-linux-gnu/libncursesw.so.6.5":
+        "ea1e3fea29b3d3f35e240f626e5e783885d1d17f7915e7840f2a1542058c154c",
+    "/usr/lib/x86_64-linux-gnu/libtinfo.so.6.5":
+        "4013e7651ac68f547d8333517def25b2366c97eec7de7f06e105dbf3444ffebf",
+}
+NCURSES_PROOFS = {
+    "deploy/ncurses-trixie-backport/installed.sha256":
+        "dbf499bbe607989b4a83ff127620c96b47be7acc1ff4e6a5d316668d0453e112",
+    "deploy/ncurses-trixie-backport/materials.sh":
+        "6dff5a0d936368e037fa9d5f1f3568f8caa05b65c6ce3c5ecc487e46cca8d282",
+    "deploy/ncurses-trixie-backport/package.sha256":
+        "cf7ed7960f664682e148e806101252f69e6c785a634b6a5e70100a12c28e1309",
+    "deploy/ncurses-trixie-backport/patches.sha256":
+        "994eb32cbe8046c48f3591c7cca7d027a1328b882423960f6a0d707fffd4c2dd",
+    "deploy/ncurses-trixie-backport/postimage.sha256":
+        "4c843882564602f9b2b4f664f3628a0f1936e3cce00ecc0316c6c55d05741cdd",
+    "deploy/ncurses-trixie-backport/qualification.json":
+        "d41b9ed97ae5261769f3669e7a090a17dab397475e3b0c5c32e356f6ae5fdfcd",
+}
+NCURSES_RECEIPT_SHA = NCURSES_PROOFS["deploy/ncurses-trixie-backport/qualification.json"]
 GCC_VERSION = "14.2.0-19"
 GCC_PACKAGES = {"gcc-14-base", "libatomic1", "libgcc-s1", "libstdc++6"}
 GCC_LIBRARY = "/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.33"
@@ -276,7 +314,8 @@ class ArchiveFacts(tuple):
     """Preserve the existing (names, files) interface, with an optional sentinel."""
 
     def __new__(cls, names, files, elf_set=None, *, entries=None, contents=None, captured=None,
-                layer_digests=None, attributes=None, verified_debconf_text=frozenset()):
+                layer_digests=None, attributes=None, verified_debconf_text=frozenset(),
+                ncurses_stock_seen=None):
         value = super().__new__(cls, (names, files))
         value.elf_set = elf_set
         value.entries = entries
@@ -285,6 +324,7 @@ class ArchiveFacts(tuple):
         value.layer_digests = layer_digests
         value.attributes = attributes
         value.verified_debconf_text = verified_debconf_text
+        value.ncurses_stock_seen = ncurses_stock_seen
         return value
 
     def __getnewargs__(self):
@@ -527,13 +567,20 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
     require(isinstance(read_paths, (list, tuple, set)) and len(read_paths) <= 32,
             "archive_read_paths")
     read_paths = {checked_path(name) for name in read_paths}
+    ncurses_check = NCURSES_CONDITION in conditions
+    ncurses_stock_seen = False if ncurses_check else None
     if any(item.get("kind") in {"sqlite_rebuild", "pruned_debian_runtime"}
            for item in conditions):
         read_paths.add(DPKG_STATUS)
-        require(len(read_paths) <= 32, "archive_read_paths")
+    if ncurses_check:
+        read_paths.update((DPKG_STATUS, NCURSES_RECEIPT))
+    require(len(read_paths) <= 32, "archive_read_paths")
     require(isinstance(attribute_paths, (list, tuple, set)) and len(attribute_paths) <= 32,
             "archive_attribute_paths")
     attribute_paths = {checked_path(name) for name in attribute_paths}
+    if ncurses_check:
+        attribute_paths.add(NCURSES_INFOCMP)
+    require(len(attribute_paths) <= 32, "archive_attribute_paths")
     requested |= read_paths | attribute_paths
     require(isinstance(forbidden_elf_sha256, (tuple, list, set, frozenset))
             and len(forbidden_elf_sha256) <= 16
@@ -697,7 +744,11 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                             if capture_set or name in requested or is_elf:
                                 require(member.size <= 64 * 1024**2, "elf_budget")
                                 sha = hashlib.sha256(header)
-                                parts = [header] if name in read_paths else None
+                                keep_payload = name in read_paths and not (
+                                    ncurses_check and name == NCURSES_RECEIPT
+                                    and member.size > NCURSES_RECEIPT_LIMIT
+                                )
+                                parts = [header] if keep_payload else None
                                 # Inspect every physical ELF in every layer, including
                                 # copies later hidden by whiteouts. This optional migration
                                 # guard never grants a vulnerability policy exception.
@@ -732,6 +783,8 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                                     # Check physical bytes before future overwrite/whiteout.
                                     require(sha.hexdigest() not in forbidden_elf_sha256,
                                             "forbidden_physical_elf")
+                                    if ncurses_check and sha.hexdigest() == NCURSES_STOCK_INFOCMP:
+                                        ncurses_stock_seen = True
                                     require(len(header) >= 20 and elf_class in (32, 64) and
                                             header[5] in (1, 2), "elf_set_header")
                                     machine = int.from_bytes(header[18:20],
@@ -759,6 +812,7 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                         contents={name: {key: item[key] for key in ("sha256", "class", "machine")}
                                   for name, item in contents.items()} if capture_set else None,
                         captured=captured, layer_digests=layer_digests, attributes=attributes,
+                        ncurses_stock_seen=ncurses_stock_seen,
                         verified_debconf_text=frozenset(
                             (debconf_text.keys() & names) - changed_debconf_text))
 
@@ -1119,6 +1173,59 @@ def sqlite_rebuild_holds(entry, finding, *, facts, proofs):
     }
 
 
+def ncurses_backport_holds(entry, finding, *, facts, proofs):
+    from qualification.debian_138_refresh.verify_refresh import controls
+
+    require(fingerprint(finding) == NCURSES_FINDING and NCURSES_FIX in entry["vendor_evidence"],
+            "ncurses_backport_scope")
+    require(entry["disposition"] == "fixed_by_backport"
+            and entry["conditions"] == [NCURSES_CONDITION]
+            and not {"trixie_backport_receipt", "backport_inventory", "build_recipe"} & entry.keys()
+            and all({"path": path, "sha256": sha} in proofs
+                    for path, sha in NCURSES_PROOFS.items()),
+            "ncurses_backport_evidence")
+    captured = facts.captured or {}
+    status, receipt = captured.get(DPKG_STATUS, b""), captured.get(NCURSES_RECEIPT, b"")
+    if (not 0 < len(status) <= 8 * 1024**2 or not 0 < len(receipt) <= NCURSES_RECEIPT_LIMIT
+            or hashlib.sha256(receipt).hexdigest() != NCURSES_RECEIPT_SHA):
+        return False
+    rows = [row for row in controls(status)
+            if row.get("Package") in NCURSES_PACKAGE_IDENTITIES
+            or row.get("Source", row.get("Package", "")).partition(" ")[0] == "ncurses"]
+    if len(rows) != len(NCURSES_PACKAGE_IDENTITIES):
+        return False
+    observed = {}
+    for row in rows:
+        name, version = row.get("Package"), row.get("Version")
+        if (name in observed or row.get("Status") != "install ok installed"
+                or row.get("Source") not in ("ncurses", f"ncurses ({version})")
+                or (name == "ncurses-bin" and row.get("Essential") != "yes")):
+            return False
+        observed[name] = (version, row.get("Architecture"))
+    if observed != NCURSES_PACKAGE_IDENTITIES:
+        return False
+
+    entries = facts.entries or {}
+    for path, sha in NCURSES_ELFS.items():
+        if entries.get(path) != {
+            "path": path, "type": "elf", "class": 64, "machine": 62, "sha256": sha,
+        }:
+            return False
+        if path != NCURSES_INFOCMP:
+            alias = path.removesuffix(".5")
+            if entries.get(alias) != {
+                "path": alias, "type": "symlink", "target": PurePosixPath(path).name,
+            }:
+                return False
+    infocmp_paths = {path for path in facts[0] if PurePosixPath(path).name == "infocmp"}
+    return (
+        getattr(facts, "ncurses_stock_seen", None) is False
+        and (facts.attributes or {}).get(NCURSES_INFOCMP)
+        == {"mode": 0o755, "uid": 0, "gid": 0, "has_capability": False}
+        and infocmp_paths == {NCURSES_INFOCMP}
+    )
+
+
 def pruned_runtime_holds(entry, finding, *, facts, proofs):
     from qualification.debian_138_refresh.verify_refresh import controls
 
@@ -1247,6 +1354,8 @@ def reviewed_exception(entry, finding, *, facts, repo, now, archive=None, artifa
                 proof.get("sha256"), "proof_changed")
     if any(item.get("kind") == "sqlite_rebuild" for item in entry.get("conditions", ())):
         return sqlite_rebuild_holds(entry, finding, facts=facts, proofs=proofs)
+    if NCURSES_CONDITION in entry.get("conditions", ()):
+        return ncurses_backport_holds(entry, finding, facts=facts, proofs=proofs)
     if any(item.get("kind") == "pruned_debian_runtime" for item in entry.get("conditions", ())):
         return pruned_runtime_holds(entry, finding, facts=facts, proofs=proofs)
     if any(item.get("kind") == "expat_rebuild" for item in entry.get("conditions", ())):

@@ -4317,6 +4317,92 @@
         "https://security-tracker.debian.org/tracker/CVE-2026-9538",
         "https://github.com/jib/archive-tar-new/commit/f9af01426038e29d9578825a0cd3626946ab08c7"
       ]
+    },
+    {
+      "analysis": "The maintainer change in progs/infocmp.c is present in the verified Trixie ncurses-bin rebuild. The three other package matches are grouped by the Debian source. This decision is limited to the exact OS finding and validates the installed receipt, package identities, patched ELF, measured stock providers and absence of the original infocmp bytes across layers.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "ncurses_bin_backport"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T17:08:40+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2025-69720",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libncursesw6",
+            "purl": "pkg:deb/debian/libncursesw6@6.5%2B20250216-2?arch=amd64&distro=debian-13.8&upstream=ncurses",
+            "type": "deb",
+            "version": "6.5+20250216-2"
+          },
+          {
+            "name": "libtinfo6",
+            "purl": "pkg:deb/debian/libtinfo6@6.5%2B20250216-2?arch=amd64&distro=debian-13.8&upstream=ncurses",
+            "type": "deb",
+            "version": "6.5+20250216-2"
+          },
+          {
+            "name": "ncurses-base",
+            "purl": "pkg:deb/debian/ncurses-base@6.5%2B20250216-2?arch=all&distro=debian-13.8&upstream=ncurses",
+            "type": "deb",
+            "version": "6.5+20250216-2"
+          },
+          {
+            "name": "ncurses-bin",
+            "purl": "pkg:deb/debian/ncurses-bin@6.5%2B20250216-2%2Bpamolive1?arch=amd64&distro=debian-13.8&upstream=ncurses",
+            "type": "deb",
+            "version": "6.5+20250216-2+pamolive1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "ncurses",
+        "vulnerability_id": "CVE-2025-69720"
+      },
+      "fingerprint": "sha256:bc138193eda6df98a18353c620c4ceb8a7dea311db9ecde20063ebc54b833107",
+      "local_evidence": [
+        {
+          "path": "deploy/ncurses-trixie-backport/installed.sha256",
+          "sha256": "dbf499bbe607989b4a83ff127620c96b47be7acc1ff4e6a5d316668d0453e112"
+        },
+        {
+          "path": "deploy/ncurses-trixie-backport/materials.sh",
+          "sha256": "6dff5a0d936368e037fa9d5f1f3568f8caa05b65c6ce3c5ecc487e46cca8d282"
+        },
+        {
+          "path": "deploy/ncurses-trixie-backport/package.sha256",
+          "sha256": "cf7ed7960f664682e148e806101252f69e6c785a634b6a5e70100a12c28e1309"
+        },
+        {
+          "path": "deploy/ncurses-trixie-backport/patches.sha256",
+          "sha256": "994eb32cbe8046c48f3591c7cca7d027a1328b882423960f6a0d707fffd4c2dd"
+        },
+        {
+          "path": "deploy/ncurses-trixie-backport/postimage.sha256",
+          "sha256": "4c843882564602f9b2b4f664f3628a0f1936e3cce00ecc0316c6c55d05741cdd"
+        },
+        {
+          "path": "deploy/ncurses-trixie-backport/qualification.json",
+          "sha256": "d41b9ed97ae5261769f3669e7a090a17dab397475e3b0c5c32e356f6ae5fdfcd"
+        }
+      ],
+      "reviewed_at": "2026-11-23T17:08:40+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/checkpoint_store_review"
+      ],
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2025-69720",
+        "https://github.com/ThomasDickey/ncurses-snapshots/commit/6f6db0e8fd14e40096a0ee6f8bdf32dedbd3fc9e"
+      ]
     }
   ],
   "positive_control": {

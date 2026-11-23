@@ -64,3 +64,15 @@ Cette campagne laisse le signalement High dans les scans bruts.
 La procédure de restauration reposera sur le dernier digest
 qualifié et sa sauvegarde. Le paquet stock est la référence
 du laboratoire.
+
+Les deux scans de la PR #80 remontent le même groupe High OS Debian
+13.8. Le groupe contient le `ncurses-bin` local et les trois paquets
+Trixie dont Grype reprend le même source Debian. La décision s'applique
+uniquement à cette empreinte et exige les quatre identités dpkg, le
+reçu de qualification embarqué, l'ELF `infocmp` corrigé et les ELF
+et liens de `libncursesw` et `libtinfo` mesurés en laboratoire. Le
+contrôle recherche aussi le SHA du binaire stock dans toutes les couches,
+y compris sous un autre nom. Toute divergence garde le groupe bloquant.
+Les rapports Grype conservent le signalement d'origine.
+[Scan push](https://github.com/pamolive/PamOlive-Platform/actions/runs/45209780376/artifacts/14840299172) ·
+[Scan PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/45209831612/artifacts/14841806964)

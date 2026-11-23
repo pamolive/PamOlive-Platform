@@ -330,6 +330,87 @@ class ImageScanPolicyTests(TestCase):
         with self.assertRaisesRegex(gate.ScanPolicyError, "sqlite_rebuild_recipe"):
             gate.sqlite_rebuild_holds(entry, finding, facts=None, proofs=proofs[:-1])
 
+    def test_ncurses_decision_requires_the_exact_runtime_and_layers(self):
+        from tests.test_debian_refresh_inventory import write_tar
+
+        repo = Path(gate.__file__).resolve().parents[1]
+        policy = json.loads((repo / ".github/qualification/image-scan-policy.v1.json").read_bytes())
+        entry, = [row for row in policy["findings"] if row["fingerprint"] == gate.NCURSES_FINDING]
+        entry["reviewed_at"] = (self.now - timedelta(hours=1)).isoformat()
+        entry["expires"] = (self.now + timedelta(days=1)).isoformat()
+        self.policy["findings"] = [entry]
+        self.os["distro"]["version"] = "13.8"
+        for package in entry["finding"]["packages"]:
+            match = self.match(
+                "CVE-2025-69720", state="wont-fix", name=package["name"],
+                version=package["version"], source="ncurses",
+            )
+            match["artifact"]["purl"] = package["purl"]
+            self.os["matches"].append(match)
+        self.assertEqual(list(gate.high_groups(self.os, "os")), [gate.NCURSES_FINDING])
+        for proof in entry["local_evidence"]:
+            path = self.repo / proof["path"]
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes((repo / proof["path"]).read_bytes())
+        receipt = (repo / "deploy/ncurses-trixie-backport/qualification.json").read_bytes()
+        status = "".join(
+            f"Package: {name}\nSource: ncurses\nStatus: install ok installed\n"
+            f"Version: {version}\nArchitecture: {arch}\nEssential: yes\n\n"
+            for name, (version, arch) in gate.NCURSES_PACKAGE_IDENTITIES.items()
+        ).encode()
+        binaries = {path: expat_test.elf(path.encode()) for path in gate.NCURSES_ELFS}
+        checksums = {path: expat_test.digest(raw) for path, raw in binaries.items()}
+        aliases = {path.removesuffix(".5"): PurePosixPath(path).name
+                   for path in binaries if path != gate.NCURSES_INFOCMP}
+        files = {**binaries, gate.DPKG_STATUS: status, gate.NCURSES_RECEIPT: receipt}
+        archive = self.repo / "ncurses-fixture.tar"
+
+        def capture(contents, *, links=aliases, mode=0o755, extra_layers=()):
+            layers = [*extra_layers, write_tar(
+                contents, aliases=links, attributes={gate.NCURSES_INFOCMP: {"mode": mode}},
+            )]
+            names = [f"layer-{i}.tar" for i in range(len(layers))]
+            archive.write_bytes(expat_test.tar_bytes({
+                **dict(zip(names, layers, strict=True)),
+                "manifest.json": json.dumps([{"Layers": names}]).encode(),
+            }))
+            return gate.archive_facts(archive, [gate.NCURSES_CONDITION])
+
+        stock = expat_test.elf(b"synthetic baseline fixture")
+        with (
+            patch.object(gate, "NCURSES_ELFS", checksums),
+            patch.object(gate, "NCURSES_STOCK_INFOCMP", expat_test.digest(stock)),
+        ):
+            exact = self.evaluate(capture(files))
+            self.assertTrue(exact["passed"])
+            self.assertFalse(exact["all_findings_clear"])
+            self.assertFalse(self.evaluate(capture(files, mode=0o4755))["passed"])
+            self.assertFalse(self.evaluate(capture(
+                {**files, "/usr/local/bin/infocmp": binaries[gate.NCURSES_INFOCMP]},
+            ))["passed"])
+            wrong_arch = status.replace(b"Architecture: all", b"Architecture: amd64")
+            self.assertFalse(self.evaluate(capture(
+                {**files, gate.DPKG_STATUS: wrong_arch},
+            ))["passed"])
+            library = next(iter(aliases))
+            self.assertFalse(self.evaluate(capture(
+                files, links={**aliases, library: "unexpected-lib.so"},
+            ))["passed"])
+            self.assertFalse(self.evaluate(capture(
+                {**files, gate.NCURSES_RECEIPT: receipt + b"altered"},
+            ))["passed"])
+            missing = {name: data for name, data in files.items() if name != gate.NCURSES_RECEIPT}
+            self.assertFalse(self.evaluate(capture(missing))["passed"])
+            oversized = capture({**files, gate.NCURSES_RECEIPT: b"x" * (17 * 1024)})
+            self.assertNotIn(gate.NCURSES_RECEIPT, oversized.captured)
+            self.assertFalse(self.evaluate(oversized)["passed"])
+            self.assertFalse(self.evaluate(capture(
+                {**files, "/tmp/.wh.previous": b""},
+                extra_layers=(write_tar({"/tmp/previous": stock}),),
+            ))["passed"])
+            self.compiled["matches"] = copy.deepcopy(self.os["matches"])
+            self.assertFalse(self.evaluate(capture(files))["passed"])
+
     def pruned_runtime_entry(self, cve, rule):
         entry = self.add_exception()
         self.os["distro"]["version"] = "13.8"
