@@ -21,7 +21,7 @@ from support import load, need, read_regular, sha  # noqa: E402
 DRIVERS = {"psycopg", "psycopg-c"}
 UTILS = {
     "check_database_driver.py": "5093b743958bf3c920d58caa66389676b5f5ecc5ed554c0f9cfd18c2b903f42f",
-    "native_inventory.py": "0ae411ff3971470b7d62aba8d27bf307e948258aac2853ed82fdddcf8edd20c1",
+    "native_inventory.py": "f8d03b1ec21cb5a49de06ca170ffea2605efe73f5429c619a1446206b43362ff",
 }
 CONTEXT = "verified-consumer-context"
 TEST_SHA = "f0911729caf6907b56b24c98a32f415c51babdd4019153dd79f27b55b5caee5e"
