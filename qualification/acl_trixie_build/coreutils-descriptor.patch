@@ -1,0 +1,354 @@
+diff --git a/lib/set-permissions.c b/lib/set-permissions.c
+--- a/lib/set-permissions.c
++++ b/lib/set-permissions.c
+@@ -23,6 +23,10 @@
+ 
+ #include "acl-internal.h"
+ #include "minmax.h"
++#if defined __linux__ && USE_ACL
++# include <stdio.h>
++# include "acl-target.h"
++#endif
+ 
+ #if USE_ACL
+ # if ! defined HAVE_ACL_FROM_MODE && defined HAVE_ACL_FROM_TEXT /* FreeBSD, IRIX, Tru64, Cygwin >= 2.5 */
+@@ -514,10 +518,17 @@
+ 
+       if (ret == 0 && ctx->acl)
+         {
++#   if defined __linux__
++          ret = acl_set_fd (desc, ctx->acl);
++          if (ret != 0 && errno == EBADF)
++            ret = acl_set_file_at (desc, "", AT_EMPTY_PATH, ACL_TYPE_ACCESS,
++                                   ctx->acl);
++#   else
+           if (HAVE_ACL_SET_FD && desc != -1)
+             ret = acl_set_fd (desc, ctx->acl);
+           else
+             ret = acl_set_file (name, ACL_TYPE_ACCESS, ctx->acl);
++#   endif
+           if (ret != 0)
+             {
+               if (! acl_errno_valid (errno))
+@@ -534,10 +545,23 @@
+                 {
+                   if (! from_mode && ctx->default_acl &&
+                       acl_default_nontrivial (ctx->default_acl))
+-                    ret = acl_set_file (name, ACL_TYPE_DEFAULT,
+-                                        ctx->default_acl);
++                    {
++#   if defined __linux__
++                      ret = acl_set_file_at (desc, "", AT_EMPTY_PATH,
++                                             ACL_TYPE_DEFAULT, ctx->default_acl);
++#   else
++                      ret = acl_set_file (name, ACL_TYPE_DEFAULT,
++                                          ctx->default_acl);
++#   endif
++                    }
+                   else
+-                    ret = acl_delete_def_file (name);
++                    {
++#   if defined __linux__
++                      ret = acl_delete_def_file_at (desc, "", AT_EMPTY_PATH);
++#   else
++                      ret = acl_delete_def_file (name);
++#   endif
++                    }
+                 }
+             }
+         }
+@@ -766,15 +790,40 @@
+     return chmod (name, mode);
+ }
+ 
+-/* Set the permissions in CTX on a file. If DESC is a valid file descriptor,
+-   use file descriptor operations, else use filename based operations on NAME.
++/* Keep the chmod fallback bound to the descriptor used for the ACL.  */
++static int
++chmod_acl_target (const char *name, int desc, mode_t mode)
++{
++#if defined __linux__ && USE_ACL
++  (void) name;
++  int ret = fchmod (desc, mode);
++  if (ret == 0 || errno != EBADF)
++    return ret;
++  if (fchmodat (desc, "", mode, AT_EMPTY_PATH) == 0)
++    return 0;
++  if (errno != EINVAL && errno != ENOSYS && errno != EOPNOTSUPP
++      && errno != EBADF && errno != ENOENT)
++    return -1;
++
++  /* Older kernels need the procfs reference for O_PATH descriptors.  */
++  char reference[64];
++  snprintf (reference, sizeof reference, "/proc/self/fd/%d", desc);
++  return chmod (reference, mode);
++#else
++  return chmod_or_fchmod (name, desc, mode);
++#endif
++}
++
++/* Set the permissions in CTX on an opened Linux target or use the
++   platform's ordinary descriptor or name-based operations elsewhere.
+    If access control lists are not available, fchmod the target file to the
+    mode in CTX.  Also sets the non-permission bits of the destination file
+    (S_ISUID, S_ISGID, S_ISVTX) to those from the mode in CTX if any are set.
+    Return 0 if successful.  Return -1 and set errno upon failure.  */
+ 
+-int
+-set_permissions (struct permission_context *ctx, const char *name, int desc)
++static int
++set_permissions_for_target (struct permission_context *ctx, const char *name,
++                            int desc)
+ {
+   _GL_UNUSED bool acls_set = false;
+   bool early_chmod;
+@@ -804,7 +853,7 @@
+ 
+   if (early_chmod)
+     {
+-      ret = chmod_or_fchmod (name, desc, ctx->mode);
++      ret = chmod_acl_target (name, desc, ctx->mode);
+       if (ret != 0)
+         return -1;
+     }
+@@ -835,7 +884,7 @@
+     {
+       int saved_errno = ret ? errno : 0;
+ 
+-      ret = chmod_or_fchmod (name, desc, ctx->mode);
++      ret = chmod_acl_target (name, desc, ctx->mode);
+ 
+       if (saved_errno)
+         {
+@@ -846,3 +895,28 @@
+ 
+   return ret;
+ }
++
++int
++set_permissions (struct permission_context *ctx, const char *name, int desc)
++{
++#if defined __linux__ && USE_ACL
++  if (desc < 0)
++    {
++      desc = acl_open_target (AT_FDCWD, name, NULL);
++      if (desc < 0)
++        return -1;
++      int ret = set_permissions_for_target (ctx, name, desc);
++      acl_close_target (desc);
++      return ret;
++    }
++  struct stat target;
++  if (fstat (desc, &target) != 0)
++    return -1;
++  if (S_ISLNK (target.st_mode))
++    {
++      errno = ELOOP;
++      return -1;
++    }
++#endif
++  return set_permissions_for_target (ctx, name, desc);
++}
+diff --git a/src/copy.c b/src/copy.c
+--- a/src/copy.c
++++ b/src/copy.c
+@@ -93,6 +93,9 @@
+ #ifndef USE_ACL
+ # define USE_ACL 0
+ #endif
++#if defined __linux__ && USE_ACL
++# include "acl-target.h"
++#endif
+ 
+ #define SAME_OWNER(A, B) ((A).st_uid == (B).st_uid)
+ #define SAME_GROUP(A, B) ((A).st_gid == (B).st_gid)
+@@ -910,6 +913,29 @@
+   return lchownat (dirfd, name, uid, gid);
+ }
+ 
++/* Bind metadata-only ACL writes to the target already selected by cp.  */
++static int
++set_destination_acl (char const *name, int dirfd, char const *relative,
++                     int fd, struct stat const *target, mode_t mode, bool quiet)
++{
++#if defined __linux__ && USE_ACL
++  if (fd < 0)
++    {
++      fd = acl_open_target (dirfd, relative, target);
++      if (fd < 0)
++        {
++          if (!quiet)
++            error (0, errno, _("preserving permissions for %s"), quoteaf (name));
++          return -1;
++        }
++      int ret = quiet ? qset_acl (name, fd, mode) : xset_acl (name, fd, mode);
++      acl_close_target (fd);
++      return ret;
++    }
++#endif
++  return quiet ? qset_acl (name, fd, mode) : xset_acl (name, fd, mode);
++}
++
+ /* Set the owner and owning group of DEST_DESC to the st_uid and
+    st_gid fields of SRC_SB.  If DEST_DESC is undefined (-1), set
+    the owner and owning group of DST_NAME aka DST_DIRFD+DST_RELNAME
+@@ -947,7 +973,8 @@
+       if ((USE_ACL
+            || (old_mode & CHMOD_MODE_BITS
+                & (~new_mode | S_ISUID | S_ISGID | S_ISVTX)))
+-          && qset_acl (dst_name, dest_desc, restrictive_temp_mode) != 0)
++          && set_destination_acl (dst_name, dst_dirfd, dst_relname, dest_desc,
++                                  dst_sb, restrictive_temp_mode, true) != 0)
+         {
+           if (! owner_failure_ok (x))
+             error (0, errno, _("clearing permissions for %s"),
+@@ -3217,6 +3244,25 @@
+      chown turns off set[ug]id bits for non-root,
+      so do the chmod last.  */
+ 
++#if defined __linux__ && USE_ACL
++  /* Directories are already recorded when they are selected or created.
++     Record a newly-created special object before applying its metadata.  */
++  if (new_dst && !S_ISDIR (src_mode) && !dest_is_symlink
++      && (x->set_mode || x->explicit_no_preserve_mode))
++    {
++      if (fstatat (dst_dirfd, dst_relname, &dst_sb, AT_SYMLINK_NOFOLLOW) != 0)
++        {
++          error (0, errno, _("cannot stat %s"), quoteaf (dst_name));
++          return false;
++        }
++      if ((dst_sb.st_mode & S_IFMT) != (src_mode & S_IFMT))
++        {
++          error (0, ESTALE, _("preserving permissions for %s"), quoteaf (dst_name));
++          return false;
++        }
++    }
++#endif
++
+   if (x->preserve_timestamps)
+     {
+       struct timespec timespec[2];
+@@ -3267,7 +3313,8 @@
+     }
+   else if (x->set_mode)
+     {
+-      if (xset_acl (dst_name, -1, x->mode) != 0)
++      if (set_destination_acl (dst_name, dst_dirfd, dst_relname, -1,
++                               &dst_sb, x->mode, false) != 0)
+         return false;
+     }
+   else if (x->explicit_no_preserve_mode && new_dst)
+@@ -3277,7 +3324,9 @@
+       dst_mode = dst_sb.st_mode;
+       if (S_ISDIR (src_mode))  /* Keep set-group-ID for directories.  */
+         default_permissions |= (dst_mode & S_ISGID);
+-      if (xset_acl (dst_name, -1, default_permissions & ~cached_umask ()) != 0)
++      if (set_destination_acl (dst_name, dst_dirfd, dst_relname, -1, &dst_sb,
++                               default_permissions & ~cached_umask (),
++                               false) != 0)
+         return false;
+     }
+   else
+diff --git a/lib/acl-target.h b/lib/acl-target.h
+new file mode 100644
+--- /dev/null
++++ b/lib/acl-target.h
+@@ -0,0 +1,98 @@
++/* Descriptor helpers for the Linux ACL setter.  */
++#ifndef COREUTILS_ACL_TARGET_H
++#define COREUTILS_ACL_TARGET_H
++
++#include <errno.h>
++#include <fcntl.h>
++#include <limits.h>
++#include <string.h>
++#include <sys/stat.h>
++#include <unistd.h>
++
++static inline void
++acl_close_target (int fd)
++{
++  int error_code = errno;
++  close (fd);
++  errno = error_code;
++}
++
++static inline int
++acl_validate_target (int fd, struct stat const *expected)
++{
++  if (fd < 0)
++    return -1;
++  struct stat target;
++  if (fstat (fd, &target) != 0)
++    {
++      acl_close_target (fd);
++      return -1;
++    }
++  if (S_ISLNK (target.st_mode))
++    errno = ELOOP;
++  else if (expected && (target.st_dev != expected->st_dev
++                        || target.st_ino != expected->st_ino
++                        || (target.st_mode & S_IFMT)
++                           != (expected->st_mode & S_IFMT)))
++    errno = ESTALE;
++  else
++    return fd;
++
++  acl_close_target (fd);
++  return -1;
++}
++
++/* If the caller already observed the target, allow its intentional parent
++   paths and verify the opened inode.  For callers without that information,
++   anchor each parent directory and decline symbolic links in the lookup.  */
++static inline int
++acl_open_target (int dirfd, char const *name, struct stat const *expected)
++{
++  char path[PATH_MAX];
++  size_t len = strnlen (name, sizeof path);
++  if (len == 0 || len == sizeof path)
++    {
++      errno = len ? ENAMETOOLONG : ENOENT;
++      return -1;
++    }
++  memcpy (path, name, len + 1);
++  int final_flags = name[len - 1] == '/' ? O_DIRECTORY : 0;
++  while (len > 1 && path[len - 1] == '/')
++    path[--len] = '\0';
++
++  int flags = O_PATH | O_CLOEXEC | O_NOFOLLOW;
++  if (expected)
++    {
++      /* A caller-selected referent is valid only if this descriptor identifies
++         that exact object.  This preserves intentional link and slash use.  */
++      int fd = openat (dirfd, path, (flags & ~O_NOFOLLOW) | final_flags);
++      return acl_validate_target (fd, expected);
++    }
++
++  int parent = openat (dirfd, path[0] == '/' ? "/" : ".",
++                       flags | O_DIRECTORY);
++  if (parent < 0)
++    return -1;
++  for (char *component = path, *end; ; component = end + 1)
++    {
++      while (*component == '/')
++        component++;
++      end = strchr (component, '/');
++      if (!end)
++        {
++          if (!*component)
++            return parent;
++          int fd = openat (parent, component, flags | final_flags);
++          acl_close_target (parent);
++          return acl_validate_target (fd, NULL);
++        }
++      *end = '\0';
++      int child = openat (parent, component, flags | O_DIRECTORY);
++      acl_close_target (parent);
++      if (child < 0)
++        return -1;
++      parent = child;
++    }
++}
++
++#endif

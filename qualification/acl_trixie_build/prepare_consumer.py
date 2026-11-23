@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-SOURCE_VERSIONS = {"sed": "4.9-2+deb13u1", "tar": "1.35+dfsg-3.1"}
+SOURCE_VERSIONS = {"coreutils": "9.7-3", "sed": "4.9-2+deb13u1", "tar": "1.35+dfsg-3.1"}
 
 
 def check(root, manifest):
@@ -17,7 +17,7 @@ def check(root, manifest):
         digest, separator, name = line.partition("  ")
         if (
             separator != "  " or not re.fullmatch(r"[0-9a-f]{64}", digest)
-            or not re.fullmatch(r"(?:(?:src|sed)/)?[A-Za-z0-9_.+-]{1,96}", name)
+            or not re.fullmatch(r"(?:(?:lib|src|sed)/)?[A-Za-z0-9_.+-]{1,96}", name)
             or name.rsplit("/", 1)[-1] in {".", ".."}
         ):
             raise ValueError("acl_consumer_materials")

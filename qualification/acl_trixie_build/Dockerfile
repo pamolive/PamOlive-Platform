@@ -172,3 +172,61 @@ RUN --network=none python -I -B /opt/acl-checks/sed_smoke.py > /evidence/sed.jso
 
 FROM scratch AS sed-acl-qualification
 COPY --from=sed-candidate /evidence/ /
+
+FROM trixie AS coreutils-source
+COPY coreutils-source.sha256 /opt/coreutils-inputs/
+WORKDIR /opt/coreutils-source
+RUN sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
+ && grep -Fxq 'Types: deb deb-src' /etc/apt/sources.list.d/debian.sources \
+ && chown _apt:root . \
+ && apt-get -o APT::Update::Error-Mode=any update \
+ && apt-get -o APT::Get::AllowUnauthenticated=false --download-only source 'coreutils=9.7-3' \
+ && sha256sum --check --strict /opt/coreutils-inputs/coreutils-source.sha256 \
+ && test "$(find . -maxdepth 1 -type f | wc -l)" = 4
+
+FROM trixie AS coreutils-builder
+RUN sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
+ && apt-get -o APT::Update::Error-Mode=any update \
+ && apt-get install -y --no-install-recommends --no-remove build-essential fakeroot quilt \
+ && apt-get build-dep -y --no-install-recommends --arch-only 'coreutils=9.7-3' \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=coreutils-source /opt/coreutils-source/ /opt/coreutils-build/
+COPY --chmod=0444 coreutils-source.sha256 coreutils-preimage.sha256 coreutils-postimage.sha256 coreutils-patch.sha256 coreutils-descriptor.patch prepare_consumer.py /opt/coreutils-inputs/
+WORKDIR /opt/coreutils-build
+RUN --network=none --mount=from=builder,source=/opt/acl-build,target=/acl-packages,ro \
+    dpkg --install /acl-packages/libacl1_2.4.0-1~pamolive13u1_amd64.deb \
+        /acl-packages/libacl1-dev_2.4.0-1~pamolive13u1_amd64.deb \
+ && test -z "$(dpkg --audit)" \
+ && sha256sum --check --strict /opt/coreutils-inputs/coreutils-source.sha256 \
+ && dpkg-source -x coreutils_9.7-3.dsc tree \
+ && python -I -B -S /opt/coreutils-inputs/prepare_consumer.py coreutils tree /opt/coreutils-inputs \
+ && chown -R 65534:65534 /opt/coreutils-build
+USER 65534:65534
+WORKDIR /opt/coreutils-build/tree
+ENV HOME=/opt/coreutils-build LC_ALL=C.UTF-8 DEB_BUILD_OPTIONS=parallel=2
+RUN --network=none dpkg-checkbuilddeps && dpkg-buildpackage -B -us -uc -j2 \
+ && sha256sum --check --strict /opt/coreutils-inputs/coreutils-postimage.sha256
+
+FROM sed-candidate AS coreutils-stock
+COPY --chmod=0444 coreutils_smoke.py /opt/acl-checks/
+RUN --network=none --mount=type=tmpfs,target=/tmp/pamolive-other,size=16777216 \
+    python -I -B /opt/acl-checks/coreutils_smoke.py stock > /evidence/coreutils-stock.json
+
+FROM coreutils-stock AS coreutils-candidate
+USER root
+RUN --network=none --mount=from=coreutils-builder,source=/opt/coreutils-build,target=/packages,ro \
+    set -eu; \
+    package='/packages/coreutils_9.7-3+pamolive1_amd64.deb'; \
+    test "$(dpkg-deb -f "$package" Package)" = coreutils; \
+    test "$(dpkg-deb -f "$package" Version)" = '9.7-3+pamolive1'; \
+    test "$(dpkg-deb -f "$package" Architecture)" = amd64; \
+    dpkg --install "$package"; \
+    test -z "$(dpkg --audit)"; \
+    install -m 0444 "$package" /evidence/coreutils.deb; \
+    install -m 0444 /packages/coreutils_9.7-3+pamolive1_amd64.buildinfo /evidence/coreutils.buildinfo
+USER 65534:65534
+RUN --network=none --mount=type=tmpfs,target=/tmp/pamolive-other,size=16777216 \
+    python -I -B /opt/acl-checks/coreutils_smoke.py candidate > /evidence/coreutils.json
+
+FROM scratch AS coreutils-acl-qualification
+COPY --from=coreutils-candidate /evidence/ /

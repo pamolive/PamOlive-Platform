@@ -73,5 +73,25 @@ injecte `EOPNOTSUPP` à la lecture et `EPERM` à l'écriture dans deux processus
 synthétiques. Un système de fichiers sans ACL reste à qualifier séparément.
 La qualification native reprend les cas GNU tar avec le même paquet libacl.
 
-L'intégration à l'image de livraison requiert la qualification de `cp`,
-`install` et `mv`, puis la vérification des ELF et du scan de l'image exacte.
+## Écriture des ACL POSIX dans GNU coreutils
+
+Les trois ELF de `coreutils` Trixie `9.7-3` qui importent les anciennes
+fonctions d'écriture sont `cp`, `install` et `mv`. Les écritures réutilisent le
+descripteur de données quand il existe. Pour une destination déjà sélectionnée
+par coreutils, l'ouverture `O_PATH` vérifie le périphérique, l'inode et le type
+avant toute écriture ACL. Cela préserve les alias de répertoire sélectionnés
+par le programme. Les appels sans identité attendue parcourent les répertoires
+sans suivre les liens. Les fichiers spéciaux sont ouverts pour métadonnées
+uniquement. Le repli de mode reste lié au même FD, via `/proc/self/fd` sur les
+noyaux qui ne prennent pas en charge `AT_EMPTY_PATH` pour `fchmodat`.
+[Source Debian](https://sources.debian.org/src/coreutils/9.7-3/)
+
+La comparaison avec Debian stock couvre les options `cp -p`, `--parents`,
+les politiques de liens, un FIFO, le mode et les ACL héritées avec `install`,
+et `mv` sur un et deux montages. Le laboratoire lie les trois ELF au DEB et
+vérifie leurs imports. La copie Debian des attributs d'ACL POSIX et NFSv4
+reste distincte. La compatibilité du repli avec les profils seccomp des hôtes
+anciens et les opérations sur un montage NFSv4 restent à qualifier.
+
+L'intégration à l'image de livraison requiert la vérification des cinq ELF
+installés, du SBOM et du scan de l'image exacte.
