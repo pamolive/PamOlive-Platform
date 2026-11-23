@@ -14,7 +14,13 @@ from unittest import TestCase
 from unittest.mock import patch
 from urllib.parse import quote
 
-from deploy import debian_refresh_inventory, native_sbom, openssl_trixie_materials, qualified_image
+from deploy import (
+    debian_refresh_inventory,
+    native_sbom,
+    openssl_trixie_materials,
+    qualified_image,
+    util_linux_trixie_materials,
+)
 from deploy import qualify_image_scan as gate
 from tests import test_krb5_inventory as krbtest
 
@@ -95,39 +101,147 @@ class ImageScanPolicyTests(TestCase):
         self.policy["findings"] = [entry]
         return entry
 
-    def trixie_exception(self, scope, cve="CVE-2026-124709"):
+    def sqlite_scan_entries(self, condition):
+        self.os["distro"]["version"] = "13.8"
+        self.os["matches"] = []
+        template = self.add_exception()
+        self.os["matches"] = [
+            self.match(cve, state="wont-fix", name="libsqlite3-0",
+                       version=gate.SQLITE_VERSION, source="sqlite3")
+            for cve in gate.SQLITE_FIXES
+        ]
+        for row in self.os["matches"]:
+            row["artifact"]["purl"] += "?arch=amd64&distro=debian-13.8&upstream=sqlite3"
+        source_root = Path(__file__).resolve().parents[1]
+        local_evidence = []
+        for path, digest in gate.SQLITE_PROOFS.items():
+            target = self.repo / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((source_root / path).read_bytes())
+            local_evidence.append({"path": path, "sha256": digest})
+        self.policy["findings"] = [{
+            **template, "fingerprint": key, "finding": finding,
+            "disposition": "fixed_by_backport", "conditions": [condition],
+            "local_evidence": local_evidence, "vendor_evidence": [
+                finding["data_source"], gate.SQLITE_FIXES[finding["vulnerability_id"]]],
+        } for key, finding in gate.high_groups(self.os, "os").items()]
+
+    def sqlite_archive(self, binary, condition, *, status=None, alias=None, extra=False):
+        if status is None:
+            status = (f"Package: libsqlite3-0\nStatus: install ok installed\n"
+                      f"Source: sqlite3\nArchitecture: amd64\nVersion: {gate.SQLITE_VERSION}\n"
+                      ).encode()
+        layer = io.BytesIO()
+        with tarfile.open(fileobj=layer, mode="w") as inner:
+            files = [(gate.SQLITE_STATUS, status), (gate.SQLITE_LIBRARY, binary)]
+            if extra:
+                files.append(("/opt/alt/libsqlite3.so.0", binary))
+            for name, body in files:
+                member = tarfile.TarInfo(name.lstrip("/"))
+                member.size = len(body)
+                inner.addfile(member, io.BytesIO(body))
+            link = tarfile.TarInfo(gate.SQLITE_ALIAS.lstrip("/"))
+            link.type = tarfile.SYMTYPE
+            link.linkname = alias or Path(gate.SQLITE_LIBRARY).name
+            inner.addfile(link)
+        archive = self.repo / "sqlite-test.tar"
+        with tarfile.open(archive, mode="w") as outer:
+            for name, data in (("manifest.json", b'[{"Layers":["layer.tar"]}]'),
+                               ("layer.tar", layer.getvalue())):
+                member = tarfile.TarInfo(name)
+                member.size = len(data)
+                outer.addfile(member, io.BytesIO(data))
+        return gate.archive_facts(archive, [condition])
+
+    def test_sqlite_scope_and_library_are_verified_from_the_same_archive(self):
+        binary = b"\x7fELF\x02\x01" + b"\0" * 12 + b"\x3e\0" + b"synthetic"
+        digest = hashlib.sha256(binary).hexdigest()
+        condition = {"kind": "sqlite_rebuild", "sha256": digest}
+        self.sqlite_scan_entries(condition)
+        with patch.multiple(gate, SQLITE_ELF_SHA256=digest, SQLITE_CONDITION=condition):
+            result = self.evaluate(self.sqlite_archive(binary, condition))
+            self.assertTrue(result["passed"])
+            self.assertFalse(result["all_findings_clear"])
+            self.assertEqual(result["high_finding_groups"], 3)
+            self.assertEqual(len(result["decisions"]), 3)
+            for change in (
+                {"binary": binary + b"x"}, {"alias": "other.so"}, {"extra": True},
+            ):
+                with self.subTest(change=change):
+                    options = {"binary": binary, "condition": condition, **change}
+                    result = self.evaluate(self.sqlite_archive(**options))
+                    self.assertFalse(result["passed"])
+                    self.assertEqual(len(result["blockers"]), 3)
+            installed = self.sqlite_archive(binary, condition).captured[gate.SQLITE_STATUS]
+            for status in (b"Package: sqlite3\n", installed + b"\n" + installed,
+                           installed + b"\nPackage: sqlite3\nStatus: install ok installed\n"):
+                with self.subTest(status=status), self.assertRaisesRegex(
+                    gate.ScanPolicyError, "sqlite_rebuild_status",
+                ):
+                    self.evaluate(self.sqlite_archive(binary, condition, status=status))
+
+    def test_sqlite_proof_cannot_authorize_a_different_package_cve_or_recipe(self):
+        self.sqlite_scan_entries(gate.SQLITE_CONDITION)
+        entry = self.policy["findings"][0]
+        finding = entry["finding"]
+        proofs = entry["local_evidence"]
+        for fields in ({"scope": "compiled"}, {"vulnerability_id": "CVE-2026-123456"},
+                       {"distro": {"name": "debian", "version": "13.7"}},
+                       {"packages": [{**finding["packages"][0], "version": "3.46.1"}]}):
+            with self.subTest(fields=fields), self.assertRaisesRegex(
+                gate.ScanPolicyError, "sqlite_rebuild_scope",
+            ):
+                gate.sqlite_rebuild_holds(entry, {**finding, **fields}, facts=None, proofs=proofs)
+        with self.assertRaisesRegex(gate.ScanPolicyError, "sqlite_rebuild_recipe"):
+            gate.sqlite_rebuild_holds(entry, finding, facts=None, proofs=proofs[:-1])
+
+    def trixie_exception(self, scope, cve="CVE-2026-124709", *, source="openssl"):
         entry = self.add_exception()
         self.os["matches"] = []
         report = self.os if scope == "os" else self.compiled
         distro = "13.8" if scope == "os" else "13"
         report["distro"]["version"] = distro
-        material = openssl_trixie_materials
-        for name in material.RUNTIME_PACKAGES:
-            row = self.match(cve, name=name, version=material.VERSION, source="openssl")
-            suffix = "&upstream=openssl" if scope == "compiled" or name != "openssl" else ""
+        if source == "util-linux":
+            material = util_linux_trixie_materials
+            versions = material.PACKAGE_VERSIONS
+        else:
+            material = openssl_trixie_materials
+            versions = dict.fromkeys(material.RUNTIME_PACKAGES, material.VERSION)
+        for name, version in versions.items():
+            row = self.match(cve, name=name, version=version, source=source)
+            upstream = source
+            if scope == "os" and version != material.VERSION:
+                upstream += "@" + material.VERSION
+            suffix = (f"&upstream={quote(upstream, safe='')}"
+                      if scope == "compiled" or name != source else "")
             row["artifact"]["purl"] = (
-                f"pkg:deb/debian/{name}@{quote(material.VERSION, safe='')}"
+                f"pkg:deb/debian/{name}@{quote(version, safe='')}"
                 f"?arch=amd64&distro=debian-{distro}{suffix}"
             )
             report["matches"].append(row)
         key, finding = next(iter(gate.high_groups(report, scope).items()))
-        receipt = "deploy/openssl-trixie-backport/qualification.json"
-        recipe = "deploy/openssl-trixie-backport/patches.txt"
+        directory = f"deploy/{source}-trixie-backport"
+        pins = gate.TRIXIE_BACKPORT_PINS[source]
+        materials = [name for name, _ in pins.get("materials", ())]
+        files = ("qualification.json", pins["recipe"][0], *materials)
         source_root = Path(__file__).resolve().parents[1]
-        for name in (receipt, recipe):
+        for basename in files:
+            name = f"{directory}/{basename}"
             target = self.repo / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes((source_root / name).read_bytes())
             entry["local_evidence"].append({"path": name, "sha256": gate.hash_file(target)})
+        disposition = "code_not_present" if cve == "CVE-2026-78409" else "fixed_by_backport"
         entry.update(
-            fingerprint=key, finding=finding, disposition="fixed_by_backport",
+            fingerprint=key, finding=finding, disposition=disposition,
             trixie_backport_receipt=entry["local_evidence"][1],
             conditions=[{"kind": "debian_trixie_backport", "sha256": material.SHA256}],
         )
-        entry["vendor_evidence"].append(gate.TRIXIE_BACKPORT_COMMITS["openssl"]["CVE-2026-124709"])
+        commits = gate.TRIXIE_BACKPORT_COMMITS[source]
+        entry["vendor_evidence"].append(commits.get(cve, next(iter(commits.values()))))
         return entry
 
-    def trixie_fixture(self):
+    def trixie_fixture(self, *, util_linux=False):
         receipt = openssl_trixie_materials.SHA256
         archive_digest = "a" * 64
         self.sbom["metadata"]["properties"].extend([
@@ -138,6 +252,12 @@ class ImageScanPolicyTests(TestCase):
             "image_config_id": self.config_id, "archive_sha256": archive_digest,
             "openssl_receipt_sha256": receipt,
         }
+        if util_linux:
+            report["util_linux_receipt_sha256"] = util_linux_trixie_materials.SHA256
+            self.sbom["metadata"]["properties"].append({
+                "name": "pamolive:sbom:util-linux-receipt-sha256",
+                "value": report["util_linux_receipt_sha256"],
+            })
         component = {
             "bom-ref": "synthetic-native-ref", "name": "synthetic ssl", "purl": "pkg:deb/ssl@1",
         }
@@ -195,6 +315,7 @@ class ImageScanPolicyTests(TestCase):
         with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_fix"):
             self.evaluate(**bundle)
         entry["finding"]["vulnerability_id"] = "CVE-2026-124709"
+        entry["vendor_evidence"].append(gate.TRIXIE_BACKPORT_COMMITS["openssl"]["CVE-2026-124709"])
         entry["finding"]["packages"][0].update(
             name="cryptography", type="python", purl="pkg:pypi/cryptography@50.0.2",
         )
@@ -215,6 +336,47 @@ class ImageScanPolicyTests(TestCase):
         self.sbom["components"].pop()
         subject["name"] = "changed"
         with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_sbom_components"):
+            self.evaluate(**bundle)
+
+    def test_util_linux_absent_code_requires_v4_and_correct_disposition(self):
+        entry = self.trixie_exception("os", "CVE-2026-78409", source="util-linux")
+        bundle, inspector = self.trixie_fixture(util_linux=True)
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        inspector.assert_called_once_with(
+            self.repo, bundle["revision"], kerberos_backport=True, openssl_backport=True,
+            util_linux_backport=True,
+        )
+        receipt = inspector.return_value.pop("util_linux_receipt_sha256")
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_image"):
+            self.evaluate(**bundle)
+        inspector.return_value["util_linux_receipt_sha256"] = receipt
+        entry["disposition"] = "fixed_by_backport"
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_disposition"):
+            self.evaluate(**bundle)
+        entry["disposition"] = "code_not_present"
+        entry["local_evidence"] = [
+            row for row in entry["local_evidence"] if not row["path"].endswith("postimage.sha256")
+        ]
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_receipt"):
+            self.evaluate(**bundle)
+
+    def test_util_linux_epoch_packages_require_the_exact_os_upstream_version(self):
+        entry = self.trixie_exception("os", "CVE-2026-78408", source="util-linux")
+        bundle, _ = self.trixie_fixture(util_linux=True)
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        artifact = next(row["artifact"] for row in self.os["matches"]
+                        if row["artifact"]["name"] == "login")
+        artifact["purl"] = artifact["purl"].split("%40", 1)[0]
+        entry["fingerprint"], entry["finding"] = next(iter(gate.high_groups(self.os, "os").items()))
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_package_identity"):
+            self.evaluate(**bundle)
+
+    def test_util_linux_compiled_receipt_must_match_the_archive(self):
+        self.trixie_exception("compiled", "CVE-2026-76642", source="util-linux")
+        bundle, _ = self.trixie_fixture(util_linux=True)
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        self.sbom["metadata"]["properties"].pop()
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_util_linux_sbom_binding"):
             self.evaluate(**bundle)
 
     def test_complete_empty_reports_with_positive_control_pass(self):

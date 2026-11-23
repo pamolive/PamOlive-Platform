@@ -64,12 +64,6 @@ le processus. Les programmes sont examinés en lecture seule, dont
 ensuite les vérifications des consommateurs PamOlive et le scan de
 l'image exacte.
 
-Le chemin de CVE-2026-78409 a été introduit dans la série 2.42.
-Son applicabilité au binaire effectivement distribué reste à
-documenter. Le laboratoire ne change aucune disposition de la
-politique de scan.
-[Introduction du chemin amont](https://github.com/util-linux/util-linux/commit/ae19f7546ccb038966fc121e287e1a1385ba94bb)
-
 ## Intégration au runtime produit
 
 Le build a deux environnements de dépendances. Les SDK conservent les
@@ -100,3 +94,34 @@ Les preuves v1 à v3 et le chemin SDK sont conservés. L'inventaire v4
 alimente le SBOM avec les reçus du lot `util-linux`. Les nouveaux
 signalements restent soumis à la revue individuelle et au scan de
 l'image exacte.
+
+## Preuves par avis de sécurité
+
+Deux revues indépendantes ont vérifié les archives Debian et les sept
+correctifs épinglés. Le correctif de CVE-2026-76642 est `a15c00a`.
+CVE-2026-78408 est couverte par `43ec8a8` et `286dd3f`.
+CVE-2026-78410 est couverte par `9fcb98b` et ses prérequis
+`4cccf4e` et `71ff1c9`. Sa correction de canonicalisation
+`b21f4ce` est déjà dans les sources Debian de départ.
+[Notes du mainteneur pour 2.41.6](https://raw.githubusercontent.com/util-linux/util-linux/v2.41.6/Documentation/releases/v2.41.6-ReleaseNotes) ·
+[Correctif final de CVE-2026-78408](https://github.com/util-linux/util-linux/commit/286dd3ff41526b582ef48830de239dffbaa61f90)
+
+L'avis amont situe la voie concernée par CVE-2026-78409 dans la
+série 2.42. Debian classe encore Trixie vulnérable. La recette vérifiée
+reconstruit Trixie avec son implémentation antérieure. Aucun des onze
+patches Debian ou des sept patches PamOlive n'introduit la nouvelle voie.
+Le build contrôle les empreintes des deux fichiers concernés avant et
+après compilation. Le contrôle de l'archive vérifie la cible SONAME de
+`libmount`, son empreinte et l'unicité des bibliothèques partagées de ce
+nom parmi les ELF et liens finaux. Cette preuve est limitée au chemin
+examiné et au lot exact.
+[Avis du mainteneur](https://github.com/util-linux/util-linux/security/advisories/GHSA-8f2p-47x3-43mv) ·
+[Commit d'introduction](https://github.com/util-linux/util-linux/commit/ae19f7546ccb038966fc121e287e1a1385ba94bb) ·
+[Suivi Debian](https://security-tracker.debian.org/tracker/CVE-2026-78409)
+
+Le contrôle accepte une décision `fixed_by_backport` pour chacun
+des trois correctifs et `code_not_present` pour CVE-2026-78409
+uniquement aux empreintes de paquets et de rapports observées. Toute
+décision exige le TAR, le reçu v4, le SBOM et la revue datée. Les
+avis restent ouverts dans la politique jusqu'au scan de l'image
+produit qualifiée.

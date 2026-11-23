@@ -535,6 +535,16 @@ class DebianRuntimeInventoryTests(TestCase):
             with self.assertRaisesRegex(inventory.InventoryError, "status_identity"):
                 inventory.inspect_bundle(self.root, REVISION, **mode)
 
+    def test_util_linux_archive_refuses_an_extra_libmount_copy(self):
+        payload, attributes = self.util_linux_fixture()
+        mode = {"kerberos_backport": True, "openssl_backport": True, "util_linux_backport": True}
+        material = util_linux_trixie_materials
+        library, = material.ELF_BY_PACKAGE["libmount1"]
+        self.bundle({**payload, "/usr/local/lib/libmount.so.1": payload[library]},
+                    attributes=attributes)
+        with self.assertRaisesRegex(inventory.InventoryError, "archive_util_linux_libmount_copies"):
+            inventory.inspect_bundle(self.root, REVISION, **mode)
+
     def test_cli_reports_permission_failure_without_disclosing_path(self):
         with (
             patch.object(inventory, "inspect_root", side_effect=PermissionError("/private/input")),

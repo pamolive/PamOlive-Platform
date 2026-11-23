@@ -49,10 +49,18 @@ TRIXIE_BACKPORT_COMMITS = {
         "CVE-2026-124709": "https://github.com/openssl/openssl/commit/f3acb0a3328046741479482c51cec815839e1b05",
         "CVE-2026-121482": "https://github.com/openssl/openssl/commit/468c287cf451a834b370b69ab321b8ffdfac23aa",
     },
+    "util-linux": {
+        "CVE-2026-76642": "https://github.com/util-linux/util-linux/commit/a15c00a9e545aa8b9cf6ec0f888ff6c7b3eaeedc",
+        "CVE-2026-78408": "https://github.com/util-linux/util-linux/commit/286dd3ff41526b582ef48830de239dffbaa61f90",
+        "CVE-2026-78409": "https://github.com/util-linux/util-linux/commit/ae19f7546ccb038966fc121e287e1a1385ba94bb",
+        "CVE-2026-78410": "https://github.com/util-linux/util-linux/commit/9fcb98bf08d9119d07ba3a3c709b1a85e4a1bbcb",
+    },
 }
+TRIXIE_ABSENT_CODE = {("util-linux", "CVE-2026-78409")}
 TRIXIE_BACKPORT_FIELDS = {
     "krb5": "kerberos_receipt_sha256",
     "openssl": "openssl_receipt_sha256",
+    "util-linux": "util_linux_receipt_sha256",
 }
 # Scope each CVE catalog to the exact materials and output independently reviewed.
 TRIXIE_BACKPORT_PINS = {
@@ -68,7 +76,40 @@ TRIXIE_BACKPORT_PINS = {
         ),
         "receipt": "b04eb9567f8353f766028862b2482599cb3e2ba95b5060b37c805e758574d6a0",
     },
+    "util-linux": {
+        "recipe": (
+            "patches.sha256", "acf15bf64df75faf2233ba31c84d3d3d80cfcc00054a7eaa53e2998daed1e5d6",
+        ),
+        "receipt": "3f3f7f7cf518fa613a836699b4f74d753e2b5f0be04e44c45463aa4a78a6ad8c",
+        "materials": (
+            ("source.sha256", "29450a99fd07c65cd6ea557f1afd97c26a255d6100eda1ca7db591ac6553e8e9"),
+            (
+                "postimage.sha256",
+                "3e48cd44dc1a5c1d92a171267c930867e829ca79176dbd32b94941c65bc1b66c",
+            ),
+            ("materials.sh", "d3566e370fb1982ef3299714184b437e0a55232ca6eb6881e02fa651641b8a9c"),
+        ),
+    },
 }
+SQLITE_FIXES = {
+    "CVE-2026-119373": "https://sqlite.org/src/info/a7f8c92f62",
+    "CVE-2026-119374": "https://sqlite.org/src/info/9cd4f9e920",
+    "CVE-2026-119379": "https://sqlite.org/src/info/3f57024aecea0f3b",
+}
+SQLITE_VERSION = "3.54.1-2~pamolive13u1"
+SQLITE_STATUS = "/var/lib/dpkg/status"
+SQLITE_LIBRARY = "/usr/lib/x86_64-linux-gnu/libsqlite3.so.3.54.1"
+SQLITE_ALIAS = "/usr/lib/x86_64-linux-gnu/libsqlite3.so.0"
+SQLITE_ELF_SHA256 = "f3efdeb6d18f5168d14511e0aec614f7b84e8daf1c319a77089d58e50d4ff317"
+SQLITE_PROOFS = {
+    "deploy/sqlite-rebuild/source.sha256":
+        "9b50ee9aa60431e26d82a81363efa3b58c28d9186907be235c8d3fe0a2c9b108",
+    "deploy/sqlite-rebuild/prepare.py":
+        "4b18de2e74206bae527908b2e4a50ef36adef238bcd82a5999ab505fa355813d",
+    "deploy/sqlite-rebuild/check_runtime.py":
+        "89e0885c7de0cdeb2ff226285d7cc3e96d034515c747f6ab9877311100f862d5",
+}
+SQLITE_CONDITION = {"kind": "sqlite_rebuild", "sha256": SQLITE_ELF_SHA256}
 ELF_SET_SCHEMA = "pamolive.elf-set.v1"
 GCC_VERSION = "14.2.0-19"
 GCC_PACKAGES = {"gcc-14-base", "libatomic1", "libgcc-s1", "libstdc++6"}
@@ -378,6 +419,9 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
     require(isinstance(read_paths, (list, tuple, set)) and len(read_paths) <= 32,
             "archive_read_paths")
     read_paths = {checked_path(name) for name in read_paths}
+    if any(item.get("kind") == "sqlite_rebuild" for item in conditions):
+        read_paths.add(SQLITE_STATUS)
+        require(len(read_paths) <= 32, "archive_read_paths")
     require(isinstance(attribute_paths, (list, tuple, set)) and len(attribute_paths) <= 32,
             "archive_attribute_paths")
     attribute_paths = {checked_path(name) for name in attribute_paths}
@@ -845,13 +889,21 @@ def gcc_conditions(entry, finding, *, proofs, repo):
 
 
 def trixie_backport_holds(entry, finding, *, proofs, report):
-    from deploy import krb5_trixie_materials, openssl_trixie_materials
+    from deploy import krb5_trixie_materials, openssl_trixie_materials, util_linux_trixie_materials
 
     source = finding["source_package"]
     cve = finding["vulnerability_id"]
     expected_commit = TRIXIE_BACKPORT_COMMITS.get(source, {}).get(cve)
     require(expected_commit and expected_commit in entry["vendor_evidence"], "trixie_backport_fix")
-    module = {"krb5": krb5_trixie_materials, "openssl": openssl_trixie_materials}[source]
+    disposition = (
+        "code_not_present" if (source, cve) in TRIXIE_ABSENT_CODE else "fixed_by_backport"
+    )
+    require(entry["disposition"] == disposition, "trixie_backport_disposition")
+    module = {
+        "krb5": krb5_trixie_materials,
+        "openssl": openssl_trixie_materials,
+        "util-linux": util_linux_trixie_materials,
+    }[source]
     scope = finding["scope"]
     version = {"os": "13.8", "compiled": "13"}.get(scope)
     require(version is not None and finding["severity"] == "High" and
@@ -861,27 +913,34 @@ def trixie_backport_holds(entry, finding, *, proofs, report):
             finding["fix_state"] in ("not-fixed", "wont-fix"), "trixie_backport_scope")
 
     packages = {item["name"]: item for item in finding["packages"]}
+    package_versions = (module.PACKAGE_VERSIONS if source == "util-linux" else
+                        dict.fromkeys(module.RUNTIME_PACKAGES, module.VERSION))
     require(set(packages) == set(module.RUNTIME_PACKAGES) and
             len(finding["packages"]) == len(packages), "trixie_backport_packages")
     for name, item in packages.items():
+        binary_version = package_versions[name]
         purl = (
-            f"pkg:deb/debian/{name}@{quote(module.VERSION, safe='')}"
+            f"pkg:deb/debian/{name}@{quote(binary_version, safe='')}"
             f"?arch=amd64&distro=debian-{version}"
         )
         # Grype's OS inventory omits upstream when the binary name is the source name.
         if name != source or scope == "compiled":
-            purl += "&upstream=" + source
-        require(item == {"name": name, "version": module.VERSION, "type": "deb", "purl": purl},
+            upstream = source
+            if scope == "os" and binary_version != module.VERSION:
+                upstream += "@" + module.VERSION
+            purl += "&upstream=" + quote(upstream, safe="")
+        require(item == {"name": name, "version": binary_version, "type": "deb", "purl": purl},
                 "trixie_backport_package_identity")
 
     directory = f"deploy/{source}-trixie-backport"
     pins = TRIXIE_BACKPORT_PINS[source]
-    recipe, recipe_hash = pins["recipe"]
+    required = (pins["recipe"], *pins.get("materials", ()))
     receipt_hash = pins["receipt"]
     expected = {"path": f"{directory}/qualification.json", "sha256": receipt_hash}
     condition = {"kind": "debian_trixie_backport", "sha256": receipt_hash}
+    required_evidence = [{"path": f"{directory}/{name}", "sha256": sha} for name, sha in required]
     require(module.SHA256 == receipt_hash and
-            {"path": f"{directory}/{recipe}", "sha256": recipe_hash} in proofs and
+            all(item in proofs for item in required_evidence) and
             entry["trixie_backport_receipt"] == expected and expected in proofs and
             entry.get("conditions") == [condition] and
             "backport_inventory" not in entry and "build_recipe" not in entry,
@@ -889,6 +948,46 @@ def trixie_backport_holds(entry, finding, *, proofs, report):
     require(report is not None and report.get(TRIXIE_BACKPORT_FIELDS[source]) == receipt_hash,
             "trixie_backport_image")
     return True
+
+
+def sqlite_rebuild_holds(entry, finding, *, facts, proofs):
+    from qualification.debian_138_refresh.verify_refresh import controls
+
+    cve = finding["vulnerability_id"]
+    fix = SQLITE_FIXES.get(cve)
+    package = {"name": "libsqlite3-0", "type": "deb", "version": SQLITE_VERSION,
+               "purl": f"pkg:deb/debian/libsqlite3-0@{SQLITE_VERSION}"
+                       "?arch=amd64&distro=debian-13.8&upstream=sqlite3"}
+    require(fix and fix in entry["vendor_evidence"] and finding == {
+        "vulnerability_id": cve, "source_package": "sqlite3", "scope": "os",
+        "severity": "High", "distro": {"name": "debian", "version": "13.8"},
+        "fix_state": "wont-fix", "namespace": "debian:distro:debian:13",
+        "data_source": "https://security-tracker.debian.org/tracker/" + cve, "packages": [package],
+    }, "sqlite_rebuild_scope")
+    require(entry["disposition"] == "fixed_by_backport"
+            and entry["conditions"] == [SQLITE_CONDITION]
+            and not {"trixie_backport_receipt", "backport_inventory", "build_recipe"} & entry.keys()
+            and all({"path": path, "sha256": digest} in proofs
+                    for path, digest in SQLITE_PROOFS.items()),
+            "sqlite_rebuild_recipe")
+    raw_status = (getattr(facts, "captured", None) or {}).get(SQLITE_STATUS, b"")
+    require(0 < len(raw_status) <= 8 * 1024**2, "sqlite_rebuild_status")
+    rows = [row for row in controls(raw_status)
+            if row.get("Package") == "libsqlite3-0"
+            or row.get("Source", row.get("Package", "")).partition(" ")[0] == "sqlite3"]
+    require(len(rows) == 1 and rows[0].get("Package") == "libsqlite3-0"
+            and rows[0].get("Status") == "install ok installed"
+            and rows[0].get("Source") in ("sqlite3", f"sqlite3 ({SQLITE_VERSION})")
+            and rows[0].get("Architecture") == "amd64"
+            and rows[0].get("Version") == SQLITE_VERSION, "sqlite_rebuild_status")
+    libraries = {path: row for path, row in (facts.entries or {}).items() if re.fullmatch(
+        r"libsqlite3(?:-[^/]+)?\.so(?:\..+)?", PurePosixPath(path).name)}
+    return libraries == {
+        SQLITE_LIBRARY: {"path": SQLITE_LIBRARY, "type": "elf",
+                         "class": 64, "machine": 62, "sha256": SQLITE_ELF_SHA256},
+        SQLITE_ALIAS: {"path": SQLITE_ALIAS, "type": "symlink",
+                       "target": PurePosixPath(SQLITE_LIBRARY).name},
+    }
 
 
 def reviewed_exception(entry, finding, *, facts, repo, now, archive=None, artifact_cache=None,
@@ -927,8 +1026,9 @@ def reviewed_exception(entry, finding, *, facts, repo, now, archive=None, artifa
         path = candidate.resolve(strict=True)
         require(path.is_relative_to(repo) and hash_file(path, 2 * 1024 * 1024) ==
                 proof.get("sha256"), "proof_changed")
+    if any(item.get("kind") == "sqlite_rebuild" for item in entry.get("conditions", ())):
+        return sqlite_rebuild_holds(entry, finding, facts=facts, proofs=proofs)
     if "trixie_backport_receipt" in entry:
-        require(entry["disposition"] == "fixed_by_backport", "trixie_backport_disposition")
         return trixie_backport_holds(entry, finding, proofs=proofs, report=trixie_report)
     if entry["disposition"] == "fixed_by_backport":
         require(finding.get("scope") == "os" and finding.get("source_package") == "krb5" and
@@ -1009,6 +1109,9 @@ def verify_trixie_sbom(sca_sbom, report, config_id, properties):
             and properties.get("pamolive:sbom:openssl-receipt-sha256")
             == report["openssl_receipt_sha256"],
             "trixie_backport_sbom_binding")
+    if "util_linux_receipt_sha256" in report:
+        require(properties.get("pamolive:sbom:util-linux-receipt-sha256") ==
+                report["util_linux_receipt_sha256"], "trixie_util_linux_sbom_binding")
 
 
 def qualify(os_report, compiled_report, positive_report, compiled_sbom, policy, *,
@@ -1069,16 +1172,22 @@ def qualify(os_report, compiled_report, positive_report, compiled_sbom, policy, 
                                  "id": vulnerability["id"]})
         groups.update(high_groups(report, scope))
     trixie_report = None
-    if any("trixie_backport_receipt" in indexed.get(key, {})
-           and indexed[key]["disposition"] == "fixed_by_backport" for key in groups):
+    trixie_findings = [
+        finding for key, finding in groups.items()
+        if "trixie_backport_receipt" in indexed.get(key, {})
+        and indexed[key]["disposition"] != "untriaged"
+    ]
+    if trixie_findings:
         from deploy import debian_refresh_inventory
 
         require(archive is not None and Path(archive).name == qualified_image.ARCHIVE and
                 isinstance(revision, str) and qualified_image.REVISION.fullmatch(revision),
                 "trixie_backport_bundle")
-        trixie_report = debian_refresh_inventory.inspect_bundle(
-            Path(archive).parent, revision, kerberos_backport=True, openssl_backport=True,
-        )
+        modes = {"kerberos_backport": True, "openssl_backport": True}
+        if any(finding["source_package"] == "util-linux" for finding in trixie_findings):
+            modes["util_linux_backport"] = True
+        trixie_report = debian_refresh_inventory.inspect_bundle(Path(archive).parent, revision,
+                                                                **modes)
         require(trixie_report["image_config_id"] == config_id, "trixie_backport_config")
         verify_trixie_sbom(compiled_sbom, trixie_report, config_id, props)
     artifact_cache = {}

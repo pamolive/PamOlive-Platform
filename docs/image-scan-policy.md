@@ -84,6 +84,17 @@ correctifs exigent leur propre qualification.
 [ADR-041](adr-041-kerberos-trixie-backport.md) ·
 [ADR-042](adr-042-openssl-trixie-seven-fixes.md)
 
+Pour `util-linux`, un signalement admissible exige en plus le reçu
+v4 et les quatre empreintes de la recette et des sources. Les neuf
+paquets ont leurs versions binaires exactes, dont deux avec epoch.
+Les PURL OS portent la version source quand elle diffère de la
+version binaire. Le contrôle autorise `fixed_by_backport` pour
+CVE-2026-76642, CVE-2026-78408 et CVE-2026-78410.
+`code_not_present` est réservé à CVE-2026-78409 dans ce lot. La CI
+doit produire les empreintes exactes des signalements avant de les
+enregistrer dans la politique.
+[Preuves par avis](adr-043-util-linux-trixie-backport.md)
+
 ### Deux justifications GCC bornées
 
 `not_affected_build` est réservé à CVE-2026-95619, scope OS/gcc-14, distribution Debian et aux quatre paquets du groupe brut gcc-14-base/libatomic1/libgcc-s1/libstdc++6, de version14.2.0-19. Un paquet inattendu est refusé ; cette liste décrit l'attribution par paquet source du scanner, sans prétendre que chacun embarque l'allocateur vulnérable. La justification décrit une implémentation POSIX non affectée, sans prétendre que l'allocateur n'est jamais appelé. La preuve `gcc_evidence`, hashée et revue, suit `pamolive.gcc-finding-evidence.v1` et fixe :
@@ -178,3 +189,29 @@ Le scope SBOM déclaré couvre applications et composants natifs explicitement i
 Reprise ADR-021 : `python -m unittest tests.test_build_recipe tests.test_image_scan_policy tests.test_krb5_inventory` couvre79 tests synthétiques, dont18 de recette et42 de politique. Les nouveaux cas couvrent source/workflow suivi ajouté-retiré-modifié, diagnostics devenus suivis, liens Git Windows, preuves fixes omises, variation honnête des logs, ABI altérée, archive changée entre passes, contexte/config d'un autre sujet,27 consommateurs GCC réellement relus et seulement quatre sorties C variables, assets fermés, ordre/count/digests raw/gzip, padding changé, gzip tronqué, métadonnées étendues et sparse. Aucun scanner, image, réseau, binaire Linux ou base n'est exécuté par cette suite. Le paragraphe suivant conserve la mesure historique du gate avant ADR-021.
 
 `python -m unittest tests.test_image_scan_policy` : **39/39 en1,119s**, aucun skip, Ruff réussi. Les données sont entièrement synthétiques, sans Grype exécuté, réseau, Docker ou base de données. Le test CLI complet construit un petit bundle avec labels/révision/config cohérents et vérifie aussi le rejet d’un scanner altéré. Les contre-exemples incluent Critical, High corrigible, High non trié, nouvelles identités/versions/distributions, mauvais scope, filtres/VEX/suppressions, contrôle positif manquant, base périmée/mixte/future, configuration incohérente, preuves modifiées/expirées, output existant et archives à deux/trois layers avec suppressions et ancêtres remplacés. Les cas ajoutés couvrent les deux dispositions GCC et les quatre paquets réels du groupe (un paquet inconnu est refusé), leur portée stricte, date future/expiration, preuves de source/build, sentinelle typée, ajout/retrait/modification de code et d'alias, hardlink survivant à son origine, refus des réécritures ambiguës et ordre des whiteouts/opaque dans une même couche.
+
+### SQLite 3.54.1 rebuilt for Trixie
+
+The SQLite tracker links CVE-2026-119373, CVE-2026-119374 and
+CVE-2026-119379 to fixes in SQLite 3.54.0. Debian marks the exact source
+3.54.1-2 as fixed. The Trixie rebuild uses those authenticated sources
+with an adapted Tcl build dependency. The locally installed package is
+libsqlite3-0 3.54.1-2~pamolive13u1 on amd64.
+[SQLite security notes](https://www.sqlite.org/cves.html) |
+[Debian tracking](https://security-tracker.debian.org/tracker/source-package/sqlite3) |
+[Source build ADR](adr-036-sqlite-trixie-source-build.md)
+
+The SQLite condition is specific to the three reviewed OS findings on
+Debian 13.8 and their exact package identity. The gate checks the pinned
+source and build evidence, the DPKG status installed in the verified
+archive, the reviewed final ELF bytes and the SONAME alias target. A
+different SQLite library identity or an additional SQLite shared-library
+path in the final archive keeps the corresponding groups blocking.
+The installed-image run still verifies the actual library loaded by
+SQLite and liblastlog2. Findings remain in both raw scan and policy output.
+
+The condition is independent of compiled and application package
+decisions. Its checks cover named SQLite shared libraries on the final
+filesystem and the identified Debian package. Static SQLite code in
+unrelated binaries, other platforms and other CVEs need their own
+evidence and decisions.
