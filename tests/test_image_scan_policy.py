@@ -9,12 +9,24 @@ import json
 import tarfile
 import tempfile
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from unittest import TestCase
 from unittest.mock import patch
+from urllib.parse import quote
 
+from deploy import (
+    debian_refresh_inventory,
+    expat_image,
+    glibc_trixie_materials,
+    native_sbom,
+    openssl_trixie_materials,
+    qualified_image,
+    util_linux_trixie_materials,
+)
 from deploy import qualify_image_scan as gate
+from tests import test_expat_product as expat_test
 from tests import test_krb5_inventory as krbtest
+from tests.test_native_inventory import elf as dynamic_elf
 
 
 class ImageScanPolicyTests(TestCase):
@@ -68,10 +80,10 @@ class ImageScanPolicyTests(TestCase):
                     "namespace": "debian:distro:debian:13",
                     "dataSource": "https://security-tracker.debian.org/tracker/" + cve}}
 
-    def evaluate(self, facts=None):
+    def evaluate(self, facts=None, **bundle):
         return gate.qualify(self.os, self.compiled, self.positive, self.sbom, self.policy,
                             config_id=self.config_id, config_bytes=self.config,
-                            facts=facts or (set(), {}), repo=self.repo, now=self.now)
+                            facts=facts or (set(), {}), repo=self.repo, now=self.now, **bundle)
 
     def add_exception(self):
         self.os["matches"] = [self.match()]
@@ -92,6 +104,704 @@ class ImageScanPolicyTests(TestCase):
             "conditions": [{"kind": "absent_basename_glob", "pattern": "synthetic-absent.so*"}]}
         self.policy["findings"] = [entry]
         return entry
+
+    def expat_scan_entries(self):
+        template = self.add_exception()
+        self.os["distro"]["version"] = "13.8"
+        package = "libexpat1"
+        version = expat_image.REBUILD_VERSION
+        self.os["matches"] = [
+            self.match(cve, state=state, name=package, version=version, source="expat")
+            for cve, state in gate.EXPAT_FIX_STATES.items()
+        ]
+        for row in self.os["matches"]:
+            row["artifact"]["purl"] = (
+                f"pkg:deb/debian/{package}@{quote(version, safe='')}"
+                "?arch=amd64&distro=debian-13.8&upstream=expat"
+            )
+        source_root = Path(__file__).resolve().parents[1]
+        evidence = []
+        for path, digest in gate.EXPAT_PROOFS.items():
+            target = self.repo / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((source_root / path).read_bytes())
+            evidence.append({"path": path, "sha256": digest})
+        self.policy["findings"] = [{
+            **template, "fingerprint": key, "finding": finding,
+            "disposition": "fixed_by_backport", "conditions": [gate.EXPAT_CONDITION],
+            "local_evidence": evidence,
+            "vendor_evidence": [finding["data_source"], gate.EXPAT_RELEASE_NOTES],
+        } for key, finding in gate.high_groups(self.os, "os").items()]
+
+    def expat_archive_for_scan(self, audit=b"synthetic source evidence", dpkg_status=None):
+        def mutate(proof, files):
+            if audit is not None:
+                files[expat_image.SOURCE_AUDIT] = audit
+
+        if dpkg_status is None:
+            dpkg_status = (f"Package: libexpat1\nStatus: install ok installed\n"
+                           f"Source: expat\nArchitecture: amd64\n"
+                           f"Version: {expat_image.REBUILD_VERSION}\n").encode()
+        raw, image_id = expat_test.fixture(mutate=mutate, dpkg_status=dpkg_status)
+        archive = self.repo / qualified_image.ARCHIVE
+        archive.write_bytes(raw)
+        with tarfile.open(archive) as tar:
+            config = tar.extractfile("config.json").read()
+        return archive, image_id, config
+
+    def test_expat_rebuild_checks_all_four_findings_against_archive_and_sbom(self):
+        self.expat_scan_entries()
+        archive, self.config_id, self.config = self.expat_archive_for_scan()
+        target = self.os["source"]["target"]
+        target.update(imageID=self.config_id, config=base64.b64encode(self.config).decode())
+        report = expat_image.examine(archive, self.config_id)
+        components, edges, roots = native_sbom.expat_components(
+            report, self.config_id, "image_config",
+        )
+        image_ref = native_sbom.PREFIX + "image:image_config:" + self.config_id
+        self.sbom["components"].extend([*components, {
+            "type": "container", "name": "pamolive-platform", "bom-ref": image_ref,
+        }])
+        self.sbom["dependencies"] = [*edges, {"ref": image_ref, "dependsOn": roots}]
+        properties = self.sbom["metadata"]["properties"]
+        properties[1]["value"] = self.config_id
+        properties.append({"name": "pamolive:sbom:expat-input-sha256",
+                           "value": hashlib.sha256(expat_image.report_bytes(report)).hexdigest()})
+        pins = {
+            "SOURCE_AUDIT_SHA256": hashlib.sha256(b"synthetic source evidence").hexdigest(),
+            "SOURCE_REBUILD_SHA256": gate.fingerprint(report["source_rebuild"])[7:],
+            "REVIEWED_ELF": {k: row["sha256"] for k, row in report["active"].items()},
+            "REVIEWED_OLD_ELF": set(report["old_ELF_hashes_absent_all_layers"]),
+        }
+        with patch.multiple(expat_image, **pins):
+            result = self.evaluate(archive=archive, archive_sha256=report["archive_sha256"])
+            self.assertTrue(result["passed"])
+            self.assertFalse(result["all_findings_clear"])
+            self.assertEqual(len(result["decisions"]), 4)
+            with self.assertRaisesRegex(gate.ScanPolicyError, "expat_rebuild_archive"):
+                self.evaluate(archive=archive, archive_sha256="0" * 64)
+            with self.assertRaisesRegex(gate.ScanPolicyError, "expat_rebuild_bundle"):
+                self.evaluate()
+
+            self.sbom["components"].append({"name": "synthetic", "components": [components[0]]})
+            with self.assertRaisesRegex(gate.ScanPolicyError, "expat_sbom_components"):
+                self.evaluate(archive=archive, archive_sha256=report["archive_sha256"])
+            duplicate_path = {
+                "name": "synthetic-duplicate", "bom-ref": "synthetic-ref", "type": "file",
+                "properties": [components[1]["properties"][0]],
+            }
+            self.sbom["components"][-1] = duplicate_path
+            with self.assertRaisesRegex(gate.ScanPolicyError, "expat_sbom_components"):
+                self.evaluate(archive=archive, archive_sha256=report["archive_sha256"])
+            self.sbom["components"].pop()
+            missing_root = roots.pop()
+            with self.assertRaisesRegex(gate.ScanPolicyError, "expat_sbom_components"):
+                self.evaluate(archive=archive, archive_sha256=report["archive_sha256"])
+            roots.append(missing_root)
+            properties[-1]["value"] = "b" * 64
+            with self.assertRaisesRegex(gate.ScanPolicyError, "expat_sbom_binding"):
+                self.evaluate(archive=archive, archive_sha256=report["archive_sha256"])
+            with patch.object(expat_image, "REVIEWED_ELF", {}), self.assertRaisesRegex(
+                gate.ScanPolicyError, "expat_reviewed_ELF",
+            ):
+                expat_image.examine(archive, self.config_id, reviewed_rebuild=True)
+            with (
+                patch.object(expat_image, "SOURCE_REBUILD_SHA256", "f" * 64),
+                self.assertRaisesRegex(gate.ScanPolicyError, "expat_reviewed_rebuild"),
+            ):
+                expat_image.examine(archive, self.config_id, reviewed_rebuild=True)
+            for audit, code in ((None, "missing"), (b"changed", "changed")):
+                changed, image_id, _ = self.expat_archive_for_scan(audit=audit)
+                with self.assertRaisesRegex(gate.ScanPolicyError, "expat_source_audit_" + code):
+                    expat_image.examine(changed, image_id, reviewed_rebuild=True)
+            status = (f"Package: libexpat1\nStatus: install ok installed\nArchitecture: amd64\n"
+                      f"Version: {expat_image.REBUILD_VERSION}\n").encode()
+            second_package = (status + b"Source: expat\n\n"
+                              b"Package: expat\nStatus: install ok installed\n")
+            for raw_status in (status, second_package):
+                changed, image_id, _ = self.expat_archive_for_scan(dpkg_status=raw_status)
+                with self.assertRaisesRegex(gate.ScanPolicyError, "expat_reviewed_dpkg_source"):
+                    expat_image.examine(changed, image_id, reviewed_rebuild=True)
+
+    def test_expat_rebuild_is_scoped_to_the_reviewed_os_groups(self):
+        self.expat_scan_entries()
+        entry = self.policy["findings"][0]
+        finding = entry["finding"]
+        proofs = entry["local_evidence"]
+        for fields in ({"scope": "compiled"}, {"vulnerability_id": "CVE-2026-124317"},
+                       {"distro": {"name": "debian", "version": "13.7"}},
+                       {"packages": [{**finding["packages"][0], "version": "2.9.0"}]}):
+            with self.subTest(fields=fields), self.assertRaisesRegex(
+                gate.ScanPolicyError, "expat_rebuild_scope",
+            ):
+                gate.expat_rebuild_holds(entry, {**finding, **fields}, proofs=proofs, report=None)
+        with self.assertRaisesRegex(gate.ScanPolicyError, "expat_rebuild_recipe"):
+            gate.expat_rebuild_holds(entry, finding, proofs=proofs[:-1], report=None)
+
+    def sqlite_scan_entries(self, condition):
+        self.os["distro"]["version"] = "13.8"
+        self.os["matches"] = []
+        template = self.add_exception()
+        self.os["matches"] = [
+            self.match(cve, state="wont-fix", name="libsqlite3-0",
+                       version=gate.SQLITE_VERSION, source="sqlite3")
+            for cve in gate.SQLITE_FIXES
+        ]
+        for row in self.os["matches"]:
+            row["artifact"]["purl"] += "?arch=amd64&distro=debian-13.8&upstream=sqlite3"
+        source_root = Path(__file__).resolve().parents[1]
+        local_evidence = []
+        for path, digest in gate.SQLITE_PROOFS.items():
+            target = self.repo / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((source_root / path).read_bytes())
+            local_evidence.append({"path": path, "sha256": digest})
+        self.policy["findings"] = [{
+            **template, "fingerprint": key, "finding": finding,
+            "disposition": "fixed_by_backport", "conditions": [condition],
+            "local_evidence": local_evidence, "vendor_evidence": [
+                finding["data_source"], gate.SQLITE_FIXES[finding["vulnerability_id"]]],
+        } for key, finding in gate.high_groups(self.os, "os").items()]
+
+    def sqlite_archive(self, binary, condition, *, status=None, alias=None, extra=False):
+        if status is None:
+            status = (f"Package: libsqlite3-0\nStatus: install ok installed\n"
+                      f"Source: sqlite3\nArchitecture: amd64\nVersion: {gate.SQLITE_VERSION}\n"
+                      ).encode()
+        layer = io.BytesIO()
+        with tarfile.open(fileobj=layer, mode="w") as inner:
+            files = [(gate.DPKG_STATUS, status), (gate.SQLITE_LIBRARY, binary)]
+            if extra:
+                files.append(("/opt/alt/libsqlite3.so.0", binary))
+            for name, body in files:
+                member = tarfile.TarInfo(name.lstrip("/"))
+                member.size = len(body)
+                inner.addfile(member, io.BytesIO(body))
+            link = tarfile.TarInfo(gate.SQLITE_ALIAS.lstrip("/"))
+            link.type = tarfile.SYMTYPE
+            link.linkname = alias or Path(gate.SQLITE_LIBRARY).name
+            inner.addfile(link)
+        archive = self.repo / "sqlite-test.tar"
+        with tarfile.open(archive, mode="w") as outer:
+            for name, data in (("manifest.json", b'[{"Layers":["layer.tar"]}]'),
+                               ("layer.tar", layer.getvalue())):
+                member = tarfile.TarInfo(name)
+                member.size = len(data)
+                outer.addfile(member, io.BytesIO(data))
+        return gate.archive_facts(archive, [condition])
+
+    def test_sqlite_scope_and_library_are_verified_from_the_same_archive(self):
+        binary = b"\x7fELF\x02\x01" + b"\0" * 12 + b"\x3e\0" + b"synthetic"
+        digest = hashlib.sha256(binary).hexdigest()
+        condition = {"kind": "sqlite_rebuild", "sha256": digest}
+        self.sqlite_scan_entries(condition)
+        with patch.multiple(gate, SQLITE_ELF_SHA256=digest, SQLITE_CONDITION=condition):
+            result = self.evaluate(self.sqlite_archive(binary, condition))
+            self.assertTrue(result["passed"])
+            self.assertFalse(result["all_findings_clear"])
+            self.assertEqual(result["high_finding_groups"], 3)
+            self.assertEqual(len(result["decisions"]), 3)
+            for change in (
+                {"binary": binary + b"x"}, {"alias": "other.so"}, {"extra": True},
+            ):
+                with self.subTest(change=change):
+                    options = {"binary": binary, "condition": condition, **change}
+                    result = self.evaluate(self.sqlite_archive(**options))
+                    self.assertFalse(result["passed"])
+                    self.assertEqual(len(result["blockers"]), 3)
+            installed = self.sqlite_archive(binary, condition).captured[gate.DPKG_STATUS]
+            for status in (b"Package: sqlite3\n", installed + b"\n" + installed,
+                           installed + b"\nPackage: sqlite3\nStatus: install ok installed\n"):
+                with self.subTest(status=status), self.assertRaisesRegex(
+                    gate.ScanPolicyError, "sqlite_rebuild_status",
+                ):
+                    self.evaluate(self.sqlite_archive(binary, condition, status=status))
+
+    def test_sqlite_proof_cannot_authorize_a_different_package_cve_or_recipe(self):
+        self.sqlite_scan_entries(gate.SQLITE_CONDITION)
+        entry = self.policy["findings"][0]
+        finding = entry["finding"]
+        proofs = entry["local_evidence"]
+        for fields in ({"scope": "compiled"}, {"vulnerability_id": "CVE-2026-123456"},
+                       {"distro": {"name": "debian", "version": "13.7"}},
+                       {"packages": [{**finding["packages"][0], "version": "3.46.1"}]}):
+            with self.subTest(fields=fields), self.assertRaisesRegex(
+                gate.ScanPolicyError, "sqlite_rebuild_scope",
+            ):
+                gate.sqlite_rebuild_holds(entry, {**finding, **fields}, facts=None, proofs=proofs)
+        with self.assertRaisesRegex(gate.ScanPolicyError, "sqlite_rebuild_recipe"):
+            gate.sqlite_rebuild_holds(entry, finding, facts=None, proofs=proofs[:-1])
+
+    def test_ncurses_decision_requires_the_exact_runtime_and_layers(self):
+        from tests.test_debian_refresh_inventory import write_tar
+
+        repo = Path(gate.__file__).resolve().parents[1]
+        policy = json.loads((repo / ".github/qualification/image-scan-policy.v1.json").read_bytes())
+        entry, = [row for row in policy["findings"] if row["fingerprint"] == gate.NCURSES_FINDING]
+        entry["reviewed_at"] = (self.now - timedelta(hours=1)).isoformat()
+        entry["expires"] = (self.now + timedelta(days=1)).isoformat()
+        self.policy["findings"] = [entry]
+        self.os["distro"]["version"] = "13.8"
+        for package in entry["finding"]["packages"]:
+            match = self.match(
+                "CVE-2025-69720", state="wont-fix", name=package["name"],
+                version=package["version"], source="ncurses",
+            )
+            match["artifact"]["purl"] = package["purl"]
+            self.os["matches"].append(match)
+        self.assertEqual(list(gate.high_groups(self.os, "os")), [gate.NCURSES_FINDING])
+        for proof in entry["local_evidence"]:
+            path = self.repo / proof["path"]
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes((repo / proof["path"]).read_bytes())
+        receipt = (repo / "deploy/ncurses-trixie-backport/qualification.json").read_bytes()
+        status = "".join(
+            f"Package: {name}\nSource: ncurses\nStatus: install ok installed\n"
+            f"Version: {version}\nArchitecture: {arch}\nEssential: yes\n\n"
+            for name, (version, arch) in gate.NCURSES_PACKAGE_IDENTITIES.items()
+        ).encode()
+        binaries = {path: expat_test.elf(path.encode()) for path in gate.NCURSES_ELFS}
+        checksums = {path: expat_test.digest(raw) for path, raw in binaries.items()}
+        aliases = {path.removesuffix(".5"): PurePosixPath(path).name
+                   for path in binaries if path != gate.NCURSES_INFOCMP}
+        files = {**binaries, gate.DPKG_STATUS: status, gate.NCURSES_RECEIPT: receipt}
+        archive = self.repo / "ncurses-fixture.tar"
+
+        def capture(contents, *, links=aliases, mode=0o755, extra_layers=()):
+            layers = [*extra_layers, write_tar(
+                contents, aliases=links, attributes={gate.NCURSES_INFOCMP: {"mode": mode}},
+            )]
+            names = [f"layer-{i}.tar" for i in range(len(layers))]
+            archive.write_bytes(expat_test.tar_bytes({
+                **dict(zip(names, layers, strict=True)),
+                "manifest.json": json.dumps([{"Layers": names}]).encode(),
+            }))
+            return gate.archive_facts(archive, [gate.NCURSES_CONDITION])
+
+        stock = expat_test.elf(b"synthetic baseline fixture")
+        with (
+            patch.object(gate, "NCURSES_ELFS", checksums),
+            patch.object(gate, "NCURSES_STOCK_INFOCMP", expat_test.digest(stock)),
+        ):
+            exact = self.evaluate(capture(files))
+            self.assertTrue(exact["passed"])
+            self.assertFalse(exact["all_findings_clear"])
+            self.assertFalse(self.evaluate(capture(files, mode=0o4755))["passed"])
+            self.assertFalse(self.evaluate(capture(
+                {**files, "/usr/local/bin/infocmp": binaries[gate.NCURSES_INFOCMP]},
+            ))["passed"])
+            wrong_arch = status.replace(b"Architecture: all", b"Architecture: amd64")
+            self.assertFalse(self.evaluate(capture(
+                {**files, gate.DPKG_STATUS: wrong_arch},
+            ))["passed"])
+            library = next(iter(aliases))
+            self.assertFalse(self.evaluate(capture(
+                files, links={**aliases, library: "unexpected-lib.so"},
+            ))["passed"])
+            self.assertFalse(self.evaluate(capture(
+                {**files, gate.NCURSES_RECEIPT: receipt + b"altered"},
+            ))["passed"])
+            missing = {name: data for name, data in files.items() if name != gate.NCURSES_RECEIPT}
+            self.assertFalse(self.evaluate(capture(missing))["passed"])
+            oversized = capture({**files, gate.NCURSES_RECEIPT: b"x" * (17 * 1024)})
+            self.assertNotIn(gate.NCURSES_RECEIPT, oversized.captured)
+            self.assertFalse(self.evaluate(oversized)["passed"])
+            self.assertFalse(self.evaluate(capture(
+                {**files, "/tmp/.wh.previous": b""},
+                extra_layers=(write_tar({"/tmp/previous": stock}),),
+            ))["passed"])
+            self.compiled["matches"] = copy.deepcopy(self.os["matches"])
+            self.assertFalse(self.evaluate(capture(files))["passed"])
+
+    def pruned_runtime_entry(self, cve, rule):
+        entry = self.add_exception()
+        self.os["distro"]["version"] = "13.8"
+        source, version = rule["source"], rule["version"]
+        self.os["matches"] = [
+            self.match(cve, state="wont-fix", name=name, version=version, source=source)
+            for name in rule["packages"]
+        ]
+        for artifact in (row["artifact"] for row in self.os["matches"]):
+            artifact["purl"] = (
+                f"pkg:deb/debian/{artifact['name']}@{quote(version, safe='')}"
+                f"?arch=amd64&distro=debian-13.8&upstream={source}"
+            )
+        root = Path(__file__).resolve().parents[1]
+        proofs = []
+        for path, digest in rule["proofs"].items():
+            target = self.repo / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((root / path).read_bytes())
+            proofs.append({"path": path, "sha256": digest})
+        key, finding = next(iter(gate.high_groups(self.os, "os").items()))
+        entry.update(
+            fingerprint=key, finding=finding, disposition=rule["disposition"],
+            conditions=[{"kind": "pruned_debian_runtime", "source": source}],
+            local_evidence=proofs, vendor_evidence=[finding["data_source"], rule["vendor"]],
+        )
+        return entry
+
+    def test_pruned_runtime_is_bound_to_package_and_physical_archive(self):
+        forbidden_examples = {
+            "CVE-2026-82560": (("Text.pm", "Text.pmc"), "libpod-lators-perl"),
+            "CVE-2026-9538": (("Tar.pm", "Tar.pmc"), "libarchive-tar-perl"),
+            "CVE-2026-54370": (("getfacl", "libacl.a"), "acl"),
+            "CVE-2026-107161": (("libdigestmd5.so.2", "libsasl2.a"), "libsasl2-dev"),
+        }
+        for cve, original_rule in gate.PRUNED_RUNTIME.items():
+            with self.subTest(cve=cve):
+                rule = copy.deepcopy(original_rule)
+                entry = self.pruned_runtime_entry(cve, rule)
+                files = {"/bin/sh": expat_test.elf(b"runtime shell")}
+                providers = []
+                for target, aliases, _ in rule["providers"]:
+                    binary = expat_test.elf(target.encode())
+                    files[target] = binary
+                    providers.append((target, aliases, hashlib.sha256(binary).hexdigest()))
+                    for alias in aliases:
+                        files[str(PurePosixPath(target).with_name(alias))] = (
+                            "symlink", PurePosixPath(target).name,
+                        )
+                rule["providers"] = providers
+                source, version = rule["source"], rule["version"]
+                status = "\n".join(
+                    f"Package: {name}\nSource: {source}\nVersion: {version}\n"
+                    "Status: install ok installed\nArchitecture: amd64\n"
+                    for name in rule["packages"]
+                ).encode()
+                files[gate.DPKG_STATUS] = status
+
+                def archive_facts(layers):
+                    archive = self.repo / "pruned-synthetic.tar"
+                    names = [f"{i}.tar" for i in range(len(layers))]
+                    archive.write_bytes(expat_test.tar_bytes({
+                        **dict(zip(names, (
+                            layer if isinstance(layer, bytes) else expat_test.tar_bytes(layer)
+                            for layer in layers
+                        ), strict=True)),
+                        "manifest.json": json.dumps([{"Layers": names}]).encode(),
+                    }))
+                    return gate.archive_facts(archive, entry["conditions"])
+
+                with patch.dict(gate.PRUNED_RUNTIME, {cve: rule}):
+                    self.assertTrue(self.evaluate(archive_facts([files]))["passed"])
+                    basenames, excluded_package = forbidden_examples[cve]
+                    for basename in basenames:
+                        path = "/opt/" + basename
+                        facts = archive_facts([
+                            {path: b"synthetic fixture"},
+                            {**files, "/opt/.wh." + basename: b""},
+                        ])
+                        self.assertFalse(self.evaluate(facts)["passed"])
+                        facts = archive_facts([{**files, path: ("symlink", "other")}])
+                        self.assertFalse(self.evaluate(facts)["passed"])
+                    for target, aliases, _ in providers:
+                        alias_path = str(PurePosixPath(target).with_name(aliases[0]))
+                        facts = archive_facts([{**files, alias_path: ("symlink", "other.so")}])
+                        self.assertFalse(self.evaluate(facts)["passed"])
+                        changed = {
+                            **files,
+                            "/opt/" + PurePosixPath(target).name: expat_test.elf(b"alternate"),
+                        }
+                        self.assertFalse(self.evaluate(archive_facts([changed]))["passed"])
+                    installed = status + (f"\nPackage: {excluded_package}\n"
+                                          "Status: install ok installed\n").encode()
+                    with self.assertRaisesRegex(gate.ScanPolicyError, "pruned_runtime_dpkg"):
+                        self.evaluate(archive_facts([{**files, gate.DPKG_STATUS: installed}]))
+                    if cve == "CVE-2026-82560":
+                        path = "/usr/share/perl5/Debconf/Element/Dialog/Text.pm"
+                        module = b"synthetic Debconf module"
+                        debconf = (
+                            b"\nPackage: debconf\nVersion: 1.5.91\n"
+                            b"Status: install ok installed\nArchitecture: all\n"
+                        )
+                        reviewed = {**files, gate.DPKG_STATUS: status + debconf, path: module}
+                        dirpath = str(PurePosixPath(path).parent)
+
+                        def altered_module(**fields):
+                            layer = io.BytesIO()
+                            with tarfile.open(fileobj=layer, mode="w") as inner:
+                                member = tarfile.TarInfo(path.lstrip("/"))
+                                for field, value in fields.items():
+                                    setattr(member, field, value)
+                                is_file = member.isfile()
+                                member.size = len(module) if is_file else 0
+                                inner.addfile(member, io.BytesIO(module) if is_file else None)
+                            return layer.getvalue()
+
+                        with patch.dict(gate.DEBCONF_TEXT_SHA256, {
+                            path: hashlib.sha256(module).hexdigest(),
+                        }, clear=True):
+                            self.assertTrue(self.evaluate(archive_facts([reviewed]))["passed"])
+                            refused = (
+                                [{**files, path: module}],
+                                [{**reviewed, path: ("symlink", "elsewhere")}],
+                                [{**reviewed, "/opt/Pod/Text.pm": module}],
+                                [{path: b"unreviewed historical bytes"}, reviewed],
+                                [{path: b"unreviewed historical bytes"},
+                                 {**reviewed, f"{dirpath}/.wh.Text.pm": b""}],
+                                [reviewed, altered_module(mode=0o640)],
+                                [reviewed, altered_module(uid=1000)],
+                                [reviewed, altered_module(
+                                    type=tarfile.LNKTYPE, linkname="bin/sh",
+                                )],
+                                [reviewed, altered_module(type=tarfile.CONTTYPE)],
+                                [reviewed, altered_module(
+                                    pax_headers={"SCHILY.acl.access": "synthetic"},
+                                )],
+                            )
+                            for layers in refused:
+                                self.assertFalse(self.evaluate(archive_facts(layers))["passed"])
+
+    def test_pruned_runtime_cannot_exempt_sibling_finding_or_change_disposition(self):
+        cve = "CVE-2026-54370"
+        entry = self.pruned_runtime_entry(cve, gate.PRUNED_RUNTIME[cve])
+        finding, proofs = entry["finding"], entry["local_evidence"]
+        for changed in ({"vulnerability_id": "CVE-2026-54369"}, {"scope": "compiled"},
+                        {"distro": {"name": "debian", "version": "13.7"}}):
+            with self.subTest(changed=changed), self.assertRaisesRegex(
+                gate.ScanPolicyError, "pruned_runtime_scope",
+            ):
+                gate.pruned_runtime_holds(entry, {**finding, **changed}, facts=None, proofs=proofs)
+        with self.assertRaisesRegex(gate.ScanPolicyError, "pruned_runtime_evidence"):
+            gate.pruned_runtime_holds(
+                {**entry, "disposition": "fixed_by_backport"}, finding, facts=None, proofs=proofs,
+            )
+
+    def trixie_exception(self, scope, cve="CVE-2026-124709", *, source="openssl"):
+        entry = self.add_exception()
+        self.os["matches"] = []
+        report = self.os if scope == "os" else self.compiled
+        distro = "13.8" if scope == "os" else "13"
+        report["distro"]["version"] = distro
+        if source == "util-linux":
+            material = util_linux_trixie_materials
+            versions = material.PACKAGE_VERSIONS
+        else:
+            material = (
+                glibc_trixie_materials if source == "glibc" else openssl_trixie_materials.CURRENT
+            )
+            versions = dict.fromkeys(material.RUNTIME_PACKAGES, material.VERSION)
+        for name, version in versions.items():
+            row = self.match(cve, name=name, version=version, source=source)
+            upstream = source
+            if scope == "os" and version != material.VERSION:
+                upstream += "@" + material.VERSION
+            suffix = (f"&upstream={quote(upstream, safe='')}"
+                      if scope == "compiled" or name != source else "")
+            row["artifact"]["purl"] = (
+                f"pkg:deb/debian/{name}@{quote(version, safe='')}"
+                f"?arch=amd64&distro=debian-{distro}{suffix}"
+            )
+            report["matches"].append(row)
+        key, finding = next(iter(gate.high_groups(report, scope).items()))
+        directory = f"deploy/{source}-trixie-backport"
+        pins = gate.OPENSSL_DANE_PINS if source == "openssl" else gate.TRIXIE_BACKPORT_PINS[source]
+        materials = [name for name, _ in pins.get("materials", ())]
+        receipt_name = material.filename if source == "openssl" else "qualification.json"
+        files = (receipt_name, pins["recipe"][0], *materials)
+        source_root = Path(__file__).resolve().parents[1]
+        for basename in files:
+            name = f"{directory}/{basename}"
+            target = self.repo / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((source_root / name).read_bytes())
+            entry["local_evidence"].append({"path": name, "sha256": gate.hash_file(target)})
+        disposition = "code_not_present" if cve == "CVE-2026-78409" else "fixed_by_backport"
+        entry.update(
+            fingerprint=key, finding=finding, disposition=disposition,
+            trixie_backport_receipt=entry["local_evidence"][1],
+            conditions=[{"kind": "debian_trixie_backport", "sha256": material.SHA256}],
+        )
+        commits = gate.TRIXIE_BACKPORT_COMMITS[source]
+        fix = (
+            gate.OPENSSL_DANE_PROPOSAL if cve == gate.OPENSSL_DANE_ADVISORY
+            else commits.get(cve, next(iter(commits.values())))
+        )
+        entry["vendor_evidence"].append(fix)
+        return entry
+
+    def trixie_fixture(self, *, util_linux=False):
+        receipt = openssl_trixie_materials.SHA256
+        archive_digest = "a" * 64
+        self.sbom["metadata"]["properties"].extend([
+            {"name": "pamolive:sbom:debian-archive-sha256", "value": archive_digest},
+            {"name": "pamolive:sbom:openssl-receipt-sha256", "value": receipt},
+        ])
+        report = {
+            "image_config_id": self.config_id, "archive_sha256": archive_digest,
+            "openssl_receipt_sha256": receipt,
+        }
+        if util_linux:
+            report["util_linux_receipt_sha256"] = util_linux_trixie_materials.SHA256
+            self.sbom["metadata"]["properties"].append({
+                "name": "pamolive:sbom:util-linux-receipt-sha256",
+                "value": report["util_linux_receipt_sha256"],
+            })
+        component = {
+            "bom-ref": "synthetic-native-ref", "name": "synthetic ssl", "purl": "pkg:deb/ssl@1",
+        }
+        dependency = {"ref": component["bom-ref"]}
+        self.sbom["components"].append(component)
+        self.sbom["dependencies"] = [dependency]
+        checker = patch.object(debian_refresh_inventory, "inspect_bundle", return_value=report)
+        builder = patch.object(
+            native_sbom, "debian_components",
+            return_value=([copy.deepcopy(component)], [copy.deepcopy(dependency)], []),
+        )
+        self.addCleanup(checker.stop)
+        self.addCleanup(builder.stop)
+        builder.start()
+        bundle = {"archive": self.repo / qualified_image.ARCHIVE, "revision": "a" * 40}
+        return bundle, checker.start()
+
+    def test_trixie_backport_binds_to_archive_and_individual_scanner_scope(self):
+        entry = self.trixie_exception("compiled")
+        bundle, inspector = self.trixie_fixture()
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        inspector.assert_called_once_with(self.repo, bundle["revision"],
+                                          kerberos_backport=True, openssl_backport=True)
+        self.assertEqual(self.evaluate(**bundle)["decisions"], [{
+            "fingerprint": entry["fingerprint"], "disposition": "fixed_by_backport",
+        }])
+
+        self.os["matches"] = copy.deepcopy(self.compiled["matches"])
+        result = self.evaluate(**bundle)
+        self.assertFalse(result["passed"])
+        self.assertEqual(len(result["blockers"]), 1)
+        self.assertEqual(result["blockers"][0]["finding"]["scope"], "os")
+
+    def test_trixie_review_cannot_override_a_distributed_fix(self):
+        self.trixie_exception("os")
+        bundle, _ = self.trixie_fixture()
+        self.os["matches"][0]["vulnerability"]["fix"]["versions"] = ["3.5.10"]
+        result = self.evaluate(**bundle)
+        self.assertFalse(result["passed"])
+        self.assertEqual([row["code"] for row in result["blockers"]], ["high_fix_available"])
+
+    def test_existing_trixie_decisions_check_the_installed_glibc_profile(self):
+        from deploy import glibc_trixie_materials
+
+        self.trixie_exception("compiled")
+        bundle, inspector = self.trixie_fixture(util_linux=True)
+        inspector.return_value["glibc_receipt_sha256"] = glibc_trixie_materials.SHA256
+        properties = self.sbom["metadata"]["properties"]
+        properties.append({
+            "name": "pamolive:sbom:glibc-receipt-sha256",
+            "value": glibc_trixie_materials.SHA256,
+        })
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        inspector.assert_called_once_with(
+            self.repo, bundle["revision"], kerberos_backport=True, openssl_backport=True,
+            util_linux_backport=True, glibc_backport=True,
+        )
+
+    def test_trixie_exception_refuses_missing_or_mismatched_image_proof(self):
+        self.trixie_exception("os")
+        bundle, inspector = self.trixie_fixture()
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_bundle"):
+            self.evaluate()
+        inspector.return_value["image_config_id"] = "sha256:" + "b" * 64
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_config"):
+            self.evaluate(**bundle)
+
+    def test_trixie_exception_refuses_unpatched_cve_and_static_python_distribution(self):
+        entry = self.trixie_exception("compiled", "CVE-2026-35190")
+        bundle, _ = self.trixie_fixture()
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_fix"):
+            self.evaluate(**bundle)
+        entry["finding"]["vulnerability_id"] = "CVE-2026-124709"
+        entry["vendor_evidence"].append(gate.TRIXIE_BACKPORT_COMMITS["openssl"]["CVE-2026-124709"])
+        entry["finding"]["packages"][0].update(
+            name="cryptography", type="python", purl="pkg:pypi/cryptography@50.0.2",
+        )
+        proof = entry["local_evidence"]
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_scope"):
+            gate.trixie_backport_holds(entry, entry["finding"], proofs=proof, report=None)
+        entry["finding"]["data_source"] = "https://security-tracker.debian.org/tracker/CVE-2026-124709"
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_packages"):
+            gate.trixie_backport_holds(entry, entry["finding"], proofs=proof, report=None)
+
+    def test_dane_scope_requires_the_new_verified_openssl_receipt(self):
+        self.trixie_exception("compiled", gate.OPENSSL_DANE_ADVISORY)
+        bundle, inspector = self.trixie_fixture()
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        old = openssl_trixie_materials.HISTORICAL.SHA256
+        inspector.return_value["openssl_receipt_sha256"] = old
+        for prop in self.sbom["metadata"]["properties"]:
+            if prop["name"] == "pamolive:sbom:openssl-receipt-sha256":
+                prop["value"] = old
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_image"):
+            self.evaluate(**bundle)
+
+    def test_glibc_scope_requires_both_packages_and_image_receipt(self):
+        entry = self.trixie_exception("os", "CVE-2026-84243", source="glibc")
+        bundle, inspector = self.trixie_fixture(util_linux=True)
+        current = glibc_trixie_materials.SHA256
+        inspector.return_value["glibc_receipt_sha256"] = current
+        self.sbom["metadata"]["properties"].append({
+            "name": "pamolive:sbom:glibc-receipt-sha256", "value": current,
+        })
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        finding = {**entry["finding"], "packages": entry["finding"]["packages"][1:]}
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_packages"):
+            gate.trixie_backport_holds(
+                entry, finding, proofs=entry["local_evidence"], report=inspector.return_value,
+            )
+
+    def test_trixie_exception_refuses_modified_or_duplicate_sbom_component(self):
+        self.trixie_exception("compiled")
+        bundle, _ = self.trixie_fixture()
+        subject = self.sbom["components"][-1]
+        self.sbom["components"].append({**subject, "bom-ref": "wrong-native-ref"})
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_sbom_components"):
+            self.evaluate(**bundle)
+        self.sbom["components"].pop()
+        subject["name"] = "changed"
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_sbom_components"):
+            self.evaluate(**bundle)
+
+    def test_util_linux_absent_code_requires_v4_and_correct_disposition(self):
+        entry = self.trixie_exception("os", "CVE-2026-78409", source="util-linux")
+        bundle, inspector = self.trixie_fixture(util_linux=True)
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        inspector.assert_called_once_with(
+            self.repo, bundle["revision"], kerberos_backport=True, openssl_backport=True,
+            util_linux_backport=True,
+        )
+        receipt = inspector.return_value.pop("util_linux_receipt_sha256")
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_image"):
+            self.evaluate(**bundle)
+        inspector.return_value["util_linux_receipt_sha256"] = receipt
+        entry["disposition"] = "fixed_by_backport"
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_disposition"):
+            self.evaluate(**bundle)
+        entry["disposition"] = "code_not_present"
+        entry["local_evidence"] = [
+            row for row in entry["local_evidence"] if not row["path"].endswith("postimage.sha256")
+        ]
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_receipt"):
+            self.evaluate(**bundle)
+
+    def test_util_linux_epoch_packages_require_the_exact_os_upstream_version(self):
+        entry = self.trixie_exception("os", "CVE-2026-78408", source="util-linux")
+        bundle, _ = self.trixie_fixture(util_linux=True)
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        artifact = next(row["artifact"] for row in self.os["matches"]
+                        if row["artifact"]["name"] == "login")
+        artifact["purl"] = artifact["purl"].split("%40", 1)[0]
+        entry["fingerprint"], entry["finding"] = next(iter(gate.high_groups(self.os, "os").items()))
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_package_identity"):
+            self.evaluate(**bundle)
+
+    def test_util_linux_compiled_receipt_must_match_the_archive(self):
+        self.trixie_exception("compiled", "CVE-2026-76642", source="util-linux")
+        bundle, _ = self.trixie_fixture(util_linux=True)
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        self.sbom["metadata"]["properties"].pop()
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_util_linux_sbom_binding"):
+            self.evaluate(**bundle)
 
     def test_complete_empty_reports_with_positive_control_pass(self):
         result = self.evaluate()
@@ -392,8 +1102,15 @@ class ImageScanPolicyTests(TestCase):
             "org.opencontainers.image.revision": revision,
             "io.pamolive.source.license": "AGPL-3.0-or-later"}}}
         layer = io.BytesIO()
-        with tarfile.open(fileobj=layer, mode="w"):
-            pass
+        binary = dynamic_elf()
+        with tarfile.open(fileobj=layer, mode="w") as layer_tar:
+            member = tarfile.TarInfo("usr/bin/probe")
+            member.size = len(binary)
+            layer_tar.addfile(member, io.BytesIO(binary))
+            alias = tarfile.TarInfo("usr/bin/probe-alias")
+            alias.type = tarfile.SYMTYPE
+            alias.linkname = "probe"
+            layer_tar.addfile(alias)
         config["rootfs"] = {"type": "layers", "diff_ids": [
             "sha256:" + hashlib.sha256(layer.getvalue()).hexdigest()]}
         self.config = gate.canonical(config).encode()
@@ -448,16 +1165,82 @@ class ImageScanPolicyTests(TestCase):
         self.assertTrue(result["passed"])
         self.assertEqual(result["config_id"], self.config_id)
         self.assertEqual(result["input_sha256"]["archive"], gate.hash_file(archive))
+
+        self.os["matches"] = [self.match("CVE-2026-999999", state="wont-fix")]
+        write(self.repo / "os-report.json", self.os)
+        blocked = list(args)
+        rejected = self.repo / "blocked.json"
+        inventory_path = self.repo / "inventory.json"
+        blocked[blocked.index("--output") + 1] = str(rejected)
+        blocked.extend(["--elf-inventory-output", str(inventory_path)])
+        with patch.object(gate, "TOOL_SHA256", scanner_sha):
+            self.assertEqual(gate.main(blocked), 2)
+        inventory = gate.read_json(inventory_path)
+        failed_policy = gate.read_json(rejected)
+        self.assertFalse(failed_policy["passed"])
+        self.assertEqual(inventory["revision"], revision)
+        self.assertEqual(inventory["config_id"], self.config_id)
+        self.assertEqual(inventory["archive_sha256"], gate.hash_file(archive))
+        self.assertEqual(inventory["layer_diff_ids"], config["rootfs"]["diff_ids"])
+        self.assertEqual(inventory["policy_result_sha256"], gate.hash_file(rejected))
+        self.assertEqual(inventory["elf_set"], failed_policy["elf_set"])
+        self.assertEqual(
+            inventory["entries"],
+            [
+                {"path": "/usr/bin/probe", "type": "elf", "class": 64, "machine": 62,
+                 "sha256": hashlib.sha256(binary).hexdigest()},
+                {"path": "/usr/bin/probe-alias", "type": "symlink", "target": "probe"},
+            ],
+        )
+        self.assertFalse(inventory["build_verified"])
+        self.assertFalse(inventory["cryptographic_build_attestation_verified"])
+        self.assertFalse(inventory["cxx_template_instantiation_verified"])
+        same_inventory = inventory_path.read_bytes()
+        extended = list(blocked)
+        extended_path = self.repo / "extended-inventory.json"
+        extended_policy = self.repo / "extended-policy.json"
+        extended[extended.index("--output") + 1] = str(extended_policy)
+        extended[extended.index("--elf-inventory-output") + 1] = str(extended_path)
+        extended.append("--observe-elf-linkage")
+        with patch.object(gate, "TOOL_SHA256", scanner_sha):
+            self.assertEqual(gate.main(extended), 2)
+        self.assertEqual(extended_policy.read_bytes(), rejected.read_bytes())
+        self.assertEqual(gate.read_json(extended_path), {
+            **inventory, "schema": "pamolive.image-elf-inventory.v2",
+            "elf_linkage": {
+                hashlib.sha256(binary).hexdigest(): {"status": "observed", "needed": ["libc.so.6"]},
+            },
+        })
+        too_small = self.repo / "limited-inventory.json"
+        extended[extended.index("--output") + 1] = str(self.repo / "limited-policy.json")
+        extended[extended.index("--elf-inventory-output") + 1] = str(too_small)
+        with (patch.object(gate, "TOOL_SHA256", scanner_sha),
+              patch.object(gate, "ELF_INVENTORY_BUDGET", len(same_inventory) + 90)):
+            self.assertEqual(gate.main(extended), 2)
+        self.assertEqual(gate.read_json(too_small), {
+            **inventory, "schema": "pamolive.image-elf-inventory.v2", "elf_linkage": {},
+            "elf_linkage_status": "output_budget_exceeded",
+        })
+        collision = list(blocked)
+        collision[collision.index("--output") + 1] = str(self.repo / "collision.json")
+        with patch.object(gate, "TOOL_SHA256", scanner_sha):
+            self.assertEqual(gate.main(collision), 1)
+        self.assertEqual(inventory_path.read_bytes(), same_inventory)
+
         scanner.write_bytes(b"tampered synthetic release")
-        changed = list(args)
+        changed = list(blocked)
         changed[changed.index("--output") + 1] = str(self.repo / "rejected.json")
+        absent_inventory = self.repo / "rejected-inventory.json"
+        changed[changed.index("--elf-inventory-output") + 1] = str(absent_inventory)
         with patch.object(gate, "TOOL_SHA256", scanner_sha):
             self.assertEqual(gate.main(changed), 1)
         self.assertEqual(gate.read_json(self.repo / "rejected.json")["error"],
                          "scanner_archive_hash")
+        self.assertFalse(absent_inventory.exists())
 
-    def layered_facts(self, changes, capture_set=False):
-        binary = b"\x7fELF\x02\x01" + b"synthetic compiled bytes"
+    def layered_facts(self, changes, capture_set=False, *, binary=None, observe_elf_linkage=False):
+        if binary is None:
+            binary = b"\x7fELF\x02\x01" + b"synthetic compiled bytes"
         target = "/usr/lib/private/probe.so"
         condition = {"kind": "elf", "path": target, "class": 64,
                      "sha256": hashlib.sha256(binary).hexdigest()}
@@ -498,7 +1281,9 @@ class ImageScanPolicyTests(TestCase):
                 item.size = len(data)
                 outer.addfile(item, io.BytesIO(data))
         conditions = [condition, {"kind": "elf_set"}] if capture_set else [condition]
-        return gate.archive_facts(archive, conditions), condition
+        return gate.archive_facts(
+            archive, conditions, observe_elf_linkage=observe_elf_linkage,
+        ), condition
 
     def test_directory_whiteout_and_opaque_layer_invalidate_all_selected_elf_descendants(self):
         for deletion in ("usr/lib/.wh.private", "usr/lib/private/.wh..wh..opq"):
@@ -629,6 +1414,35 @@ class ImageScanPolicyTests(TestCase):
         self.assertEqual(baseline.elf_set["count"], changed.elf_set["count"])
         self.assertEqual(baseline.elf_set["alias_count"], changed.elf_set["alias_count"])
         self.assertNotEqual(baseline.elf_set["sha256"], changed.elf_set["sha256"])
+
+    def test_elf_linkage_tracks_the_surviving_hardlink_content(self):
+        changes = [
+            [("usr/lib/private/probe.so", "elf_changed"),
+             ("usr/lib/survivor.so", "hardlink_probe")],
+            [("usr/lib/private/.wh.probe.so", "file"),
+             ("usr/lib/private/probe.so", "elf"), ("usr/lib/alias.so", "symlink")],
+        ]
+        base, _ = self.layered_facts(changes, capture_set=True, binary=dynamic_elf())
+        measured, _ = self.layered_facts(
+            changes, capture_set=True, binary=dynamic_elf(), observe_elf_linkage=True,
+        )
+        self.assertEqual(base.elf_set, measured.elf_set)
+        self.assertEqual(base.entries, measured.entries)
+        hardlink = measured.entries["/usr/lib/survivor.so"]
+        self.assertNotEqual(hardlink["sha256"],
+                            measured.entries["/usr/lib/private/probe.so"]["sha256"])
+        self.assertEqual(measured.elf_linkage[hardlink["sha256"]], {
+            "status": "observed", "needed": ["libc.so.6"],
+        })
+        self.assertEqual(len(measured.elf_linkage), 2)
+        with patch.object(gate, "ELF_LINKAGE_BUDGET", 0):
+            limited, _ = self.layered_facts(
+                changes, capture_set=True, binary=dynamic_elf(), observe_elf_linkage=True,
+            )
+        self.assertEqual(limited.elf_set, measured.elf_set)
+        self.assertEqual(limited.elf_linkage, dict.fromkeys(
+            measured.elf_linkage, {"status": "budget_exceeded"},
+        ))
 
     def test_overwriting_a_live_hardlink_group_is_refused_not_guessed(self):
         with self.assertRaisesRegex(gate.ScanPolicyError, "elf_set_hardlink_replacement"):

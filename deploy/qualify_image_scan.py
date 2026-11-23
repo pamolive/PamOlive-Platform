@@ -17,13 +17,14 @@ import tarfile
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 try:
-    from deploy import build_recipe, krb5_inventory, qualified_image
+    from deploy import build_recipe, krb5_inventory, native_inventory, qualified_image
 except ModuleNotFoundError:
     import build_recipe
     import krb5_inventory
+    import native_inventory
     import qualified_image
 
 SCHEMA = "pamolive.image-scan-policy.v1"
@@ -33,10 +34,268 @@ EXPECTED_CONTROL = {("freerdp", "3.15.0", "CVE-2026-45700"),
                     ("guacamole-server", "1.5.5", "CVE-2024-35164")}
 SEVERITIES = {"Critical", "High", "Medium", "Low", "Negligible", "Unknown"}
 MAX_JSON = 32 * 1024 * 1024
+ELF_LINKAGE_BUDGET = 512 * 1024
+ELF_INVENTORY_BUDGET = 4 * 1024**2
 SHA = re.compile(r"[0-9a-f]{64}\Z")
 DISPOSITIONS = {"untriaged", "not_reachable", "fixed_by_backport",
                 "not_affected_build", "code_not_present"}
+TRIXIE_BACKPORT_COMMITS = {
+    "krb5": {
+        "CVE-2026-107778": "https://github.com/krb5/krb5/commit/62196e2b269159a5465f5b8d0ed7cf6f29c3282a",
+    },
+    "openssl": {
+        "CVE-2026-88823": "https://github.com/openssl/openssl/commit/159e1de0c448d7b9f09ad768c8e141def4aa1eb4",
+        "CVE-2026-107496": "https://github.com/openssl/openssl/commit/a0051cfe699bf5a047bc1c4faef65f80f7987366",
+        "CVE-2026-95692": "https://github.com/openssl/openssl/commit/257a3427aa0ef8d9dd2ef5b3e2d1c021a221b116",
+        "CVE-2026-95691": "https://github.com/openssl/openssl/commit/f6244675833e097c2429a40d1b206d95385bd42f",
+        "CVE-2026-107493": "https://github.com/openssl/openssl/commit/c8f6d04f8e6d40b1bf83334e4a2ec9daf5943a3d",
+        "CVE-2026-124709": "https://github.com/openssl/openssl/commit/f3acb0a3328046741479482c51cec815839e1b05",
+        "CVE-2026-121482": "https://github.com/openssl/openssl/commit/468c287cf451a834b370b69ab321b8ffdfac23aa",
+    },
+    "util-linux": {
+        "CVE-2026-76642": "https://github.com/util-linux/util-linux/commit/a15c00a9e545aa8b9cf6ec0f888ff6c7b3eaeedc",
+        "CVE-2026-78408": "https://github.com/util-linux/util-linux/commit/286dd3ff41526b582ef48830de239dffbaa61f90",
+        "CVE-2026-78409": "https://github.com/util-linux/util-linux/commit/ae19f7546ccb038966fc121e287e1a1385ba94bb",
+        "CVE-2026-78410": "https://github.com/util-linux/util-linux/commit/9fcb98bf08d9119d07ba3a3c709b1a85e4a1bbcb",
+    },
+    "glibc": {
+        "CVE-2026-84243": "https://github.com/bminor/glibc/commit/03067f3c5e39aec5ec250a44bc1b395a1afd45e8",
+    },
+}
+OPENSSL_DANE_ADVISORY = "CVE-2026-84786"
+OPENSSL_DANE_PROPOSAL = "https://github.com/openssl/openssl/pull/33634"
+TRIXIE_ABSENT_CODE = {("util-linux", "CVE-2026-78409")}
+TRIXIE_BACKPORT_FIELDS = {
+    "krb5": "kerberos_receipt_sha256",
+    "openssl": "openssl_receipt_sha256",
+    "util-linux": "util_linux_receipt_sha256",
+    "glibc": "glibc_receipt_sha256",
+}
+# Scope each CVE catalog to the exact materials and output independently reviewed.
+TRIXIE_BACKPORT_PINS = {
+    "glibc": {
+        "recipe": (
+            "patch.sha256", "1ff8695dfafcdf00e946695587f42a6ef1bd171c21ee7c866527df481d7a61dd",
+        ),
+        "receipt": "17ff8e809479ab52179588a33d037a6f79f76b4ad0ec1357155910c5a908883a",
+        "materials": (
+            ("upstream.sha256", "6cbfe951468da057a9ac8a4d8bbddb6821ad1dc654e99e9e19402d1b0d61b78b"),
+            ("preimage.sha256", "52514b424c171a3ce57f963a3e288bd30729a5ddf6d032ff010c18f13bfd4d5d"),
+            (
+                "postimage.sha256",
+                "4a92193c6588f65e6dca2977a42d50744d09e4bf18ce6c405cf30e3ebcb66380",
+            ),
+            ("materials.sh", "bb1570c277ac9c183c8c1df96af40a0ebf648a67f2960a21875775311b71bcfd"),
+        ),
+    },
+    "krb5": {
+        "recipe": (
+            "source.sha256", "337ba110e94364cdcc8fa60fd6598649c21c0dbb349b07307e169eef024e2047",
+        ),
+        "receipt": "115ba95dff1152115bfbc03d84eed5c30061c7fe72f97038616cd8f8dc3b65b4",
+    },
+    "openssl": {
+        "recipe": (
+            "patches.txt", "e3a4ccb061ed8da5772bb647ea4300fd16967b0b54547050af2e8972f64b47b7",
+        ),
+        "receipt": "b04eb9567f8353f766028862b2482599cb3e2ba95b5060b37c805e758574d6a0",
+    },
+    "util-linux": {
+        "recipe": (
+            "patches.sha256", "acf15bf64df75faf2233ba31c84d3d3d80cfcc00054a7eaa53e2998daed1e5d6",
+        ),
+        "receipt": "3f3f7f7cf518fa613a836699b4f74d753e2b5f0be04e44c45463aa4a78a6ad8c",
+        "materials": (
+            ("source.sha256", "29450a99fd07c65cd6ea557f1afd97c26a255d6100eda1ca7db591ac6553e8e9"),
+            (
+                "postimage.sha256",
+                "3e48cd44dc1a5c1d92a171267c930867e829ca79176dbd32b94941c65bc1b66c",
+            ),
+            ("materials.sh", "d3566e370fb1982ef3299714184b437e0a55232ca6eb6881e02fa651641b8a9c"),
+        ),
+    },
+}
+OPENSSL_DANE_PINS = {
+    "recipe": TRIXIE_BACKPORT_PINS["openssl"]["recipe"],
+    "receipt": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0",
+    "materials": (
+        ("dane.patch", "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"),
+        (
+            "dane-provenance.json",
+            "4ebc5389f7150490c1f90ffe93eda1b0752af5c79a3d19093398f698862693b9",
+        ),
+        (
+            "dane-preimage.sha256",
+            "0f6836870e245d5c4e8dae46b6190b22640077e62c0ed39961a83fb130c86dbb",
+        ),
+        ("postimage.sha256", "b66173afa764c51663168aa35ae6c2f13fc193da2f650173b4580286270e4533"),
+        ("materials.sh", "619707bbb1f148369d8dcdc5ddde46841723180b6825fe2ed24edc04ff95cb08"),
+    ),
+}
+SQLITE_FIXES = {
+    "CVE-2026-119373": "https://sqlite.org/src/info/a7f8c92f62",
+    "CVE-2026-119374": "https://sqlite.org/src/info/9cd4f9e920",
+    "CVE-2026-119379": "https://sqlite.org/src/info/3f57024aecea0f3b",
+}
+SQLITE_VERSION = "3.54.1-2~pamolive13u1"
+DPKG_STATUS = "/var/lib/dpkg/status"
+SQLITE_LIBRARY = "/usr/lib/x86_64-linux-gnu/libsqlite3.so.3.54.1"
+SQLITE_ALIAS = "/usr/lib/x86_64-linux-gnu/libsqlite3.so.0"
+SQLITE_ELF_SHA256 = "f3efdeb6d18f5168d14511e0aec614f7b84e8daf1c319a77089d58e50d4ff317"
+SQLITE_PROOFS = {
+    "deploy/sqlite-rebuild/source.sha256":
+        "9b50ee9aa60431e26d82a81363efa3b58c28d9186907be235c8d3fe0a2c9b108",
+    "deploy/sqlite-rebuild/prepare.py":
+        "4b18de2e74206bae527908b2e4a50ef36adef238bcd82a5999ab505fa355813d",
+    "deploy/sqlite-rebuild/check_runtime.py":
+        "89e0885c7de0cdeb2ff226285d7cc3e96d034515c747f6ab9877311100f862d5",
+}
+SQLITE_CONDITION = {"kind": "sqlite_rebuild", "sha256": SQLITE_ELF_SHA256}
+EXPAT_FIX_STATES = {
+    "CVE-2026-113351": "wont-fix",
+    "CVE-2026-115506": "wont-fix",
+    "CVE-2026-117610": "not-fixed",
+    "CVE-2026-118370": "not-fixed",
+}
+EXPAT_RELEASE_NOTES = "https://github.com/libexpat/libexpat/blob/R_2_10_0/expat/Changes"
+EXPAT_MATERIALS = "deploy/expat-remediation/materials.json"
+EXPAT_PROOFS = {
+    EXPAT_MATERIALS: "f24eef7b48bb8f5c52139b5affd941df9505765aa8c07289d55df97a48d68084",
+    "deploy/expat-remediation/authenticate.py":
+        "ee2fa56b745671af2e2349f663220ed16d1b6389f79c376801eed9bedbd1c803",
+    "deploy/expat-remediation/source_audit.py":
+        "7a0f98e4c36ce3c7a9d3c21493986236a3db72e6aa7a9d281e781ee025e2e3a1",
+}
+EXPAT_CONDITION = {"kind": "expat_rebuild", "sha256": EXPAT_PROOFS[EXPAT_MATERIALS]}
+PERL_BASE_PROOFS = {
+    ".github/qualification/evidence/perl-base-trixie-module-split.v1.json":
+        "a13f83a74d51eba4c220b32d0a1005d39b8852f89967d3bacfa0faacbe8d45f4",
+}
+DEBCONF_TEXT_SHA256 = {
+    f"/usr/share/perl5/Debconf/{name}/Text.pm": digest
+    for name, digest in {
+        "Element/Dialog": "58f7fd84f1bb43f997ed248b21eceb319be83029d0e92e321e6b359507fa5052",
+        "Element/Editor": "2c3949a7aeeea2202c99aa158b269fd8980c2313d96c9559c8efe8c436f8c2b4",
+        "Element/Gnome": "04d3e093b9bb5b054a0f6b30c343d7f469106427b3706a6a2f1d66747db04293",
+        "Element/Noninteractive":
+            "c71f33fce010170d5f914d2dbf15f0e4b7bc1b96b1dde51f26853d5fb31ce7f1",
+        "Element/Teletype": "21204c75925e1c4f42eb30f9ad0ffc17ec51e23dd64b5b19e41388be91adf60b",
+        "Element/Web": "142e2c3004fb2d0c42e6a0093aabcbf15ebcceba5d1db43de0f69541597faff4",
+        "FrontEnd": "e0aac882da15de83d9eb5306d9f0b86f1418821d67924d647e109faafd30855f",
+    }.items()
+}
+PRUNED_RUNTIME = {
+    "CVE-2026-82560": {
+        "source": "perl",
+        "version": "5.40.1-6+deb13u1",
+        "packages": ("perl-base",),
+        "additional_package_globs": ("perl", "perl-modules-*", "libperl*", "libpod-lators-perl"),
+        "disposition": "code_not_present",
+        "vendor": "https://github.com/rra/podlators/commit/70510174f69eb54aa6d617bde4e1402cd9b7c61f",
+        "proofs": {
+            **PERL_BASE_PROOFS,
+            ".github/qualification/evidence/perl-debconf-text.v1.json":
+                "ff94902c6f16d33ffd79b3994af91403eb0726429aa7228ba97c289fb11ec0c4",
+        },
+        "forbidden": ("Text.pm", "Text.pmc"),
+        "providers": (),
+    },
+    "CVE-2026-9538": {
+        "source": "perl",
+        "version": "5.40.1-6+deb13u1",
+        "packages": ("perl-base",),
+        "additional_package_globs": ("perl", "perl-modules-*", "libperl*", "libarchive-tar-perl"),
+        "disposition": "code_not_present",
+        "vendor": "https://github.com/jib/archive-tar-new/commit/f9af01426038e29d9578825a0cd3626946ab08c7",
+        "proofs": PERL_BASE_PROOFS,
+        "forbidden": ("Tar.pm", "Tar.pmc"),
+        "providers": (),
+    },
+    "CVE-2026-54370": {
+        "source": "acl",
+        "version": "2.4.0-1~pamolive13u1",
+        "packages": ("libacl1",),
+        "additional_package_globs": ("acl", "acl-udeb", "libacl1-*"),
+        "disposition": "code_not_present",
+        "vendor": "https://www.openwall.com/lists/oss-security/2026/06/29/1",
+        "proofs": {
+            "deploy/acl-rebuild/source.sha256":
+                "732f4add75c88da8c0d712d2143a0f947044032165676e5855847e918a9b8ebe",
+            "deploy/acl-rebuild/package.sha256":
+                "881f2edda13164a4e432e458fa142d0340b35ef140428295dde4cc188fbf8be2",
+            "deploy/acl-rebuild/materials.sh":
+                "d179b0fad4b0727292b2d156e7758a09b70f1d1a4413516083850802bf3bc956",
+        },
+        "forbidden": ("getfacl*", "setfacl*", "chacl*", "libacl.a"),
+        "providers": (
+            ("/usr/lib/x86_64-linux-gnu/libacl.so.1.2.2400", ("libacl.so.1",),
+             "32d112de5fb4ec3124c7a4b859b738b45e4c4a9db3b3115f167625f082909dd1"),
+        ),
+    },
+    "CVE-2026-107161": {
+        "source": "cyrus-sasl2",
+        "version": "2.1.28+dfsg1-12~pamolive13u1",
+        "packages": ("libsasl2-2", "libsasl2-modules-db"),
+        "additional_package_globs": ("libsasl2-*", "sasl2-bin"),
+        "disposition": "fixed_by_backport",
+        "vendor": "https://bugs.debian.org/1150516",
+        "proofs": {
+            "deploy/sasl-rebuild/source.sha256":
+                "456d596fba6794463d113f1d78a10bb945a22ac1588689aa221eb68ffc4a9e69",
+            "deploy/sasl-rebuild/package.sha256":
+                "a0c377726ad0bb95f6180d4455affd949a77ed025fd76a20df566b7f7c9a6d20",
+            "deploy/sasl-rebuild/materials.sh":
+                "6fa8733ecdcdb49e6fdf7959bf5caf7caa2a6c1e98fca06ce1fc8add41887017",
+        },
+        "forbidden": ("libdigestmd5*", "libsasl2.a"),
+        "providers": (
+            ("/usr/lib/x86_64-linux-gnu/libsasl2.so.2.0.25", ("libsasl2.so.2",),
+             "f915d8cd6cb9e2ba4f69a9a5c9df3f7a355bf3fdef793be75408705bb513599b"),
+            ("/usr/lib/x86_64-linux-gnu/sasl2/libsasldb.so.2.0.25",
+             ("libsasldb.so.2", "libsasldb.so"),
+             "58ecbb6b49dfa9452023a47c615aa43973fe91734a08b46210308aa86be736ea"),
+        ),
+    },
+}
 ELF_SET_SCHEMA = "pamolive.elf-set.v1"
+NCURSES_CONDITION = {"kind": "ncurses_bin_backport"}
+NCURSES_FINDING = "sha256:bc138193eda6df98a18353c620c4ceb8a7dea311db9ecde20063ebc54b833107"
+NCURSES_FIX = (
+    "https://github.com/ThomasDickey/ncurses-snapshots/commit/6f6db0e8fd14e40096a0ee6f8bdf32dedbd3fc9e"
+)
+NCURSES_STOCK_VERSION = "6.5+20250216-2"
+NCURSES_STOCK_INFOCMP = "934ce418360bd162a188f22310509640f3b0c14a858ec4ec04c25df64f97feb0"
+NCURSES_INFOCMP = "/usr/bin/infocmp"
+NCURSES_RECEIPT = "/usr/share/pamolive/ncurses-trixie/qualification.json"
+NCURSES_RECEIPT_LIMIT = 16 * 1024
+NCURSES_PACKAGE_IDENTITIES = {
+    "libncursesw6": (NCURSES_STOCK_VERSION, "amd64"),
+    "libtinfo6": (NCURSES_STOCK_VERSION, "amd64"),
+    "ncurses-base": (NCURSES_STOCK_VERSION, "all"),
+    "ncurses-bin": (NCURSES_STOCK_VERSION + "+pamolive1", "amd64"),
+}
+NCURSES_ELFS = {
+    NCURSES_INFOCMP: "06a15e9ba1dfbe0f1223e10292f0220a9d98d3c3577cd27b025e7c15ab275b39",
+    "/usr/lib/x86_64-linux-gnu/libncursesw.so.6.5":
+        "ea1e3fea29b3d3f35e240f626e5e783885d1d17f7915e7840f2a1542058c154c",
+    "/usr/lib/x86_64-linux-gnu/libtinfo.so.6.5":
+        "4013e7651ac68f547d8333517def25b2366c97eec7de7f06e105dbf3444ffebf",
+}
+NCURSES_PROOFS = {
+    "deploy/ncurses-trixie-backport/installed.sha256":
+        "dbf499bbe607989b4a83ff127620c96b47be7acc1ff4e6a5d316668d0453e112",
+    "deploy/ncurses-trixie-backport/materials.sh":
+        "6dff5a0d936368e037fa9d5f1f3568f8caa05b65c6ce3c5ecc487e46cca8d282",
+    "deploy/ncurses-trixie-backport/package.sha256":
+        "cf7ed7960f664682e148e806101252f69e6c785a634b6a5e70100a12c28e1309",
+    "deploy/ncurses-trixie-backport/patches.sha256":
+        "994eb32cbe8046c48f3591c7cca7d027a1328b882423960f6a0d707fffd4c2dd",
+    "deploy/ncurses-trixie-backport/postimage.sha256":
+        "4c843882564602f9b2b4f664f3628a0f1936e3cce00ecc0316c6c55d05741cdd",
+    "deploy/ncurses-trixie-backport/qualification.json":
+        "d41b9ed97ae5261769f3669e7a090a17dab397475e3b0c5c32e356f6ae5fdfcd",
+}
+NCURSES_RECEIPT_SHA = NCURSES_PROOFS["deploy/ncurses-trixie-backport/qualification.json"]
 GCC_VERSION = "14.2.0-19"
 GCC_PACKAGES = {"gcc-14-base", "libatomic1", "libgcc-s1", "libstdc++6"}
 GCC_LIBRARY = "/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.33"
@@ -96,13 +355,18 @@ class ArchiveFacts(tuple):
     """Preserve the existing (names, files) interface, with an optional sentinel."""
 
     def __new__(cls, names, files, elf_set=None, *, entries=None, contents=None, captured=None,
-                layer_digests=None):
+                layer_digests=None, attributes=None, verified_debconf_text=frozenset(),
+                ncurses_stock_seen=None, elf_linkage=None):
         value = super().__new__(cls, (names, files))
         value.elf_set = elf_set
         value.entries = entries
         value.contents = contents
         value.captured = captured
         value.layer_digests = layer_digests
+        value.attributes = attributes
+        value.verified_debconf_text = verified_debconf_text
+        value.ncurses_stock_seen = ncurses_stock_seen
+        value.elf_linkage = elf_linkage
         return value
 
     def __getnewargs__(self):
@@ -335,23 +599,47 @@ class LayerReader:
 
 
 def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
-                  archive_stream=None, forbidden_elf_sha256=(), reject_cjson_elf=False):
+                  archive_stream=None, forbidden_elf_sha256=(), reject_cjson_elf=False,
+                  attribute_paths=(), capture_elf_set=False, observe_elf_linkage=False):
     """Stream final file/ELF/link identities, without extraction or following links."""
     require(type(reject_cjson_elf) is bool, "archive_cjson_option")
+    require(type(capture_elf_set) is bool, "archive_elf_set_option")
+    require(type(observe_elf_linkage) is bool, "archive_elf_linkage_option")
     requested = {checked_path(item["path"]) for item in conditions
                  if item.get("kind") in ("elf", "file_sha256")}
     require(isinstance(read_paths, (list, tuple, set)) and len(read_paths) <= 32,
             "archive_read_paths")
     read_paths = {checked_path(name) for name in read_paths}
-    requested |= read_paths
+    ncurses_check = NCURSES_CONDITION in conditions
+    ncurses_stock_seen = False if ncurses_check else None
+    if any(item.get("kind") in {"sqlite_rebuild", "pruned_debian_runtime"}
+           for item in conditions):
+        read_paths.add(DPKG_STATUS)
+    if ncurses_check:
+        read_paths.update((DPKG_STATUS, NCURSES_RECEIPT))
+    require(len(read_paths) <= 32, "archive_read_paths")
+    require(isinstance(attribute_paths, (list, tuple, set)) and len(attribute_paths) <= 32,
+            "archive_attribute_paths")
+    attribute_paths = {checked_path(name) for name in attribute_paths}
+    if ncurses_check:
+        attribute_paths.add(NCURSES_INFOCMP)
+    require(len(attribute_paths) <= 32, "archive_attribute_paths")
+    requested |= read_paths | attribute_paths
     require(isinstance(forbidden_elf_sha256, (tuple, list, set, frozenset))
             and len(forbidden_elf_sha256) <= 16
             and all(isinstance(value, str) and SHA.fullmatch(value)
                     for value in forbidden_elf_sha256), "forbidden_elf_hashes")
-    capture_set = reject_cjson_elf or bool(forbidden_elf_sha256) or bool(read_paths) or any(
-        item.get("kind") == "elf_set" for item in conditions)
+    capture_set = (
+        capture_elf_set or observe_elf_linkage or reject_cjson_elf or bool(forbidden_elf_sha256)
+        or bool(read_paths) or any(item.get("kind") == "elf_set" for item in conditions)
+    )
+    debconf_text = DEBCONF_TEXT_SHA256 if {
+        "kind": "pruned_debian_runtime", "source": "perl"
+    } in conditions else {}
+    changed_debconf_text = set()
     names, elves, entries = set(), {}, {}
-    captured = {}
+    captured, attributes = {}, {}
+    linkage_cache = {}
     # Hardlinks retain bytes even after their original path is removed. Track
     # immutable content snapshots and link groups, never filesystem links.
     contents, link_groups, next_group = {}, {}, 0
@@ -365,7 +653,7 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                    for dependency in dependencies)
 
     def invalidate(path, *, preserve=()):
-        for mapping in (elves, entries, captured):
+        for mapping in (elves, entries, captured, attributes):
             for existing in list(mapping):
                 if existing not in preserve and (existing == path or existing.startswith(
                         path.rstrip("/") + "/")):
@@ -379,7 +667,7 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                 if not link_groups[group]:
                     del link_groups[group]
 
-    total = count = 0
+    total = count = linkage_size = 0
     stream_budget, layer_digests = [0], []
     with tarfile.open(name=archive if archive_stream is None else None,
                       fileobj=archive_stream, mode="r:", tarinfo=BoundedTarInfo) as outer:
@@ -414,6 +702,13 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                         normalized = str(PurePosixPath(member.name)).lstrip("/")
                         name = checked_path("/" if normalized == "." else "/" + normalized)
                         names.add(name)
+                        expected_text = debconf_text.get(name)
+                        if expected_text and (
+                            member.type not in (tarfile.REGTYPE, tarfile.AREGTYPE)
+                            or member.linkname
+                            or member.pax_headers.keys() - {"mtime", "atime", "ctime"}
+                        ):
+                            changed_debconf_text.add(name)
                         pure = PurePosixPath(name)
                         blocked = any(str(parent) in non_directories for parent in pure.parents)
                         # We do not emulate writes through directory symlinks. Such
@@ -439,6 +734,7 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                             elves.pop(name, None)
                             entries.pop(name, None)
                             captured.pop(name, None)
+                            attributes.pop(name, None)
                             if name in contents:
                                 require(not masks_current_dependency(name),
                                         "elf_set_hardlink_replacement")
@@ -479,13 +775,27 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                                 entries[name].update({key: record[key]
                                                       for key in ("sha256", "class", "machine")})
                         elif member.isfile() and (capture_set or name in requested):
+                            if name in attribute_paths:
+                                attributes[name] = {
+                                    "mode": member.mode & 0o7777, "uid": member.uid,
+                                    "gid": member.gid, "has_capability": any(
+                                        key.endswith(".security.capability")
+                                        for key in member.pax_headers),
+                                }
                             data = inner.extractfile(member)
                             header = data.read(64)
                             is_elf = header[:4] == b"\x7fELF"
                             if capture_set or name in requested or is_elf:
                                 require(member.size <= 64 * 1024**2, "elf_budget")
                                 sha = hashlib.sha256(header)
-                                parts = [header] if name in read_paths else None
+                                keep_payload = name in read_paths and not (
+                                    ncurses_check and name == NCURSES_RECEIPT
+                                    and member.size > NCURSES_RECEIPT_LIMIT
+                                )
+                                parts = [header] if keep_payload else None
+                                keep_linkage = observe_elf_linkage and is_elf
+                                elf_payload = (bytearray(header) if keep_linkage
+                                               and linkage_size < ELF_LINKAGE_BUDGET else None)
                                 # Inspect every physical ELF in every layer, including
                                 # copies later hidden by whiteouts. This optional migration
                                 # guard never grants a vulnerability policy exception.
@@ -502,6 +812,13 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                                         tail = combined[-32:]
                                     if parts is not None:
                                         parts.append(block)
+                                    if elf_payload is not None:
+                                        elf_payload.extend(block)
+                                if expected_text and (
+                                    sha.hexdigest() != expected_text
+                                    or (member.uid, member.gid, member.mode) != (0, 0, 0o644)
+                                ):
+                                    changed_debconf_text.add(name)
                                 if parts is not None:
                                     captured[name] = b"".join(parts)
                                     require(sum(map(len, captured.values())) <= 128 * 1024**2,
@@ -515,6 +832,8 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                                     # Check physical bytes before future overwrite/whiteout.
                                     require(sha.hexdigest() not in forbidden_elf_sha256,
                                             "forbidden_physical_elf")
+                                    if ncurses_check and sha.hexdigest() == NCURSES_STOCK_INFOCMP:
+                                        ncurses_stock_seen = True
                                     require(len(header) >= 20 and elf_class in (32, 64) and
                                             header[5] in (1, 2), "elf_set_header")
                                     machine = int.from_bytes(header[18:20],
@@ -524,9 +843,20 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                                         "sha256": sha.hexdigest()}
                                 if capture_set:
                                     next_group += 1
+                                    digest = sha.hexdigest()
                                     contents[name] = {"group": next_group,
-                                        "sha256": sha.hexdigest(), "class": elf_class,
+                                        "sha256": digest, "class": elf_class,
                                         "machine": machine}
+                                    if elf_payload is not None and digest not in linkage_cache:
+                                        require(len(elf_payload) == member.size,
+                                                "elf_linkage_short_read")
+                                        observation = native_inventory.observe_elf_needed(
+                                            elf_payload)
+                                        # Count the JSON key, separators and value.
+                                        value_size = len(canonical(observation))
+                                        linkage_size += len(digest) + 4 + value_size
+                                        if linkage_size <= ELF_LINKAGE_BUDGET:
+                                            linkage_cache[digest] = observation
                                     link_groups[next_group] = {name}
                         require(not capture_set or len(entries) <= 5000, "elf_set_count")
                 while reader.read(1024**2):
@@ -541,7 +871,14 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                         entries=entries if capture_set else None,
                         contents={name: {key: item[key] for key in ("sha256", "class", "machine")}
                                   for name, item in contents.items()} if capture_set else None,
-                        captured=captured, layer_digests=layer_digests)
+                        captured=captured, layer_digests=layer_digests, attributes=attributes,
+                        ncurses_stock_seen=ncurses_stock_seen,
+                        elf_linkage={item["sha256"]: linkage_cache.get(
+                            item["sha256"], {"status": "budget_exceeded"}
+                        ) for item in contents.values() if item["class"] is not None}
+                        if observe_elf_linkage else None,
+                        verified_debconf_text=frozenset(
+                            (debconf_text.keys() & names) - changed_debconf_text))
 
 
 
@@ -798,7 +1135,270 @@ def gcc_conditions(entry, finding, *, proofs, repo):
     return conditions
 
 
-def reviewed_exception(entry, finding, *, facts, repo, now, archive=None, artifact_cache=None):
+def trixie_backport_holds(entry, finding, *, proofs, report):
+    from deploy import (
+        glibc_trixie_materials,
+        krb5_trixie_materials,
+        openssl_trixie_materials,
+        util_linux_trixie_materials,
+    )
+
+    source = finding["source_package"]
+    cve = finding["vulnerability_id"]
+    require(source in TRIXIE_BACKPORT_PINS, "trixie_backport_fix")
+    installed_receipt = report.get(TRIXIE_BACKPORT_FIELDS[source]) if report is not None else None
+    pins = TRIXIE_BACKPORT_PINS[source]
+    receipt_filename = "qualification.json"
+    expected_commit = TRIXIE_BACKPORT_COMMITS.get(source, {}).get(cve)
+    if source == "openssl":
+        if entry["trixie_backport_receipt"].get("sha256") == OPENSSL_DANE_PINS["receipt"]:
+            pins = OPENSSL_DANE_PINS
+            if cve == OPENSSL_DANE_ADVISORY:
+                expected_commit = OPENSSL_DANE_PROPOSAL
+        openssl = openssl_trixie_materials.select(pins["receipt"])
+        receipt_filename = openssl.filename
+    else:
+        openssl = None
+    require(expected_commit and expected_commit in entry["vendor_evidence"], "trixie_backport_fix")
+    disposition = (
+        "code_not_present" if (source, cve) in TRIXIE_ABSENT_CODE else "fixed_by_backport"
+    )
+    require(entry["disposition"] == disposition, "trixie_backport_disposition")
+    module = {
+        "krb5": krb5_trixie_materials,
+        "openssl": openssl,
+        "util-linux": util_linux_trixie_materials,
+        "glibc": glibc_trixie_materials,
+    }[source]
+    scope = finding["scope"]
+    version = {"os": "13.8", "compiled": "13"}.get(scope)
+    require(version is not None and finding["severity"] == "High" and
+            finding["distro"] == {"name": "debian", "version": version} and
+            finding["namespace"] == "debian:distro:debian:13" and
+            finding["data_source"] == "https://security-tracker.debian.org/tracker/" + cve and
+            finding["fix_state"] in ("not-fixed", "wont-fix"), "trixie_backport_scope")
+
+    packages = {item["name"]: item for item in finding["packages"]}
+    package_versions = (module.PACKAGE_VERSIONS if source == "util-linux" else
+                        dict.fromkeys(module.RUNTIME_PACKAGES, module.VERSION))
+    require(set(packages) == set(module.RUNTIME_PACKAGES) and
+            len(finding["packages"]) == len(packages), "trixie_backport_packages")
+    for name, item in packages.items():
+        binary_version = package_versions[name]
+        purl = (
+            f"pkg:deb/debian/{name}@{quote(binary_version, safe='')}"
+            f"?arch=amd64&distro=debian-{version}"
+        )
+        # Grype's OS inventory omits upstream when the binary name is the source name.
+        if name != source or scope == "compiled":
+            upstream = source
+            if scope == "os" and binary_version != module.VERSION:
+                upstream += "@" + module.VERSION
+            purl += "&upstream=" + quote(upstream, safe="")
+        require(item == {"name": name, "version": binary_version, "type": "deb", "purl": purl},
+                "trixie_backport_package_identity")
+
+    directory = f"deploy/{source}-trixie-backport"
+    required = (pins["recipe"], *pins.get("materials", ()))
+    receipt_hash = pins["receipt"]
+    expected = {"path": f"{directory}/{receipt_filename}", "sha256": receipt_hash}
+    condition = {"kind": "debian_trixie_backport", "sha256": receipt_hash}
+    required_evidence = [{"path": f"{directory}/{name}", "sha256": sha} for name, sha in required]
+    require(module.SHA256 == receipt_hash and
+            all(item in proofs for item in required_evidence) and
+            entry["trixie_backport_receipt"] == expected and expected in proofs and
+            entry.get("conditions") == [condition] and
+            "backport_inventory" not in entry and "build_recipe" not in entry,
+            "trixie_backport_receipt")
+    require(installed_receipt == receipt_hash, "trixie_backport_image")
+    return True
+
+
+def sqlite_rebuild_holds(entry, finding, *, facts, proofs):
+    from qualification.debian_138_refresh.verify_refresh import controls
+
+    cve = finding["vulnerability_id"]
+    fix = SQLITE_FIXES.get(cve)
+    package = {"name": "libsqlite3-0", "type": "deb", "version": SQLITE_VERSION,
+               "purl": f"pkg:deb/debian/libsqlite3-0@{SQLITE_VERSION}"
+                       "?arch=amd64&distro=debian-13.8&upstream=sqlite3"}
+    require(fix and fix in entry["vendor_evidence"] and finding == {
+        "vulnerability_id": cve, "source_package": "sqlite3", "scope": "os",
+        "severity": "High", "distro": {"name": "debian", "version": "13.8"},
+        "fix_state": "wont-fix", "namespace": "debian:distro:debian:13",
+        "data_source": "https://security-tracker.debian.org/tracker/" + cve, "packages": [package],
+    }, "sqlite_rebuild_scope")
+    require(entry["disposition"] == "fixed_by_backport"
+            and entry["conditions"] == [SQLITE_CONDITION]
+            and not {"trixie_backport_receipt", "backport_inventory", "build_recipe"} & entry.keys()
+            and all({"path": path, "sha256": digest} in proofs
+                    for path, digest in SQLITE_PROOFS.items()),
+            "sqlite_rebuild_recipe")
+    raw_status = (getattr(facts, "captured", None) or {}).get(DPKG_STATUS, b"")
+    require(0 < len(raw_status) <= 8 * 1024**2, "sqlite_rebuild_status")
+    rows = [row for row in controls(raw_status)
+            if row.get("Package") == "libsqlite3-0"
+            or row.get("Source", row.get("Package", "")).partition(" ")[0] == "sqlite3"]
+    require(len(rows) == 1 and rows[0].get("Package") == "libsqlite3-0"
+            and rows[0].get("Status") == "install ok installed"
+            and rows[0].get("Source") in ("sqlite3", f"sqlite3 ({SQLITE_VERSION})")
+            and rows[0].get("Architecture") == "amd64"
+            and rows[0].get("Version") == SQLITE_VERSION, "sqlite_rebuild_status")
+    libraries = {path: row for path, row in (facts.entries or {}).items() if re.fullmatch(
+        r"libsqlite3(?:-[^/]+)?\.so(?:\..+)?", PurePosixPath(path).name)}
+    return libraries == {
+        SQLITE_LIBRARY: {"path": SQLITE_LIBRARY, "type": "elf",
+                         "class": 64, "machine": 62, "sha256": SQLITE_ELF_SHA256},
+        SQLITE_ALIAS: {"path": SQLITE_ALIAS, "type": "symlink",
+                       "target": PurePosixPath(SQLITE_LIBRARY).name},
+    }
+
+
+def ncurses_backport_holds(entry, finding, *, facts, proofs):
+    from qualification.debian_138_refresh.verify_refresh import controls
+
+    require(fingerprint(finding) == NCURSES_FINDING and NCURSES_FIX in entry["vendor_evidence"],
+            "ncurses_backport_scope")
+    require(entry["disposition"] == "fixed_by_backport"
+            and entry["conditions"] == [NCURSES_CONDITION]
+            and not {"trixie_backport_receipt", "backport_inventory", "build_recipe"} & entry.keys()
+            and all({"path": path, "sha256": sha} in proofs
+                    for path, sha in NCURSES_PROOFS.items()),
+            "ncurses_backport_evidence")
+    captured = facts.captured or {}
+    status, receipt = captured.get(DPKG_STATUS, b""), captured.get(NCURSES_RECEIPT, b"")
+    if (not 0 < len(status) <= 8 * 1024**2 or not 0 < len(receipt) <= NCURSES_RECEIPT_LIMIT
+            or hashlib.sha256(receipt).hexdigest() != NCURSES_RECEIPT_SHA):
+        return False
+    rows = [row for row in controls(status)
+            if row.get("Package") in NCURSES_PACKAGE_IDENTITIES
+            or row.get("Source", row.get("Package", "")).partition(" ")[0] == "ncurses"]
+    if len(rows) != len(NCURSES_PACKAGE_IDENTITIES):
+        return False
+    observed = {}
+    for row in rows:
+        name, version = row.get("Package"), row.get("Version")
+        if (name in observed or row.get("Status") != "install ok installed"
+                or row.get("Source") not in ("ncurses", f"ncurses ({version})")
+                or (name == "ncurses-bin" and row.get("Essential") != "yes")):
+            return False
+        observed[name] = (version, row.get("Architecture"))
+    if observed != NCURSES_PACKAGE_IDENTITIES:
+        return False
+
+    entries = facts.entries or {}
+    for path, sha in NCURSES_ELFS.items():
+        if entries.get(path) != {
+            "path": path, "type": "elf", "class": 64, "machine": 62, "sha256": sha,
+        }:
+            return False
+        if path != NCURSES_INFOCMP:
+            alias = path.removesuffix(".5")
+            if entries.get(alias) != {
+                "path": alias, "type": "symlink", "target": PurePosixPath(path).name,
+            }:
+                return False
+    infocmp_paths = {path for path in facts[0] if PurePosixPath(path).name == "infocmp"}
+    return (
+        getattr(facts, "ncurses_stock_seen", None) is False
+        and (facts.attributes or {}).get(NCURSES_INFOCMP)
+        == {"mode": 0o755, "uid": 0, "gid": 0, "has_capability": False}
+        and infocmp_paths == {NCURSES_INFOCMP}
+    )
+
+
+def pruned_runtime_holds(entry, finding, *, facts, proofs):
+    from qualification.debian_138_refresh.verify_refresh import controls
+
+    cve = finding["vulnerability_id"]
+    rule = PRUNED_RUNTIME.get(cve)
+    require(rule is not None and rule["vendor"] in entry["vendor_evidence"],
+            "pruned_runtime_scope")
+    source, version = rule["source"], rule["version"]
+    packages = [{"name": name, "type": "deb", "version": version,
+                 "purl": f"pkg:deb/debian/{name}@{quote(version, safe='')}"
+                         f"?arch=amd64&distro=debian-13.8&upstream={source}"}
+                for name in rule["packages"]]
+    require(finding == {
+        "vulnerability_id": cve, "source_package": source, "scope": "os",
+        "severity": "High", "distro": {"name": "debian", "version": "13.8"},
+        "fix_state": "wont-fix", "namespace": "debian:distro:debian:13",
+        "data_source": "https://security-tracker.debian.org/tracker/" + cve,
+        "packages": packages,
+    }, "pruned_runtime_scope")
+    require(entry["disposition"] == rule["disposition"]
+            and entry["conditions"] == [{"kind": "pruned_debian_runtime", "source": source}]
+            and not {"trixie_backport_receipt", "backport_inventory", "build_recipe"} & entry.keys()
+            and all({"path": path, "sha256": digest} in proofs
+                    for path, digest in rule["proofs"].items()), "pruned_runtime_evidence")
+    raw_status = (getattr(facts, "captured", None) or {}).get(DPKG_STATUS, b"")
+    require(0 < len(raw_status) <= 8 * 1024**2, "pruned_runtime_dpkg")
+    status_rows = list(controls(raw_status))
+    installed = [row for row in status_rows
+                 if row.get("Status", "").endswith(" installed")
+                 and (row.get("Package") in rule["packages"]
+                      or row.get("Source", row.get("Package", "")).partition(" ")[0] == source
+                      or any(fnmatch.fnmatchcase(row.get("Package", ""), pattern)
+                             for pattern in rule["additional_package_globs"]))]
+    require(len(installed) == len(packages)
+            and {row.get("Package") for row in installed} == set(rule["packages"])
+            and all(row.get("Version") == version and row.get("Architecture") == "amd64"
+                    and row.get("Source") in (source, f"{source} ({version})")
+                    and row.get("Status") == "install ok installed" for row in installed),
+            "pruned_runtime_dpkg")
+    names, files = facts
+    if cve == "CVE-2026-82560":
+        debconf = [row for row in status_rows if row.get("Package") == "debconf"]
+        if len(debconf) == 1 and all(debconf[0].get(field) == value for field, value in {
+            "Version": "1.5.91", "Architecture": "all", "Status": "install ok installed",
+        }.items()) and debconf[0].get("Source", "debconf") in ("debconf", "debconf (1.5.91)"):
+            names = names - facts.verified_debconf_text
+    if not conditions_hold([{"kind": "absent_basename_glob", "pattern": pattern}
+                            for pattern in rule["forbidden"]], (names, files)):
+        return False
+    entries = facts.entries or {}
+    for target, aliases, digest in rule["providers"]:
+        path = PurePosixPath(target)
+        loader_name = path.name.partition(".so")[0] + ".so"
+        paths = {name for name in entries
+                 if fnmatch.fnmatchcase(PurePosixPath(name).name, loader_name + "*")}
+        allowed = {str(path.with_name(alias)) for alias in aliases}
+        if paths != {target, *allowed} or entries[target] != {
+            "path": target, "type": "elf", "class": 64, "machine": 62, "sha256": digest,
+        }:
+            return False
+        if any(entries[alias]["type"] != "symlink"
+               or entries[alias].get("target") not in (path.name, target) for alias in allowed):
+            return False
+    return True
+
+
+def expat_rebuild_holds(entry, finding, *, proofs, report):
+    from deploy.expat_image import REBUILD_VERSION
+
+    cve = finding["vulnerability_id"]
+    state = EXPAT_FIX_STATES.get(cve)
+    purl = f"pkg:deb/debian/libexpat1@{quote(REBUILD_VERSION, safe='')}"
+    purl += "?arch=amd64&distro=debian-13.8&upstream=expat"
+    package = {"name": "libexpat1", "type": "deb", "version": REBUILD_VERSION, "purl": purl}
+    require(state and EXPAT_RELEASE_NOTES in entry["vendor_evidence"] and finding == {
+        "vulnerability_id": cve, "source_package": "expat", "scope": "os",
+        "severity": "High", "distro": {"name": "debian", "version": "13.8"},
+        "fix_state": state, "namespace": "debian:distro:debian:13",
+        "data_source": "https://security-tracker.debian.org/tracker/" + cve,
+        "packages": [package],
+    }, "expat_rebuild_scope")
+    require(entry["disposition"] == "fixed_by_backport"
+            and entry["conditions"] == [EXPAT_CONDITION]
+            and not {"trixie_backport_receipt", "backport_inventory", "build_recipe"} & entry.keys()
+            and all({"path": path, "sha256": digest} in proofs
+                    for path, digest in EXPAT_PROOFS.items()), "expat_rebuild_recipe")
+    require(report is not None, "expat_rebuild_image")
+    return True
+
+
+def reviewed_exception(entry, finding, *, facts, repo, now, archive=None, artifact_cache=None,
+                       trixie_report=None, expat_report=None):
     require(entry.get("fingerprint") == fingerprint(entry.get("finding")), "policy_fingerprint")
     require(entry["finding"] == finding, "policy_finding_changed")
     if entry.get("disposition") == "untriaged":
@@ -833,6 +1433,16 @@ def reviewed_exception(entry, finding, *, facts, repo, now, archive=None, artifa
         path = candidate.resolve(strict=True)
         require(path.is_relative_to(repo) and hash_file(path, 2 * 1024 * 1024) ==
                 proof.get("sha256"), "proof_changed")
+    if any(item.get("kind") == "sqlite_rebuild" for item in entry.get("conditions", ())):
+        return sqlite_rebuild_holds(entry, finding, facts=facts, proofs=proofs)
+    if NCURSES_CONDITION in entry.get("conditions", ()):
+        return ncurses_backport_holds(entry, finding, facts=facts, proofs=proofs)
+    if any(item.get("kind") == "pruned_debian_runtime" for item in entry.get("conditions", ())):
+        return pruned_runtime_holds(entry, finding, facts=facts, proofs=proofs)
+    if any(item.get("kind") == "expat_rebuild" for item in entry.get("conditions", ())):
+        return expat_rebuild_holds(entry, finding, proofs=proofs, report=expat_report)
+    if "trixie_backport_receipt" in entry:
+        return trixie_backport_holds(entry, finding, proofs=proofs, report=trixie_report)
     if entry["disposition"] == "fixed_by_backport":
         require(finding.get("scope") == "os" and finding.get("source_package") == "krb5" and
                 finding.get("vulnerability_id") == "CVE-2026-119079" and
@@ -892,8 +1502,83 @@ def check_fixture(fixture):
         "positive_fixture_identity")
 
 
+def verify_trixie_sbom(sca_sbom, report, config_id, properties):
+    from deploy import native_sbom
+
+    expected, dependencies, _ = native_sbom.debian_components(report, config_id, "image_config")
+    refs = {item["bom-ref"] for item in expected}
+    purls = {item["purl"] for item in expected if "purl" in item}
+    pending = list(sca_sbom["components"])
+    observed = []
+    while pending:
+        item = pending.pop()
+        pending.extend(item.get("components", []))
+        if item.get("bom-ref") in refs or item.get("purl") in purls:
+            observed.append(item)
+    require(sorted(observed, key=canonical) == sorted(expected, key=canonical) and
+            sorted((row for row in sca_sbom["dependencies"] if row["ref"] in refs), key=canonical)
+            == sorted(dependencies, key=canonical), "trixie_backport_sbom_components")
+    require(properties.get("pamolive:sbom:debian-archive-sha256") == report["archive_sha256"]
+            and properties.get("pamolive:sbom:openssl-receipt-sha256")
+            == report["openssl_receipt_sha256"],
+            "trixie_backport_sbom_binding")
+    if "util_linux_receipt_sha256" in report:
+        require(properties.get("pamolive:sbom:util-linux-receipt-sha256") ==
+                report["util_linux_receipt_sha256"], "trixie_util_linux_sbom_binding")
+    if "glibc_receipt_sha256" in report:
+        require(properties.get("pamolive:sbom:glibc-receipt-sha256") ==
+                report["glibc_receipt_sha256"], "trixie_glibc_sbom_binding")
+
+
+def verify_expat_sbom(sca_sbom, report, config_id, properties):
+    from deploy import expat_image, native_sbom
+
+    expected, dependencies, roots = native_sbom.expat_components(report, config_id, "image_config")
+    prefixes = (native_sbom.PREFIX + "expat:", native_sbom.PREFIX + "expat-file:")
+    names = {item["name"] for item in expected} | {"libexpat1", "libexpat1-dev"}
+    purl_prefixes = ("pkg:generic/expat@", "pkg:deb/debian/libexpat1@")
+    path_keys = {"pamolive:native:path", "pamolive:native:alias"}
+    paths = {prop["value"] for item in expected for prop in item.get("properties", [])
+             if prop["name"] in path_keys}
+    image_ref = native_sbom.PREFIX + "image:image_config:" + config_id
+    image_count = 0
+    observed = []
+    pending = list(sca_sbom["components"])
+    metadata_component = sca_sbom["metadata"].get("component")
+    if metadata_component is not None:
+        pending.append(metadata_component)
+    count = 0
+    while pending:
+        item = pending.pop()
+        count += 1
+        require(count <= 5000, "expat_sbom_component_budget")
+        pending.extend(item.get("components", []))
+        ref = item.get("bom-ref", "")
+        if ref == image_ref:
+            require(item.get("type") == "container", "expat_sbom_image_component")
+            image_count += 1
+        if (ref.startswith(prefixes) or item.get("name") in names
+                or item.get("purl", "").startswith(purl_prefixes)
+                or any(prop.get("name") in path_keys and prop.get("value") in paths
+                       for prop in item.get("properties", []))):
+            observed.append(item)
+
+    observed_edges = [row for row in sca_sbom["dependencies"] if row["ref"].startswith(prefixes)]
+    image_edges = [row for row in sca_sbom["dependencies"] if row["ref"] == image_ref]
+    require(sorted(observed, key=canonical) == sorted(expected, key=canonical)
+            and sorted(observed_edges, key=canonical) == sorted(dependencies, key=canonical)
+            and image_count == len(image_edges) == 1
+            and isinstance(image_edges[0].get("dependsOn"), list)
+            and all(image_edges[0]["dependsOn"].count(ref) == 1 for ref in roots),
+            "expat_sbom_components")
+    expected_hash = hashlib.sha256(expat_image.report_bytes(report)).hexdigest()
+    require(properties.get("pamolive:sbom:expat-input-sha256") == expected_hash,
+            "expat_sbom_binding")
+
+
 def qualify(os_report, compiled_report, positive_report, compiled_sbom, policy, *,
-            config_id, config_bytes, facts, repo, now=None, archive=None):
+            config_id, config_bytes, facts, repo, now=None, archive=None, revision=None,
+            archive_sha256=None):
     """Pure policy evaluation after files/archive identities have been checked."""
     now = now or datetime.now(UTC)
     require(policy.get("schema") == SCHEMA and policy.get("version") == 1, "policy_version")
@@ -949,11 +1634,46 @@ def qualify(os_report, compiled_report, positive_report, compiled_sbom, policy, 
                 blockers.append({"code": "high_fix_available", "scope": scope,
                                  "id": vulnerability["id"]})
         groups.update(high_groups(report, scope))
+    trixie_report = None
+    trixie_findings = [
+        finding for key, finding in groups.items()
+        if "trixie_backport_receipt" in indexed.get(key, {})
+        and indexed[key]["disposition"] != "untriaged"
+    ]
+    if trixie_findings:
+        from deploy import debian_refresh_inventory
+
+        require(archive is not None and Path(archive).name == qualified_image.ARCHIVE and
+                isinstance(revision, str) and qualified_image.REVISION.fullmatch(revision),
+                "trixie_backport_bundle")
+        modes = {"kerberos_backport": True, "openssl_backport": True}
+        if any(finding["source_package"] == "util-linux" for finding in trixie_findings):
+            modes["util_linux_backport"] = True
+        if ("pamolive:sbom:glibc-receipt-sha256" in props
+                or any(finding["source_package"] == "glibc" for finding in trixie_findings)):
+            modes.update(util_linux_backport=True, glibc_backport=True)
+        trixie_report = debian_refresh_inventory.inspect_bundle(Path(archive).parent, revision,
+                                                                **modes)
+        require(trixie_report["image_config_id"] == config_id, "trixie_backport_config")
+        verify_trixie_sbom(compiled_sbom, trixie_report, config_id, props)
+    expat_report = None
+    if any(indexed.get(key, {}).get("conditions") == [EXPAT_CONDITION]
+           and indexed[key]["disposition"] != "untriaged" for key in groups):
+        from deploy import expat_image
+
+        require(archive is not None and Path(archive).name == qualified_image.ARCHIVE
+                and isinstance(archive_sha256, str) and SHA.fullmatch(archive_sha256),
+                "expat_rebuild_bundle")
+        expat_report = expat_image.examine(archive, config_id, reviewed_rebuild=True)
+        require(expat_report["archive_sha256"] == archive_sha256, "expat_rebuild_archive")
+        verify_expat_sbom(compiled_sbom, expat_report, config_id, props)
     artifact_cache = {}
     for key, finding in groups.items():
         entry = indexed.get(key)
         if entry is None or not reviewed_exception(entry, finding, facts=facts, repo=repo, now=now,
-                                                   archive=archive, artifact_cache=artifact_cache):
+                                                   archive=archive, artifact_cache=artifact_cache,
+                                                   trixie_report=trixie_report,
+                                                   expat_report=expat_report):
             blockers.append({"code": "untriaged_high", "fingerprint": key, "finding": finding})
     require(all(item[2]["image_config_id"] == config_id for item in artifact_cache.values()),
             "recipe_image_config_changed")
@@ -980,15 +1700,49 @@ def referenced(policy_path, item):
     return path
 
 
+def elf_inventory_bytes(metadata, facts, policy_report):
+    inventory = {
+        "schema": "pamolive.image-elf-inventory.v1",
+        "revision": metadata["revision"],
+        "platform": metadata["platform"],
+        "config_id": metadata["image_id"],
+        "archive_sha256": metadata["archive_sha256"],
+        "layer_diff_ids": facts.layer_digests,
+        "policy_result_sha256": hashlib.sha256(policy_report).hexdigest(),
+        "elf_set": facts.elf_set,
+        "entries": [facts.entries[path] for path in sorted(facts.entries)],
+        "build_verified": False,
+        "cryptographic_build_attestation_verified": False,
+        "cxx_template_instantiation_verified": False,
+    }
+    if facts.elf_linkage is not None:
+        extended = dict(inventory, schema="pamolive.image-elf-inventory.v2",
+                        elf_linkage=facts.elf_linkage)
+        raw = (canonical(extended) + "\n").encode()
+        if len(raw) <= ELF_INVENTORY_BUDGET:
+            return raw
+        extended.update(elf_linkage={}, elf_linkage_status="output_budget_exceeded")
+        raw = (canonical(extended) + "\n").encode()
+        if len(raw) <= ELF_INVENTORY_BUDGET:
+            return raw
+    raw = (canonical(inventory) + "\n").encode()
+    require(len(raw) <= ELF_INVENTORY_BUDGET, "elf_inventory_budget")
+    return raw
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("bundle", "revision", "os-report", "compiled-sbom", "compiled-report",
                  "positive-report", "scanner-archive", "policy", "output"):
         parser.add_argument("--" + name, required=True)
+    parser.add_argument("--elf-inventory-output", type=Path)
+    parser.add_argument("--observe-elf-linkage", action="store_true")
     args = parser.parse_args(argv)
-    fd = None
+    fd, inventory_fd = None, None
     try:
         fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        require(not args.observe_elf_linkage or args.elf_inventory_output is not None,
+                "elf_linkage_output_required")
         policy_path = Path(args.policy).resolve(strict=True)
         require(policy_path.parent.name == "qualification" and
                 policy_path.parent.parent.name == ".github", "policy_location")
@@ -1015,7 +1769,10 @@ def main(argv=None):
         conditions = [condition for entry in policy["findings"]
                       if entry.get("disposition") in DISPOSITIONS - {"untriaged"}
                       for condition in entry.get("conditions", [])]
-        facts = archive_facts(archive, conditions)
+        facts = archive_facts(
+            archive, conditions, capture_elf_set=args.elf_inventory_output is not None,
+            observe_elf_linkage=args.observe_elf_linkage,
+        )
         os_report, compiled, positive, sbom = (read_json(path) for path in (
             args.os_report, args.compiled_report, args.positive_report, args.compiled_sbom))
         compiled_target = compiled["source"]["target"]
@@ -1026,7 +1783,8 @@ def main(argv=None):
                 control_path.resolve(), "positive_control_source")
         result = qualify(os_report, compiled, positive, sbom, policy,
                          config_id=metadata["image_id"], config_bytes=config, facts=facts,
-                         repo=repo, archive=archive)
+                         repo=repo, archive=archive, revision=args.revision,
+                         archive_sha256=metadata["archive_sha256"])
         require(hash_file(archive) == metadata["archive_sha256"], "archive_changed_during_scan")
         result["input_sha256"] = {name: hash_file(path) for name, path in (
             ("qualified_image", bundle / qualified_image.METADATA), ("archive", archive),
@@ -1036,9 +1794,18 @@ def main(argv=None):
             ("scanner_pin", tool_path))}
         result["source_targets"] = {"compiled": compiled_target, "positive": positive_target,
                                     "binding": "fixed read-only CI mounts or identical host paths"}
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        policy_report = (canonical(result) + "\n").encode()
+        if args.elf_inventory_output is not None:
+            inventory = elf_inventory_bytes(metadata, facts, policy_report)
+            inventory_fd = os.open(args.elf_inventory_output,
+                                   os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as stream:
             fd = None
-            stream.write(canonical(result) + "\n")
+            stream.write(policy_report)
+        if inventory_fd is not None:
+            with os.fdopen(inventory_fd, "wb") as stream:
+                inventory_fd = None
+                stream.write(inventory)
     except (ValueError, OSError, KeyError, TypeError, AttributeError, RecursionError,
             tarfile.TarError, EOFError) as exc:
         if fd is not None:
@@ -1048,6 +1815,9 @@ def main(argv=None):
         print(json.dumps({"passed": False, "error": str(exc) if isinstance(
             exc, ScanPolicyError) else "qualification_failed"}))
         return 1
+    finally:
+        if inventory_fd is not None:
+            os.close(inventory_fd)
     print(json.dumps({"passed": result["passed"], "high_groups": result["high_finding_groups"],
                       "blockers": len(result["blockers"]), "all_findings_clear":
                       result["all_findings_clear"]}))

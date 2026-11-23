@@ -1,4 +1,4 @@
-"""Enrich an application CycloneDX SBOM with a verified native inventory.
+"""Enrich an application CycloneDX SBOM with verified native files and packages.
 
 No network or ELF execution. Requires the isolated security toolchain, including
 CycloneDX's bundled strict JSON schemas. This is not an OS package inventory.
@@ -12,6 +12,7 @@ import os
 import re
 import uuid
 from pathlib import Path
+from urllib.parse import quote
 
 try:
     from deploy.native_inventory import (
@@ -317,15 +318,133 @@ def expat_components(report, image_digest, image_digest_kind):
     return components, deps, [source_ref, refs["pyexpat"], refs["_elementtree"]]
 
 
+def debian_components(report, image_digest, image_digest_kind):
+    from deploy.debian_refresh_inventory import (
+        BACKPORT_SUITE,
+        RECEIPT_FIELDS,
+        SCHEMA_V2,
+        SCHEMA_V3,
+        SCHEMA_V4,
+        SCHEMA_V5,
+        validate_report,
+    )
+    from qualification.debian_138_refresh.verify_refresh import NATIVE_FILES, PACKAGES, archive_name
+
+    require(image_digest_kind == "image_config", "debian_image_digest_kind")
+    try:
+        validate_report(report, archive=True)
+    except ValueError as exc:
+        raise SbomError("debian_report") from exc
+    require(report["image_config_id"] == image_digest, "debian_image_binding")
+    qualifications = {}
+    native_files = NATIVE_FILES
+    if report["schema"] in (SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5):
+        from deploy import krb5_trixie_materials
+
+        qualifications["krb5"] = krb5_trixie_materials.load_reviewed()["qualification"]
+    if report["schema"] in (SCHEMA_V3, SCHEMA_V4, SCHEMA_V5):
+        from deploy import openssl_trixie_materials
+
+        reviewed = openssl_trixie_materials.select(report["openssl_receipt_sha256"])
+        qualifications["openssl"] = reviewed.load_reviewed()["qualification"]
+        native_files = {**NATIVE_FILES, **openssl_trixie_materials.ELF_BY_PACKAGE}
+    if report["schema"] in (SCHEMA_V4, SCHEMA_V5):
+        from deploy import util_linux_trixie_materials
+
+        qualifications["util-linux"] = util_linux_trixie_materials.load_reviewed()["qualification"]
+        native_files = {**native_files, **util_linux_trixie_materials.ELF_BY_PACKAGE}
+    if report["schema"] == SCHEMA_V5:
+        from deploy import glibc_trixie_materials
+
+        qualifications["glibc"] = glibc_trixie_materials.load_reviewed()["qualification"]
+        native_files = {**native_files, **glibc_trixie_materials.ELF_BY_PACKAGE}
+    origins = {
+        "krb5": "pamolive-kerberos-backport",
+        "openssl": "pamolive-openssl-backport",
+        "util-linux": "pamolive-util-linux-backport",
+        "glibc": "pamolive-glibc-backport",
+    }
+    components, deps, roots = [], [], []
+    for item in report["packages"]:
+        name, version = item["package"], item["version"]
+        ref = PREFIX + "debian:" + name + ":" + version
+        purl = (
+            "pkg:deb/debian/" + name + "@" + quote(version, safe="")
+            + "?arch=amd64&distro=debian-13&upstream=" + item["source"]
+        )
+        component = {
+            "type": "application" if name in {"libc-bin", "openssl"} else "library",
+            "name": name,
+            "version": version,
+            "bom-ref": ref,
+            "purl": purl,
+            "properties": [
+                {"name": "pamolive:debian:suite", "value": item["suite"]},
+            ],
+        }
+        archive_sha = item["archive_sha256"]
+        receipt_sha = report["receipt_sha256"]
+        reference = {"type": "distribution"}
+        if item["suite"] == BACKPORT_SUITE:
+            # The component hash is for the binary .deb. The distribution URL
+            # locates the GitHub artifact ZIP containing the qualified build.
+            source = item["source"]
+            qualification = qualifications[source]
+            component["hashes"] = [{"alg": "SHA-256", "content": archive_sha}]
+            receipt_sha = report[RECEIPT_FIELDS[source]]
+            archive_sha = qualification["artifact_digest"].removeprefix("sha256:")
+            reference.update(
+                url="https://github.com/pamolive/PamOlive-Platform/actions/runs/"
+                    f"{qualification['run_id']}/artifacts/{qualification['artifact_id']}",
+                comment="GitHub Actions qualification artifact ZIP",
+            )
+            component["properties"].extend([
+                {"name": "pamolive:debian:origin", "value": origins[source]},
+                {"name": "pamolive:debian:deb-bytes", "value": str(item["archive_bytes"])},
+                {"name": "pamolive:debian:qualification-commit", "value": qualification["commit"]},
+            ])
+        else:
+            repo = "debian-security" if item["suite"] == "trixie-security" else "debian"
+            reference["url"] = (
+                "https://deb.debian.org/" + repo + "/" + PACKAGES[name][3] + archive_name(name)
+            )
+        reference["hashes"] = [{"alg": "SHA-256", "content": archive_sha}]
+        component["externalReferences"] = [reference]
+        component["properties"].append({
+            "name": "pamolive:debian:receipt-sha256", "value": receipt_sha,
+        })
+        components.append(component)
+        roots.append(ref)
+        files = []
+        for path in native_files.get(name, ()):
+            sha = report["installed_elf_sha256"][path]
+            file_ref = PREFIX + "debian-elf:" + digest({"path": path, "sha256": sha})
+            components.append({
+                "type": "file",
+                "name": path.rsplit("/", 1)[-1],
+                "bom-ref": file_ref,
+                "hashes": [{"alg": "SHA-256", "content": sha}],
+                "properties": [{"name": "pamolive:native:path", "value": path}],
+            })
+            deps.append({"ref": file_ref})
+            files.append(file_ref)
+        deps.append({"ref": ref, "dependsOn": sorted(files)})
+    return components, deps, roots
+
+
 def merge(app, manifest, report, *, image_digest, input_hashes,
-          image_digest_kind="oci_manifest", expat_report=None):
+          image_digest_kind="oci_manifest", expat_report=None, debian_report=None):
     for value in (app, manifest, report):
         bounded(value)
     require(isinstance(image_digest, str) and
             re.fullmatch(r"sha256:[0-9a-f]{64}", image_digest) is not None, "image_digest")
     require(image_digest_kind in ("oci_manifest", "image_config"), "image_digest_kind")
-    require(isinstance(input_hashes, dict) and set(input_hashes) == ({"app", "manifest", "report"}
-                | ({"expat"} if expat_report is not None else set()))
+    inputs = {"app", "manifest", "report"}
+    if expat_report is not None:
+        inputs.add("expat")
+    if debian_report is not None:
+        inputs.add("debian")
+    require(isinstance(input_hashes, dict) and set(input_hashes) == inputs
             and all(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
                     for value in input_hashes.values()),
             "input_hashes")
@@ -338,6 +457,16 @@ def merge(app, manifest, report, *, image_digest, input_hashes,
         components.extend(extra)
         deps.extend(edges)
         roots.extend(extra_roots)
+    reserved_names = {"freerdp", "guacd", "guacamole-server"}
+    if debian_report is not None:
+        bounded(debian_report)
+        extra, edges, extra_roots = debian_components(
+            debian_report, image_digest, image_digest_kind
+        )
+        components.extend(extra)
+        deps.extend(edges)
+        roots.extend(extra_roots)
+        reserved_names.update(item["package"] for item in debian_report["packages"])
     result = copy.deepcopy(app)
     original = result.setdefault("components", [])
     require(len(original) <= 2000, "component_budget")
@@ -356,7 +485,7 @@ def merge(app, manifest, report, *, image_digest, input_hashes,
             refs.add(item["bom-ref"])
         name = re.sub(r"[-_.]+", "-", item["name"]).lower()
         key = (item.get("group", ""), name)
-        require(key not in identities and name not in ("freerdp", "guacd", "guacamole-server"),
+        require(key not in identities and name not in reserved_names,
                 "component_identity_conflict")
         identities.add(key)
         algorithms = [value["alg"] for value in item.get("hashes", [])]
@@ -377,10 +506,20 @@ def merge(app, manifest, report, *, image_digest, input_hashes,
     properties = result.setdefault("metadata", {}).setdefault("properties", [])
     require(not any(p["name"].startswith("pamolive:sbom:") for p in properties),
             "reserved_property")
+    coverage = "application-and-compiled-native; OS archive scan required"
+    if debian_report is not None:
+        coverage = "application, compiled native, and selected Debian packages; OS scan required"
     provenance = {"image-digest": image_digest, "image-digest-kind": image_digest_kind,
                   "manifest-canonical-sha256": digest(manifest),
                   **{name + "-input-sha256": value for name, value in input_hashes.items()},
-                  "coverage": "application-and-compiled-native; OS archive scan required"}
+                  "coverage": coverage}
+    if debian_report is not None and "openssl_receipt_sha256" in debian_report:
+        provenance["debian-archive-sha256"] = debian_report["archive_sha256"]
+        provenance["openssl-receipt-sha256"] = debian_report["openssl_receipt_sha256"]
+    if debian_report is not None and "util_linux_receipt_sha256" in debian_report:
+        provenance["util-linux-receipt-sha256"] = debian_report["util_linux_receipt_sha256"]
+    if debian_report is not None and "glibc_receipt_sha256" in debian_report:
+        provenance["glibc-receipt-sha256"] = debian_report["glibc_receipt_sha256"]
     properties.extend({"name": "pamolive:sbom:" + key, "value": value}
                       for key, value in sorted(provenance.items()))
     result["serialNumber"] = "urn:uuid:" + str(uuid.uuid5(uuid.NAMESPACE_URL,
@@ -394,6 +533,7 @@ def main(argv=None):
     for name in ("app-sbom", "native-manifest", "native-report", "image-digest", "output"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--expat-report")
+    parser.add_argument("--debian-report")
     parser.add_argument("--image-digest-kind", choices=("oci_manifest", "image_config"),
                         default="oci_manifest")
     args = parser.parse_args(argv)
@@ -405,11 +545,16 @@ def main(argv=None):
         report, report_sha = load(args.native_report)
         extra_hashes = {}
         expat_report = None
+        debian_report = None
         if args.expat_report:
             expat_report, expat_sha = load(args.expat_report)
             extra_hashes["expat"] = expat_sha
+        if args.debian_report:
+            debian_report, debian_sha = load(args.debian_report)
+            extra_hashes["debian"] = debian_sha
         result = merge(app, manifest, report, image_digest=args.image_digest,
                        image_digest_kind=args.image_digest_kind, expat_report=expat_report,
+                       debian_report=debian_report,
                        input_hashes={"app": app_sha, "manifest": manifest_sha,
                                      "report": report_sha, **extra_hashes})
         with os.fdopen(fd, "w", encoding="utf-8") as stream:

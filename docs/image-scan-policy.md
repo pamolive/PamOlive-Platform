@@ -60,9 +60,43 @@ Une classification « composant absent » ne s’étend pas aux fonctions prése
 
 ### Backport Kerberos distinct d'une absence de chemin
 
-`fixed_by_backport` est réservé au scope OS, source krb5, CVE-2026-119079 et aux quatre paquets Debian locaux de version exacte définis dans `krb5_inventory`. L'entrée doit référencer un inventaire revu dans `local_evidence`, à la même empreinte SHA. Le gate valide son contrat typé puis exige exactement les conditions générées par cet inventaire : manifeste, provenance, toutes les preuves et les quatre ELF de l'archive qualifiée. Les versions, sources, patch MIT, ABI et résultats ASN.1 ne peuvent être remplacés par une absence supposée d'atteignabilité. Les Critical et High avec correctif distribué disponible restent bloquants.
+La voie historique de `fixed_by_backport` couvre le scope OS, source krb5, CVE-2026-119079 et les quatre paquets Debian locaux de version exacte définis dans `krb5_inventory`. L'entrée doit référencer un inventaire revu dans `local_evidence`, à la même empreinte SHA. Le contrôle valide son contrat typé puis exige le manifeste, la provenance, les preuves et les quatre ELF de l'archive qualifiée. Les Critical et High avec correctif distribué disponible restent bloquants.
 
 Les exclusions de tests KEYRING documentées par l'inventaire ne qualifient pas le trousseau noyau. Les logs makecheck peuvent également révéler d'autres tests amont non exécutés, notamment LDAP KDB absent ou résolution DNS externe interdite dans N0. Leur inventaire complet et leurs limites doivent figurer au rapport réel de B3 ; les seules exclusions KEYRING typées ne doivent pas être présentées comme une couverture complète des capacités Kerberos. Le lecteur de politique ne modifie ni seccomp, ni DNS, ni les résultats amont.
+
+### Backports qualifiés sur Debian Trixie
+
+La condition `debian_trixie_backport` couvre les sept correctifs OpenSSL
+de l'ADR-042 et CVE-2026-107778 de l'ADR-041. Une décision individuelle
+référence le commit amont, le manifeste des sources correctives et le
+reçu de qualification épinglés. Les empreintes des signalements OS et
+SBOM sont distinctes. Chaque empreinte inclut la source Debian, les
+versions et PURL exactes et tous les paquets runtime de la famille.
+
+Le contrôle relit les couches de l'archive du commit testé. L'inventaire
+v3 vérifie les deux reçus, le statut dpkg, les ELF et les alias Kerberos.
+Le contrôle exige ensuite les mêmes composants Debian, empreintes de
+fichiers et dépendances dans le SBOM effectivement soumis au scanner.
+Les résultats bruts restent disponibles et les décisions expirent selon
+les mêmes règles de revue. Le paquet Python `cryptography` possède son
+propre OpenSSL statique. CVE-2026-84786 et les autres avis hors des huit
+correctifs exigent leur propre qualification.
+[ADR-041](adr-041-kerberos-trixie-backport.md) ·
+[ADR-042](adr-042-openssl-trixie-seven-fixes.md)
+
+Pour `util-linux`, un signalement admissible exige en plus le reçu
+v4 et les quatre empreintes de la recette et des sources. Les neuf
+paquets ont leurs versions binaires exactes, dont deux avec epoch.
+Les PURL OS portent la version source quand elle diffère de la
+version binaire. Le contrôle autorise `fixed_by_backport` pour
+CVE-2026-76642, CVE-2026-78408 et CVE-2026-78410.
+`code_not_present` est réservé à CVE-2026-78409 dans ce lot. Les
+huit entrées couvrent les empreintes OS et SBOM reproduites par les
+deux scans de la PR #69. La nouvelle CI doit relire le vrai TAR et
+contrôler les empreintes ELF, les alias et l'unicité de libmount.
+[Preuves par avis](adr-043-util-linux-trixie-backport.md) ·
+[Scan PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/45149881862/artifacts/14810610408) ·
+[Scan push](https://github.com/pamolive/PamOlive-Platform/actions/runs/45149835034/artifacts/14809623147)
 
 ### Deux justifications GCC bornées
 
@@ -75,6 +109,67 @@ Les exclusions de tests KEYRING documentées par l'inventaire ne qualifient pas 
 `code_not_present` est réservé à CVE-2026-102010 dans le même scope/version de paquets. Le type affecté est précisément `__gnu_pbds::priority_queue<binary_heap_tag>::erase_if`, pas tous les tas ni std::priority_queue. La preuve typée fixe le commit GCC `aaa8351f4d2e636f9680a1f0a8ebc2f0a60611e6`, les hashes et versions des archives ICU/APT/HarfBuzz déjà relues,7112 fichiers examinés, zéro usage du type affecté et27 consommateurs uniques (6 ICU,20 APT,1 HarfBuzz) avec leurs SHA/classe. L'analyse des sources et de leur provenance reste une responsabilité de la revue ; un champ JSON n'est pas une preuve autonome d'absence de code.
 
 Cette seconde décision exige exactement27 conditions ELF, l'absence du header `erase_fn_imps.hpp` et une condition `elf_set` sur l'archive entière. Aucun consommateur nouveau ne peut ainsi hériter silencieusement de l'ancienne analyse, même si le paquet libstdc++ lui-même ne change pas. Les deux dispositions sont limitées à leur CVE respective ; elles n'acceptent pas la famille gcc-14 en bloc. `all_findings_clear` demeure faux.
+
+La politique contient une décision de 14 jours pour le groupe OS CVE-2026-95619
+observé sur Debian 13.8 amd64 dans les deux builds de la PR #72. Les relectures
+ont vérifié le paquet Debian officiel et résolu l'appel de l'allocateur vers
+`posix_memalign`. La décision exige le même groupe de quatre PURL et le même
+ELF dans chaque nouveau sujet. Grype conserve le signalement High. CVE-2026-102010
+reste bloquant pour ces builds, dans l'attente d'une preuve couvrant les
+consommateurs ELF de cette image.
+[Preuve GCC](../.github/qualification/evidence/gcc-95619-trixie.v1.json)
+
+Le scan GitHub retient `elf-inventory.json` pour la revue de
+CVE-2026-102010. Ce relevé contient les ELF et les liens finaux
+triés par chemin, la révision, l'identité de configuration et les
+empreintes du TAR, des couches et du rapport de politique. Le
+même relevé est produit lorsque le scan retourne des groupes
+High bloquants, après vérification des entrées. Le reçu reste une
+mesure de l'image. Sa lecture exige le rapport de politique exact
+et la concordance de son empreinte avec celle du reçu.
+
+La CI demande le schéma `pamolive.image-elf-inventory.v2` via
+`--observe-elf-linkage`. V2 conserve les lignes et la sentinelle V1. Il ajoute
+un relevé `elf_linkage` par SHA-256 des ELF finaux, y compris les octets des
+hardlinks qui survivent au retrait de leur nom d'origine. Les symlinks
+conservent leur cible déclarée. Les binaires ne sont jamais exécutés.
+
+`observed` conserve l'ordre des noms `DT_NEEDED`, même lorsque la liste est
+vide. Les statuts `no_dynamic_segment`, `unsupported`, `unparsed` et
+`budget_exceeded` expriment les limites du relevé. L'observation est limitée
+aux ELF exécutables et partagés Linux amd64 et aux noms de bibliothèques sans
+chemin. Si le JSON dépasse quatre Mio, le reçu indique
+`output_budget_exceeded` et conserve la sentinelle. Le format V1 reste
+disponible sans le relevé et sert de dernier repli à la limite de taille.
+
+Le relevé ne résout aucun fournisseur de bibliothèque et n'entre dans
+aucune disposition du scan. La provenance des consommateurs modifiés et
+l'absence d'instanciation PBDS exigent une revue distincte couvrant les
+sources, les en-têtes et les objets liés.
+
+### Modules Perl exclus de l’image
+
+Les constats OS CVE-2026-82560 et CVE-2026-9538 concernent respectivement
+`Pod::Text` et `Archive::Tar`. Les paquets Debian vérifiés placent ces
+modules dans `perl-modules-5.40`. L'image conserve le paquet essentiel
+`perl-base` en version `5.40.1-6+deb13u1`. Pour chaque constat, le gate
+exige ce groupe Debian 13.8 amd64 exact et lit le statut dpkg du TAR.
+Il refuse aussi les noms Perl correspondants dans toutes les couches,
+y compris les liens et les chemins masqués ensuite par un whiteout.
+Le scan de la #76 confirme l'absence d'`Archive::Tar`. Les sept
+fichiers `Text.pm` de Debian `debconf` 1.5.91 appartiennent à
+d'autres espaces de noms. La décision `Pod::Text` peut les écarter
+uniquement si dpkg enregistre cette version de `debconf` et si les
+chemins, les octets, les propriétaires et les modes réguliers
+épinglés concordent dans toutes les couches. Un lien ou un fichier
+altéré à ces chemins reste bloquant.
+[Scan #76](https://github.com/pamolive/PamOlive-Platform/actions/runs/45201290816/artifacts/14834239768)
+· [Relevé du paquet debconf](../.github/qualification/evidence/perl-debconf-text.v1.json)
+
+Grype conserve les deux constats High. La vérification porte sur les
+couches de l'image qualifiée. Tout ajout de modules Perl par montage
+ou par une autre distribution de logiciels exige sa propre revue.
+[Preuve de répartition des modules](../.github/qualification/evidence/perl-base-trixie-module-split.v1.json)
 
 ### Sentinelle finale d'ELF et d'alias
 
@@ -158,3 +253,81 @@ Le scope SBOM déclaré couvre applications et composants natifs explicitement i
 Reprise ADR-021 : `python -m unittest tests.test_build_recipe tests.test_image_scan_policy tests.test_krb5_inventory` couvre79 tests synthétiques, dont18 de recette et42 de politique. Les nouveaux cas couvrent source/workflow suivi ajouté-retiré-modifié, diagnostics devenus suivis, liens Git Windows, preuves fixes omises, variation honnête des logs, ABI altérée, archive changée entre passes, contexte/config d'un autre sujet,27 consommateurs GCC réellement relus et seulement quatre sorties C variables, assets fermés, ordre/count/digests raw/gzip, padding changé, gzip tronqué, métadonnées étendues et sparse. Aucun scanner, image, réseau, binaire Linux ou base n'est exécuté par cette suite. Le paragraphe suivant conserve la mesure historique du gate avant ADR-021.
 
 `python -m unittest tests.test_image_scan_policy` : **39/39 en1,119s**, aucun skip, Ruff réussi. Les données sont entièrement synthétiques, sans Grype exécuté, réseau, Docker ou base de données. Le test CLI complet construit un petit bundle avec labels/révision/config cohérents et vérifie aussi le rejet d’un scanner altéré. Les contre-exemples incluent Critical, High corrigible, High non trié, nouvelles identités/versions/distributions, mauvais scope, filtres/VEX/suppressions, contrôle positif manquant, base périmée/mixte/future, configuration incohérente, preuves modifiées/expirées, output existant et archives à deux/trois layers avec suppressions et ancêtres remplacés. Les cas ajoutés couvrent les deux dispositions GCC et les quatre paquets réels du groupe (un paquet inconnu est refusé), leur portée stricte, date future/expiration, preuves de source/build, sentinelle typée, ajout/retrait/modification de code et d'alias, hardlink survivant à son origine, refus des réécritures ambiguës et ordre des whiteouts/opaque dans une même couche.
+
+### SQLite 3.54.1 rebuilt for Trixie
+
+The SQLite tracker links CVE-2026-119373, CVE-2026-119374 and
+CVE-2026-119379 to fixes in SQLite 3.54.0. Debian marks the exact source
+3.54.1-2 as fixed. The Trixie rebuild uses those authenticated sources
+with an adapted Tcl build dependency. The locally installed package is
+libsqlite3-0 3.54.1-2~pamolive13u1 on amd64.
+[SQLite security notes](https://www.sqlite.org/cves.html) |
+[Debian tracking](https://security-tracker.debian.org/tracker/source-package/sqlite3) |
+[Source build ADR](adr-036-sqlite-trixie-source-build.md)
+
+The SQLite condition is specific to the three reviewed OS findings on
+Debian 13.8 and their exact package identity. The gate checks the pinned
+source and build evidence, the DPKG status installed in the verified
+archive, the reviewed final ELF bytes and the SONAME alias target. A
+different SQLite library identity or an additional SQLite shared-library
+path in the final archive keeps the corresponding groups blocking.
+The installed-image run still verifies the actual library loaded by
+SQLite and liblastlog2. Findings remain in both raw scan and policy output.
+
+The condition is independent of compiled and application package
+decisions. Its checks cover named SQLite shared libraries on the final
+filesystem and the identified Debian package. Static SQLite code in
+unrelated binaries, other platforms and other CVEs need their own
+evidence and decisions.
+
+### Expat 2.10.0 rebuilt for Trixie
+
+Expat 2.10.0 and its Debian source package 2.10.0-1 contain the fixes
+for CVE-2026-113351, CVE-2026-115506, CVE-2026-117610 and
+CVE-2026-118370. The reviewed Trixie rebuild is libexpat1
+2.10.0-1+pamolive2 on amd64.
+[Upstream release](https://github.com/libexpat/libexpat/releases/tag/R_2_10_0) |
+[Debian tracking](https://security-tracker.debian.org/tracker/source-package/expat)
+
+The policy reads the installed package, the source audit and the
+rebuild receipt from the exact archive. It checks the four reviewed
+ELF identities and the absence of the four previous ELF hashes across
+all layers. It reconstructs the Expat report and checks the combined
+SBOM for the same archive, report digest, five Expat components, five
+dependency records and three image roots. These checks apply only to
+the four matching OS package groups on Debian 13.8.
+[Source audit evidence](https://github.com/pamolive/PamOlive-Platform/actions/runs/43918797136/artifacts/14252167998) |
+[Example image evidence](https://github.com/pamolive/PamOlive-Platform/actions/runs/45147243883/artifacts/14808542038)
+
+The four findings remain visible in the scan output. The archive
+checks are repeated when a matching Expat decision applies. The report
+retains its existing limits on build attestation and operational
+authority. The two local Expat patches and findings from other
+versions, builds or scan scopes require separate decisions.
+
+### ACL command-line utilities and Cyrus SASL
+
+The ACL decision for CVE-2026-54370 covers the exact Debian 13.8
+amd64 libacl1 rebuild. The installed DPKG records and ELF identity
+must match. The three command-line utilities and the static ACL
+archive must be absent by name across all physical layers,
+including lower layers later masked by a whiteout. The retained
+libacl ABI still exposes path-based functions. CVE-2026-54369 has
+a distinct exposure and remains subject to its own decision.
+[ACL upstream advisory](https://www.openwall.com/lists/oss-security/2026/06/29/1) |
+[Debian tracking](https://security-tracker.debian.org/tracker/CVE-2026-54370)
+
+The Cyrus SASL decision for CVE-2026-107161 covers only the two
+reviewed runtime packages rebuilt from Debian source 2.1.28+dfsg1-12.
+The correction is in that source. The gate verifies the exact installed
+package identities, the two ELF files and their SONAME aliases, and
+requires the named DIGEST-MD5 plugin and libsasl2.a to be absent from
+all layers. The existing live and wire tests remain in CI.
+[Debian tracking](https://security-tracker.debian.org/tracker/CVE-2026-107161) |
+[Reviewed Debian correction](https://bugs.debian.org/1150516)
+
+The two decisions apply to observed OS package groups. The archive
+checks cover the named programs and libraries and their exact installed
+identities. Other package versions, statically embedded implementations
+in unrelated binaries and separately reported findings require their
+own evidence.

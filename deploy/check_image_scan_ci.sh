@@ -79,4 +79,5 @@ python -m deploy.qualify_image_scan --bundle "$bundle" --revision "$GITHUB_SHA" 
   --os-report "$proof/reports/os.json" --compiled-sbom "$proof/combined.cdx.json" \
   --compiled-report "$proof/reports/compiled.json" --positive-report "$proof/reports/positive.json" \
   --scanner-archive "$scanner_archive" --policy .github/qualification/image-scan-policy.v1.json \
-  --output "$proof/policy-result.json"
+  --output "$proof/policy-result.json" --elf-inventory-output "$proof/elf-inventory.json" \
+  --observe-elf-linkage

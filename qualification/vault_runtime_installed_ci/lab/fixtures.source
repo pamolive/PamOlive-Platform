@@ -1,0 +1,350 @@
+"""New synthetic lab material only, generated at future run; never reads prior lab secrets."""
+
+import json
+import secrets
+import time
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
+
+import package_loader
+import protocol as p
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519, rsa
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
+from support import sha
+
+
+def pem_key(key):
+    return key.private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
+    )
+
+
+def certificate(
+    name,
+    private,
+    now,
+    *,
+    issuer=None,
+    signer=None,
+    ca=False,
+    uri=False,
+    eku=ExtendedKeyUsageOID.SERVER_AUTH,
+    before=-300,
+    after=7200,
+):
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, name)])
+    builder = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer.subject if issuer else subject)
+        .public_key(private.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now + timedelta(seconds=before))
+        .not_valid_after(now + timedelta(seconds=after))
+        .add_extension(x509.BasicConstraints(ca=ca, path_length=0 if ca else None), True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                content_commitment=False,
+                key_encipherment=not ca,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=ca,
+                crl_sign=ca,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            True,
+        )
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(private.public_key()), False)
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key((signer or private).public_key()),
+            False,
+        )
+    )
+    if not ca:
+        names = (
+            [x509.UniformResourceIdentifier(name)]
+            if uri
+            else [x509.DNSName(name), x509.DNSName("localhost")]
+        )
+        builder = builder.add_extension(x509.SubjectAlternativeName(names), False).add_extension(
+            x509.ExtendedKeyUsage([eku]), False
+        )
+    return builder.sign(signer or private, hashes.SHA256())
+
+
+def tls_materials():
+    now = datetime.now(UTC)
+
+    def key():
+        return rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    authorities = {}
+    for name in ("SQL", "Vault TLS", "Untrusted TLS"):
+        private = key()
+        authorities[name] = (
+            private,
+            certificate("Synthetic " + name + " CA", private, now, ca=True),
+        )
+    leaves = {}
+    private_keys = {}
+    for name, authority, subject, uri, eku, before, after in (
+        ("pg", "SQL", "vault-n0-db.test", False, ExtendedKeyUsageOID.SERVER_AUTH, -300, 7200),
+        (
+            "server",
+            "Vault TLS",
+            "vault-n0.test",
+            False,
+            ExtendedKeyUsageOID.SERVER_AUTH,
+            -300,
+            7200,
+        ),
+        (
+            "client_a",
+            "Vault TLS",
+            "urn:pamolive:broker:lab",
+            True,
+            ExtendedKeyUsageOID.CLIENT_AUTH,
+            -300,
+            7200,
+        ),
+        (
+            "client_b",
+            "Vault TLS",
+            "urn:pamolive:broker:lab",
+            True,
+            ExtendedKeyUsageOID.CLIENT_AUTH,
+            -300,
+            7200,
+        ),
+        (
+            "unknown_ca",
+            "Untrusted TLS",
+            "urn:pamolive:broker:lab",
+            True,
+            ExtendedKeyUsageOID.CLIENT_AUTH,
+            -300,
+            7200,
+        ),
+        (
+            "expired",
+            "Vault TLS",
+            "urn:pamolive:broker:lab",
+            True,
+            ExtendedKeyUsageOID.CLIENT_AUTH,
+            -7200,
+            -3600,
+        ),
+        (
+            "future",
+            "Vault TLS",
+            "urn:pamolive:broker:lab",
+            True,
+            ExtendedKeyUsageOID.CLIENT_AUTH,
+            3600,
+            7200,
+        ),
+    ):
+        private = private_keys["client_a"] if name == "client_b" else key()
+        private_keys[name] = private
+        signer, issuer = authorities[authority]
+        leaf = certificate(
+            subject,
+            private,
+            now,
+            issuer=issuer,
+            signer=signer,
+            uri=uri,
+            eku=eku,
+            before=before,
+            after=after,
+        )
+        leaves[name] = {
+            "key": pem_key(private),
+            "pem": leaf.public_bytes(serialization.Encoding.PEM),
+            "der": leaf.public_bytes(serialization.Encoding.DER),
+        }
+    public = {
+        name: cert.public_bytes(serialization.Encoding.PEM)
+        for name, (_, cert) in authorities.items()
+    }
+    # CA private keys never enter a TAR, file, intent, report or subprocess argv.
+    return leaves, public
+
+
+def passwords():
+    roles = ("admin", "owner", "runtime", "web", "worker")
+    result = {role: secrets.token_hex(32) for role in roles}
+    p.need(len(set(result.values())) == 5, "distinct_synthetic_credentials")
+    return result
+
+
+def pg_files(leaves, public, values, database):
+    hba = (
+        "local all all trust\n"
+        + "\n".join(
+            f"hostssl {database} {role} 10.253.249.0/28 scram-sha-256"
+            for role in (
+                "vault_n0_runtime",
+                "vault_n0_owner_lab_login",
+                "web_n0_lab",
+                "worker_n0_lab",
+            )
+        )
+        + "\nhost all all all reject\n"
+    )
+    return {
+        "lab/admin.password": ((values["admin"] + "\n").encode(), 0o600, 999, 999),
+        "lab/pg-server.key": (leaves["pg"]["key"], 0o600, 999, 999),
+        "lab/pg-server.crt": (leaves["pg"]["pem"], 0o444, 0, 0),
+        "lab/pg_hba.conf": (hba.encode(), 0o444, 0, 0),
+    }
+
+
+def provision_sql(database, values, schema):
+    p.need(
+        database.startswith("vault_n0_lab_") and database.replace("_", "").isalnum(), "lab_database"
+    )
+    p.need(
+        all(
+            len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+            for value in values.values()
+        ),
+        "synthetic_password_format",
+    )
+    roles = "\n".join(
+        f"CREATE ROLE {role} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE "
+        f"NOREPLICATION NOBYPASSRLS PASSWORD '{values[name]}';"
+        for name, role in (
+            ("owner", "vault_n0_owner_lab_login"),
+            ("runtime", "vault_n0_runtime"),
+            ("web", "web_n0_lab"),
+            ("worker", "worker_n0_lab"),
+        )
+    )
+    return (
+        (
+            "\\set ON_ERROR_STOP on\n"
+            "CREATE ROLE vault_n0_owner NOLOGIN NOSUPERUSER NOCREATEDB "
+            "NOCREATEROLE NOREPLICATION NOBYPASSRLS;\n"
+            "CREATE ROLE vault_n0_migration NOLOGIN NOSUPERUSER NOCREATEDB "
+            "NOCREATEROLE NOREPLICATION NOBYPASSRLS;\n"
+            + roles
+            + "\nGRANT vault_n0_owner TO vault_n0_migration, vault_n0_owner_lab_login;\n"
+            + f"CREATE DATABASE {database} OWNER vault_n0_owner;\n"
+            + f"REVOKE ALL ON DATABASE {database} FROM PUBLIC;\n"
+            + f"GRANT CONNECT ON DATABASE {database} "
+            + "TO vault_n0_runtime, vault_n0_owner_lab_login;\n"
+            + f"\\connect {database}\n"
+            + "REVOKE ALL ON SCHEMA public FROM PUBLIC;\nSET ROLE vault_n0_migration;\n"
+        ).encode()
+        + schema
+        + b"\nRESET ROLE;\nSELECT 'VAULT_LAB_SCHEMA_READY';\n"
+    )
+
+
+def fresh_files(buffers, leaves, public, values, database):
+    package_loader.load_packages(buffers, "/reviewed")
+    fixture = package_loader.module_from_buffer(
+        "_vault_lab_fixture",
+        buffers["runtime/tests/fixtures.py"],
+        "/reviewed/runtime/tests/fixtures.py",
+    )
+    original = fixture.key
+    fixture.key = lambda label: ed25519.Ed25519PrivateKey.generate()
+    try:
+        now = int(time.time())
+        model = fixture.Fixture(now=now, der=leaves["client_a"]["der"])
+    finally:
+        fixture.key = original
+    incarnation = str(uuid4())
+    model.expected["ledger_incarnation"] = incarnation
+    model.config["slot_id"] = str(uuid4())
+    model.config["principals"][0]["certificate_sha256"].append(sha(leaves["client_b"]["der"]))
+    model.draft = replace(model.draft, ledger_incarnation=incarnation)
+    model.refresh()
+    paths = {
+        "schema": "pamolive.vault.synthetic-lab-inputs/1",
+        "slot_path": "/lab/slot.json",
+        "slot_sha256": sha(model.config_raw),
+        "runtime_database_file": "/lab/runtime-db.json",
+        "owner_database_file": "/lab/owner-db.json",
+        "web_database_file": "/lab/web-db.json",
+        "worker_database_file": "/lab/worker-db.json",
+        "server_certificate": "/lab/server.crt",
+        "server_key": "/lab/server.key",
+        "client_ca": "/lab/tls-ca.pem",
+        "server_ca": "/lab/tls-ca.pem",
+        "client_a_certificate": "/lab/client_a.crt",
+        "client_a_key": "/lab/client_a.key",
+        "client_b_certificate": "/lab/client_b.crt",
+        "client_b_key": "/lab/client_b.key",
+        "client_a_der": "/lab/client_a.der",
+        "client_b_der": "/lab/client_b.der",
+        "request_file": "/lab/request.json",
+        "port": 9443,
+        "bind_host": "0.0.0.0",
+        "server_host": "vault-n0.test",
+        "bad_tls_clients": [
+            {
+                "case": name,
+                "certificate": "/lab/" + name + ".crt",
+                "private_key": "/lab/" + name + ".key",
+            }
+            for name in ("unknown_ca", "expired", "future")
+        ],
+    }
+    shared = {
+        "lab/slot.json": (model.config_raw, 0o444, 0, 0),
+        "lab/manifest.json": (json.dumps(paths, separators=(",", ":")).encode(), 0o444, 0, 0),
+        "lab/sql-ca.pem": (public["SQL"], 0o444, 0, 0),
+        "lab/tls-ca.pem": (public["Vault TLS"], 0o444, 0, 0),
+    }
+    roles = {
+        "runtime": "vault_n0_runtime",
+        "owner": "vault_n0_owner_lab_login",
+        "web": "web_n0_lab",
+        "worker": "worker_n0_lab",
+    }
+    connection_files = {
+        "lab/" + name + "-db.json": (
+            json.dumps(
+                {
+                    "host": "vault-n0-db.test",
+                    "port": 5432,
+                    "dbname": database,
+                    "user": role,
+                    "password": values[name],
+                    "sslrootcert": "/lab/sql-ca.pem",
+                },
+                separators=(",", ":"),
+            ).encode(),
+            0o444,
+            0,
+            0,
+        )
+        for name, role in roles.items()
+    }
+    server = {
+        **shared,
+        "lab/runtime-db.json": connection_files["lab/runtime-db.json"],
+        "lab/server.key": (leaves["server"]["key"], 0o400, 1000, 1000),
+        "lab/server.crt": (leaves["server"]["pem"], 0o444, 0, 0),
+    }
+    client = {**shared, **connection_files, "lab/request.json": (model.request(), 0o444, 0, 0)}
+    for name in ("client_a", "client_b", "unknown_ca", "expired", "future"):
+        client["lab/" + name + ".key"] = (leaves[name]["key"], 0o400, 1000, 1000)
+        client["lab/" + name + ".crt"] = (leaves[name]["pem"], 0o444, 0, 0)
+        if name in ("client_a", "client_b"):
+            client["lab/" + name + ".der"] = (leaves[name]["der"], 0o444, 0, 0)
+    seed = (
+        f"\\connect {database}\nINSERT INTO vault_reservation.commissioned_state "
+        f"(slot_id,incarnation,slot_sha256,serving_state) VALUES ('{model.slot.slot_id}',"
+        f"'{incarnation}','{sha(model.config_raw)}','open');\n"
+        "SELECT 'VAULT_LAB_SLOT_READY';\n"
+    ).encode()
+    return server, client, seed, now + 40

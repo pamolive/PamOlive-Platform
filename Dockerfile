@@ -1,7 +1,266 @@
 ARG LIBPQ_DEBIAN_VERSION=17.12-0+deb13u1
 ARG JANSSON_DEBIAN_VERSION=2.14-2+b3
-FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS expat-prepared
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential binutils patch gpg=2.4.7-21+deb13u1+b5 dpkg-dev debhelper autoconf automake libtool pkg-config docbook-to-man docbook2x libexpat1-dev=2.9.0-1~deb13u1 ca-certificates && rm -rf /var/lib/apt/lists/*
+FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS debian-refresh-inputs
+WORKDIR /opt/pamolive-refresh
+COPY qualification/debian_138_refresh/Dockerfile qualification/debian_138_refresh/apt.conf qualification/debian_138_refresh/debian.list qualification/debian_138_refresh/smoke.c qualification/debian_138_refresh/test_refresh.py qualification/debian_138_refresh/verify_refresh.py qualification/debian_138_refresh/source-checksums.sha256 ./
+RUN test "$(dpkg --print-architecture)" = amd64 && test -s /usr/share/keyrings/debian-archive-keyring.gpg \
+  && sha256sum --check --strict source-checksums.sha256 \
+  && mkdir -m 0755 /opt/pamolive-apt-cache /opt/pamolive-apt-lists \
+  && python -I -B -S verify_refresh.py acquire
+
+FROM debian-refresh-inputs AS debian-refresh-verified
+RUN --network=none python -I -B -S verify_refresh.py qualify
+
+FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS debian-runtime-config
+COPY --from=debian-refresh-verified /opt/pamolive-refresh/debian.list /etc/apt/pamolive-debian.list
+COPY --from=debian-refresh-verified /opt/pamolive-refresh/debian-138-refresh.json /usr/share/pamolive/debian-refresh/debian-138-refresh.json
+COPY --from=debian-refresh-verified /opt/pamolive-refresh/verify_refresh.py /app/qualification/debian_138_refresh/verify_refresh.py
+COPY deploy/debian_refresh_inventory.py deploy/krb5_trixie_materials.py deploy/native_package_materials.py /app/deploy/
+# Keep Debian release, updates and security authenticated across product builds.
+# The version preference does not authorize a downgrade.
+RUN printf '%s\n' 'deb [arch=amd64 signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] https://deb.debian.org/debian trixie-updates main' >> /etc/apt/pamolive-debian.list \
+  && printf '%s\n' 'Dir::Etc::sourcelist "/etc/apt/pamolive-debian.list";' 'Dir::Etc::sourceparts "-";' \
+    'Acquire::AllowInsecureRepositories "false";' 'Acquire::AllowDowngradeToInsecureRepositories "false";' \
+    'Acquire::Check-Valid-Until "true";' 'Acquire::By-Hash "true";' \
+    'Acquire::https::Verify-Peer "true";' 'Acquire::https::Verify-Host "true";' \
+    'Acquire::https::AllowRedirect "false";' 'Acquire::https::Timeout "30";' 'Acquire::Retries "1";' \
+    'APT::Get::AllowUnauthenticated "false";' 'APT::Update::Error-Mode "any";' > /etc/apt/apt.conf.d/99pamolive-debian \
+  && printf '%s\n' \
+    'Package: libc6 libc-bin libc6-dev libc-dev-bin' 'Pin: version 2.41-12+deb13u5' 'Pin-Priority: 999' > /etc/apt/preferences.d/pamolive-debian
+
+FROM debian-runtime-config AS debian-runtime
+RUN --mount=from=debian-refresh-inputs,source=/opt/pamolive-apt-cache,target=/tmp/debian-refresh-archives,ro \
+  printf '%s\n' 'Package: libkrb5-3 libk5crypto3 libkrb5support0 libgssapi-krb5-2 libkrb5-dev krb5-multidev libgssrpc4t64 libkadm5clnt-mit12 libkadm5srv-mit12 libkdb5-10t64' \
+    'Pin: version 1.21.3-5+deb13u2' 'Pin-Priority: 999' > /etc/apt/preferences.d/pamolive-kerberos-debian \
+  && archives=/tmp/debian-refresh-archives && apt-get update \
+  && apt-get install -y --no-install-recommends --no-remove --reinstall \
+    "$archives/libc6_2.41-12+deb13u5_amd64.deb" "$archives/libc-bin_2.41-12+deb13u5_amd64.deb" \
+    "$archives/libkrb5-3_1.21.3-5+deb13u2_amd64.deb" "$archives/libk5crypto3_1.21.3-5+deb13u2_amd64.deb" \
+    "$archives/libkrb5support0_1.21.3-5+deb13u2_amd64.deb" "$archives/libgssapi-krb5-2_1.21.3-5+deb13u2_amd64.deb" \
+  && rm -rf /var/lib/apt/lists/*
+RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --root / --output /tmp/debian-refresh-base.json && rm /tmp/debian-refresh-base.json
+
+FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS debian-rebuild-base
+RUN test "$(dpkg --print-architecture)" = amd64 \
+ && test -s /usr/share/keyrings/debian-archive-keyring.gpg
+
+FROM debian-rebuild-base AS krb5-trixie-package
+COPY --chmod=0444 deploy/krb5-trixie-backport/materials.sh deploy/krb5-trixie-backport/source.sha256 deploy/krb5-trixie-backport/test-patch.sha256 deploy/krb5-test-keyring-seccomp.patch /opt/krb5-inputs/
+RUN chmod 0755 /opt/krb5-inputs \
+ && printf '%s\n' 'deb-src [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] https://security.debian.org/debian-security trixie-security main' > /etc/apt/sources.list.d/pamolive-krb5-source.list \
+ && apt-get -o APT::Update::Error-Mode=any update \
+ && apt-get install -y --no-install-recommends --no-remove build-essential fakeroot quilt keyutils curl ca-certificates \
+ && apt-get build-dep -y --arch-only --no-install-recommends 'krb5=1.21.3-5+deb13u2' \
+ && install -d -m 0755 -o _apt /work
+WORKDIR /work
+RUN sh /opt/krb5-inputs/materials.sh acquire \
+ && chown -R 65534:65534 /work \
+ && rm -rf /var/lib/apt/lists/*
+ENV HOME=/work
+USER 65534:65534
+RUN --network=none sh /opt/krb5-inputs/materials.sh build
+
+FROM debian-runtime-config AS debian-runtime-kerberos
+RUN --network=none install -d -m 0755 /app/deploy/krb5-trixie-backport /usr/share/pamolive/krb5-trixie
+COPY --chmod=0444 deploy/krb5-trixie-backport/qualification.json /app/deploy/krb5-trixie-backport/qualification.json
+COPY --chmod=0444 deploy/krb5-trixie-backport/qualification.json /usr/share/pamolive/krb5-trixie/qualification.json
+RUN --mount=from=debian-refresh-inputs,source=/opt/pamolive-apt-cache,target=/tmp/debian-refresh-archives,ro \
+  --mount=from=krb5-trixie-package,source=/work,target=/tmp/krb5-packages,ro \
+  set -eu; \
+  archives=/tmp/debian-refresh-archives; krb=/tmp/krb5-packages; version='1.21.3-5+deb13u2+pamolive1'; \
+  PYTHONPATH=/app python -B -S -P -m deploy.krb5_trixie_materials --directory "$krb"; \
+  packages='libkrb5-3 libk5crypto3 libkrb5support0 libgssapi-krb5-2 libkrb5-dev krb5-multidev libgssrpc4t64 libkadm5clnt-mit12 libkadm5srv-mit12 libkdb5-10t64'; \
+  printf '%s\n' "Package: $packages" "Pin: version $version" 'Pin-Priority: 999' '' \
+    "Package: $packages" 'Pin: version *' 'Pin-Priority: -1' > /etc/apt/preferences.d/00pamolive-kerberos-backport; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends --no-remove --reinstall \
+    "$archives/libc6_2.41-12+deb13u5_amd64.deb" "$archives/libc-bin_2.41-12+deb13u5_amd64.deb" \
+    "$krb/libkrb5-3_${version}_amd64.deb" "$krb/libk5crypto3_${version}_amd64.deb" \
+    "$krb/libkrb5support0_${version}_amd64.deb" "$krb/libgssapi-krb5-2_${version}_amd64.deb"; \
+  rm -rf /var/lib/apt/lists/*
+RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --kerberos-backport --root / --output /tmp/debian-refresh-base.json && rm /tmp/debian-refresh-base.json
+
+FROM debian-rebuild-base AS openssl-trixie-package
+COPY --chmod=0444 deploy/openssl-trixie-backport/materials.sh deploy/openssl-trixie-backport/patches.py deploy/openssl-trixie-backport/patches.txt deploy/openssl-trixie-backport/source.sha256 deploy/openssl-trixie-backport/preimage.sha256 deploy/openssl-trixie-backport/postimage.sha256 deploy/openssl-trixie-backport/dane.patch deploy/openssl-trixie-backport/dane-patch.sha256 deploy/openssl-trixie-backport/dane-preimage.sha256 /opt/openssl-inputs/
+RUN test -s /usr/share/keyrings/debian-archive-keyring.pgp \
+ && chmod 0755 /opt/openssl-inputs \
+ && sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
+ && grep -Fxq 'Types: deb deb-src' /etc/apt/sources.list.d/debian.sources \
+ && apt-get -o APT::Update::Error-Mode=any update \
+ && apt-get install -y --no-install-recommends --no-remove build-essential fakeroot quilt curl ca-certificates \
+ && apt-get build-dep -y --arch-only --no-install-recommends 'openssl=3.5.9-1~deb13u1' \
+ && install -d -m 0755 -o _apt /work
+WORKDIR /work
+RUN sh /opt/openssl-inputs/materials.sh acquire \
+ && chown -R 65534:65534 /work \
+ && rm -rf /var/lib/apt/lists/*
+ENV HOME=/work
+USER 65534:65534
+RUN --network=none sh /opt/openssl-inputs/materials.sh build
+
+FROM debian-runtime-kerberos AS debian-runtime-openssl
+RUN --network=none install -d -m 0755 /app/deploy/openssl-trixie-backport /usr/share/pamolive/openssl-trixie
+COPY --chmod=0444 deploy/openssl_trixie_materials.py /app/deploy/
+COPY --chmod=0444 deploy/openssl-trixie-backport/qualification.json deploy/openssl-trixie-backport/qualification-dane.json /app/deploy/openssl-trixie-backport/
+COPY --chmod=0444 deploy/openssl-trixie-backport/qualification-dane.json /usr/share/pamolive/openssl-trixie/qualification.json
+RUN --mount=from=openssl-trixie-package,source=/work,target=/tmp/openssl-packages,ro \
+  set -eu; \
+  ssl=/tmp/openssl-packages; version='3.5.9-1~deb13u1+pamolive2'; \
+  PYTHONPATH=/app python -B -S -P -m deploy.openssl_trixie_materials --directory "$ssl"; \
+  packages='libssl3t64 libssl-dev openssl openssl-provider-legacy'; \
+  printf '%s\n' "Package: $packages" "Pin: version $version" 'Pin-Priority: 999' '' \
+    "Package: $packages" 'Pin: version *' 'Pin-Priority: -1' > /etc/apt/preferences.d/00pamolive-openssl-backport; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends --no-remove --reinstall \
+    "$ssl/libssl3t64_${version}_amd64.deb" "$ssl/openssl_${version}_amd64.deb" \
+    "$ssl/openssl-provider-legacy_${version}_amd64.deb"; \
+  rm -rf /var/lib/apt/lists/*
+RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport --root / --output /tmp/debian-refresh-base.json && rm /tmp/debian-refresh-base.json
+
+FROM debian-rebuild-base AS util-linux-trixie-package
+COPY --chmod=0444 deploy/util-linux-trixie-backport/materials.sh deploy/util-linux-trixie-backport/source.sha256 deploy/util-linux-trixie-backport/patches.sha256 deploy/util-linux-trixie-backport/preimage.sha256 deploy/util-linux-trixie-backport/postimage.sha256 deploy/util-linux-trixie-backport/setarch-buildkit-test.patch /opt/util-linux-inputs/
+RUN test -s /usr/share/keyrings/debian-archive-keyring.pgp \
+ && chmod 0755 /opt/util-linux-inputs \
+ && sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
+ && grep -Fxq 'Types: deb deb-src' /etc/apt/sources.list.d/debian.sources \
+ && apt-get -o APT::Update::Error-Mode=any update \
+ && apt-get install -y --no-install-recommends --no-remove build-essential fakeroot quilt curl ca-certificates \
+ && apt-get build-dep -y --arch-only --no-install-recommends 'util-linux=2.41.5-0+deb13u1' \
+ && install -d -m 0755 -o _apt /work
+WORKDIR /work
+RUN sh /opt/util-linux-inputs/materials.sh acquire \
+ && chown -R 65534:65534 /work \
+ && rm -rf /var/lib/apt/lists/*
+ENV HOME=/work
+USER 65534:65534
+RUN --network=none sh /opt/util-linux-inputs/materials.sh build
+
+FROM debian-rebuild-base AS util-linux-trixie-export
+COPY --chmod=0444 deploy/util-linux-trixie-backport/materials.sh /opt/util-linux-inputs/materials.sh
+RUN install -d -m 0755 -o 65534 -g 65534 /evidence && chmod 0755 /opt/util-linux-inputs
+USER 65534:65534
+RUN --network=none --mount=from=util-linux-trixie-package,source=/work,target=/packages,ro \
+  sh /opt/util-linux-inputs/materials.sh export
+
+FROM debian-rebuild-base AS ncurses-trixie-package
+COPY --chmod=0444 deploy/ncurses-trixie-backport/ /opt/ncurses-inputs/
+RUN chmod 0755 /opt/ncurses-inputs \
+ && sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g; s/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
+ && grep -Fxq 'Types: deb deb-src' /etc/apt/sources.list.d/debian.sources \
+ && printf '%s\n' 'Acquire::Check-Valid-Until "true";' \
+    'Acquire::AllowInsecureRepositories "false";' \
+    'APT::Get::AllowUnauthenticated "false";' \
+    'APT::Update::Error-Mode "any";' > /etc/apt/apt.conf.d/99pamolive-ncurses \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends --no-remove build-essential fakeroot quilt curl ca-certificates \
+    'libtinfo6=6.5+20250216-2' 'libncursesw6=6.5+20250216-2' 'ncurses-base=6.5+20250216-2' \
+ && apt-get build-dep -y --arch-only --no-install-recommends 'ncurses=6.5+20250216-2' \
+ && install -d -m 0755 -o _apt /work
+WORKDIR /work
+RUN sh /opt/ncurses-inputs/materials.sh acquire \
+ && chown -R 65534:65534 /work \
+ && rm -rf /var/lib/apt/lists/*
+ENV HOME=/work
+USER 65534:65534
+RUN --network=none sh /opt/ncurses-inputs/materials.sh build
+
+FROM debian-rebuild-base AS ncurses-trixie-export
+COPY --chmod=0444 deploy/ncurses-trixie-backport/ /opt/ncurses-inputs/
+RUN install -d -m 0755 -o 65534 -g 65534 /evidence && chmod 0755 /opt/ncurses-inputs
+USER 65534:65534
+RUN --network=none --mount=from=ncurses-trixie-package,source=/work,target=/packages,ro \
+  sh /opt/ncurses-inputs/materials.sh export
+
+FROM debian-rebuild-base AS glibc-trixie-package
+COPY --chmod=0444 deploy/glibc-trixie-backport/ /opt/glibc-inputs/
+RUN test -s /usr/share/keyrings/debian-archive-keyring.pgp \
+ && chmod 0755 /opt/glibc-inputs \
+ && sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g; s/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
+ && grep -Fxq 'Types: deb deb-src' /etc/apt/sources.list.d/debian.sources \
+ && printf '%s\n' 'Acquire::Check-Valid-Until "true";' \
+    'Acquire::AllowInsecureRepositories "false";' \
+    'APT::Get::AllowUnauthenticated "false";' \
+    'APT::Update::Error-Mode "any";' > /etc/apt/apt.conf.d/99pamolive-glibc \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends --no-remove build-essential fakeroot quilt curl ca-certificates \
+ && apt-get build-dep -y --arch-only --no-install-recommends 'glibc=2.41-12+deb13u5' \
+ && install -d -m 0755 -o _apt /work
+WORKDIR /work
+RUN sh /opt/glibc-inputs/materials.sh acquire \
+ && chown -R 65534:65534 /work \
+ && rm -rf /var/lib/apt/lists/*
+ENV HOME=/work
+USER 65534:65534
+RUN --network=none sh /opt/glibc-inputs/materials.sh build
+
+FROM debian-rebuild-base AS sqlite-trixie-source
+COPY deploy/sqlite-rebuild/source-apt.conf deploy/sqlite-rebuild/forky.sources deploy/sqlite-rebuild/materials.sh /opt/sqlite-inputs/
+WORKDIR /opt/sqlite-source
+RUN sh /opt/sqlite-inputs/materials.sh acquire
+
+FROM debian-rebuild-base AS sqlite-trixie-package
+COPY deploy/sqlite-rebuild/materials.sh deploy/sqlite-rebuild/source.sha256 deploy/sqlite-rebuild/prepare.py /opt/sqlite-inputs/
+RUN sh /opt/sqlite-inputs/materials.sh toolchain
+COPY --from=sqlite-trixie-source /opt/sqlite-source/ /opt/sqlite-build/
+RUN --network=none sh /opt/sqlite-inputs/materials.sh prepare
+USER 65534:65534
+WORKDIR /opt/sqlite-build/tree
+ENV HOME=/opt/sqlite-build LC_ALL=C.UTF-8
+RUN --network=none dpkg-checkbuilddeps && dpkg-buildpackage -b -us -uc -j2
+
+FROM debian-rebuild-base AS acl-trixie-source
+COPY deploy/acl-rebuild/source-apt.conf deploy/acl-rebuild/forky.sources deploy/acl-rebuild/materials.sh /opt/acl-inputs/
+WORKDIR /opt/acl-source
+RUN sh /opt/acl-inputs/materials.sh acquire
+
+FROM debian-rebuild-base AS acl-trixie-package
+COPY deploy/acl-rebuild/materials.sh deploy/acl-rebuild/source.sha256 deploy/acl-rebuild/prepare.py /opt/acl-inputs/
+RUN sh /opt/acl-inputs/materials.sh toolchain
+COPY --from=acl-trixie-source /opt/acl-source/ /opt/acl-build/
+RUN --network=none sh /opt/acl-inputs/materials.sh prepare
+USER 65534:65534
+WORKDIR /opt/acl-build/tree
+ENV HOME=/opt/acl-build LC_ALL=C.UTF-8
+RUN --network=none dpkg-checkbuilddeps && dpkg-buildpackage -b -us -uc -j2
+
+FROM debian-rebuild-base AS sasl-trixie-source
+COPY deploy/sasl-rebuild/forky.sources deploy/sasl-rebuild/source-apt.conf deploy/sasl-rebuild/source.sha256 deploy/sasl-rebuild/materials.sh /opt/sasl-inputs/
+WORKDIR /opt/sasl-source
+RUN sh /opt/sasl-inputs/materials.sh acquire
+
+FROM debian-rebuild-base AS sasl-trixie-package
+COPY --chmod=0444 deploy/sasl-rebuild/materials.sh deploy/sasl-rebuild/source.sha256 /opt/sasl-inputs/
+RUN sh /opt/sasl-inputs/materials.sh toolchain
+WORKDIR /opt/sasl-build
+COPY --from=sasl-trixie-source /opt/sasl-source/ ./
+RUN --network=none sh /opt/sasl-inputs/materials.sh prepare
+USER 65534:65534
+WORKDIR /opt/sasl-build/tree
+ENV HOME=/opt/sasl-build LC_ALL=C.UTF-8 DEB_BUILD_OPTIONS=parallel=2
+RUN --network=none sh /opt/sasl-inputs/materials.sh build
+
+FROM debian-rebuild-base AS cairo-trixie-source
+COPY deploy/cairo-headless/trixie.sources deploy/cairo-headless/source-apt.conf deploy/cairo-headless/source.sha256 deploy/cairo-headless/materials.sh /opt/cairo-inputs/
+WORKDIR /opt/cairo-source
+RUN sh /opt/cairo-inputs/materials.sh acquire
+
+FROM debian-rebuild-base AS cairo-trixie-package
+COPY --chmod=0444 deploy/cairo-headless/source.sha256 deploy/cairo-headless/prepare.py deploy/cairo-headless/disabled-exports.txt deploy/cairo-headless/materials.sh /opt/cairo-inputs/
+RUN sh /opt/cairo-inputs/materials.sh toolchain
+WORKDIR /opt/cairo-build
+COPY --from=cairo-trixie-source /opt/cairo-source/ ./
+RUN --network=none sh /opt/cairo-inputs/materials.sh prepare
+USER 65534:65534
+WORKDIR /opt/cairo-build/tree
+ENV HOME=/opt/cairo-build LC_ALL=C.UTF-8 DEB_BUILD_OPTIONS=parallel=2
+RUN --network=none sh /opt/cairo-inputs/materials.sh build
+
+FROM debian-runtime AS expat-prepared
+RUN --mount=from=debian-refresh-inputs,source=/opt/pamolive-apt-cache,target=/tmp/debian-refresh-archives,ro \
+  archives=/tmp/debian-refresh-archives && apt-get update \
+  && apt-get install -y --no-install-recommends build-essential binutils patch gpg=2.4.7-21+deb13u1+b5 dpkg-dev debhelper autoconf automake libtool pkg-config docbook-to-man docbook2x libexpat1-dev=2.9.0-1~deb13u1 ca-certificates \
+    "$archives/libc6-dev_2.41-12+deb13u5_amd64.deb" "$archives/libc-dev-bin_2.41-12+deb13u5_amd64.deb" \
+  && rm -rf /var/lib/apt/lists/*
 COPY deploy/expat-remediation/ /opt/expat4/
 RUN python -I -B -S /opt/expat4/download.py /expat-materials
 # Only these pinned public inputs become traversable by the non-root GPG preflight.
@@ -23,21 +282,7 @@ RUN --network=none install -m 0755 /python-xml-build/pyexpat.cpython-312-x86_64-
 RUN --network=none python -I -B -S /opt/expat4/abi_gate.py capture /usr/share/pamolive/expat4/after && python -I -B -S /opt/expat4/abi_gate.py compare /expat-before.json /usr/share/pamolive/expat4/after/ABI.json
 RUN --network=none python -I -B -S /opt/expat4/qualify_linux.py /expat-materials /expat-tests
 
-FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS krb5-builder
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends build-essential curl ca-certificates gpgv debian-archive-keyring dpkg-dev devscripts quilt && rm -rf /var/lib/apt/lists/*
-COPY deploy/build-krb5.sh deploy/krb5-asn1-sequence.patch deploy/krb5-test-keyring-seccomp.patch deploy/check_krb5_asn1.sh deploy/krb5_inventory.py tests/fixtures/krb5_asn1_regression.c /build-fixtures/
-RUN sh /build-fixtures/build-krb5.sh fetch
-RUN python /build-fixtures/krb5_inventory.py --capture-baseline --output /usr/share/pamolive/krb5-backport/baseline.json
-RUN --network=none sh /build-fixtures/build-krb5.sh build
-
-FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS krb5-runtime
-COPY --from=krb5-builder /packages/runtime /tmp/pamolive-krb5-runtime
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends /tmp/pamolive-krb5-runtime/*.deb && rm -r /tmp/pamolive-krb5-runtime && rm -rf /var/lib/apt/lists/*
-COPY --from=krb5-builder /usr/share/pamolive/krb5-backport /usr/share/pamolive/krb5-backport
-COPY deploy/krb5_inventory.py /tmp/krb5_inventory.py
-RUN python /tmp/krb5_inventory.py --capture --output /usr/share/pamolive/krb5-backport/inventory.json && chmod 0444 /usr/share/pamolive/krb5-backport/inventory.json && rm /tmp/krb5_inventory.py
-
-FROM krb5-runtime AS expat-runtime
+FROM debian-runtime-openssl AS expat-runtime
 COPY --from=expat-source-builder /expat-packages/runtime/ /tmp/expat-runtime/
 RUN --network=none dpkg --install /tmp/expat-runtime/*.deb && rm -r /tmp/expat-runtime
 COPY --from=expat-python-builder /usr/local/lib/python3.12/lib-dynload/pyexpat.cpython-312-x86_64-linux-gnu.so /usr/local/lib/python3.12/lib-dynload/
@@ -54,16 +299,38 @@ RUN --network=none python -I -B -S /usr/local/libexec/pamolive-expat4/verify_run
 RUN --network=none find /usr/share/pamolive/expat4 -type d -exec chmod 0755 {} + && find /usr/share/pamolive/expat4 -type f -exec chmod 0444 {} +
 
 FROM expat-runtime AS expat-sdk
-RUN apt-get update && apt-get install -y --no-install-recommends libc6-dev && rm -rf /var/lib/apt/lists/*
+RUN --mount=from=debian-refresh-inputs,source=/opt/pamolive-apt-cache,target=/tmp/debian-refresh-archives,ro \
+  --mount=from=krb5-trixie-package,source=/work,target=/tmp/krb5-packages,ro \
+  --mount=from=openssl-trixie-package,source=/work,target=/tmp/openssl-packages,ro \
+  set -eu; \
+  archives=/tmp/debian-refresh-archives; krb=/tmp/krb5-packages; version='1.21.3-5+deb13u2+pamolive1'; \
+  ssl=/tmp/openssl-packages; ssl_version='3.5.9-1~deb13u1+pamolive2'; \
+  PYTHONPATH=/app python -B -S -P -m deploy.krb5_trixie_materials --directory "$krb" --sdk; \
+  PYTHONPATH=/app python -B -S -P -m deploy.openssl_trixie_materials --directory "$ssl" --sdk; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends --no-remove \
+    "$archives/libc6-dev_2.41-12+deb13u5_amd64.deb" "$archives/libc-dev-bin_2.41-12+deb13u5_amd64.deb" \
+    "$krb/libkrb5-dev_${version}_amd64.deb" "$krb/krb5-multidev_${version}_amd64.deb" \
+    "$krb/libgssrpc4t64_${version}_amd64.deb" "$krb/libkadm5clnt-mit12_${version}_amd64.deb" \
+    "$krb/libkadm5srv-mit12_${version}_amd64.deb" "$krb/libkdb5-10t64_${version}_amd64.deb" \
+    "$ssl/libssl-dev_${ssl_version}_amd64.deb"; \
+  rm -rf /var/lib/apt/lists/*
 COPY --from=expat-source-builder /expat-packages/sdk/ /tmp/expat-sdk/
 RUN --network=none dpkg --install /tmp/expat-sdk/*.deb && rm -r /tmp/expat-sdk
 
 FROM expat-sdk AS freerdp-builder
 ARG JANSSON_DEBIAN_VERSION
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends build-essential cmake pkg-config curl ca-certificates gnupg patchelf libssl-dev zlib1g-dev libjpeg62-turbo-dev libjansson-dev=${JANSSON_DEBIAN_VERSION} patch libicu-dev liburiparser-dev libcairo2-dev
-COPY --from=krb5-builder /packages/runtime /tmp/pamolive-krb5-runtime
-COPY --from=krb5-builder /packages/sdk /tmp/pamolive-krb5-sdk
-RUN apt-get install -y --no-install-recommends /tmp/pamolive-krb5-runtime/*.deb /tmp/pamolive-krb5-sdk/*.deb && rm -r /tmp/pamolive-krb5-runtime /tmp/pamolive-krb5-sdk && rm -rf /var/lib/apt/lists/*
+COPY --chmod=0444 deploy/cairo-headless/materials.sh deploy/cairo-headless/package.sha256 /opt/cairo-inputs/
+RUN --mount=from=cairo-trixie-package,source=/opt/cairo-build,target=/packages,ro \
+  cairo='1.18.4-1+pamolive13u1' \
+  && sh /opt/cairo-inputs/materials.sh verify-packages /packages \
+  && apt-get update && apt-get upgrade -y \
+  && apt-get install -y --no-install-recommends --no-remove build-essential cmake pkg-config curl ca-certificates gnupg patchelf zlib1g-dev libjpeg62-turbo-dev libjansson-dev=${JANSSON_DEBIAN_VERSION} patch libicu-dev liburiparser-dev \
+    "/packages/libcairo2_${cairo}_amd64.deb" "/packages/libcairo2-dev_${cairo}_amd64.deb" \
+    "/packages/libcairo-gobject2_${cairo}_amd64.deb" "/packages/libcairo-script-interpreter2_${cairo}_amd64.deb" \
+  && test "$(dpkg-query -W -f='${Version}' libcairo2-dev)" = "$cairo" \
+  && rm -rf /var/lib/apt/lists/*
+RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport --root / --sdk --output /tmp/debian-refresh-sdk.json && rm /tmp/debian-refresh-sdk.json
 COPY deploy/build-freerdp.sh /build-freerdp.sh
 RUN --network=none test "$(dpkg-query --show --showformat='${Version}' libexpat1)" = '2.10.0-1+pamolive2' && test "$(dpkg-query --show --showformat='${Version}' libexpat1-dev)" = '2.10.0-1+pamolive2'
 COPY deploy/freerdp-jansson-compat.patch /freerdp-jansson-compat.patch
@@ -71,7 +338,11 @@ RUN sh /build-freerdp.sh
 
 FROM freerdp-builder AS guacd-builder
 ENV PKG_CONFIG_PATH=/opt/pamolive-freerdp/lib/pkgconfig LD_LIBRARY_PATH=/opt/pamolive-freerdp/lib
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends libtool-bin libcairo2-dev libpng-dev libpango1.0-dev libssh2-1-dev uuid-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get upgrade -y \
+  && apt-get install -y --no-install-recommends --no-remove libtool-bin libcairo2-dev=1.18.4-1+pamolive13u1 libpng-dev libpango1.0-dev libssh2-1-dev uuid-dev \
+  && test "$(dpkg-query -W -f='${Version}' libcairo2)" = '1.18.4-1+pamolive13u1' \
+  && rm -rf /var/lib/apt/lists/*
+RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport --root / --sdk --output /tmp/debian-refresh-sdk.json && rm /tmp/debian-refresh-sdk.json
 COPY deploy/build-guacd.sh /build-guacd.sh
 COPY deploy/guacd-deny-rdp-redirection.patch /guacd-deny-rdp-redirection.patch
 COPY deploy/guacd-freerdp3-gdi-lifecycle.patch /guacd-freerdp3-gdi-lifecycle.patch
@@ -81,6 +352,10 @@ RUN sh /build-guacd.sh
 FROM expat-sdk AS directory-builder
 ARG LIBPQ_DEBIAN_VERSION
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends build-essential libldap2-dev libsasl2-dev libpq-dev=${LIBPQ_DEBIAN_VERSION} libpq5=${LIBPQ_DEBIAN_VERSION} && rm -rf /var/lib/apt/lists/*
+COPY --chmod=0444 deploy/sasl-rebuild/materials.sh deploy/sasl-rebuild/package.sha256 /opt/sasl-inputs/
+RUN --network=none --mount=from=sasl-trixie-package,source=/opt/sasl-build,target=/tmp/pamolive-sasl-build,ro \
+  sh /opt/sasl-inputs/materials.sh install-sdk /tmp/pamolive-sasl-build
+RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport --root / --sdk --output /tmp/debian-refresh-sdk.json && rm /tmp/debian-refresh-sdk.json
 RUN --network=none test "$(dpkg-query --show --showformat='${Version}' libexpat1)" = '2.10.0-1+pamolive2' && test "$(dpkg-query --show --showformat='${Version}' libexpat1-dev)" = '2.10.0-1+pamolive2'
 COPY requirements-bootstrap.lock requirements-python-runtime-linux.lock requirements-python-build-tools-linux.lock requirements-python-native-sources-linux.lock requirements-python-native-test-linux.lock /tmp/
 COPY deploy/python_materials.py deploy/python-materials.linux-amd64.json /tmp/
@@ -90,7 +365,14 @@ RUN --network=none export PIP_CONFIG_FILE=/dev/null PIP_DISABLE_PIP_VERSION_CHEC
 FROM expat-runtime AS runtime-build
 ARG JANSSON_DEBIAN_VERSION
 ARG LIBPQ_DEBIAN_VERSION
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends libcairo2 libpng16-16t64 libjpeg62-turbo libpango-1.0-0 libpangocairo-1.0-0 libssh2-1t64 libssl3t64 libjansson4=${JANSSON_DEBIAN_VERSION} libkrb5-3 libgssapi-krb5-2 libicu76 liburiparser1 zlib1g fonts-dejavu-core libldap2 libsasl2-2 libpq5=${LIBPQ_DEBIAN_VERSION} && rm -rf /var/lib/apt/lists/*
+COPY --chmod=0444 deploy/cairo-headless/materials.sh deploy/cairo-headless/package.sha256 /opt/cairo-inputs/
+RUN --mount=from=cairo-trixie-package,source=/opt/cairo-build,target=/packages,ro \
+  cairo='1.18.4-1+pamolive13u1' \
+  && sh /opt/cairo-inputs/materials.sh verify-packages /packages \
+  && apt-get update && apt-get upgrade -y \
+  && apt-get install -y --no-install-recommends --no-remove "/packages/libcairo2_${cairo}_amd64.deb" libpng16-16t64 libjpeg62-turbo libpango-1.0-0 libpangocairo-1.0-0 libssh2-1t64 libssl3t64 libjansson4=${JANSSON_DEBIAN_VERSION} libkrb5-3 libgssapi-krb5-2 libicu76 liburiparser1 zlib1g fonts-dejavu-core libldap2 libsasl2-2 libpq5=${LIBPQ_DEBIAN_VERSION} \
+  && test "$(dpkg-query -W -f='${Version}' libcairo2)" = "$cairo" \
+  && rm -rf /opt/cairo-inputs /var/lib/apt/lists/*
 COPY --from=freerdp-builder /opt/pamolive-freerdp/lib /opt/pamolive-freerdp/lib
 COPY --from=freerdp-builder /opt/pamolive-freerdp/share/pamolive-freerdp /opt/pamolive-freerdp/share/pamolive-freerdp
 COPY --from=guacd-builder /opt/pamolive-guac /opt/pamolive-guac
@@ -117,9 +399,54 @@ COPY platform_modules/ ./platform_modules/
 COPY templates/ ./templates/
 COPY tests/ ./tests/
 COPY third_party/ ./third_party/
+RUN --network=none --mount=from=sqlite-trixie-package,source=/opt/sqlite-build,target=/tmp/pamolive-sqlite-build,ro \
+  set -eu; \
+  package=/tmp/pamolive-sqlite-build/libsqlite3-0_3.54.1-2~pamolive13u1_amd64.deb; \
+  python -I -B -S deploy/sqlite-rebuild/check_runtime.py --package "$package"; \
+  dpkg --install "$package"; \
+  test -z "$(dpkg --audit)"; \
+  python -I -B -S deploy/sqlite-rebuild/check_runtime.py
+RUN --network=none --mount=from=acl-trixie-package,source=/opt/acl-build,target=/tmp/pamolive-acl-build,ro \
+  cd /tmp/pamolive-acl-build \
+  && sha256sum --check --strict /app/deploy/acl-rebuild/package.sha256 \
+  && dpkg --install libacl1_2.4.0-1~pamolive13u1_amd64.deb \
+  && test -z "$(dpkg --audit)"
+RUN --network=none --mount=from=sasl-trixie-package,source=/opt/sasl-build,target=/tmp/pamolive-sasl-build,ro \
+  sh deploy/sasl-rebuild/materials.sh install-runtime /tmp/pamolive-sasl-build
+RUN --network=none --mount=from=util-linux-trixie-export,source=/evidence,target=/packages,ro \
+  set -eu; \
+  python -B -m deploy.util_linux_trixie_materials --directory /packages; \
+  python -B -m deploy.util_linux_trixie_materials --privilege-profile >/tmp/privileged-before.json; \
+  sh /app/deploy/util-linux-trixie-backport/materials.sh install; \
+  apt-get check; \
+  python -B -m deploy.util_linux_trixie_materials --privilege-profile >/tmp/privileged-after.json; \
+  cmp /tmp/privileged-before.json /tmp/privileged-after.json; \
+  rm /tmp/privileged-before.json /tmp/privileged-after.json; \
+  install -d -m 0755 /usr/share/pamolive/util-linux-trixie; \
+  install -m 0444 deploy/util-linux-trixie-backport/qualification.json /usr/share/pamolive/util-linux-trixie/qualification.json
+RUN --network=none --mount=from=ncurses-trixie-export,source=/evidence,target=/packages,ro \
+  --mount=from=ncurses-trixie-export,source=/opt/ncurses-inputs,target=/opt/ncurses-inputs,ro \
+  (cd /packages && sha256sum --check --strict /app/deploy/ncurses-trixie-backport/package.sha256) \
+  && sh /opt/ncurses-inputs/materials.sh install \
+  && apt-get check \
+  && test -f /usr/bin/infocmp && test -x /usr/bin/infocmp && test ! -L /usr/bin/infocmp \
+  && sha256sum --check --strict deploy/ncurses-trixie-backport/installed.sha256 \
+  && install -d -m 0755 /usr/share/pamolive/ncurses-trixie \
+  && install -m 0444 deploy/ncurses-trixie-backport/qualification.json /usr/share/pamolive/ncurses-trixie/qualification.json
+RUN --network=none --mount=from=glibc-trixie-package,source=/work,target=/packages,ro \
+  set -eu; \
+  python -B -m deploy.glibc_trixie_materials --directory /packages; \
+  version='2.41-12+deb13u5+pamolive1'; \
+  dpkg --install "/packages/libc6_${version}_amd64.deb" "/packages/libc-bin_${version}_amd64.deb"; \
+  audit=$(dpkg --audit); test -z "$audit"; \
+  apt-get check; \
+  install -d -m 0755 /usr/share/pamolive/glibc-trixie; \
+  install -m 0444 deploy/glibc-trixie-backport/qualification.json /usr/share/pamolive/glibc-trixie/qualification.json
 RUN python deploy/native_inventory.py --capture --output /opt/pamolive-native-manifest.json
-RUN python deploy/krb5_inventory.py --verify --output /tmp/krb5-verification.json && rm /tmp/krb5-verification.json
 RUN python manage.py collectstatic --noinput
+USER 65534:65534
+RUN --network=none python -B -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport --util-linux-backport --glibc-backport --root / --output /tmp/debian-refresh-runtime.json && rm /tmp/debian-refresh-runtime.json
+RUN --network=none sha256sum --check --strict deploy/ncurses-trixie-backport/installed.sha256
 USER root
 EXPOSE 8000
 HEALTHCHECK --interval=20s --timeout=5s --start-period=20s CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/', timeout=4)"
@@ -161,6 +488,7 @@ RUN --network=none /opt/pamolive-test/winpr-jansson-regression > /opt/pamolive-t
 FROM native-test-builder AS json-reference-test
 ARG CJSON_REFERENCE_VERSION=1.7.18-3.1+deb13u1
 RUN apt-get update && apt-get install -y --no-install-recommends libcjson-dev=${CJSON_REFERENCE_VERSION} && rm -rf /var/lib/apt/lists/*
+RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport --root / --sdk --output /tmp/debian-refresh-sdk.json && rm /tmp/debian-refresh-sdk.json
 COPY tests/fixtures/json_backend_reference.c /tmp/json_backend_reference.c
 RUN cc -O2 -Wall -Wextra -Werror /tmp/json_backend_reference.c -o /tmp/json-backend-reference -Wl,-rpath,/opt/pamolive-freerdp/lib $(pkg-config --cflags --libs freerdp3 winpr3 jansson libcjson)
 RUN --network=none /tmp/json-backend-reference > /json-reference.jsonl && python /tmp/jansson_oracle_identity.py reference /reference-identity.json

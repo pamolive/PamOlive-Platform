@@ -1,0 +1,61 @@
+name: Kerberos Trixie 107778 backport qualification
+
+on:
+  push:
+    branches: [agent/krb5-trixie-107778-qualification, agent/krb5-trixie-product-runtime]
+
+permissions:
+  contents: read
+
+jobs:
+  krb5-trixie-backport:
+    if: github.repository == 'pamolive/PamOlive-Platform'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Authenticate and rebuild the Trixie source, then compare the native ABI
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          umask 077
+          context=$(mktemp -d "$RUNNER_TEMP/krb5-trixie-context.XXXXXX")
+          evidence="$RUNNER_TEMP/krb5-trixie-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          test ! -e "$evidence"
+          git archive "$GITHUB_SHA" qualification/krb5_trixie_backport \
+            deploy/krb5-trixie-backport/materials.sh deploy/krb5-trixie-backport/source.sha256 \
+            deploy/krb5-trixie-backport/test-patch.sha256 \
+            qualification/debian_138_refresh/smoke.c qualification/debian_138_refresh/verify_refresh.py \
+            deploy/krb5-test-keyring-seccomp.patch deploy/krb5-remediation/abi_data.py \
+            deploy/krb5-remediation/bounded_io.py deploy/krb5-remediation/common.py \
+            deploy/krb5-remediation/legacy_inventory.py deploy/krb5-remediation/source_model.py \
+            | tar -x -C "$context" --no-same-owner
+          docker build --platform linux/amd64 --no-cache --progress plain \
+            --target krb5-trixie-backport-evidence --output "type=local,dest=$evidence" \
+            --file "$context/qualification/krb5_trixie_backport/Dockerfile" "$context"
+          cmp <(find "$evidence" -mindepth 1 -printf '%f\n' | LC_ALL=C sort) - <<'EXPECTED'
+          buildinfo
+          candidate.json
+          krb5-multidev.deb
+          libgssapi-krb5-2.deb
+          libgssrpc4t64.deb
+          libk5crypto3.deb
+          libkadm5clnt-mit12.deb
+          libkadm5srv-mit12.deb
+          libkdb5-10t64.deb
+          libkrb5-3.deb
+          libkrb5-dev.deb
+          libkrb5support0.deb
+          qualification.json
+          skipped-tests.txt
+          stock.json
+          EXPECTED
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: krb5-trixie-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/krb5-trixie-${{ github.run_id }}-${{ github.run_attempt }}/
+          retention-days: 7
+          if-no-files-found: error

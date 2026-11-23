@@ -1,0 +1,47 @@
+{
+  "schema": "pamolive.glibc-trixie-product-materials/1",
+  "version": "2.41-12+deb13u5+pamolive1",
+  "native_qualification_sha256": "9621e73fd9218d26170a85643b2110415440f3ec3babcbe8f67aab3ca8cbf9cb",
+  "aliases": {
+    "/usr/lib64/ld-linux-x86-64.so.2": "../lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"
+  },
+  "installed_elf_sha256": {
+    "/usr/bin/getconf": "d4d34b9fbf7bf119c9cce4625b9d6a3e7e5a6cfdea4d39d4bd6759c2bb57c2e5",
+    "/usr/bin/getent": "c250703444164d4bddfe1ea7db0f982c85e58b838b4e68fb6297a4a30a868e7d",
+    "/usr/bin/iconv": "8b5bfedeb65aa8b012898205bd47b731cde88978ae1d5954b4081aac19aa24d7",
+    "/usr/bin/locale": "78fdaf8b05d60f1066b567defcf8f701967e1ec20958c9c34fdf9a8aef913979",
+    "/usr/bin/localedef": "bfb386f533f264ecd56708361a6a2f6423757682a95b0d629cfc05add7b0ff31",
+    "/usr/bin/pldd": "8d7e3e8d257b62cad3ae90ce16ac3a9776fed772bf37c3df072e0d8bd9f154f7",
+    "/usr/bin/zdump": "2f71f98d0765991483542528042e7b8326948a472d24eb8e2a4227c692711dd8",
+    "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2": "722ba2290e0326ca990d308efa60bf6fbb5e41d1e31c25cf63ecac0a145476c5",
+    "/usr/lib/x86_64-linux-gnu/libc.so.6": "02de49443f2d39fdb5304c4c036f2533ba527b73398754cd3f5a95ca9fd35c07",
+    "/usr/lib/x86_64-linux-gnu/libresolv.so.2": "4e4dacbfc4a346b8ec1ac2a5ebed3899a00352824a3b6a703ff695053c7c1078",
+    "/usr/sbin/iconvconfig": "69f79ebb6f6c0c98ccf9b82c6bdc1b3e5b6ee3842979862994de704c3f814592",
+    "/usr/sbin/ldconfig": "627f3ad157629c48039b5596d47400600edc654bb1154a683653220d174016d0",
+    "/usr/sbin/zic": "47d4e1e253866d744d3c0fc54de9c57622e35ec7ad4686c852515f4bae1f0b7f"
+  },
+  "packages": {
+    "libc-bin": {
+      "bytes": 639152,
+      "sha256": "c5fcd30ea4e2c0e1fb32494b2ebc90627bd5b4631e08f1559706cb48f970685d"
+    },
+    "libc-dev-bin": {
+      "bytes": 60660,
+      "sha256": "b72d0c72676355b74c2ff369b435845728608c829e3e18641245eeb821db2d6e"
+    },
+    "libc6": {
+      "bytes": 2852900,
+      "sha256": "f27930be25a181e729177b0a3080baa92360160867de03ac04a62f4f729bd4c4"
+    },
+    "libc6-dev": {
+      "bytes": 1990376,
+      "sha256": "26ad633d86a686bdf4a96f3f04e07c225ee6ad32a420897ed6adba55a987eee0"
+    }
+  },
+  "qualification": {
+    "artifact_digest": "sha256:c5c126752d43d6cc1ac0f10f414c966f0cfdb0b4b226943d28c8888244d756a9",
+    "artifact_id": "14841015571",
+    "commit": "45f635aca519ff9306e3ea3c8bf22376041027b7",
+    "run_id": "45208518662"
+  }
+}

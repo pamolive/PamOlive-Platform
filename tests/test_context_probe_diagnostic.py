@@ -16,6 +16,7 @@ from tests import test_sealed_build_context as memory
 class ContextProbeDiagnosticTests(TestCase):
     def setUp(self):
         self.model = memory.SealedContextTests("runTest")
+        self.addCleanup(self.model.doCleanups)
         self.model.setUp()
         self.fs = self.model.fs
         self.argv = [

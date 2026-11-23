@@ -1,0 +1,51 @@
+{
+  "dane_source": {
+    "advisory": "CVE-2026-84786",
+    "delta_sha256": "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672",
+    "path": "crypto/x509/x509_vfy.c",
+    "review_url": "https://github.com/openssl/openssl/pull/33634",
+    "schema": "pamolive.openssl-dane-source/1",
+    "source_status": "proposed_upstream",
+    "trixie_postimage_sha256": "0ef96f292f8fc84e01bc1486bcc9fc6cc52fd0b79930725aa24501fcd16eeccb",
+    "trixie_preimage_sha256": "1c825c2b2f17a1f6c47d3fba483fb4cae540d1dc29f6786f8f45d8f1940907bd",
+    "upstream_ancestor": "39ca9f8824c065bae773e603d5b9547855d0b6ce",
+    "upstream_ancestor_sha256": "0981559c994e80d56fc368ed42dfa356c36a4a5159548b0d9f73e114dbafda99",
+    "upstream_head": "d54155a80a4fa8d2ebc2a5a850e7ea8270818217",
+    "upstream_head_sha256": "bdc2d2bf569bcd3894f76dc46c1d7b18a76ff9fa7e7d24254784485340d2fb16"
+  },
+  "installed_elf_sha256": {
+    "/usr/bin/openssl": "238d03b1d3a7f5aa3c9cf8171d483a32c227df0f5a606a55ab31f154c8aa60be",
+    "/usr/lib/x86_64-linux-gnu/libcrypto.so.3": "b4303b879371d7b79a662fdb5c4f7d27b02382292669d5cb19c908a3670db25c",
+    "/usr/lib/x86_64-linux-gnu/libssl.so.3": "327e3c6a8728f6213c5c3aaf9f8dd44f91bc862e7266277d451b70778332c169",
+    "/usr/lib/x86_64-linux-gnu/ossl-modules/legacy.so": "47af7436924d44b49719792780eaee3c472df720908cb969f00c940c219cba45"
+  },
+  "native_receipt_sha256": "53d040d317848ab6c120d087d383196860498f8326e46124e0b5660855e9ec18",
+  "packages": {
+    "libssl-dev": {
+      "bytes": 2977392,
+      "sha256": "68974dfe9d99c6d9ec86b40b16a52519654a5451b8995d1a3d1e00bb5510683c"
+    },
+    "libssl3t64": {
+      "bytes": 2464936,
+      "sha256": "44789125c3b4c61467d48b17bd6ae73018bd018126c38bca450e190ee7597b38"
+    },
+    "openssl": {
+      "bytes": 1519144,
+      "sha256": "d5185b3b2d9ac4c3e3238609925d7cc95109a8e52a4ab49ba9bb59792221e63f"
+    },
+    "openssl-provider-legacy": {
+      "bytes": 322484,
+      "sha256": "cf54f60c726402980ab69d316d335d8e73f6a52b726dadce565887f0664c49c5"
+    }
+  },
+  "qualification": {
+    "artifact_digest": "sha256:20a7792ecc283e3e329400df242749cfadee16ae26381be14d35a7f0a7d2ae9c",
+    "artifact_id": 14853358671,
+    "commit": "75edab93949ed2b313318b0460708f534e96ef18",
+    "run_id": 45243975566
+  },
+  "schema": "pamolive.openssl-trixie-materials/2",
+  "source": "openssl",
+  "test_summary_sha256": "1493b7fbb820be62ae136899b0406a5f79eac103cd8cbaab74fa31d015a29f78",
+  "version": "3.5.9-1~deb13u1+pamolive2"
+}

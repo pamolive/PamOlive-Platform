@@ -1,6 +1,191 @@
 # Roadmap d’implémentation et qualification
 
+## Prochaines qualifications P1-F et P1-G
+
+Le scan de la branche de la PR #81 conserve 43 groupes High et
+en refuse sept. Les candidats suivants doivent vérifier sur leur propre
+TAR les paquets glibc, le backport `infocmp` et les dépendances directes
+des binaires qui restent à attribuer. Le résultat du scan de la PR #81
+constitue une preuve propre à ce candidat.
+[Scan de référence](https://github.com/pamolive/PamOlive-Platform/actions/runs/45212387600/artifacts/14842681978) ·
+[ADR ncurses-bin](adr-044-ncurses-bin-trixie-backport.md) ·
+[Inventaire ELF](https://github.com/pamolive/PamOlive-Platform/pull/87)
+
+Pour P1-G, la PR #92 a validé le navigateur sous sandbox non-root
+avec PostgreSQL dans le même espace réseau. Le nouveau banc ajoute
+guacd à cet espace pour tester la demande, les votes, le transport SSH
+et l'arrêt administratif depuis le portail, lecteur ouvert. Le scénario
+RDP réutilise le même portail et ajoute un pair FreeRDP synthétique.
+Il attend la preuve NLA, le rendu du navigateur après une touche et
+la fermeture de la même connexion avant d'admettre le reçu. Les
+parcours de gouvernance restants et la compatibilité Windows ont
+leurs propres qualifications.
+[Admission Chromium et PostgreSQL](https://github.com/pamolive/PamOlive-Platform/pull/92) ·
+[Raccord SSH](../qualification/p1g_headless/NEXT-NATIVE.md)
+
+## Image intégrée — qualification des dépendances Trixie
+
+Les deux scans de la PR #68 ont observé 39 groupes High. Seize sont
+couverts par des décisions vérifiées sur l'image. Les 23 autres ont
+bloqué ce candidat. La PR #69 installe les paquets `util-linux` et
+a terminé la qualification fonctionnelle de l'image. Le scan PR
+retient 27 groupes bloquants, dont huit observations `util-linux`
+sur les deux périmètres. La PR #70 ajoute trois décisions SQLite
+liées aux binaires reconstruits. Le candidat suivant soumet quatre
+décisions Expat et huit décisions util-linux à la vérification
+dans l'image exacte. Une publication doit passer le scan et les
+contrôles de restauration de sa propre CI.
+[Scan #68](https://github.com/pamolive/PamOlive-Platform/actions/runs/45147243883/artifacts/14808542038) ·
+[Runtime util-linux](https://github.com/pamolive/PamOlive-Platform/pull/69) ·
+[Décisions SQLite](https://github.com/pamolive/PamOlive-Platform/pull/70) ·
+[Politique image](image-scan-policy.md)
+
+## P2 — Checkpoint signé et candidat de livraison intégré
+
+Les PR nº 47 à 49 ajoutent la signature externe du checkpoint, sa conservation
+sans remplacement et son transfert vérifié vers un second runner. Le candidat
+intégré associe ces étapes de reprise PostgreSQL à la composition native Cairo
+de la PR nº 58. La campagne suivante doit vérifier la reprise sur la révision
+intégrée et scanner l'image exacte avant toute fusion de livraison ou
+publication. La reprise sur plusieurs hôtes administrés séparément, la rotation
+des clés du témoin et la conservation opérationnelle des archives restent à
+qualifier pour P2.
+[Transfert du checkpoint](https://github.com/pamolive/PamOlive-Platform/pull/49) ·
+[Cairo produit](https://github.com/pamolive/PamOlive-Platform/pull/58)
+
+## Intégration du témoin et de l'image Debian — 23 novembre 2026
+
+Le candidat de livraison rassemble la reprise du témoin de la PR nº 43 et le
+build Debian de la PR nº 42. La campagne d'archive vérifie les pages restaurées
+à partir d'une référence capturée sur le témoin original. La campagne de
+livraison doit maintenant vérifier le candidat intégré sur PostgreSQL et
+scanner l'image exacte. La fermeture des findings et l'attestation de build
+restent requises avant la fusion et la publication.
+[PR nº 43](https://github.com/pamolive/PamOlive-Platform/pull/43) ·
+[PR nº 42](https://github.com/pamolive/PamOlive-Platform/pull/42)
+
+## Reprise physique du témoin à un point nommé — 23 novembre 2026
+
+La [PR nº 40](https://github.com/pamolive/PamOlive-Platform/pull/40) qualifie
+sur `eb1eba8` la sauvegarde physique, l'archivage des WAL et le PITR du témoin.
+Le rejeu s'arrête au point nommé après fermeture du bail. Une transaction
+archivée plus tard est absente. La consultation mTLS, la nouvelle timeline,
+les 77 tests installés et les 35 scénarios natifs sont vérifiés. Le test
+utilise un seul hôte et des archives éphémères. La conservation durable des
+archives et la reprise multi-hôte restent à qualifier.
+[CI PITR](https://github.com/pamolive/PamOlive-Platform/actions/runs/45086358011)
+
+## Reprise après arrêt du cluster du témoin — 23 novembre 2026
+
+La [PR nº 39](https://github.com/pamolive/PamOlive-Platform/pull/39) qualifie
+sur `8da2d76` la reprise logique sur un cluster PostgreSQL neuf, après arrêt
+du cluster source. Le témoin restauré consulte le reçu d'origine sous un
+compte SQL observateur doté de nouveaux justificatifs. Le bail reste fermé
+et le port PostgreSQL source reste inaccessible. Les 77 tests installés,
+35 scénarios natifs et six constats SQL passent. Le PITR ci-dessus prolonge
+cette preuve de restauration logique. La rotation du certificat applicatif
+et la reprise multi-hôte restent ouvertes.
+[CI de reprise](https://github.com/pamolive/PamOlive-Platform/actions/runs/45085143496)
+
+## Restauration logique du témoin — 23 novembre 2026
+
+La [PR nº 38](https://github.com/pamolive/PamOlive-Platform/pull/38) qualifie
+sur `b4ff379` une restauration en consultation d'un témoin fermé vers une
+base neuve du même cluster. La campagne PostgreSQL 17.12 et mTLS confirme
+77 tests installés, 34 scénarios natifs, quatre contrôles du stockage et le
+nettoyage. Le reçu d'origine reste exact et les routes d'écriture restent
+fermées. La campagne ci-dessus étend cet essai au remplacement du cluster
+sur le même hôte.
+[CI de restauration](https://github.com/pamolive/PamOlive-Platform/actions/runs/45084090436)
+
+## Redémarrage du témoin en consultation seule — 23 novembre 2026
+
+La [PR nº 37](https://github.com/pamolive/PamOlive-Platform/pull/37) qualifie
+sur `7d37e0d` le refus du démarrage ordinaire et le redémarrage d'un processus
+de consultation avec un compte PostgreSQL observateur. Les 77 tests installés
+et 28 scénarios natifs passent. La lecture rend le reçu exact et les routes
+d'écriture sont bloquées. La campagne de restauration ci-dessus prolonge
+cette preuve de redémarrage.
+[CI de redémarrage](https://github.com/pamolive/PamOlive-Platform/actions/runs/45081802652)
+
+## Consultation historique du témoin — 23 novembre 2026
+
+La [PR nº 36](https://github.com/pamolive/PamOlive-Platform/pull/36) qualifie
+sur `c1f8017` la lecture authentifiée d'un reçu après fermeture de Vault et
+du bail W. Les 70 tests installés et les 24 contrôles natifs passent sur un
+runner. Les lectures préservent l'état des deux bases. Le redémarrage en
+contexte fermé, la rotation de l'identité de consultation, le listener Vault
+séparé et la reprise multi-hôte restent à qualifier.
+[CI de consultation](https://github.com/pamolive/PamOlive-Platform/actions/runs/45080374417/attempts/2)
+
+## Fermeture concurrente du Vault — 22 novembre 2026
+
+La [PR nº 35](https://github.com/pamolive/PamOlive-Platform/pull/35) qualifie
+la fermeture du commissionnement Vault sur `0d8b7cc`. Les huit contrôles
+natifs vérifient la fermeture après réponse W, la perte de réponse, les refus
+avant envoi et la conservation des preuves sans remise de secret. Les
+62 tests installés et les neuf contrôles W01 passent sur les mêmes deux
+clusters PostgreSQL 17.12. La consultation historique authentifiée, la
+révocation du bail W et la qualification multi-hôte restent à réaliser.
+[CI de fermeture](https://github.com/pamolive/PamOlive-Platform/actions/runs/45079293012)
+
+## Qualification native du témoin W01 — 22 novembre 2026
+
+La [PR nº 34](https://github.com/pamolive/PamOlive-Platform/pull/34) qualifie
+W01 sur le candidat `1756244`. La CI passe 62 tests hors ligne depuis la wheel
+et neuf scénarios natifs avec deux clusters PostgreSQL 17.12 neufs et le témoin
+mTLS. Elle vérifie les refus de provenance et de permissions, les terminaux,
+les relectures identiques, les miroirs et le nettoyage des ressources. Reste à
+qualifier le listener Vault séparé, les scénarios de reprise W04 à W08 et
+l'indépendance multi-hôte.
+[CI W01](https://github.com/pamolive/PamOlive-Platform/actions/runs/45078177751)
+
+Sur la [PR nº 32](https://github.com/pamolive/PamOlive-Platform/pull/32), les
+deux CI de `12c705b` passent SSH natif. La politique d'image refuse 37 groupes
+High identiques, sans exemption. L'image reste en qualification.
+[CI PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/44299357657) ·
+[CI branche](https://github.com/pamolive/PamOlive-Platform/actions/runs/44299350264)
+
+## Prérequis de livraison Debian 13.8 — 23 novembre 2026
+
+La [PR nº 41](https://github.com/pamolive/PamOlive-Platform/pull/41) valide
+sur `31d52f0` l'installation des paquets officiels Kerberos et glibc sur la
+base amd64 du produit. L'essai de compilation et de chargement compare les
+six ELF aux archives Debian. Les avis couvrent huit des 37 groupes High
+de l'ancien scan. La composition de l'image, les régressions natives et
+le nouveau scan déterminent l'état des findings du candidat suivant.
+[CI Debian 13.8](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087805069)
+
+La [PR nº 32](https://github.com/pamolive/PamOlive-Platform/pull/32) reçoit
+`b9d8044`. Ce commit actualise un numéro de ligne dans le catalogue de
+secrets. Le scan complet indépendant et les deux jobs de sécurité passent.
+La qualification de l'image reste une porte distincte.
+[CI PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087533213)
+[CI branche](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087528395)
+
 ## Livraison du code de développement — 17 novembre 2026
+
+## Prochaine mesure limitée — 18 novembre 2026
+
+Publier le delta R13 après revue du profil stage-only exact, fermeture de ses
+pins et régression CI persistante. La première mesure Linux autorisée par
+l'[ADR-036](adr-036-authenticated-browser-test-bundle.md) est uniquement une copie
+privée 0700, vérification et nettoyage du préfixe possédé. Elle répète toutes
+les authentifications et refuse toute dérive, expiration, état inconnu ou
+nettoyage incomplet. Aucun payload/helper/navigateur n'est exécuté.
+
+Même en cas de cycle positif, conserver HOLD42 et l'étape UI historique : le job
+reste non qualifié pour le parcours complet. Phase B devra vérifier séparément
+la relocalisation, le sandbox actif et AppArmor avant l'UI. Les 223 tests Chrome
+et 14 contrats UI locaux ne remplacent pas ces mesures.
+
+La PR #29 OpenSSL a reçu ses propres tests Linux/PostgreSQL/Directory, puis deux
+refus stricts de scan à 37 groupes. Poursuivre ses remédiations et les autres
+travaux réalisables sans promouvoir une image non qualifiée ni contacter le NAS.
+Main reçu reste `3532232`. Les paragraphes suivants sont des notes historiques
+liées à leurs révisions, sans transfert automatique de leurs résultats.
+
+## Historique de livraison du code de développement — 17 novembre 2026
 
 À la demande explicite du propriétaire, la capture Expat APT et ses diagnostics
 sont intégrés à main avec le contrat de contexte typé et le diagnostic navigateur.
@@ -702,6 +887,11 @@ durable aboutissent seulement à `pending_proofs`, sans secret ni autorité d'ac
 Pas de migration Django, service de production ou image minimale. Les tests
 installés reçus ensuite sur `27cf3b4` ne qualifient pas ce parcours SQL/mTLS.
 
+Le transfert privé des wheels vérifiées prépare la suite sur CI. Le laboratoire
+de réception consommera les trois mêmes wheels et le descripteur associé après
+validation du parcours hors réseau et du nettoyage du producteur. La prochaine
+porte reste la réception du profil installé avec PostgreSQL neuf et mTLS.
+
 La réception des deux cas confirme les faits H1, 190 clients CLI récoltés/drainés,
 six stdin complets et nettoyage 4/3/1, lease libre et PG inchangé. Les 18 retours
 non nuls sont des sondes readiness avant succès ; les quatre exits 137 sans OOM
@@ -855,3 +1045,33 @@ Les quatorze nouveaux tests purs passent sans skip et disposent de leur job CI.
 Les résultats PostgreSQL et scans cités dans ce rapport sont liés à leur SHA ;
 la nouvelle fusion doit recevoir sa propre CI. Aucun déploiement ni image
 nouvelle qualifiée ne résulte de cette publication de code.
+
+
+## Validation exacte de main 3532232
+
+Le [rapport de validation](validation-main-3532232.md) recense l'erreur de
+fixture de la suite PostgreSQL (1 747 tests, une erreur, 42 skips), les suites
+dediees reussies et les etapes image non atteintes. Le correctif de fixture
+Python conserve la garde d'execution et ajoute deux regressions ; 84 tests purs
+passent sous les deux modes de lancement. La réception du commit corrigé est
+décrite ci-dessous. Les observations du runner et l'essai Expat C4 sont presentes
+avec leurs identites distinctes, sans qualification ou image nouvelle induite.
+
+## Prochaines portes de qualification — 18 novembre 2026
+
+Les deux CI de `96f7fa7` ont validé la suite PostgreSQL et Directory ; leurs
+scans image restent bloquants sur 35 groupes. Voir les identités et compteurs
+exacts dans [la validation](validation-main-3532232.md). La PR #27 reste une
+correction de fixture, sans transfert de qualification vers un nouveau SHA.
+
+Publier le candidat SOURCE R12 de [l'ADR-036](adr-036-authenticated-browser-test-bundle.md)
+sur la branche de qualification du navigateur. Recevoir sa propre mesure
+Linux : inventaire authentifié, ou refus borné d'une extension non admise.
+Conserver le profil non commissionné et refuser avant staging/UI. Examiner
+ensuite ressources, rôle sandbox et contraintes de relocalisation avant toute
+admission explicite. Les 196 tests Chrome, 14 contrats UI et dix défis de revue
+ne remplacent pas le parcours réel TLS/MFA/WebAuthn et multi-organisations.
+
+En parallèle, poursuivre les remédiations des bibliothèques système et les
+revues indépendantes. Aucun passage de ces portes ne découle de la seule
+publication du code ; aucune nouvelle image ni installation NAS n'est admise.

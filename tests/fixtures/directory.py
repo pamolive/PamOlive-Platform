@@ -30,6 +30,9 @@ class GraphPeer:
         self.pin = hashlib.sha256(certificate.public_bytes(serialization.Encoding.DER)).hexdigest()
         self.tenant_id, self.requests, self.pages = tenant_id, [], []
         self.redirect = None
+        self.error_status = None
+        self.interrupt_response = False
+        self.chunked_response = False
         self.server = _TLSServer(("127.0.0.1", 0), self.handler())
         self.server.socket = context.wrap_socket(self.server.socket, server_side=True)
         self.url = f"https://localhost:{self.server.server_port}/v1.0/users"
@@ -61,6 +64,9 @@ class GraphPeer:
                     self.send_header("Location", peer.redirect)
                     self.end_headers()
                     return
+                if peer.error_status is not None:
+                    self.send_error(peer.error_status)
+                    return
                 if urlsplit(self.path).path == "/v1.0/organization":
                     value = {"value": [{"id": peer.tenant_id}]}
                 elif peer.pages:
@@ -68,10 +74,17 @@ class GraphPeer:
                 else:
                     value = {"value": []}
                 body = json.dumps(value).encode()
+                if peer.chunked_response:
+                    self.protocol_version = "HTTP/1.1"
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
+                if peer.chunked_response:
+                    self.send_header("Transfer-Encoding", "chunked")
+                    self.end_headers()
+                    self.wfile.write(f"{len(body):x}\r\n".encode("ascii") + body + b"\r\n0\r\n\r\n")
+                    return
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
-                self.wfile.write(body)
+                self.wfile.write(body[: len(body) // 2] if peer.interrupt_response else body)
 
         return Handler

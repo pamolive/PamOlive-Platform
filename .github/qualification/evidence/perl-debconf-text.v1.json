@@ -1,0 +1,68 @@
+{
+  "schema": "pamolive.debconf-text-homonyms.v1",
+  "architecture": "all",
+  "deb_bytes": 121088,
+  "deb_sha256": "1ddc7e6c5925f748eefb7ca811d98e049f18c158bb21fbc7e122262ce6011e49",
+  "deb_url": "https://deb.debian.org/debian/pool/main/d/debconf/debconf_1.5.91_all.deb",
+  "files": {
+    "/usr/share/perl5/Debconf/Element/Dialog/Text.pm": {
+      "bytes": 340,
+      "gid": 0,
+      "mode": 420,
+      "module": "Debconf::Element::Dialog::Text",
+      "sha256": "58f7fd84f1bb43f997ed248b21eceb319be83029d0e92e321e6b359507fa5052",
+      "uid": 0
+    },
+    "/usr/share/perl5/Debconf/Element/Editor/Text.pm": {
+      "bytes": 326,
+      "gid": 0,
+      "mode": 420,
+      "module": "Debconf::Element::Editor::Text",
+      "sha256": "2c3949a7aeeea2202c99aa158b269fd8980c2313d96c9559c8efe8c436f8c2b4",
+      "uid": 0
+    },
+    "/usr/share/perl5/Debconf/Element/Gnome/Text.pm": {
+      "bytes": 301,
+      "gid": 0,
+      "mode": 420,
+      "module": "Debconf::Element::Gnome::Text",
+      "sha256": "04d3e093b9bb5b054a0f6b30c343d7f469106427b3706a6a2f1d66747db04293",
+      "uid": 0
+    },
+    "/usr/share/perl5/Debconf/Element/Noninteractive/Text.pm": {
+      "bytes": 237,
+      "gid": 0,
+      "mode": 420,
+      "module": "Debconf::Element::Noninteractive::Text",
+      "sha256": "c71f33fce010170d5f914d2dbf15f0e4b7bc1b96b1dde51f26853d5fb31ce7f1",
+      "uid": 0
+    },
+    "/usr/share/perl5/Debconf/Element/Teletype/Text.pm": {
+      "bytes": 326,
+      "gid": 0,
+      "mode": 420,
+      "module": "Debconf::Element::Teletype::Text",
+      "sha256": "21204c75925e1c4f42eb30f9ad0ffc17ec51e23dd64b5b19e41388be91adf60b",
+      "uid": 0
+    },
+    "/usr/share/perl5/Debconf/Element/Web/Text.pm": {
+      "bytes": 326,
+      "gid": 0,
+      "mode": 420,
+      "module": "Debconf::Element::Web::Text",
+      "sha256": "142e2c3004fb2d0c42e6a0093aabcbf15ebcceba5d1db43de0f69541597faff4",
+      "uid": 0
+    },
+    "/usr/share/perl5/Debconf/FrontEnd/Text.pm": {
+      "bytes": 166,
+      "gid": 0,
+      "mode": 420,
+      "module": "Debconf::FrontEnd::Text",
+      "sha256": "e0aac882da15de83d9eb5306d9f0b86f1418821d67924d647e109faafd30855f",
+      "uid": 0
+    }
+  },
+  "version": "1.5.91",
+  "source": "https://packages.debian.org/trixie/all/debconf/filelist",
+  "observed_debian_sbom_artifact": 14834239768
+}

@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "pamolive-usage-anchor"
 version = "0.1.0a1"
 description = "Independent usage/counter authority; no secret release"
+readme = "README.md"
 requires-python = ">=3.12"
 license = "AGPL-3.0-or-later"
 dependencies = [

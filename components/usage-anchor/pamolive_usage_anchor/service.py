@@ -28,10 +28,13 @@ from .codec import (
     need,
     parse,
     sha,
+    terminal_receipt,
     unb64,
     uuid,
 )
 from .proofs import final_proofs, verify
+
+OBSERVE_TERMINAL = "/v1/operations/observe-terminal"
 
 
 def check_snapshot(snap, selected, states):
@@ -53,21 +56,14 @@ def check_snapshot(snap, selected, states):
         )
 
 
-class Service:
-    def __init__(self, authority, ledger, clock=None):
-        self.authority, self.ledger = authority, ledger
+class HistoryService:
+    def __init__(self, guard, ledger, clock=None):
+        self.guard, self.ledger = guard, ledger
         self.clock = clock or (lambda: int(time.time()))
 
     def dispatch(self, route, raw, der):
         try:
-            actions = {
-                "/v1/operations/bind": self.bind,
-                "/v1/operations/consume": self.consume,
-                "/v1/activations/begin": self.begin_activation,
-                "/v1/activations/finish": self.finish_activation,
-            }
-            need(route in actions)
-            return actions[route](raw, der)
+            return self._dispatch(route, raw, der)
         except Error as error:
             code, status = error.code, error.status
         except ContractError:
@@ -78,10 +74,59 @@ class Service:
             code, status = "unavailable", 503
         raise Error(code, status) from None
 
+    def _dispatch(self, route, raw, der):
+        need(route == OBSERVE_TERMINAL, "context_refused", 403)
+        return self.observe_terminal(raw, der)
+
     def _caller(self, der, purpose):
-        slot = self.authority.guard.check()
+        slot = self.guard.check()
         now = integer(self.clock())
         return slot, slot.peer(der, now, purpose), now
+
+    def observe_terminal(self, raw, der):
+        """Read an existing receipt in W even when the operation lease is closed."""
+        purpose = "usage-anchor.vault/1"
+        slot, peer, _ = self._caller(der, purpose)
+        value = bundle(raw)
+        final_digest = final_assertions_digest(raw)
+        row = self.ledger.read_terminal(slot, peer, value["operation_id"])
+        need(row is not None, "context_refused", 403)
+        need(
+            row["body_hash"] == value["body_hash"]
+            and row["final_digest"] == final_digest
+            and bytes(row["final_bundle"]) == raw,
+            "idempotency_conflict",
+            409,
+        )
+        response = bytes(row["terminal_response"])
+        terminal = terminal_receipt(
+            response,
+            reservation_id=str(row["reservation_id"]),
+            operation_id=value["operation_id"],
+            body_hash=value["body_hash"],
+            final_digest=final_digest,
+        )
+        need(terminal["state"] == row["state"], "context_refused", 403)
+        current_slot, current_peer, _ = self._caller(der, purpose)
+        need((current_slot, current_peer) == (slot, peer), "context_refused", 403)
+        return 200, response
+
+
+class Service(HistoryService):
+    def __init__(self, authority, ledger, clock=None):
+        super().__init__(authority.guard, ledger, clock)
+        self.authority = authority
+
+    def _dispatch(self, route, raw, der):
+        actions = {
+            "/v1/operations/bind": self.bind,
+            "/v1/operations/consume": self.consume,
+            OBSERVE_TERMINAL: self.observe_terminal,
+            "/v1/activations/begin": self.begin_activation,
+            "/v1/activations/finish": self.finish_activation,
+        }
+        need(route in actions)
+        return actions[route](raw, der)
 
     def _check(self, slot, peer, der, tx, end, draft=None):
         now = integer(self.clock())

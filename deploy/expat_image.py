@@ -25,6 +25,22 @@ PATHS = [
     )
 ]
 PATHS.append("/var/lib/dpkg/status")
+SOURCE_AUDIT = PREFIX + "source-audit.json"
+REBUILD_VERSION = "2.10.0-1+pamolive2"
+SOURCE_AUDIT_SHA256 = "3ac295e87e7cc8c0d9c92ecc18b18ad6c2a89b2da6955c6e93fcf091b369a156"
+SOURCE_REBUILD_SHA256 = "96dc874aaa9d48cddea9eb926c3fd0d1839bddcf67abcfe41e99ed0cc2af79f0"
+REVIEWED_ELF = {
+    "_elementtree": "08986d651312fef49e9c2450193d7ceecb43b65605ce880c96051953cc0a6629",
+    "libexpat.so.1": "4bea107cfb1ec4dcbe2bc0062967cd8ee1df80f830da203dc60b477bc8beecef",
+    "libexpatw.so.1": "d1d98efa5cfd37046f66e8f065e927667548147e78a0780bf6642b0776a9cd03",
+    "pyexpat": "4e9d0af8b9b0af4bb998f0bff493d608adebe11f534fc5d771e860cf1b2f9e92",
+}
+REVIEWED_OLD_ELF = {
+    "36e7e50d21edcabed383bfddc594bb261c1c7cce456afdf23c5f53e849cda67c",
+    "47441b4b394664b6efd5b4ad6780a627962d4f105fcc8407929175fce0c0b013",
+    "5c099081b395cf25acfca1feda283c6730dc3647a70f3221f4d95b48fffe0219",
+    "c57ac6e6d574898e3b38e82217264b7a5da9531fd0b98fb82577a9f69512accf",
+}
 MODULES = {
     "pyexpat": "/usr/local/lib/python3.12/lib-dynload/pyexpat.cpython-312-x86_64-linux-gnu.so",
     "_elementtree": (
@@ -88,7 +104,7 @@ def check_package(raw):
         matches.append(fields)
     gate.require(
         len(matches) == 1
-        and matches[0].get("Version") == "2.10.0-1+pamolive2"
+        and matches[0].get("Version") == REBUILD_VERSION
         and matches[0].get("Status") == "install ok installed"
         and matches[0].get("Architecture") == "amd64",
         "expat_dpkg_identity",
@@ -146,17 +162,46 @@ def check_source_rebuild(value):
         type(rows) is list
         and len(rows) == 2
         and {r.get("package") for r in rows} == {"libexpat1", "libexpat1-dev"}
-        and all(r.get("version") == "2.10.0-1+pamolive2" for r in rows),
+        and all(r.get("version") == REBUILD_VERSION for r in rows),
         "expat_local_rebuild_packages",
     )
     gate.require(value.get("fixed4_admitted") is False, "expat_local_rebuild_authority")
+
+
+def check_reviewed_rebuild(facts, active, source):
+    from qualification.debian_138_refresh.verify_refresh import controls
+
+    gate.require(SOURCE_AUDIT in facts.captured, "expat_source_audit_missing")
+    audit = facts.captured[SOURCE_AUDIT]
+    gate.require(
+        0 < len(audit) <= 64 * 1024 and hashlib.sha256(audit).hexdigest() == SOURCE_AUDIT_SHA256,
+        "expat_source_audit_changed",
+    )
+    gate.require(
+        {name: row["sha256"] for name, row in active.items()} == REVIEWED_ELF,
+        "expat_reviewed_ELF",
+    )
+    gate.require(
+        hashlib.sha256(gate.canonical(source).encode()).hexdigest() == SOURCE_REBUILD_SHA256,
+        "expat_reviewed_rebuild",
+    )
+    rows = [row for row in controls(facts.captured[PATHS[-1]]) if (
+        row.get("Package") in {"libexpat1", "libexpat1-dev"}
+        or row.get("Source", row.get("Package", "")).partition(" ")[0] == "expat"
+    ) and row.get("Status", "").endswith(" installed")]
+    gate.require(
+        len(rows) == 1
+        and rows[0].get("Package") == "libexpat1"
+        and rows[0].get("Source") in ("expat", f"expat ({REBUILD_VERSION})"),
+        "expat_reviewed_dpkg_source",
+    )
 
 
 def identity(info):
     return (info.st_dev, info.st_ino, info.st_mode, info.st_nlink, info.st_size, info.st_mtime_ns)
 
 
-def examine(archive, expected_image_id):
+def examine(archive, expected_image_id, *, reviewed_rebuild=False):
     gate.require(bool(re.fullmatch(r"sha256:[0-9a-f]{64}", expected_image_id)), "expat_image_id")
     path = Path(archive)
     before = path.lstat()
@@ -179,8 +224,9 @@ def examine(archive, expected_image_id):
         )
         check_config(gate.json_bytes(config_raw))
         stream.seek(0)
+        read_paths = [*PATHS, SOURCE_AUDIT] if reviewed_rebuild else PATHS
         facts = gate.archive_facts(
-            None, [{"kind": "elf_set"}], read_paths=PATHS, archive_stream=stream
+            None, [{"kind": "elf_set"}], read_paths=read_paths, archive_stream=stream
         )
         data = {name: gate.json_bytes(facts.captured[name]) for name in PATHS[:-1]}
         check_package(facts.captured[PATHS[-1]])
@@ -191,6 +237,8 @@ def examine(archive, expected_image_id):
             gate.require(gate.SHA.fullmatch(old[key]["sha256"]), "expat_old_hash")
             forbidden.add(old[key]["sha256"])
         gate.require(len(forbidden) == 4, "expat_old_hash_count")
+        if reviewed_rebuild:
+            gate.require(forbidden == REVIEWED_OLD_ELF, "expat_reviewed_old_ELF")
         stream.seek(0)
         gate.archive_facts(
             None, [{"kind": "elf_set"}], archive_stream=stream, forbidden_elf_sha256=forbidden
@@ -203,6 +251,11 @@ def examine(archive, expected_image_id):
                 "expat_active_identity",
             )
             target = row["target"]
+            if reviewed_rebuild:
+                gate.require(
+                    target == MODULES.get(key, expected + ".13.1"),
+                    "expat_reviewed_target",
+                )
             gate.require(
                 PurePosixPath(target).parent == PurePosixPath(expected).parent,
                 "expat_active_target",
@@ -235,11 +288,13 @@ def examine(archive, expected_image_id):
         runtime = data[PATHS[5]]
         gate.require(
             runtime.get("schema") == "pamolive.expat-runtime/2"
-            and runtime["package_version"] == "2.10.0-1+pamolive2"
+            and runtime["package_version"] == REBUILD_VERSION
             and runtime["fixed4_admitted"] is False,
             "expat_runtime_receipt",
         )
         check_source_rebuild(data[PATHS[3]])
+        if reviewed_rebuild:
+            check_reviewed_rebuild(facts, active, data[PATHS[3]])
         snapshot = data[PATHS[4]]
         gate.require(
             snapshot["metadata_equal"] is True and snapshot["base_origin_attested"] is False,
@@ -278,6 +333,10 @@ def examine(archive, expected_image_id):
     }
 
 
+def report_bytes(report):
+    return (json.dumps(report, sort_keys=True) + "\n").encode("utf-8")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--archive", required=True)
@@ -285,9 +344,8 @@ def main(argv=None):
     parser.add_argument("--output", required=True)
     args = parser.parse_args(argv)
     value = examine(args.archive, args.image_id)
-    with Path(args.output).open("x", encoding="utf8") as stream:
-        json.dump(value, stream, sort_keys=True)
-        stream.write("\n")
+    with Path(args.output).open("xb") as stream:
+        stream.write(report_bytes(value))
 
 
 if __name__ == "__main__":
