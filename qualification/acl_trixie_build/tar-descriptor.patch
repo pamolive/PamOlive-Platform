@@ -38,19 +38,123 @@ diff --git a/src/create.c b/src/create.c
 diff --git a/src/extract.c b/src/extract.c
 --- a/src/extract.c
 +++ b/src/extract.c
-@@ -441,7 +441,7 @@
+@@ -85,6 +85,11 @@
+     /* Metadata for this directory.  */
+     dev_t dev;
+     ino_t ino;
++
++    /* The observed filesystem identity for deferred ACL restoration.  */
++    bool acl_target_known;
++    dev_t acl_dev;
++    ino_t acl_ino;
+     mode_t mode; /* The desired mode is MODE & ~ current_umask.  */
+     uid_t uid;
+     gid_t gid;
+@@ -388,7 +393,8 @@
+ set_stat (char const *file_name,
+ 	  struct tar_stat_info const *st,
+ 	  int fd, mode_t current_mode, mode_t current_mode_mask,
+-	  char typeflag, bool interdir, int atflag)
++	  char typeflag, bool interdir, int atflag,
++          struct stat const *acl_target)
+ {
+   /* Do the utime before the chmod because some versions of utime are
+      broken and trash the modes of the file.  */
+@@ -441,7 +447,7 @@
    /* these three calls must be done *after* fd_chown() call because fd_chown
       causes that linux capabilities becomes cleared. */
    xattrs_xattrs_set (st, file_name, typeflag, 1);
 -  xattrs_acls_set (st, file_name, typeflag);
-+  xattrs_acls_set (st, file_name, typeflag, fd);
++  xattrs_acls_set (st, file_name, typeflag, fd, acl_target);
    xattrs_selinux_set (st, file_name, typeflag);
  }
  
+@@ -562,6 +568,18 @@
+   data->current_mode_mask = current_mode_mask;
+   data->interdir = ! st;
+   data->atflag = atflag;
++  data->acl_target_known = false;
++  if (acls_option > 0)
++    {
++      struct stat acl_target;
++      if (fstatat (chdir_fd, file_name, &acl_target, AT_SYMLINK_NOFOLLOW) == 0
++          && S_ISDIR (acl_target.st_mode))
++        {
++          data->acl_target_known = true;
++          data->acl_dev = acl_target.st_dev;
++          data->acl_ino = acl_target.st_ino;
++        }
++    }
+   data->change_dir = chdir_current;
+   data->cntx_name = NULL;
+   if (st)
+@@ -994,9 +1012,16 @@
+ 	  sb.acls_d_ptr = data->acls_d_ptr;
+ 	  sb.acls_d_len = data->acls_d_len;
+ 	  sb.xattr_map = data->xattr_map;
++          struct stat acl_target;
++          if (data->acl_target_known)
++            {
++              acl_target.st_dev = data->acl_dev;
++              acl_target.st_ino = data->acl_ino;
++            }
+ 	  set_stat (data->file_name, &sb,
+ 		    -1, current_mode, current_mode_mask,
+-		    DIRTYPE, data->interdir, data->atflag);
++		    DIRTYPE, data->interdir, data->atflag,
++                    data->acl_target_known ? &acl_target : NULL);
+ 	}
+ 
+       delayed_set_stat_head = data->next;
+@@ -1350,7 +1375,7 @@
+     set_stat (file_name, &current_stat_info, fd,
+ 	      current_mode, current_mode_mask, typeflag, false,
+ 	      (old_files_option == OVERWRITE_OLD_FILES
+-	       ? 0 : AT_SYMLINK_NOFOLLOW));
++	       ? 0 : AT_SYMLINK_NOFOLLOW), NULL);
+ 
+   status = close (fd);
+   if (status < 0)
+@@ -1583,7 +1608,7 @@
+       }
+ 
+   set_stat (file_name, &current_stat_info, -1, 0, 0,
+-	    SYMTYPE, false, AT_SYMLINK_NOFOLLOW);
++	    SYMTYPE, false, AT_SYMLINK_NOFOLLOW, NULL);
+   return 0;
+ 
+ #else
+@@ -1625,7 +1650,7 @@
+ 
+   set_stat (file_name, &current_stat_info, -1,
+ 	    mode & ~ current_umask, MODE_RWX,
+-	    typeflag, false, AT_SYMLINK_NOFOLLOW);
++	    typeflag, false, AT_SYMLINK_NOFOLLOW, NULL);
+   return 0;
+ }
+ #endif
+@@ -1654,7 +1679,7 @@
+ 
+   set_stat (file_name, &current_stat_info, -1,
+ 	    mode & ~ current_umask, MODE_RWX,
+-	    typeflag, false, AT_SYMLINK_NOFOLLOW);
++	    typeflag, false, AT_SYMLINK_NOFOLLOW, NULL);
+   return 0;
+ }
+ #endif
+@@ -1908,7 +1933,7 @@
+ 	      st1.acls_d_len = ds->acls_d_len;
+ 	      st1.xattr_map = ds->xattr_map;
+ 	      set_stat (source, &st1, -1, 0, 0, SYMTYPE,
+-			false, AT_SYMLINK_NOFOLLOW);
++			false, AT_SYMLINK_NOFOLLOW, NULL);
+ 	      valid_source = source;
+ 	    }
+ 	}
 diff --git a/src/xattrs.c b/src/xattrs.c
 --- a/src/xattrs.c
 +++ b/src/xattrs.c
-@@ -139,59 +139,7 @@
+@@ -138,59 +138,7 @@
  
  #ifdef HAVE_POSIX_ACLS
  
@@ -111,7 +215,7 @@ diff --git a/src/xattrs.c b/src/xattrs.c
  
  /* convert unix permissions into an ACL ... needed due to "default" ACLs */
  static acl_t
-@@ -285,7 +233,7 @@
+@@ -284,7 +232,7 @@
     attribute.  Called only when acls_option > 0. */
  static void
  xattrs__acls_set (struct tar_stat_info const *st,
@@ -120,7 +224,7 @@ diff --git a/src/xattrs.c b/src/xattrs.c
  		  char *ptr, bool def)
  {
    acl_t acl;
-@@ -300,7 +248,7 @@
+@@ -299,7 +247,7 @@
        /* No "default" IEEE 1003.1e ACL set for directory.  At this moment,
           FILE_NAME may already have inherited default acls from parent
           directory;  clean them up. */
@@ -129,7 +233,7 @@ diff --git a/src/xattrs.c b/src/xattrs.c
          WARNOPT (WARN_XATTR_WRITE,
                  (0, errno,
                   _("acl_delete_def_file_at: Cannot drop default POSIX ACLs "
-@@ -317,7 +265,7 @@
+@@ -316,7 +264,7 @@
        return;
      }
  
@@ -138,7 +242,7 @@ diff --git a/src/xattrs.c b/src/xattrs.c
      /* warn even if filesystem does not support acls */
      WARNOPT (WARN_XATTR_WRITE,
  	     (0, errno,
-@@ -358,7 +306,7 @@
+@@ -357,7 +305,7 @@
    char *val = NULL;
    acl_t acl;
  
@@ -147,7 +251,7 @@ diff --git a/src/xattrs.c b/src/xattrs.c
      {
        if (errno != ENOTSUP)
          call_arg_warn ("acl_get_file_at", file_name);
-@@ -449,7 +397,7 @@
+@@ -448,7 +396,7 @@
  
  void
  xattrs_acls_get (int parentfd, char const *file_name,
@@ -156,7 +260,7 @@ diff --git a/src/xattrs.c b/src/xattrs.c
  {
    if (acls_option > 0)
      {
-@@ -459,27 +407,50 @@
+@@ -458,27 +406,53 @@
          WARN ((0, 0, _("POSIX ACL support is not available")));
        done = 1;
  #else
@@ -166,11 +270,12 @@ diff --git a/src/xattrs.c b/src/xattrs.c
 -      if (err == -1)
 -        {
 -          call_arg_warn ("file_has_acl_at", file_name);
-+      /* Explicit source dereference is admitted only for the inode already
-+         selected by tar.  Writable extraction metadata never uses this path. */
-+      int aclfd = (fd < 0 && dereference_option
-+                   ? openat (parentfd, file_name, O_PATH | O_CLOEXEC)
-+                   : tar_acl_descriptor (parentfd, file_name, fd));
++      /* Reuse tar's source symlink policy and verify the selected inode
++         before reading ACLs, even for entries whose contents were not opened. */
++      int aclfd = (fd < 0
++                   ? openat (parentfd, file_name, O_PATH | O_CLOEXEC
++                             | (dereference_option ? 0 : O_NOFOLLOW))
++                   : fcntl (fd, F_DUPFD_CLOEXEC, 3));
 +      struct stat selected;
 +      if (aclfd < 0)
 +        {
@@ -189,7 +294,8 @@ diff --git a/src/xattrs.c b/src/xattrs.c
 +          tar_acl_close (aclfd);
 +          return;
 +        }
-+      if (selected.st_dev != st->stat.st_dev || selected.st_ino != st->stat.st_ino)
++      if (!tar_acl_same_inode (&selected, &st->stat)
++          || (selected.st_mode & S_IFMT) != (st->stat.st_mode & S_IFMT))
 +        {
 +          errno = ESTALE;
 +          call_arg_warn ("match ACL descriptor", file_name);
@@ -216,27 +322,54 @@ diff --git a/src/xattrs.c b/src/xattrs.c
  void
  xattrs_acls_set (struct tar_stat_info const *st,
 -                 char const *file_name, char typeflag)
-+                 char const *file_name, char typeflag, int fd)
++                 char const *file_name, char typeflag, int fd,
++                 struct stat const *acl_target)
  {
    if (acls_option > 0 && typeflag != SYMTYPE)
      {
-@@ -489,11 +460,18 @@
+@@ -488,11 +462,43 @@
          WARN ((0, 0, _("POSIX ACL support is not available")));
        done = 1;
  #else
 -      xattrs__acls_set (st, file_name, ACL_TYPE_ACCESS,
 -			st->acls_a_ptr, false);
+-      if (typeflag == DIRTYPE || typeflag == GNUTYPE_DUMPDIR)
+-        xattrs__acls_set (st, file_name, ACL_TYPE_DEFAULT,
+-			  st->acls_d_ptr, true);
++      bool directory = typeflag == DIRTYPE || typeflag == GNUTYPE_DUMPDIR;
++      if (directory && !acl_target)
++        {
++          errno = ESTALE;
++          call_arg_warn ("identify ACL directory", file_name);
++          return;
++        }
 +      int aclfd = tar_acl_descriptor (chdir_fd, file_name, fd);
 +      if (aclfd < 0)
 +        {
 +          call_arg_warn ("open ACL descriptor", file_name);
 +          return;
 +        }
++      if (directory)
++        {
++          struct stat selected;
++          if (fstat (aclfd, &selected) != 0)
++            {
++              call_arg_warn ("stat ACL directory", file_name);
++              tar_acl_close (aclfd);
++              return;
++            }
++          if (!S_ISDIR (selected.st_mode)
++              || !tar_acl_same_inode (&selected, acl_target))
++            {
++              errno = ESTALE;
++              call_arg_warn ("match ACL directory", file_name);
++              tar_acl_close (aclfd);
++              return;
++            }
++        }
 +      xattrs__acls_set (st, file_name, aclfd, ACL_TYPE_ACCESS,
 +                       st->acls_a_ptr, false);
-       if (typeflag == DIRTYPE || typeflag == GNUTYPE_DUMPDIR)
--        xattrs__acls_set (st, file_name, ACL_TYPE_DEFAULT,
--			  st->acls_d_ptr, true);
++      if (directory)
 +        xattrs__acls_set (st, file_name, aclfd, ACL_TYPE_DEFAULT,
 +                         st->acls_d_ptr, true);
 +      tar_acl_close (aclfd);
@@ -246,7 +379,7 @@ diff --git a/src/xattrs.c b/src/xattrs.c
 diff --git a/src/xattrs.h b/src/xattrs.h
 --- a/src/xattrs.h
 +++ b/src/xattrs.h
-@@ -30,14 +30,14 @@
+@@ -30,14 +30,15 @@
  extern void xattrs_clear_setup (void);
  
  extern void xattrs_acls_get (int parentfd, char const *file_name,
@@ -259,7 +392,8 @@ diff --git a/src/xattrs.h b/src/xattrs.h
  
  extern void xattrs_acls_set (struct tar_stat_info const *st,
 -                             char const *file_name, char typeflag);
-+                             char const *file_name, char typeflag, int fd);
++                             char const *file_name, char typeflag, int fd,
++                             struct stat const *acl_target);
  extern void xattrs_selinux_set (struct tar_stat_info const *st,
                                  char const *file_name, char typeflag);
  extern void xattrs_xattrs_set (struct tar_stat_info const *st,
@@ -267,7 +401,7 @@ diff --git a/src/tar-acl-descriptor.h b/src/tar-acl-descriptor.h
 new file mode 100644
 --- /dev/null
 +++ b/src/tar-acl-descriptor.h
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,92 @@
 +/* Internal helper for the Debian Linux descriptor-based tar ACL build. */
 +#ifndef TAR_ACL_DESCRIPTOR_H
 +#define TAR_ACL_DESCRIPTOR_H
@@ -275,9 +409,16 @@ new file mode 100644
 +#include <errno.h>
 +#include <fcntl.h>
 +#include <limits.h>
++#include <stdbool.h>
 +#include <string.h>
 +#include <sys/stat.h>
 +#include <unistd.h>
++
++static bool
++tar_acl_same_inode (struct stat const *left, struct stat const *right)
++{
++  return left->st_dev == right->st_dev && left->st_ino == right->st_ino;
++}
 +
 +static void
 +tar_acl_close (int fd)

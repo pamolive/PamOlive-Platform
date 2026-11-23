@@ -77,7 +77,7 @@ RUN sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.s
 FROM trixie AS tar-builder
 RUN sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
  && apt-get -o APT::Update::Error-Mode=any update \
- && apt-get install -y --no-install-recommends --no-remove build-essential fakeroot quilt \
+ && apt-get install -y --no-install-recommends --no-remove acl build-essential fakeroot quilt \
  && apt-get build-dep -y --no-install-recommends --arch-only 'tar=1.35+dfsg-3.1' \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=tar-source /opt/tar-source/ /opt/tar-build/

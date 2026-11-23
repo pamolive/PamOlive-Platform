@@ -43,18 +43,24 @@ def restore_acl(library, root, expected):
     directory.mkdir(parents=True)
     file = directory / "data"
     file.write_bytes(b"synthetic tar ACL descriptor round trip\n")
+    (source / "without-default").mkdir()
     require(library.acl_set_file(os.fsencode(file), ACL_TYPE_ACCESS, expected) == 0)
     require(library.acl_set_file(os.fsencode(directory), ACL_TYPE_DEFAULT, expected) == 0)
     archive = root / "fixture.tar"
     output = root / "restored"
     output.mkdir()
-    run(str(BINARY), "--acls", "-cf", str(archive), "-C", str(source), "directory")
+    require(library.acl_set_file(os.fsencode(output), ACL_TYPE_DEFAULT, expected) == 0)
+    run(str(BINARY), "--acls", "-cf", str(archive), "-C", str(source),
+        "directory", "without-default")
     run(str(BINARY), "--acls", "-xf", str(archive), "-C", str(output))
     restored = output / "directory"
     require((restored / "data").read_bytes() == file.read_bytes())
     for item, acl_type in ((restored, ACL_TYPE_DEFAULT), (restored / "data", ACL_TYPE_ACCESS)):
         with acl_handle(library, library.acl_get_file(os.fsencode(item), acl_type)) as observed:
             require(library.acl_cmp(expected, observed) == 0)
+    removed = library.acl_get_file(os.fsencode(output / "without-default"), ACL_TYPE_DEFAULT)
+    with acl_handle(library, removed) as observed:
+        require(library.acl_entries(observed) == 0)
 
     # Tar may defer opening an empty input until after collecting metadata.
     empty = directory / "empty"
@@ -74,6 +80,18 @@ def restore_acl(library, root, expected):
         with acl_handle(library, observed) as acl:
             require(library.acl_cmp(expected, acl) == 0)
 
+    (source / "ordinary-ancestor").symlink_to("directory", target_is_directory=True)
+    output = root / "ancestor-output"
+    output.mkdir()
+    run(str(BINARY), "--acls", "-cf", str(archive), "-C", str(source),
+        "ordinary-ancestor/empty")
+    run(str(BINARY), "--acls", "-xf", str(archive), "-C", str(output))
+    selected = output / "ordinary-ancestor" / "empty"
+    require(selected.stat().st_size == 0)
+    observed = library.acl_get_file(os.fsencode(selected), ACL_TYPE_ACCESS)
+    with acl_handle(library, observed) as acl:
+        require(library.acl_cmp(expected, acl) == 0)
+
 
 def main():
     require(run("dpkg-query", "-W", "-f=${Version}", "tar") == VERSION)
@@ -82,6 +100,7 @@ def main():
     signature(library, "acl_from_text", ctypes.c_void_p, ctypes.c_char_p)
     signature(library, "acl_free", ctypes.c_int, ctypes.c_void_p)
     signature(library, "acl_cmp", ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p)
+    signature(library, "acl_entries", ctypes.c_int, ctypes.c_void_p)
     signature(library, "acl_set_file", ctypes.c_int,
               ctypes.c_char_p, ctypes.c_int, ctypes.c_void_p)
     signature(library, "acl_get_file", ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int)
@@ -107,6 +126,8 @@ def main():
         "descriptor_imports": imports,
         "access_and_default_ACL_roundtrip": True,
         "explicit_dereference_roundtrip": True,
+        "inherited_default_removal": True,
+        "empty_under_source_ancestor_link": True,
     }
     print(json.dumps(packet, sort_keys=True))
 
