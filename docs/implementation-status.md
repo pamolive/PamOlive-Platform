@@ -1,5 +1,20 @@
 # État réel de l’implémentation
 
+## Revue de livraison et mises à jour Debian — 23 novembre 2026
+
+Le correctif `b9d8044` de la PR nº 32 met à jour une position de test dans le
+catalogue des secrets. Les 1 487 fichiers Git ont été rescannés par la revue
+indépendante. Zéro nouveau signalement, retrait ou changement de décision.
+Les deux jobs de sécurité GitHub réussissent.
+[CI de la PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087533213)
+[CI de la branche](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087528395)
+
+Le laboratoire Debian de la [PR nº 41](https://github.com/pamolive/PamOlive-Platform/pull/41)
+valide Kerberos `1.21.3-5+deb13u2` et glibc `2.41-12+deb13u5` sur amd64.
+Les 14 paquets, les six ELF et l'essai natif hors réseau sont vérifiés.
+La composition de l'image de livraison et son scan restent à refaire.
+[CI du laboratoire](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087805069)
+
 ## Livraison du code de développement — 17 novembre 2026
 
 À la demande explicite du propriétaire, la capture Expat APT et ses diagnostics

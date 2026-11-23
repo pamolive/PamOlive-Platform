@@ -112,6 +112,14 @@ le produit. Il vérifie les paquets installés et exécute les tests de
 chargement sans réseau. Les preuves de la construction locale historique
 `+deb13u1+pamolive1` restent associées à cette version.
 
+La CI de `31d52f0` valide les 14 paquets amd64, l'installation hors réseau,
+les six ELF installés, la compilation avec les SDK et le chargement natif
+Kerberos, GSS et glibc. Le reçu publié est le seul membre de l'archive
+`14780245532`. Son SHA-256 est
+`fb957dca0b0e985279adb71fdadaaa8c4b662a4fdaf284d851b86780597a6946`.
+Les six tests purs et la revue indépendante passent.
+[CI Debian 13.8](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087805069)
+
 La composition produit doit adopter les paquets officiels dans tous les
 stages concernés et enregistrer leurs propres preuves d'inventaire. Les
 essais SSH, RDP/NLA, LDAP, PostgreSQL/TLS et le scan de l'image exacte
