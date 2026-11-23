@@ -317,6 +317,39 @@ préservés. Aucune migration automatique de secrets, de credentials ou de
 compteurs existants. Les 35 groupes High et la provenance de build incomplète
 continuent à bloquer main/image ; cet ADR ne les arbitre pas.
 
+## Rotation des clés de checkpoint et reprise
+
+Un pin séparé par checkpoint protège la reprise, mais il laisse au dépositaire
+la tenue manuelle de l'historique des générations. Un simple registre des clés
+actives ne distingue pas un ancien document déjà admis d'un nouveau document
+signé avec une clé retirée. Nous retenons un manifeste de reprise signé par le
+dépositaire, avec les empreintes exactes des documents admis et leurs générations.
+La clé Ed25519 de gouvernance est distincte de toutes les clés de checkpoint.
+Le format signé v1 des checkpoints et son vérificateur restent utilisables.
+
+Le manifeste est borné à 16 clés et 128 admissions pour un périmètre composé
+de l'organisation, de l'installation, du contexte et du slot. Le déploiement
+doit planifier un nouveau commissionnement indépendant avant d'atteindre une
+borne. La révision suivante référence le SHA-256 de la précédente, conserve
+chaque entrée historique et utilise exclusivement la dernière génération pour
+les nouveaux checkpoints. Une rotation exige au moins un nouveau checkpoint
+vérifié avec la nouvelle clé. Le dépositaire vérifie le document exact, sa
+signature et ses quatre champs de périmètre avant d'admettre la révision.
+
+Le dépositaire conserve la clé publique de gouvernance, le pin du manifeste
+courant et la référence du checkpoint sélectionné hors de l'archive et du PITR.
+Après vérification, la mise à jour opérationnelle du pin doit être atomique et
+conditionnée à la révision précédente. Deux propositions valides pour un même
+prédécesseur exigent donc un arbitrage **au moment de la publication**. Une
+restauration conserve le pin courant. Sa perte impose une récupération sous
+l'autorité du dépositaire, avec les références retenues hors sauvegarde.
+
+Le code qualifie le contrat cryptographique et la reprise de checkpoints
+synthétiques après rotation. Le provisionnement du pin atomique, la garde des
+clés de gouvernance et la récupération entre autorités opérationnellement
+indépendantes restent des étapes d'intégration. La signature atteste une
+admission par le dépositaire depuis une révision donnée.
+
 ## Contrats et validation
 
 Les octets, tailles, états, sources, verrous et HTTP sont normatifs dans

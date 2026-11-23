@@ -1,5 +1,25 @@
 # État réel de l’implémentation
 
+## Reprise installée du Vault et du témoin — 23 novembre 2026
+
+Sur `b588ae0`, les 122 tests de la wheel du témoin passent sans test ignoré.
+Le laboratoire PostgreSQL 17.12 vérifie le PITR, les rôles restreints,
+l'archive et le transfert du checkpoint signé vers un second runner. Les
+trois archives GitHub et le SHA-256 du checkpoint ont été vérifiés. La
+restauration de la base du témoin reste effectuée sur le premier runner.
+[CI du témoin](https://github.com/pamolive/PamOlive-Platform/actions/runs/45126170986)
+
+Sur ce même commit, les 52 tests de la wheel Vault et la restauration
+logique du Vault sur une destination distincte passent en laboratoire
+PostgreSQL et mTLS. Le reçu vérifié correspond à l'artefact `14795493333`.
+[CI de restauration du Vault](https://github.com/pamolive/PamOlive-Platform/actions/runs/45126680065)
+
+Le candidat SASL `36e35cd` passe le build et les parcours natifs, dont SSH,
+RDP et la bascule entre deux nœuds. La politique Grype refuse son image
+avec 45 groupes bloquants. La promotion exige le verdict de l'image du
+candidat intégré.
+[CI du candidat SASL](https://github.com/pamolive/PamOlive-Platform/actions/runs/45123373514)
+
 ## Candidat intégré Cairo et reprise du témoin — 23 novembre 2026
 
 La qualification autonome sur `a26337c` reproduit les quatre paquets Cairo,
