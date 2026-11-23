@@ -213,6 +213,59 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(report["empty_clusters_verified"], 3)
         self.assertEqual(report["clusters_provisioned"], 3)
 
+    def test_pitr_never_admits_observer_before_verified_archive_copy_and_replay(self):
+        recovery, driver, source, target, copy = [(object(), object()) for _ in range(5)]
+        base = object()
+        for complete in (True, False):
+            with self.subTest(complete=complete):
+                lab = MagicMock()
+                ledger = MagicMock()
+                for name in ("retire_recovery", "retire_source", "start"):
+                    ledger.attach_mock(getattr(lab, name), name)
+                lab.start.side_effect = [
+                    SimpleNamespace(returncode=0, stdout=runner.COPY_READY, stderr=b""), None,
+                ]
+                report = {"empty_clusters_verified": 2, "clusters_provisioned": 2}
+
+                def storage(*args, base, switch_clusters, role_sql):
+                    self.assertEqual(args, (lab, *source, *target, RUN))
+                    self.assertIs(base, proof[3])
+                    self.assertEqual(role_sql, b"role_sql")
+                    switch_clusters()
+                    return dict.fromkeys(runner.PITR_STORAGE_CASES, complete)
+
+                proof = (copy, target, b"role_sql", base)
+                with (
+                    patch.object(runner, "wait_driver"),
+                    patch.object(runner, "read_role", return_value=b"W01_RESTORE_READY\n"),
+                    patch.object(runner, "finish_witness_pitr", side_effect=storage) as finish,
+                    patch.object(runner, "wait"),
+                    patch.object(runner, "run_pg") as pg,
+                    patch.object(runner, "start_history_listener") as listen,
+                    patch.object(runner, "mark"),
+                ):
+                    ledger.attach_mock(finish, "finish")
+                    ledger.attach_mock(listen, "listener")
+                    args = (lab, recovery, driver, source, "image", RUN, "b" * 64, report)
+                    if complete:
+                        runner.restore_closed_witness(*args, pitr=proof)
+                        listen.assert_called_once()
+                        expected = ["listener"]
+                    else:
+                        with self.assertRaises(ValueError):
+                            runner.restore_closed_witness(*args, pitr=proof)
+                        listen.assert_not_called()
+                        expected = []
+                    self.assertEqual(
+                        [call[0] for call in ledger.mock_calls],
+                        ["finish", "retire_recovery", "retire_source", "start", "start", *expected],
+                    )
+                    self.assertEqual(lab.start.call_args_list[0].args, copy)
+                    self.assertEqual(lab.start.call_args_list[1].args, target)
+                    pg.assert_not_called()
+                self.assertEqual(report["empty_clusters_verified"], 2)
+                self.assertEqual(report["clusters_provisioned"], 3 if complete else 2)
+
     def database_rows(self):
         rows = {}
         for database, users in witness_driver.ROLES.items():

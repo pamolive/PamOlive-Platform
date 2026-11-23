@@ -28,6 +28,7 @@ from lab_docker import (  # noqa: E402
     Volume,
     WitnessClusterRestoreLab,
     WitnessLab,
+    WitnessPitrLab,
     WitnessRecoveryLab,
     WitnessRestoreLab,
 )
@@ -55,6 +56,14 @@ def specs(profile=WitnessLab):
     for role, (user, address, alias) in profile.endpoints.items():
         pg = role in profile.postgres_roles
         tmpfs = PG_TMPFS if pg else ()
+        command = ("postgres",) if pg else ("/inputs/" + role,)
+        if issubclass(profile, WitnessPitrLab):
+            if role == profile.role:
+                tmpfs = tuple(mount for mount in tmpfs if mount[0] != profile.data_path)
+            if role == profile.copy_role:
+                from lab.witness_pitr_storage import COPY_COMMAND
+
+                command = ("/bin/sh", "-ec", COPY_COMMAND)
         if role == "driver":
             tmpfs = (("/work", "rw,noexec,nosuid,nodev,size=8388608,mode=0700,uid=1000,gid=1000"),)
         result.append(
@@ -62,8 +71,8 @@ def specs(profile=WitnessLab):
                 IMAGE,
                 role,
                 user,
-                ("postgres",) if pg else ("/inputs/" + role,),
-                (Volume(role, "/lab"),),
+                command,
+                profile.service_mounts(role),
                 tmpfs,
                 ("PGDATA=/var/lib/postgresql/data",) if pg else (),
                 address,
@@ -87,6 +96,9 @@ class EngineActor:
         self.fail_after_create = False
         self.stall_inspection = False
         self.stop_exit_code = 143
+        self.copy_exit_code = 0
+        self.copy_stdout = b"W01_PITR_COPY_READY\n"
+        self.copy_stderr = b""
         self.specs = {spec.role: spec for spec in specs()}
 
     def bound(self):
@@ -226,6 +238,18 @@ class EngineActor:
             row["State"].update(Status="exited", Running=False, ExitCode=self.stop_exit_code)
             return b""
         raise AssertionError("unexpected inert command")
+
+    def run(self, *args, **options):
+        self.bound()
+        assert args[:3] == ("container", "start", "--attach")
+        self.commands.append((args, options, self.deadline))
+        row = self.inspect("container", args[-1])
+        row["State"].update(Status="exited", Running=False, ExitCode=self.copy_exit_code)
+        return SimpleNamespace(
+            returncode=self.copy_exit_code,
+            stdout=self.copy_stdout,
+            stderr=self.copy_stderr,
+        )
 
 
 class WitnessOwnershipTests(unittest.TestCase):
@@ -568,7 +592,7 @@ class WitnessRecoveryFixture(unittest.TestCase):
         self.lab.journal_rows = journal
         self.engine.lab = self.lab
         self.lab.create_network()
-        for role in self.lab.endpoints:
+        for role in sorted(self.lab.volume_roles):
             self.lab.create_volume(role)
         self.witness = self.engine.specs["witness"]
         self.recovery = self.engine.specs["witness-recovery"]
@@ -934,6 +958,96 @@ class WitnessClusterRestoreOwnershipTests(WitnessRecoveryFixture):
             json.loads(runtime["runtime.json"][0]),
             {**expected, "user": observer, "password": restored["credentials"][observer]},
         )
+
+
+class WitnessPitrOwnershipTests(WitnessRecoveryFixture):
+    profile = WitnessPitrLab
+
+    def reserve_pitr_roles(self):
+        roles = ("w-postgres", self.lab.role, self.lab.copy_role)
+        result = []
+        for role in roles:
+            spec = self.engine.specs[role]
+            result.append((self.lab.create_container(spec), spec))
+        self.lab.start(*result[0])
+        return result
+
+    def stop_source(self, source):
+        history = self.start_recovery()
+        self.lab.retire_recovery(history, self.recovery)
+        self.engine.stop_exit_code = 0
+        self.lab.retire_source(*source)
+
+    def test_pitr_mounts_archive_readonly_on_copy_and_target(self):
+        archive = Volume(self.lab.archive_role, "/backup")
+        data = Volume(self.lab.data_role, self.lab.data_path, False)
+        spec = self.engine.specs
+        source, target, copy_spec = (spec[role] for role in (
+            "w-postgres", self.lab.role, self.lab.copy_role
+        ))
+        self.assertEqual(
+            source.volumes, (Volume("w-postgres", "/lab"), replace(archive, readonly=False))
+        )
+        self.assertEqual(target.volumes, (Volume(self.lab.role, "/lab"), archive, data))
+        self.assertEqual(copy_spec.volumes, (archive, data))
+        self.assertEqual(
+            (copy_spec.address, copy_spec.alias, copy_spec.chown, copy_spec.environment),
+            (None, None, False, ()),
+        )
+        self.assertNotIn(self.lab.data_path, dict(target.tmpfs))
+        self.assertEqual(copy_spec.entrypoint, "")
+        for altered in (
+            replace(target, volumes=(target.volumes[0], replace(archive, readonly=False), data)),
+            replace(target, tmpfs=source.tmpfs),
+            replace(copy_spec, address=source.address),
+            replace(copy_spec, command=(copy_spec.command[0],)),
+            replace(copy_spec, environment=("PGDATA=/tmp",)),
+        ):
+            with self.assertRaises(ValueError):
+                self.lab.validate_spec(altered)
+
+    def test_pitr_orders_exact_source_copy_target_and_retains_copy_receipt(self):
+        source, target, copy_role = self.reserve_pitr_roles()
+        with self.assertRaises(ValueError):
+            self.lab.start(*copy_role, attach=True)
+        with self.assertRaises(ValueError):
+            self.lab.start(*target)
+        self.stop_source(source)
+        with self.assertRaises(ValueError):
+            self.lab.start(*copy_role)
+        with self.assertRaises(ValueError):
+            self.lab.start(*target)
+        count = len(self.engine.commands)
+        self.lab.start(*copy_role, attach=True)
+        self.lab.start(*target)
+        self.assertEqual(
+            [command[0] for command in self.engine.commands[count:]],
+            [
+                ("container", "start", "--attach", copy_role[0]["identity"]),
+                ("container", "start", target[0]["identity"]),
+            ],
+        )
+        restored_spec = self.engine.specs["witness-restored"]
+        restored = self.lab.create_container(restored_spec)
+        state = self.engine.inspect("container", copy_role[0]["identity"])["State"]
+        state["ExitCode"] = 124
+        with self.assertRaises(ValueError):
+            self.lab.start(restored, restored_spec)
+        state["ExitCode"] = 0
+        self.lab.start(restored, restored_spec)
+        self.assertTrue(self.lab.cleanup())
+        self.assertEqual(self.engine.rows, {})
+
+    def test_pitr_rejects_incomplete_copy_before_target_start(self):
+        source, target, copy_role = self.reserve_pitr_roles()
+        self.stop_source(source)
+        self.engine.copy_stdout = b"unverified"
+        with self.assertRaises(ValueError):
+            self.lab.start(*copy_role, attach=True)
+        count = len(self.engine.commands)
+        with self.assertRaises(ValueError):
+            self.lab.start(*target)
+        self.assertEqual(len(self.engine.commands), count)
 
 
 if __name__ == "__main__":

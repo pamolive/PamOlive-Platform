@@ -26,6 +26,7 @@ SCHEMAS = {
 }
 POSTGRES = {"wpg": "w-postgres", "vpg": "v-postgres"}
 RESTORE_POSTGRES = "w-postgres-restore"
+PITR_VOLUMES = ("w-pitr-archive", "w-pitr-data")
 OBSERVER = "usage_anchor_observer"
 WITNESS_FILES = {
     "slot.json": role_files.PUBLIC,
@@ -239,6 +240,55 @@ def stage_directory(root, role, *, expected=None, files=None, restore_cluster=Fa
         return selected
 
 
+def stage_pitr_volume(root, role, *, expected=None):
+    """Bind empty writable storage by inode before transferring ownership."""
+    need(role in PITR_VOLUMES)
+    with ExitStack() as stack:
+        stage = in_directory(root, "stage")
+        stack.callback(os.close, stage)
+        mount = in_directory(stage, role)
+        stack.callback(os.close, mount)
+        initial = os.fstat(mount)
+        selected = initial.st_dev, initial.st_ino
+        need(stat.S_IMODE(initial.st_mode) in {0o700, 0o755})
+        need(not role_files.names(os, mount, 0))
+        if expected is None:
+            return selected
+        need(expected == list(selected))
+
+        def transfer(fd):
+            os.fchmod(fd, 0o700)
+            os.fchown(fd, 999, 999)
+            os.fsync(fd)
+            owned = os.fstat(fd)
+            need(stat.S_ISDIR(owned.st_mode) and stat.S_IMODE(owned.st_mode) == 0o700)
+            need(owned.st_uid == owned.st_gid == 999)
+            return owned
+
+        if role == "w-pitr-archive":
+            os.mkdir("wal", 0o700, dir_fd=mount)
+            wal = in_directory(mount, "wal")
+            stack.callback(os.close, wal)
+            need(not role_files.names(os, wal, 0))
+            owned = transfer(wal)
+            need(
+                role_files.identity(owned)
+                == role_files.identity(os.stat("wal", dir_fd=mount, follow_symlinks=False))
+            )
+            need(role_files.names(os, mount, 1) == {"wal"})
+        owned = transfer(mount)
+        need((owned.st_dev, owned.st_ino) == selected)
+        need(
+            role_files.identity(owned)
+            == role_files.identity(os.stat(role, dir_fd=stage, follow_symlinks=False))
+        )
+        need(
+            role_files.identity(os.fstat(stage))
+            == role_files.identity(os.stat("stage", dir_fd=root, follow_symlinks=False))
+        )
+        return selected
+
+
 def write_private(work, name, raw):
     need(0 < len(raw) <= CAP)
     role_files.write_file(os, work, name, (raw, 0o600, 0, 0))
@@ -251,7 +301,7 @@ def role_bytes(role, materials, *, restore_cluster=False):
     return {name: (raw, *allowed[name]) for name, raw in materials.items()}
 
 
-def pair_for(run, credentials, tls, *, recovery=False, restore_witness=False):
+def pair_for(run, credentials, tls, *, recovery=False, restore_witness=False, pitr=False):
     return witness_postgres.prepare_pair(
         run,
         databases={role: f"w01_{run}_{role}" for role in POSTGRES},
@@ -261,6 +311,7 @@ def pair_for(run, credentials, tls, *, recovery=False, restore_witness=False):
         schema_pins=dict(witness_postgres.SCHEMA_PINS),
         recovery=recovery,
         restore_witness=restore_witness,
+        pitr=pitr,
     )
 
 
@@ -278,38 +329,45 @@ def runtime(cluster, passwords):
     return {**endpoint(cluster), "user": user, "password": passwords[user]}
 
 
-def history_roles(recovery, restore_witness, restore_cluster=False):
-    need(all(type(value) is bool for value in (recovery, restore_witness, restore_cluster)))
+def history_roles(recovery, restore_witness, restore_cluster=False, pitr=False):
+    need(all(type(value) is bool for value in (recovery, restore_witness, restore_cluster, pitr)))
     need(recovery or not (restore_witness or restore_cluster))
     need(not (restore_witness and restore_cluster))
+    need(not pitr or restore_cluster)
     if restore_witness or restore_cluster:
         return RECOVERY_ROLE, RESTORE_ROLE
     return (RECOVERY_ROLE,) if recovery else ()
 
 
-def stage_restore_cluster(root, work, run, location, credentials, tls, now):
+def stage_restore_cluster(root, work, run, location, credentials, tls, now, *, pitr=False):
     target_secrets = {user: secrets.token_urlsafe(32) for user in ("postgres", OBSERVER)}
     passwords = {password for users in credentials.values() for password in users.values()}
     need(passwords.isdisjoint(target_secrets.values()))
     target_tls = certificate_pair(witness_postgres.RESTORE_HOST[0], now)
     need(all(target_tls[name] != files[name] for name in target_tls for files in tls.values()))
     cluster = witness_postgres.prepare_restore_cluster(
-        run, credentials=target_secrets, tls=target_tls
+        run, credentials=target_secrets, tls=target_tls, pitr=pitr
     )
     files = {
         name: (row.raw, row.mode, row.uid, row.gid) for name, row in cluster.files.items()
     }
     stage_directory(root, RESTORE_POSTGRES, expected=location, files=files)
     observer = target_secrets[OBSERVER]
-    preflight, provision = witness_postgres.restore_cluster_scripts(run, cluster, observer)
-    write_private(work, "wpr-preflight.sql", preflight)
-    write_private(work, "wpr-provision.sql", provision)
+    if pitr:
+        restriction = witness_postgres.restrict_physical_restore(run, cluster, observer)
+        write_private(work, "wpr-pitr.sql", restriction)
+    else:
+        preflight, provision = witness_postgres.restore_cluster_scripts(run, cluster, observer)
+        write_private(work, "wpr-preflight.sql", preflight)
+        write_private(work, "wpr-provision.sql", provision)
     row = {**endpoint(cluster), "credentials": {OBSERVER: observer}}
     return row, target_tls["ca"]
 
 
-def base(root, work, run, *, recovery=False, restore_witness=False, restore_cluster=False):
-    history = history_roles(recovery, restore_witness, restore_cluster)
+def base(
+    root, work, run, *, recovery=False, restore_witness=False, restore_cluster=False, pitr=False
+):
+    history = history_roles(recovery, restore_witness, restore_cluster, pitr)
     need(not role_files.names(os, work, 0))
     locations = {
         role: list(stage_directory(root, role))
@@ -317,13 +375,20 @@ def base(root, work, run, *, recovery=False, restore_witness=False, restore_clus
         if role not in HISTORY_MOUNTS or role in history
         if role != RESTORE_POSTGRES or restore_cluster
     }
+    if pitr:
+        locations.update({role: list(stage_pitr_volume(root, role)) for role in PITR_VOLUMES})
     need(len({tuple(value) for value in locations.values()}) == len(locations))
+    if pitr:
+        for role in PITR_VOLUMES:
+            stage_pitr_volume(root, role, expected=locations[role])
     now = datetime.now(UTC)
     credentials, tls = {}, {}
     for role, users in witness_postgres.ROLES.items():
         credentials[role] = {user: secrets.token_urlsafe(32) for user in ("postgres", *users)}
         tls[role] = certificate_pair(witness_postgres.HOSTS[role][0], now)
-    pair = pair_for(run, credentials, tls, recovery=recovery, restore_witness=restore_witness)
+    pair = pair_for(
+        run, credentials, tls, recovery=recovery, restore_witness=restore_witness, pitr=pitr
+    )
     for role, mount in POSTGRES.items():
         materials = {
             name: (row.raw, row.mode, row.uid, row.gid)
@@ -343,7 +408,7 @@ def base(root, work, run, *, recovery=False, restore_witness=False, restore_clus
     restore_state = {}
     if restore_cluster:
         restored, ca = stage_restore_cluster(
-            root, work, run, locations[RESTORE_POSTGRES], credentials, tls, now
+            root, work, run, locations[RESTORE_POSTGRES], credentials, tls, now, pitr=pitr
         )
         driver_config["database_restored"] = restored
         driver_files["wpr-ca.crt"] = ca
@@ -351,6 +416,8 @@ def base(root, work, run, *, recovery=False, restore_witness=False, restore_clus
             "observer": restored["credentials"][OBSERVER],
             "ca": b64(ca),
         }
+        if pitr:
+            restore_state["cluster_restore"]["pitr"] = True
     driver_files["driver.json"] = encode(driver_config)
     stage_directory(
         root,
@@ -390,16 +457,24 @@ def restore_base(run):
     state = canonical(read_regular(WORK / "base.json", CAP), CAP)
     need(type(state) is dict)
     restore_cluster = "cluster_restore" in state
+    if restore_cluster:
+        need(type(state["cluster_restore"]) is dict)
+    pitr = restore_cluster and "pitr" in state["cluster_restore"]
     history = history_roles(
         "recovery_mount" in state,
         "restore_mount" in state and not restore_cluster,
         restore_cluster,
+        pitr,
     )
     mounts = {"witness_mount", *(HISTORY_MOUNTS[role] for role in history)}
     fields = {"run", "credentials", "tls", *mounts}
     if restore_cluster:
         fields.add("cluster_restore")
-        witness_postgres.closed(state["cluster_restore"], {"observer", "ca"})
+        cluster_fields = {"observer", "ca"}
+        if pitr:
+            cluster_fields.add("pitr")
+            need(state["cluster_restore"]["pitr"] is True)
+        witness_postgres.closed(state["cluster_restore"], cluster_fields)
     witness_postgres.closed(state, fields)
     need(state["run"] == run)
     for name in mounts:
@@ -422,6 +497,7 @@ def preflighted_pair(run, receipts):
         run, state["credentials"], tls,
         recovery="recovery_mount" in state,
         restore_witness="restore_mount" in state and "cluster_restore" not in state,
+        pitr=state.get("cluster_restore", {}).get("pitr", False),
     )
     for role, line in zip(POSTGRES, receipts.splitlines(keepends=True), strict=True):
         pair.accept_preflight(role, 0, line)
@@ -468,14 +544,18 @@ def material_frame(raw, expected_source):
     return {**files, "bindings.json": encode(bindings)}
 
 
-def stage_witness(root, run, raw, *, recovery=False, restore_witness=False, restore_cluster=False):
-    history = history_roles(recovery, restore_witness, restore_cluster)
+def stage_witness(
+    root, run, raw, *, recovery=False, restore_witness=False, restore_cluster=False, pitr=False
+):
+    history = history_roles(recovery, restore_witness, restore_cluster, pitr)
     need(read_regular(WORK / "provision.ready", 16) == run.encode("ascii"))
     state, tls = restore_base(run)
     need({HISTORY_MOUNTS[role] for role in history} == HISTORY_MOUNTS.values() & state.keys())
     need(restore_cluster == ("cluster_restore" in state))
+    need(pitr == state.get("cluster_restore", {}).get("pitr", False))
     pair = pair_for(
-        run, state["credentials"], tls, recovery=recovery, restore_witness=restore_witness
+        run, state["credentials"], tls,
+        recovery=recovery, restore_witness=restore_witness, pitr=pitr,
     )
     files = material_frame(raw, sha(read_regular(SOURCE_LEDGER, 16384)))
     cluster = pair.clusters["wpg"]
@@ -526,11 +606,12 @@ def main():
     parser.add_argument("--recovery", action="store_true")
     parser.add_argument("--restore-witness", action="store_true")
     parser.add_argument("--restore-cluster", action="store_true")
+    parser.add_argument("--pitr", action="store_true")
     args = parser.parse_args()
     try:
         need(re.fullmatch(r"[0-9a-f]{16}", args.run) is not None)
         need(not args.recovery or args.phase in {"base", "stage-witness"})
-        history_roles(args.recovery, args.restore_witness, args.restore_cluster)
+        history_roles(args.recovery, args.restore_witness, args.restore_cluster, args.pitr)
         kernel_check()
         os.environ.clear()
         os.environ.update(LANG="C.UTF-8", LC_ALL="C.UTF-8")
@@ -545,6 +626,7 @@ def main():
                     root, work, args.run, recovery=args.recovery,
                     restore_witness=args.restore_witness,
                     restore_cluster=args.restore_cluster,
+                    pitr=args.pitr,
                 )
             elif args.phase == "provision":
                 marker = provision(work, args.run, sys.stdin.buffer.read(257))
@@ -555,6 +637,7 @@ def main():
                     root, args.run, sys.stdin.buffer.read(CAP + 1), recovery=args.recovery,
                     restore_witness=args.restore_witness,
                     restore_cluster=args.restore_cluster,
+                    pitr=args.pitr,
                 )
     except Exception:
         print("W01 synthetic preparation refused.", file=sys.stderr)

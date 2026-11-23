@@ -214,6 +214,20 @@ des anciennes leases ; si les compteurs ne sont plus fiables, réactivation
 indépendante requise. Le rollback clandestin de W et la collusion V+W restent
 hors de cette garantie, explicitement.
 
+Pour une reprise en consultation, conserver hors de PostgreSQL la référence
+du contexte fermé, l'epoch minimal et le point de reprise attendu. Restaurer
+sur un stockage isolé et vérifier le bail, les reçus et l'intégrité des preuves
+avant d'exposer l'interface. Restreindre la connexion au rôle observateur.
+Si la restauration précède la fermeture attendue ou si des preuves manquent,
+maintenir le service fermé et documenter l'écart. Conserver les archives WAL
+et le manifeste sous les droits de l'opérateur de récupération.
+
+La campagne PITR du témoin démontre ce parcours en laboratoire avec un point
+nommé après fermeture et un commit ultérieur archivé. Elle redémarre le
+service de consultation après vérification de l'état restauré. Le contrôle
+hors sauvegarde et la conservation inter-hôte restent des prérequis
+d'exploitation. [Qualification PITR](p2-usage-anchor-validation.md#restauration-physique-à-un-point-nommé)
+
 Un V compromis disposant d'un unwrap KMS générique peut ignorer W. Avant remise,
 une garde indépendante devra imposer chaque usage W avec claim d'émission unique,
 tenant/destination/broker/version/certificat exacts et aucun chemin générique

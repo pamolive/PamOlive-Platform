@@ -29,6 +29,20 @@ RESTORE_HOST = ("w-n0-recovery-db.test", "10.253.249.7")
 ROLE_FLAGS = "NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"
 REFUSED = b"W01_CLUSTER_REFUSED\n"
 REJECT_REMOTE = "host all all 0.0.0.0/0 reject\nhost all all ::/0 reject\n"
+PITR_POINT = "pamolive_w01_closed"
+PITR_SOURCE = (
+    "archive_mode=on\nwal_keep_size='64MB'\n"
+    """archive_command='umask 077; dst="/backup/wal/%f"; if test -f "$dst"; then """
+    """cmp -s "%p" "$dst" && sync -f /backup/wal; else """
+    """cp "%p" "$dst.partial" && sync -d "$dst.partial" """
+    """&& mv -T "$dst.partial" "$dst" && sync -f /backup/wal; fi'\n"""
+)
+PITR_TARGET = f"""archive_mode=off
+restore_command='cp "/backup/wal/%f" "%p"'
+recovery_target_name='{PITR_POINT}'
+recovery_target_action='promote'
+recovery_target_timeline='current'
+"""
 
 
 class Refused(ValueError):
@@ -139,12 +153,13 @@ def _check_tls(tls):
              and raw.startswith(b"-----BEGIN ") and raw.endswith(b"-----\n"))
 
 
-def _pg_files(address, admin_password, tls, hba):
+def _pg_files(address, admin_password, tls, hba, *, recovery_settings=""):
     config = (f"listen_addresses='{address}'\nport=5432\nssl=on\n"
               "ssl_cert_file='/lab/server.crt'\nssl_key_file='/lab/server.key'\n"
               "hba_file='/lab/pg_hba.conf'\npassword_encryption='scram-sha-256'\n"
               "fsync=on\nsynchronous_commit=on\nshared_buffers='16MB'\n"
-              "max_connections=16\nlog_statement='none'\nlog_min_messages='fatal'\n")
+              "max_connections=16\nlog_statement='none'\nlog_min_messages='fatal'\n"
+              + recovery_settings)
     return MappingProxyType({
         "ca.crt": File(tls["ca"], 0o444),
         "server.crt": File(tls["certificate"], 0o444),
@@ -155,8 +170,9 @@ def _pg_files(address, admin_password, tls, hba):
     })
 
 
-def prepare_restore_cluster(run_id, *, credentials, tls):
-    """Return only inert staging data for a separate blank cluster."""
+def prepare_restore_cluster(run_id, *, credentials, tls, pitr=False):
+    """Return inert staging data for an isolated logical or physical restore."""
+    need(type(pitr) is bool)
     database = restore_database(run_id)
     closed(credentials, {"postgres", "usage_anchor_observer"})
     for value in credentials.values():
@@ -169,14 +185,18 @@ def prepare_restore_cluster(run_id, *, credentials, tls):
         f"hostssl {database} usage_anchor_observer 10.253.249.3/32 scram-sha-256\n"
         f"hostssl {database} usage_anchor_observer 10.253.249.4/32 scram-sha-256\n"
     )
-    return Cluster("wpr", name, address, database, _pg_files(address, credentials["postgres"],
-                                                               tls, hba))
+    files = _pg_files(
+        address, credentials["postgres"], tls, hba,
+        recovery_settings=PITR_TARGET if pitr else "",
+    )
+    return Cluster("wpr", name, address, database, files)
 
 
 def restore_cluster_scripts(run_id, cluster, observer_password):
     """Give the new cluster defined role names without installing application schema."""
     need(cluster.role == "wpr" and cluster.database == restore_database(run_id))
     need((cluster.hostname, cluster.address) == RESTORE_HOST)
+    need(not cluster.files["postgresql.conf"].raw.endswith(PITR_TARGET.encode("ascii")))
     observer = "usage_anchor_observer"
     statements = [
         f"CREATE ROLE {identifier(role)} NOLOGIN {ROLE_FLAGS};"
@@ -189,6 +209,61 @@ def restore_cluster_scripts(run_id, cluster, observer_password):
               + b"\\echo " + _marker(run_id, cluster.role, "PROVISIONED")
               + b"\\else\n\\echo W01_CLUSTER_REFUSED\n\\endif\n")
     return _preflight(run_id, cluster), script
+
+
+def restrict_physical_restore(run_id, cluster, observer_password):
+    """Render guarded role changes for the owned, already-promoted PITR copy."""
+    restored = restore_database(run_id)
+    need(cluster.role == "wpr" and cluster.database == restored)
+    need((cluster.hostname, cluster.address) == RESTORE_HOST)
+    need(cluster.files["postgresql.conf"].raw.endswith(PITR_TARGET.encode("ascii")))
+    original = f"w01_{run_id}_wpg"
+    owner = OWNERS["wpg"]
+    observer = "usage_anchor_observer"
+    other_logins = tuple(role for role in ROLES["wpg"] if role != observer)
+    database_names = ("postgres", "template0", "template1", original)
+    expected_databases = ", ".join(f"'{name}'" for name in database_names)
+    expected_roles = ", ".join(f"'{name}'" for name in sorted((owner, *ROLES["wpg"])))
+    guard = rf"""\set ON_ERROR_STOP on
+BEGIN;
+SET LOCAL search_path=pg_catalog;
+SET LOCAL statement_timeout='3s';
+SELECT (
+ current_database()='postgres' AND current_user='postgres' AND session_user='postgres'
+ AND inet_server_addr() IS NULL AND NOT pg_is_in_recovery()
+ AND current_setting('port')='5432' AND current_setting('server_version_num')='170012'
+ AND current_setting('listen_addresses')='{cluster.address}'
+ AND current_setting('data_directory')='/var/lib/postgresql/data'
+ AND current_setting('hba_file')='/lab/pg_hba.conf' AND current_setting('ssl')='on'
+ AND current_setting('archive_mode')='off'
+ AND current_setting('recovery_target_name')='{PITR_POINT}'
+ AND current_setting('recovery_target_action')='promote'
+ AND (SELECT array_agg(datname::text ORDER BY datname::text COLLATE "C") FROM pg_database)
+   = ARRAY[{expected_databases}]
+ AND (SELECT array_agg(rolname::text ORDER BY rolname::text COLLATE "C") FROM pg_roles
+     WHERE oid>=16384) = ARRAY[{expected_roles}]
+ AND EXISTS (SELECT FROM pg_database WHERE datname='{original}'
+             AND datdba='{owner}'::regrole AND datallowconn AND NOT datistemplate)
+ AND NOT EXISTS (SELECT FROM pg_stat_activity WHERE pid<>pg_backend_pid()
+                 AND backend_type IN ('client backend','walsender'))
+) IS TRUE AS w01_pitr_restrict \gset
+\if :w01_pitr_restrict
+"""
+    closed_roles = ", ".join(map(identifier, other_logins))
+    actions = [
+        f"REVOKE ALL PRIVILEGES ON DATABASE {identifier(original)} FROM PUBLIC, {closed_roles};",
+        f"REVOKE {identifier(owner)} FROM {identifier('usage_anchor_admin')};",
+        *[f"ALTER ROLE {identifier(role)} NOLOGIN PASSWORD NULL;" for role in other_logins],
+        "ALTER ROLE postgres PASSWORD NULL;",
+        f"ALTER ROLE {identifier(observer)} PASSWORD {password(observer_password)};",
+        f"ALTER DATABASE {identifier(original)} RENAME TO {identifier(restored)};",
+        "COMMIT;",
+    ]
+    return (
+        (guard + "\n".join(actions) + "\n\\echo ").encode("ascii")
+        + _marker(run_id, cluster.role, "PITR_RESTRICTED")
+        + b"\\else\nROLLBACK;\n\\echo W01_CLUSTER_REFUSED\n\\endif\n"
+    )
 
 
 def _provision(run, cluster, secrets, schemas):
@@ -303,7 +378,7 @@ def exec_args(container_id):
 
 def prepare_pair(
     run_id, *, databases, credentials, tls, schemas, schema_pins,
-    recovery=False, restore_witness=False,
+    recovery=False, restore_witness=False, pitr=False,
 ):
     """Return inert private data only. PEM trust/identity is checked by real TLS.
 
@@ -316,6 +391,7 @@ def prepare_pair(
     need(type(run_id) is str and re.fullmatch(r"[a-f0-9]{16}", run_id))
     need(type(recovery) is bool)
     need(type(restore_witness) is bool and (recovery or not restore_witness))
+    need(type(pitr) is bool and (not pitr or (recovery and not restore_witness)))
     closed(databases, ROLES)
     closed(credentials, ROLES)
     closed(tls, ROLES)
@@ -342,6 +418,9 @@ def prepare_pair(
         _check_tls(tls[role])
         name, address = HOSTS[role]
         hba = f"local postgres postgres peer\nlocal {database} postgres peer\n"
+        archive_source = pitr and role == "wpg"
+        if archive_source:
+            hba += "local replication postgres peer\n"
         restored = restore_database(run_id) if restore_witness and role == "wpg" else None
         if restored:
             hba += f"local {restored} postgres peer\n"
@@ -358,8 +437,11 @@ def prepare_pair(
                     f"hostssl {restored} usage_anchor_observer {client_address}/32 scram-sha-256\n"
                 )
         cluster = Cluster(
-            role, name, address, database, _pg_files(address, checked_credentials["postgres"],
-                                                    tls[role], hba),
+            role, name, address, database,
+            _pg_files(
+                address, checked_credentials["postgres"], tls[role], hba,
+                recovery_settings=PITR_SOURCE if archive_source else "",
+            ),
         )
         clusters[role] = cluster
         scripts[role] = _provision(run_id, cluster, checked_credentials, checked_schemas)

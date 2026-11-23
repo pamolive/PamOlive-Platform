@@ -187,9 +187,55 @@ et l'archive GitHub vérifiée porte le numéro `14778544187`.
 [CI de non-régression](https://github.com/pamolive/PamOlive-Platform/actions/runs/45085370136)
 
 Une copie logique en mémoire a une durée de vie limitée à ce laboratoire.
-L'essai utilise un seul hôte et s'arrête à la consultation. Les sauvegardes
-physiques, la chaîne WAL, le PITR, la rotation du certificat applicatif
-et la reprise multi-hôte demandent des campagnes dédiées.
+L'essai utilise un seul hôte et s'arrête à la consultation. La section suivante
+qualifie la sauvegarde physique et le rejeu des WAL au point nommé. La rotation
+du certificat applicatif et la reprise multi-hôte restent ouvertes.
+
+## Restauration physique à un point nommé
+
+L'entrée CI `run_witness_pitr` utilise le même parcours du témoin fermé. Le
+contrôleur réserve des volumes distincts pour la sauvegarde et le stockage
+restauré. Il prend un `pg_basebackup`, avec WAL et manifeste SHA-256, avant
+de créer les preuves du scénario. PostgreSQL archive les segments qui
+contiennent les transactions suivantes.
+
+Après fermeture durable du contexte et du bail, le contrôleur ajoute un
+marqueur de contrôle et crée le point PostgreSQL nommé. Il ajoute un second
+marqueur après ce point et vérifie que les segments nécessaires sont
+présents dans l'archive. Seul un conteneur de copie sans réseau peut préparer
+le volume restauré après l'arrêt du PostgreSQL source. Il monte l'archive
+en lecture seule. Le serveur récupéré doit retrouver l'identifiant physique
+de la source, avancer de timeline et contenir uniquement le premier marqueur.
+
+Le contrôleur restreint les connexions avant de démarrer le témoin de
+consultation. Il vérifie l'intégrité des neuf tables, l'état fermé du bail,
+le reçu mTLS exact et le refus des routes d'écriture. La base Vault reste
+disponible et le PostgreSQL source reste arrêté. L'archive synthétique
+reste sur les volumes éphémères du runner. Les seuls éléments publiés
+sont les constats du scénario et du nettoyage.
+
+La CI de `eb1eba8` valide le parcours sur PostgreSQL 17.12 et mTLS.
+Les 77 tests installés, 35 scénarios natifs et neuf contrôles de sauvegarde
+et de restauration passent. Les contrôles confirment le rejeu au point nommé,
+l'identifiant système d'origine, la nouvelle timeline et l'exclusion d'une
+transaction ultérieure archivée. Les deux bases initiales sont issues de
+`initdb`. L'instance restaurée retrouve la même lignée PostgreSQL que le
+témoin source, sur son propre volume. Le reçu confirme le nettoyage.
+L'archive GitHub `14778924470` a été vérifiée. Le SHA-256 du reçu public est
+`69dc52b29eb2d8def072347d35e4012d4e8d77b90469f7f450bfc5333a0899c7`.
+Le profil Vault seul n'est pas exécuté dans cette campagne.
+[CI PITR](https://github.com/pamolive/PamOlive-Platform/actions/runs/45086358011)
+[PR nº 40](https://github.com/pamolive/PamOlive-Platform/pull/40)
+
+La restauration logique sur un cluster distinct a été rejouée sur le même
+commit. Les 77 tests installés, 35 scénarios natifs et six contrôles SQL
+passent. Le reçu de l'archive GitHub `14779149456` confirme le nettoyage.
+Son SHA-256 est `4911285bdf6d143eab8cbc6119d9dce23bc7fbbb72960169fa4b1f06d5663543`.
+[CI de non-régression](https://github.com/pamolive/PamOlive-Platform/actions/runs/45086587313)
+
+La sauvegarde et la reprise utilisent un seul hôte. La conservation durable
+des archives, la restauration multi-hôte et le rétablissement d'une autorité
+de service nécessitent leurs propres procédures et validations.
 
 ## Wheel W1 installée — 18 novembre 2026
 

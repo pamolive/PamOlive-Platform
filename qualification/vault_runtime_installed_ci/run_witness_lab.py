@@ -10,6 +10,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from lab import postgres_stage, witness_postgres  # noqa: E402
+from lab.witness_pitr_storage import (  # noqa: E402
+    COPY_COMMAND,
+    COPY_READY,
+    PitrRefused,
+    finish_witness_pitr,
+    take_pitr_base,
+)
 from lab.witness_restore_storage import (  # noqa: E402
     WitnessStorageRefused,
     restore_witness_cluster,
@@ -21,6 +28,7 @@ from lab_docker import (  # noqa: E402
     Volume,
     WitnessClusterRestoreLab,
     WitnessLab,
+    WitnessPitrLab,
     WitnessRecoveryLab,
     WitnessRestoreLab,
 )
@@ -30,9 +38,17 @@ from support import load, need, read_regular, sha  # noqa: E402
 PYTHON = ("/opt/vault/bin/python", "-I", "-B", "-c")
 PG_ROLES = {"wpg": "w-postgres", "vpg": "v-postgres"}
 RECOVERY_POSTGRES = "w-postgres-restore"
+PITR_COPY = "w-pitr-copy"
+PGDATA = "/var/lib/postgresql/data"
 READY_PG = (
     'test "$(cat /proc/1/comm)" = postgres && '
     "pg_isready -q -h /var/run/postgresql -p 5432 -U postgres -d postgres"
+)
+PROMOTED_PG = (
+    'test "$(cat /proc/1/comm)" = postgres && test "$(psql -X -w -qAt '
+    "-h /var/run/postgresql -p 5432 -U postgres -d postgres "
+    "-c 'SELECT pg_is_in_recovery()' 2>/dev/null)"
+    '" = f'
 )
 W_FRAME_CAP = 256 * 1024
 PUBLIC_CAP = 8192
@@ -177,8 +193,23 @@ STORAGE_CASES = (
 CLUSTER_STORAGE_CASES = (
     *STORAGE_CASES, "original_cluster_unavailable", "distinct_cluster_verified"
 )
+PITR_STORAGE_CASES = (
+    "base_backup_verified",
+    "wal_archived",
+    "named_point_recovered",
+    "post_target_write_excluded",
+    "physical_identity_preserved",
+    "timeline_advanced",
+    "source_cluster_unavailable",
+    "history_and_state_preserved",
+    "read_only_grants_verified",
+)
 STORAGE_FAILURES = {
     "inputs", "source", "archive", "cutoff", "target", "create", "restore", "verify"
+}
+PITR_FAILURES = {
+    "inputs", "base_control", "base_backup", "base_verify", "source", "restore_point",
+    "wal_archive", "cutoff", "replay", "restrict", "verify",
 }
 
 
@@ -204,6 +235,7 @@ def create(
     restart=False,
     restore_witness=False,
     restore_cluster=False,
+    pitr=False,
 ):
     pg_environment = {
         "PGDATA": "/var/lib/postgresql/data",
@@ -247,17 +279,28 @@ def create(
     for role, command in commands.items():
         user, address, alias = lab.endpoints[role]
         sql = role in (*PG_ROLES.values(), RECOVERY_POSTGRES)
+        volumes = lab.service_mounts(role) if pitr else (Volume(role, "/lab"),)
+        tmpfs = pg_tmpfs if sql else CLIENT_TMPFS if role == "driver" else ()
+        if pitr and role == RECOVERY_POSTGRES:
+            tmpfs = tuple(row for row in pg_tmpfs if row[0] != PGDATA)
         specs.append(
             Container(
                 postgres if sql else consumer,
                 role,
                 user,
                 command,
-                (Volume(role, "/lab"),),
-                pg_tmpfs if sql else CLIENT_TMPFS if role == "driver" else (),
+                volumes,
+                tmpfs,
                 pg_env if sql else (),
                 address=address,
                 alias=alias,
+            )
+        )
+    if pitr:
+        specs.append(
+            Container(
+                postgres, PITR_COPY, "999:999", ("/bin/sh", "-ec", COPY_COMMAND),
+                lab.service_mounts(PITR_COPY),
             )
         )
     return {spec.role: (lab.create_container(spec), spec) for spec in specs}
@@ -294,7 +337,7 @@ def wait(lab, role, command, seconds):
 
 def stage(
     lab, prepare, run_id, phase, marker, *,
-    recovery=False, restore_witness=False, restore_cluster=False, **options,
+    recovery=False, restore_witness=False, restore_cluster=False, pitr=False, **options,
 ):
     args = (phase, "--run", run_id)
     if recovery:
@@ -306,6 +349,9 @@ def stage(
     if restore_cluster:
         need(recovery and not restore_witness)
         args = (*args, "--restore-cluster")
+    if pitr:
+        need(restore_cluster)
+        args = (*args, "--pitr")
     return checked(
         lab.exec(*prepare, *role_command("prepare", *args), **options),
         marker,
@@ -313,7 +359,8 @@ def stage(
 
 
 def bootstrap(
-    lab, roles, run_id, report, *, restart=False, restore_witness=False, restore_cluster=False
+    lab, roles, run_id, report, *,
+    restart=False, restore_witness=False, restore_cluster=False, pitr=False,
 ):
     prepare = roles["preparer"]
     report["phase"] = "postgres_staging"
@@ -326,6 +373,7 @@ def bootstrap(
         recovery=restart,
         restore_witness=restore_witness,
         restore_cluster=restore_cluster,
+        pitr=pitr,
         timeout=25,
     )
     report["phase"] = "postgres_startup"
@@ -524,38 +572,61 @@ def restart_closed_witness(lab, old, driver, consumer, run_id, source_sha, repor
     return recovery
 
 
+def publish_pitr_failure(report, error):
+    if error.phase in PITR_FAILURES:
+        report["storage_failure"] = error.phase
+
+
 def restore_closed_witness(
-    lab, recovery, driver, wpg, consumer, run_id, source_sha, report, *, recovery_pg=None
+    lab, recovery, driver, wpg, consumer, run_id, source_sha, report, *,
+    recovery_pg=None, pitr=None,
 ):
     report["phase"] = "restoration_ready"
     wait_driver(lab, driver, "restore-ready", 50, report)
     need(read_role(lab, driver, "/work/restore-ready", 64) == b"W01_RESTORE_READY\n")
     report["phase"] = "restoration_storage"
-    restore_cluster = recovery_pg is not None
+    need(recovery_pg is None or pitr is None)
+    restore_cluster = recovery_pg is not None or pitr is not None
 
     def switch_clusters():
-        target, preflight, provision = recovery_pg
         lab.retire_recovery(*recovery)
         lab.retire_source(*wpg)
+        if pitr is None:
+            target, preflight, provision = recovery_pg
+        else:
+            copy, target, _, _ = pitr
+            checked(lab.start(*copy, attach=True, timeout=35, stdout_cap=1024), COPY_READY)
         lab.start(*target)
-        wait(lab, target, ("/bin/sh", "-ec", READY_PG), 45)
-        prefix = f"W01_{run_id}_wpr_"
-        checked(run_pg(lab, *target, preflight), (prefix + "EMPTY\n").encode("ascii"))
-        report["empty_clusters_verified"] += 1
-        checked(run_pg(lab, *target, provision), (prefix + "PROVISIONED\n").encode("ascii"))
+        wait(lab, target, ("/bin/sh", "-ec", READY_PG if pitr is None else PROMOTED_PG), 45)
+        if pitr is None:
+            prefix = f"W01_{run_id}_wpr_"
+            checked(run_pg(lab, *target, preflight), (prefix + "EMPTY\n").encode("ascii"))
+            report["empty_clusters_verified"] += 1
+            checked(run_pg(lab, *target, provision), (prefix + "PROVISIONED\n").encode("ascii"))
 
     try:
-        if restore_cluster:
+        if pitr is not None:
+            _, target, role_sql, base = pitr
+            storage = finish_witness_pitr(
+                lab, *wpg, *target, run_id, base=base,
+                switch_clusters=switch_clusters, role_sql=role_sql,
+            )
+        elif restore_cluster:
             storage = restore_witness_cluster(
                 lab, *wpg, *recovery_pg[0], run_id, switch_clusters=switch_clusters
             )
         else:
             storage = restore_witness_storage(lab, *wpg, run_id)
+    except PitrRefused as error:
+        publish_pitr_failure(report, error)
+        raise
     except WitnessStorageRefused as error:
         if error.phase in STORAGE_FAILURES:
             report["storage_failure"] = error.phase
         raise
     cases = CLUSTER_STORAGE_CASES if restore_cluster else STORAGE_CASES
+    if pitr is not None:
+        cases = PITR_STORAGE_CASES
     need(type(storage) is dict and set(storage) == set(cases))
     need(all(value is True for value in storage.values()))
     report["restoration_storage"] = storage
@@ -575,7 +646,7 @@ def restore_closed_witness(
 
 def run(
     lab, report, *, fence=False, history=False, restart=False,
-    restore_witness=False, restore_cluster=False,
+    restore_witness=False, restore_cluster=False, pitr=False,
 ):
     work = lab.work
     stage_root = work / "verified-consumer-context"
@@ -587,7 +658,7 @@ def run(
     report["phase"] = "role_reservation"
     run_id = lab.reservation.removeprefix("pv-")[:16]
     lab.create_network()
-    for role in lab.endpoints:
+    for role in sorted(lab.volume_roles) if pitr else lab.endpoints:
         lab.create_volume(role)
     roles = create(
         lab,
@@ -600,16 +671,31 @@ def run(
         restart=restart,
         restore_witness=restore_witness,
         restore_cluster=restore_cluster,
+        pitr=pitr,
     )
     prepare, driver, witness = (roles[name] for name in ("preparer", "driver", "witness"))
     lab.start(*prepare)
     report["installed"] = collect_pure(lab, prepare, source_sha, descriptor_sha)
     bootstrap(
         lab, roles, run_id, report, restart=restart,
-        restore_witness=restore_witness, restore_cluster=restore_cluster,
+        restore_witness=restore_witness, restore_cluster=restore_cluster, pitr=pitr,
     )
     recovery_pg = None
-    if restore_cluster:
+    recovery_pitr = None
+    if pitr:
+        report["phase"] = "pitr_base_backup"
+        try:
+            base = take_pitr_base(lab, *roles["w-postgres"], run_id)
+        except PitrRefused as error:
+            publish_pitr_failure(report, error)
+            raise
+        recovery_pitr = (
+            roles[PITR_COPY],
+            roles[RECOVERY_POSTGRES],
+            read_role(lab, prepare, "/work/wpr-pitr.sql", 128 * 1024),
+            base,
+        )
+    elif restore_cluster:
         recovery_pg = (
             roles[RECOVERY_POSTGRES],
             read_role(lab, prepare, "/work/wpr-preflight.sql", 8192),
@@ -634,6 +720,7 @@ def run(
         recovery=restart,
         restore_witness=restore_witness,
         restore_cluster=restore_cluster,
+        pitr=pitr,
         data=frame,
         timeout=5,
     )
@@ -652,6 +739,7 @@ def run(
             restore_closed_witness(
                 lab, recovery, driver, roles["w-postgres"], consumer, run_id, source_sha, report,
                 recovery_pg=recovery_pg,
+                pitr=recovery_pitr,
             )
             report["phase"] = "restoration_observation"
     wait_driver(lab, driver, "public.json", 50 if history else 32, report)
@@ -680,6 +768,7 @@ def main():
     restoration = parser.add_mutually_exclusive_group()
     restoration.add_argument("--restore-witness", action="store_true")
     restoration.add_argument("--restore-cluster", action="store_true")
+    parser.add_argument("--pitr", action="store_true")
     options = parser.parse_args()
     if options.history and not options.fence:
         parser.error("--history requires --fence")
@@ -689,6 +778,8 @@ def main():
         parser.error("--restore-witness requires --restart-history")
     if options.restore_cluster and not options.restart_history:
         parser.error("--restore-cluster requires --restart-history")
+    if options.pitr and not options.restore_cluster:
+        parser.error("--pitr requires --restore-cluster")
     report = {
         "schema": "pamolive.witness-installed-dual-cluster/2",
         "phase": "reservation",
@@ -713,6 +804,9 @@ def main():
         )
         report["restoration_storage"] = None
         report["storage_failure"] = None
+    if options.pitr:
+        lab_type = WitnessPitrLab
+        report["schema"] = "pamolive.witness-installed-pitr/1"
     lab = None
     try:
         lab = lab_type(options.work)
@@ -724,6 +818,7 @@ def main():
             restart=options.restart_history,
             restore_witness=options.restore_witness,
             restore_cluster=options.restore_cluster,
+            pitr=options.pitr,
         )
     except Exception:
         pass

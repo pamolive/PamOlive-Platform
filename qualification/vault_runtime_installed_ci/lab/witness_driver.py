@@ -741,7 +741,7 @@ def run_cases(
                     def restore():
                         advance("restore_wait")
                         publish("restore-ready", b"W01_RESTORE_READY\n")
-                        wait_for("restored", 130 if restore_cluster else 90)
+                        wait_for("restored", 180 if restore_cluster else 90)
                         advance("restore_tls")
                         wait_server(server_der, time.time() + 10)
 
