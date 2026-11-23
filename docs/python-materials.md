@@ -96,6 +96,23 @@ other files too. No `.pyx` file is accepted in these reviewed sdists. The three
 pre-generated psycopg C sources (`_psycopg.c`, `pq.c`, `types/numutils.c`) are all
 recorded; they produce two extensions. The LDAP C/header set is recorded too.
 Decompression uses the same bounded byte buffer whose source hash was checked.
+
+## Qualification des compilations natives Python
+
+Le banc Linux amd64 reconstruit les deux roues depuis les sdists et les outils
+épinglés. La compilation hors réseau s'exécute avec l'UID 65534. La sonde
+enregistre les fichiers C, les objets, les dépendances d'en-têtes et la carte
+du lien GNU. Le vérificateur rapproche les sommes de chaque objet avec les
+fichiers source recensés. Pour les trois extensions, la sortie du lien doit
+avoir la même empreinte dans la roue et dans l'installation hors réseau.
+
+Les jeux de preuves incluent les versions des SDK Debian, les identités des
+outils sélectionnés par GCC, le manifeste des roues et les traces bornées.
+Les empreintes d'en-têtes et d'entrées de lien sont relevées après chaque
+appel. Le résultat suppose l'intégrité du runner et des backends épinglés.
+Le reçu reste une observation du banc avec les SDK Debian d'origine. La
+candidate PamOlive doit établir ces mêmes liaisons avec ses SDK reconstruits
+et son archive exacte. Le résultat du scan GCC reste soumis à cette validation.
 Upstream inspection and additional role copies use their checked buffer too;
 generated-wheel inspection uses exactly the buffer hashed in its per-run record.
 This avoids a hash/parse mismatch on reopening a path. A compromised runner can
