@@ -2,19 +2,22 @@
 
 ## Prochaines qualifications P1-F et P1-G
 
-La CI de livraison doit confirmer les conditions GCC et Perl sur son
-propre TAR, puis traiter les groupes High encore bloquants. Le scan
-de la PR #72 fixe le dernier décompte entièrement vérifié à 10.
-Une campagne indépendante qualifie le backport de l'utilitaire
-`infocmp` dans `ncurses-bin`, avec les bibliothèques terminal Trixie.
-Le scan de l'image intégrée reste nécessaire pour ce groupe.
-Pour P1-G, la première étape après le staging 158 est une mesure
-isolée du sandbox sous un compte non-root sur GitHub Actions,
-avec un binaire et un chemin épinglés. Le parcours UI est soumis
-à sa qualification complète avant publication.
-[Scan de référence](https://github.com/pamolive/PamOlive-Platform/actions/runs/45163015819/artifacts/14818645061) ·
+Le scan de la branche de la PR #81 conserve 43 groupes High et
+en refuse sept. Les candidats suivants doivent vérifier sur leur propre
+TAR les paquets glibc, le backport `infocmp` et les dépendances directes
+des binaires qui restent à attribuer. Le résultat du scan de la PR #81
+constitue une preuve propre à ce candidat.
+[Scan de référence](https://github.com/pamolive/PamOlive-Platform/actions/runs/45212387600/artifacts/14842681978) ·
 [ADR ncurses-bin](adr-044-ncurses-bin-trixie-backport.md) ·
-[Staging P1-G](https://github.com/pamolive/PamOlive-Platform/pull/74)
+[Inventaire ELF](https://github.com/pamolive/PamOlive-Platform/pull/87)
+
+Pour P1-G, le pair SSH synthétique commun fournit les signaux d'ouverture,
+d'aller-retour et de fermeture du transport. Le prochain raccord doit garder
+le lecteur ouvert pendant l'arrêt par le portail et vérifier le motif de
+fermeture côté relais. L'admission du navigateur sous sandbox non-root et
+le parcours TLS/WSS complet restent à qualifier.
+[Préflight P1-G](https://github.com/pamolive/PamOlive-Platform/pull/82) ·
+[Raccord SSH](../qualification/p1g_headless/NEXT-NATIVE.md)
 
 ## Image intégrée — qualification des dépendances Trixie
 
