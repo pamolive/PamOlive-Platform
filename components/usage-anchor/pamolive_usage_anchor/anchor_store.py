@@ -54,7 +54,7 @@ class AnchorStore:
         except OSError:
             raise codec.Error("unavailable", 503) from None
 
-    def _read(self, directory_fd, name, *, retained=None):
+    def _read(self, directory_fd, name, *, retained=None, maximum=MAX_ANCHOR_BYTES):
         flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC | os.O_NOCTTY
         fd = os.open(name, flags, dir_fd=directory_fd)
         try:
@@ -63,13 +63,13 @@ class AnchorStore:
                 stat.S_ISREG(info.st_mode)
                 and stat.S_IMODE(info.st_mode) == 0o600
                 and info.st_uid == self._owner_uid
-                and 0 < info.st_size <= MAX_ANCHOR_BYTES,
+                and 0 < info.st_size <= maximum,
                 "unavailable",
                 503,
             )
             data = bytearray()
-            while len(data) <= MAX_ANCHOR_BYTES:
-                block = os.read(fd, MAX_ANCHOR_BYTES + 1 - len(data))
+            while len(data) <= maximum:
+                block = os.read(fd, maximum + 1 - len(data))
                 if not block:
                     break
                 data.extend(block)
@@ -89,7 +89,8 @@ class AnchorStore:
         checkpoint = verify_checkpoint(raw, public_key=public_key, expected_sha256=expected_sha256)
         return checkpoint, raw
 
-    def _publish(self, directory_fd, name, raw):
+    @contextmanager
+    def _staged_file(self, directory_fd, raw):
         temporary = ".pending-" + token_hex(16)
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
         fd = os.open(temporary, flags, 0o600, dir_fd=directory_fd)
@@ -104,23 +105,30 @@ class AnchorStore:
                 os.fsync(fd)
             finally:
                 os.close(fd)
-            try:
-                os.link(
-                    temporary, name, src_dir_fd=directory_fd, dst_dir_fd=directory_fd,
-                    follow_symlinks=False,
-                )
-            except FileExistsError:
-                self._read(directory_fd, name, retained=raw)
+            yield temporary
         finally:
-            os.unlink(temporary, dir_fd=directory_fd)
+            try:
+                os.unlink(temporary, dir_fd=directory_fd)
+            except FileNotFoundError:
+                pass  # The current-pointer publisher moved the staged file.
+
+    def _retain(self, directory_fd, name, raw, *, maximum=MAX_ANCHOR_BYTES):
+        try:
+            self._read(directory_fd, name, retained=raw, maximum=maximum)
+        except FileNotFoundError:
+            with self._staged_file(directory_fd, raw) as temporary:
+                try:
+                    os.link(
+                        temporary, name, src_dir_fd=directory_fd, dst_dir_fd=directory_fd,
+                        follow_symlinks=False,
+                    )
+                except FileExistsError:
+                    self._read(directory_fd, name, retained=raw, maximum=maximum)
 
     def save(self, raw: bytes, *, public_key: bytes, expected_sha256: str) -> None:
         """Verify, publish without replacement, and flush the object's directory entry."""
         name = codec.digest(expected_sha256) + ".json"
         verify_checkpoint(raw, public_key=public_key, expected_sha256=expected_sha256)
         with self._directory() as directory_fd:
-            try:
-                self._read(directory_fd, name, retained=raw)
-            except FileNotFoundError:
-                self._publish(directory_fd, name, raw)
+            self._retain(directory_fd, name, raw)
             os.fsync(directory_fd)

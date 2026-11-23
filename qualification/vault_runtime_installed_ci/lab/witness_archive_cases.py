@@ -6,6 +6,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, replace
 from pathlib import Path
+from threading import Barrier
 
 from .witness_fence_cases import expect_error, require
 
@@ -83,7 +84,7 @@ def restore_lab_anchor(references, advance):
     )
     require(reopened.returncode == 0 and reopened.stdout == b"W01_ANCHOR_REOPENED\n")
     advance("anchor_store_rotation")
-    qualify_recovery_manifest(store, point, imported_raw, public, pin, alternate)
+    qualify_recovery_manifest(point, imported_raw, public, pin, alternate)
     return (imported_raw, public, pin, alternate), {
         "concurrent_exact_saves": True,
         "reopened_after_database_recovery": True,
@@ -91,16 +92,16 @@ def restore_lab_anchor(references, advance):
         "missing_pin_no_fallback": True,
         "new_process_reopened": True,
         "checkpoint_key_rotation_verified": True,
+        "custody_atomic_rotation_verified": True,
     }
 
 
-def qualify_recovery_manifest(store, point, raw, public, pin, alternate):
+def qualify_recovery_manifest(point, raw, public, pin, alternate):
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    from pamolive_usage_anchor import codec, recovery_manifest
+    from pamolive_usage_anchor import codec, recovery_manifest, recovery_store
     from pamolive_usage_anchor.signed_anchor import sign_checkpoint
 
-    governor, next_signer = Ed25519PrivateKey.generate(), Ed25519PrivateKey.generate()
-    next_key = next_signer.public_key().public_bytes_raw()
+    governor = Ed25519PrivateKey.generate()
     scope = recovery_manifest.RecoveryScope.from_checkpoint(point)
     facts = {"governance_key": governor.public_key().public_bytes_raw(), "scope": scope}
     first_entry = {"checkpoint_sha256": pin, "generation": 1}
@@ -113,35 +114,92 @@ def qualify_recovery_manifest(store, point, raw, public, pin, alternate):
         "admissions": [first_entry],
     }
     initial = recovery_manifest.sign_manifest(body, sign=governor.sign, **facts)
-    initial_pin = recovery_manifest.verify_initial_manifest(
-        initial, checkpoints={pin: raw}, **facts
-    )
-    signed_next = sign_checkpoint(point, public_key=next_key, sign=next_signer.sign)
-    next_pin = codec.sha(signed_next)
-    next_entry = {"checkpoint_sha256": next_pin, "generation": 2}
-    body.update(
-        revision=2,
-        previous_sha256=initial_pin,
-        keys=[codec.b64(public), codec.b64(next_key)],
-        admissions=sorted((first_entry, next_entry), key=lambda item: item["checkpoint_sha256"]),
-    )
-    rotated = recovery_manifest.sign_manifest(body, sign=governor.sign, **facts)
-    current = recovery_manifest.verify_manifest_successor(
-        initial, rotated, current_sha256=initial_pin, checkpoints={next_pin: signed_next}, **facts,
-    )
-    store.save(signed_next, public_key=next_key, expected_sha256=next_pin)
-    for key, digest in ((public, pin), (next_key, next_pin)):
-        stored, document = store.load(public_key=key, expected_sha256=digest)
-        verified = recovery_manifest.restore_checkpoint(
-            rotated, document, current_sha256=current, checkpoint_sha256=digest, **facts,
+    directory = Path("/work/anchor-custody")
+    directory.mkdir(mode=0o700)
+    store = recovery_store.RecoveryStore(directory, owner_uid=os.geteuid(), **facts)
+    initial_pin = store.commission(initial, checkpoints={pin: raw})
+
+    proposals = []
+    for _ in range(2):
+        signer = Ed25519PrivateKey.generate()
+        key = signer.public_key().public_bytes_raw()
+        document = sign_checkpoint(point, public_key=key, sign=signer.sign)
+        digest = codec.sha(document)
+        entry = {"checkpoint_sha256": digest, "generation": 2}
+        candidate = dict(
+            body, revision=2, previous_sha256=initial_pin,
+            keys=[codec.b64(public), codec.b64(key)],
+            admissions=sorted((first_entry, entry), key=lambda item: item["checkpoint_sha256"]),
         )
-        require(verified == stored == point)
+        manifest = recovery_manifest.sign_manifest(candidate, sign=governor.sign, **facts)
+        proposals.append((manifest, {digest: document}))
+
+    barrier = Barrier(2, timeout=3)
+
+    def compete(proposal):
+        manifest, checkpoints = proposal
+        barrier.wait()
+        try:
+            return store.advance(manifest, expected=initial_pin, checkpoints=checkpoints)
+        except codec.Error as error:
+            require((error.code, error.status) in {
+                ("idempotency_conflict", 409), ("unavailable", 503),
+            })
+            return None
+
+    with ThreadPoolExecutor(max_workers=2) as writers:
+        outcomes = tuple(writers.map(compete, proposals))
+    current, = [outcome for outcome in outcomes if outcome]
+    chosen, checkpoints = proposals[outcomes.index(current)]
+    rejected, other_documents = proposals[outcomes.index(None)]
+    require(current == store.advance(chosen, expected=initial_pin, checkpoints=checkpoints))
     expect_error(
-        "anchor_refused", 403, lambda: recovery_manifest.restore_checkpoint(
-            rotated, alternate, current_sha256=current,
-            checkpoint_sha256=codec.sha(alternate), **facts,
-        )
+        "idempotency_conflict", 409, lambda: store.advance(
+            rejected, expected=initial_pin, checkpoints=other_documents
+        ),
     )
+    for digest in (pin, *checkpoints):
+        require(store.restore(expected=current, checkpoint_sha256=digest) == point)
+    alternate_digest = codec.sha(alternate)
+    # An object retained before an interrupted publication is not an admission.
+    with store._locked(write=True) as fd:
+        store._files._retain(fd, alternate_digest + ".checkpoint", alternate)
+        os.fsync(fd)
+    expect_error("anchor_refused", 403, lambda: store.restore(
+        expected=current, checkpoint_sha256=alternate_digest
+    ))
+    verify_custody_process(store, directory, scope, facts["governance_key"], current, pin)
+
+
+def verify_custody_process(store, directory, scope, governor, current, historical_pin):
+    code = (
+        "import os, sys\n"
+        "from pamolive_usage_anchor import codec, recovery_manifest, recovery_store\n"
+        "scope = recovery_manifest.RecoveryScope(*sys.argv[5:])\n"
+        "store = recovery_store.RecoveryStore(sys.argv[1], owner_uid=os.geteuid(),\n"
+        "    governance_key=bytes.fromhex(sys.argv[2]), scope=scope)\n"
+        "try:\n"
+        "    store.restore(expected=sys.argv[3], checkpoint_sha256=sys.argv[4])\n"
+        "    print('W01_CUSTODY_REOPENED')\n"
+        "except codec.Error as exc:\n"
+        "    if (exc.code, exc.status) != ('unavailable', 503):\n"
+        "        raise\n"
+        "    print('W01_CUSTODY_BUSY')\n"
+    )
+    argv = [
+        sys.executable, "-I", "-B", "-c", code, str(directory), governor.hex(), current,
+        historical_pin, *asdict(scope).values(),
+    ]
+
+    def run(expected):
+        child = subprocess.run(
+            argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=8, check=False,
+        )
+        require(child.returncode == 0 and child.stdout == expected and not child.stderr)
+
+    with store._locked(write=True):
+        run(b"W01_CUSTODY_BUSY\n")
+    run(b"W01_CUSTODY_REOPENED\n")
 
 
 def receive_lab_checkpoint(slot, material, advance):

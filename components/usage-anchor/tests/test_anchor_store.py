@@ -49,7 +49,8 @@ class AnchorStoreTests(unittest.TestCase):
     def test_save_and_load_use_exact_address_and_verify_original_bytes(self):
         with (
             patch.object(self.store, "_directory", return_value=nullcontext(9)),
-            patch.object(self.store, "_publish") as publish,
+            patch.object(self.store, "_staged_file", return_value=nullcontext("staged")) as stage,
+            patch.object(anchor_store.os, "link") as link,
             patch.object(self.store, "_read", side_effect=[FileNotFoundError(), self.raw]) as read,
             patch.object(anchor_store.os, "fsync") as sync,
         ):
@@ -58,23 +59,32 @@ class AnchorStoreTests(unittest.TestCase):
                 self.store.load(public_key=self.public, expected_sha256=self.pin),
                 (self.point, self.raw),
             )
-            publish.assert_called_once_with(9, self.pin + ".json", self.raw)
+            stage.assert_called_once_with(9, self.raw)
+            link.assert_called_once_with(
+                "staged", self.pin + ".json", src_dir_fd=9, dst_dir_fd=9, follow_symlinks=False
+            )
             self.assertEqual(
                 read.call_args_list,
-                [call(9, self.pin + ".json", retained=self.raw), call(9, self.pin + ".json")],
+                [
+                    call(9, self.pin + ".json", retained=self.raw,
+                         maximum=signed_anchor.MAX_ANCHOR_BYTES),
+                    call(9, self.pin + ".json"),
+                ],
             )
             sync.assert_called_once_with(9)
 
     def test_existing_exact_receipt_is_synced_without_creating_a_new_file(self):
         with (
             patch.object(self.store, "_directory", return_value=nullcontext(9)),
-            patch.object(self.store, "_publish") as publish,
+            patch.object(self.store, "_staged_file") as stage,
             patch.object(self.store, "_read", return_value=self.raw) as read,
             patch.object(anchor_store.os, "fsync") as sync,
         ):
             self.store.save(self.raw, public_key=self.public, expected_sha256=self.pin)
-            read.assert_called_once_with(9, self.pin + ".json", retained=self.raw)
-            publish.assert_not_called()
+            read.assert_called_once_with(
+                9, self.pin + ".json", retained=self.raw, maximum=signed_anchor.MAX_ANCHOR_BYTES
+            )
+            stage.assert_not_called()
             sync.assert_called_once_with(9)
 
     def test_load_rejects_changed_bytes_and_wrong_key_even_at_exact_address(self):
