@@ -1,0 +1,71 @@
+name: Python extension compilation provenance lab
+
+on:
+  push:
+    branches: [agent/gcc-python-native-provenance, agent/python-product-native-provenance]
+
+permissions:
+  contents: read
+
+jobs:
+  observe-native-wheels:
+    if: github.repository == 'pamolive/PamOlive-Platform'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Verify the observer and the wheel bindings with synthetic records
+        run: >-
+          python3 -B -m unittest qualification.python_native_provenance.test_image_evidence
+          qualification.python_native_provenance.test_compiler_probe
+      - name: Build the locked wheels offline and verify the compiler evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          context="$RUNNER_TEMP/python-native-$GITHUB_RUN_ID"
+          evidence="$RUNNER_TEMP/python-native-evidence-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -m 700 "$context"
+          test ! -e "$evidence"
+          git archive "$GITHUB_SHA" \
+            qualification/python_native_provenance \
+            deploy/python_materials.py deploy/native_inventory.py \
+            deploy/python-materials.linux-amd64.json requirements-bootstrap.lock \
+            requirements-python-runtime-linux.lock requirements-python-build-tools-linux.lock \
+            requirements-python-native-sources-linux.lock requirements-python-native-test-linux.lock \
+            | tar --extract --directory "$context" --no-same-owner
+          docker build --platform=linux/amd64 --no-cache --progress=plain \
+            --file "$context/qualification/python_native_provenance/Dockerfile" \
+            --target evidence --output "type=local,dest=$evidence" "$context"
+          cmp <(find "$evidence" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort) - <<'EXPECTED'
+          compiler-observations.json
+          derived-manifest.json
+          qualification.json
+          EXPECTED
+          test "$(find "$evidence" -mindepth 1 | wc -l)" = 3
+          python3 - "$evidence" "$GITHUB_SHA" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          receipt = json.loads((root / "qualification.json").read_bytes())
+          assert receipt["schema"] == "pamolive.python-native-provenance-lab/1"
+          assert receipt["product_image_measured"] is False and receipt["policy_disposition"] is None
+          assert len(receipt["extensions"]) == 3 and receipt["compiler_calls"] == 15
+          for name, field in (("derived-manifest.json", "derived_manifest_sha256"),
+                              ("compiler-observations.json", "observations_sha256")):
+              assert hashlib.sha256((root / name).read_bytes()).hexdigest() == receipt[field]
+          print(json.dumps({"revision": sys.argv[2], "extensions": len(receipt["extensions"]),
+                            "compiler_calls": receipt["compiler_calls"]}))
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: python-native-provenance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/python-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 7

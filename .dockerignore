@@ -48,6 +48,10 @@ qualification/debian_138_refresh/*
 !qualification/debian_138_refresh/test_refresh.py
 !qualification/debian_138_refresh/verify_refresh.py
 qualification/debian_138_refresh/*/**
+!qualification/python_native_provenance/
+qualification/python_native_provenance/*
+!qualification/python_native_provenance/compiler_probe.py
+!qualification/python_native_provenance/validate_observations.py
 
 # Keep local and secret-bearing files out even inside allowed directories.
 **/.git
