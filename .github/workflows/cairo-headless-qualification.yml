@@ -2,7 +2,7 @@ name: Cairo headless Trixie qualification
 
 on:
   push:
-    branches: [agent/cairo-headless-qualification]
+    branches: [agent/cairo-headless-qualification, agent/cairo-headless-runtime]
 
 permissions:
   contents: read
@@ -28,7 +28,7 @@ jobs:
           test ! -e "$evidence"
           (
             set -o noclobber
-            git archive "$GITHUB_SHA" qualification/cairo_headless qualification/x11_trixie_build/check.py > "$archive"
+            git archive "$GITHUB_SHA" deploy/cairo-headless qualification/cairo_headless qualification/x11_trixie_build/check.py > "$archive"
           )
           mkdir -m 700 "$context"
           tar --extract --file "$archive" --directory "$context" --no-same-owner

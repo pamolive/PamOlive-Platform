@@ -291,6 +291,8 @@ def compare(root):
     x11.require(baseline["rendering"] == candidate["rendering"], "png_mismatch")
 
     allowlist = HERE / "disabled-exports.txt"
+    if not allowlist.is_file():
+        allowlist = HERE.parents[1] / "deploy/cairo-headless/disabled-exports.txt"
     x11.require(0 < allowlist.stat().st_size <= 4096, "disabled_exports_size")
     rows = allowlist.read_text(encoding="ascii").splitlines()
     disabled = set(rows)

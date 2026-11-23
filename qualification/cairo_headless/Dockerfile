@@ -3,47 +3,27 @@ RUN test "$(dpkg --print-architecture)" = amd64 \
  && test -s /usr/share/keyrings/debian-archive-keyring.gpg
 
 FROM trixie AS source
-COPY qualification/cairo_headless/trixie.sources qualification/cairo_headless/source-apt.conf qualification/cairo_headless/source.sha256 /opt/cairo-inputs/
+COPY deploy/cairo-headless/trixie.sources deploy/cairo-headless/source-apt.conf deploy/cairo-headless/source.sha256 deploy/cairo-headless/materials.sh /opt/cairo-inputs/
 WORKDIR /opt/cairo-source
-RUN set -eu; \
-    install -d -m 0755 /var/lib/apt/cairo-source-lists; \
-    chown _apt:root /opt/cairo-source; \
-    apt-get -c /opt/cairo-inputs/source-apt.conf update; \
-    apt-get -c /opt/cairo-inputs/source-apt.conf --download-only source cairo=1.18.4-1; \
-    sha256sum --check --strict /opt/cairo-inputs/source.sha256; \
-    test "$(find . -maxdepth 1 -type f | wc -l)" -eq 3
+RUN sh /opt/cairo-inputs/materials.sh acquire
 
 FROM trixie AS builder
-RUN set -eu; \
-    sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends --no-remove build-essential dpkg-dev fakeroot; \
-    apt-get build-dep -y --no-install-recommends cairo; \
-    rm -rf /var/lib/apt/lists/*
+COPY --chmod=0444 deploy/cairo-headless/source.sha256 deploy/cairo-headless/prepare.py deploy/cairo-headless/disabled-exports.txt deploy/cairo-headless/materials.sh /opt/cairo-inputs/
+RUN sh /opt/cairo-inputs/materials.sh toolchain
 WORKDIR /opt/cairo-build
 COPY --from=source /opt/cairo-source/ ./
-COPY --chmod=0444 qualification/cairo_headless/source.sha256 qualification/cairo_headless/prepare.py qualification/cairo_headless/disabled-exports.txt /opt/cairo-inputs/
-RUN --network=none set -eu; \
-    sha256sum --check --strict /opt/cairo-inputs/source.sha256; \
-    dpkg-source -x cairo_1.18.4-1.dsc tree; \
-    python -I -B -S /opt/cairo-inputs/prepare.py tree /opt/cairo-inputs/disabled-exports.txt; \
-    chown -R 65534:65534 /opt/cairo-build
+RUN --network=none sh /opt/cairo-inputs/materials.sh prepare
 USER 65534:65534
 WORKDIR /opt/cairo-build/tree
 ENV HOME=/opt/cairo-build LC_ALL=C.UTF-8 DEB_BUILD_OPTIONS=parallel=2
-RUN --network=none set -eu; \
-    dpkg-checkbuilddeps; \
-    log=/opt/cairo-build/build.log; \
-    if dpkg-buildpackage -b -us -uc -j2 > "$log" 2>&1; then \
-        tail -n 32 "$log"; \
-    else \
-        code=$?; tail -n 140 "$log" >&2; exit "$code"; \
-    fi
+RUN --network=none sh /opt/cairo-inputs/materials.sh build
 
 FROM trixie AS sdk
+COPY --chmod=0444 deploy/cairo-headless/materials.sh deploy/cairo-headless/package.sha256 /opt/cairo-inputs/
 RUN --mount=from=builder,source=/opt/cairo-build,target=/packages,ro \
     set -eu; \
     version='1.18.4-1+pamolive13u1'; \
+    sh /opt/cairo-inputs/materials.sh verify-packages /packages; \
     apt-get update; \
     apt-get install -y --no-install-recommends --no-remove build-essential pkgconf fonts-dejavu-core \
       "/packages/libcairo2_${version}_amd64.deb" "/packages/libcairo-gobject2_${version}_amd64.deb" \
@@ -65,7 +45,7 @@ RUN --network=none set -eu; \
 
 FROM trixie AS probe
 COPY --chmod=0444 qualification/x11_trixie_build/check.py /opt/cairo-checks/x11_check.py
-COPY --chmod=0444 qualification/cairo_headless/check.py qualification/cairo_headless/disabled-exports.txt /opt/cairo-checks/
+COPY --chmod=0444 qualification/cairo_headless/check.py deploy/cairo-headless/disabled-exports.txt /opt/cairo-checks/
 ENV LC_ALL=C.UTF-8
 RUN chmod 0755 /opt/cairo-checks \
  && install -d -m 0755 -o 65534 -g 65534 /evidence
@@ -80,9 +60,11 @@ RUN --network=none python -I -B -S /opt/cairo-checks/check.py runtime baseline >
 FROM probe AS candidate
 COPY --from=baseline /evidence/baseline.json /evidence/baseline.json
 COPY --from=sdk /evidence/sdk-result.txt /evidence/sdk-result.txt
+COPY --chmod=0444 deploy/cairo-headless/materials.sh deploy/cairo-headless/package.sha256 /opt/cairo-inputs/
 RUN --mount=from=builder,source=/opt/cairo-build,target=/packages,ro \
     set -eu; \
     version='1.18.4-1+pamolive13u1'; \
+    sh /opt/cairo-inputs/materials.sh verify-packages /packages; \
     apt-get update; \
     apt-get install -y --no-install-recommends --no-remove binutils libpangocairo-1.0-0=1.56.3-1 fonts-dejavu-core \
       "/packages/libcairo2_${version}_amd64.deb"; \

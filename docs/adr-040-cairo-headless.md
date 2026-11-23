@@ -35,3 +35,18 @@ moteur complet, la compatibilité avec les plugins livrés et les parcours
 SSH et RDP/NLA. Le scan Grype demeure obligatoire sur l'archive exacte.
 Les extensions qui exigent Cairo Xlib ou XCB relèvent du profil avec les
 bibliothèques X corrigées.
+
+Le laboratoire Trixie amd64 a conservé 394 exports. Le PNG est identique
+au témoin et le SDK compile et exécute le test Debian. Les quatre paquets
+retenus et le fichier mappé ont des empreintes vérifiées.
+[Qualification des paquets](https://github.com/pamolive/PamOlive-Platform/actions/runs/45123667282)
+
+Le candidat produit partage la recette et exige ces quatre empreintes
+avant installation. Le builder FreeRDP installe les quatre paquets du
+SDK. Guacamole conserve le même Cairo pendant l'installation du SDK Pango.
+Le runtime part d'un stage propre et installe le paquet Cairo d'exécution
+dans la même transaction APT que PangoCairo. La CI contrôle les paquets
+et fichiers X, les dépendances ELF et les imports directs des interfaces
+Cairo désactivées à partir du même export de conteneur que la preuve ACL.
+Les essais SSH et RDP/NLA et le scan de publication sont exécutés sur le
+candidat complet.

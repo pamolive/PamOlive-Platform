@@ -387,6 +387,9 @@ jobs:
           test "$(docker container inspect --format '{{.Image}} {{.State.Status}} {{len .Mounts}}' "$acl_container")" = "$image_ref created 0"
           timeout --signal=TERM --kill-after=5s 90s python -B -m deploy.acl_runtime_inventory \
             --archive "$acl_snapshot" --image-config-id "$config_id" > "$proof/acl-runtime.json"
+          timeout --signal=TERM --kill-after=5s 120s python -B -m deploy.cairo_runtime_inventory \
+            --archive "$acl_snapshot" --image-config-id "$config_id" \
+            --elf-sha256 "$(cat deploy/cairo-headless/elf.sha256)" > "$proof/cairo-runtime.json"
           docker container rm "$acl_container" >/dev/null
           rm -- "$acl_snapshot"
           trap - EXIT
@@ -402,6 +405,10 @@ jobs:
           bindings = {"image_config_id", "archive_sha256", "revision"}
           assert archive.keys() == live.keys() | bindings
           assert live == {key: archive[key] for key in live}
+          acl = json.loads((root / "acl-runtime.json").read_text())
+          cairo = json.loads((root / "cairo-runtime.json").read_text())
+          assert acl["image_config_id"] == cairo["image_config_id"] == archive["image_config_id"]
+          assert acl["export_sha256"] == cairo["export_sha256"]
           PY
           python -m pip_audit --strict --no-deps --disable-pip -r requirements.lock -f cyclonedx-json -o "$proof/application.cdx.json"
           # Same qualified archive/image; Expat evidence never suppresses the existing scans.
