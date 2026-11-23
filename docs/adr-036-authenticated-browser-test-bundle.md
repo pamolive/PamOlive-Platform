@@ -249,3 +249,31 @@ Sandbox activation, relocation for actual use, AppArmor and the complete UI
 journey still require separately reviewed Phase B source and measurements.
 No no-sandbox/sysctl/global fallback, image approval, production approval or
 CVE closure follows from this limited admission.
+
+## Contrôle du bac à sable avant le parcours P1-G
+
+Le test vérifie l'exécutable en cours d'exécution et la version du
+bundle. Le même navigateur ouvre deux pages de contrôle jetables, dont
+le diagnostic Chromium et un document local inerte, avant le premier
+accès au portail synthétique. Les requêtes réseau de ces pages sont
+bloquées. Le diagnostic doit confirmer les namespaces PID et réseau,
+seccomp et au moins une des deux voies d'isolation Chromium.
+[Diagnostic Chromium 157](https://github.com/chromium/chromium/blob/157.0.8103.78/chrome/browser/ui/webui/sandbox/sandbox_internals_ui.cc)
+
+Les identifiants de processus rapportés par Chromium servent à lire
+les faits du noyau. Les renderers observés doivent disposer d'un
+namespace PID et de filtres seccomp supplémentaires, être sans
+capacité effective et avoir `NoNewPrivs`. Le résultat refuse un
+processus disparu ou une lecture incomplète. Il conserve les modes
+AppArmor du navigateur et des renderers. Le mode `unconfined` constitue
+une observation explicite de la politique du runner.
+[Métadonnées Linux](https://docs.kernel.org/filesystems/proc.html) ·
+[AppArmor pour Chromium](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md)
+
+Le worker et le contrôleur exigent ce reçu avant de déclarer le
+parcours terminé. L'admission du bundle opérationnel et le passage de
+la phase A à la phase B requièrent encore leurs mesures. Le manifeste
+signé du 15 novembre a dépassé la fenêtre de sept jours. Une nouvelle
+campagne exige des métadonnées fournisseur fraîches et une identité
+de paquet confirmée.
+[Reçu de staging et nettoyage](https://github.com/pamolive/PamOlive-Platform/actions/runs/44268892672/artifacts/14411418231)

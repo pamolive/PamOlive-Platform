@@ -35,6 +35,7 @@ from tests import test_identity_pam_journey as fixture
 
 FACTS = {
     "phase": "not_started",
+    "browser_sandbox": None,
     "browser_E2E_executed": False,
     "full_P1G_qualified": False,
     "target_system_contacted": False,
@@ -446,8 +447,12 @@ class P1GBrowser(StaticLiveServerTestCase):
             )
             self.assertRegex(browser.version, r"^[0-9]{1,3}(\.[0-9]{1,5}){3}$")
             self.assertGreaterEqual(int(browser.version.split(".", 1)[0]), 146)
+            if TLS["browser_mode"] == "test-bundle-v3":
+                self.assertEqual(browser.version, support.BUNDLE_BROWSER_VERSION)
             FACTS["browser_version"] = browser.version
             FACTS["browser_tool"] = before
+            self.phase("active_browser_sandbox")
+            FACTS["browser_sandbox"] = support.observe_browser_sandbox(browser, binary)
             pages = []
             for actor in [self.operator, *(actor for actor, _ in self.reviewers)]:
                 self.phase("UI_password_TOTP_and_enrollment")
