@@ -25,6 +25,7 @@ from deploy import (
 from deploy import qualify_image_scan as gate
 from tests import test_expat_product as expat_test
 from tests import test_krb5_inventory as krbtest
+from tests.test_native_inventory import elf as dynamic_elf
 
 
 class ImageScanPolicyTests(TestCase):
@@ -1049,7 +1050,7 @@ class ImageScanPolicyTests(TestCase):
             "org.opencontainers.image.revision": revision,
             "io.pamolive.source.license": "AGPL-3.0-or-later"}}}
         layer = io.BytesIO()
-        binary = expat_test.elf(b"synthetic runtime")
+        binary = dynamic_elf()
         with tarfile.open(fileobj=layer, mode="w") as layer_tar:
             member = tarfile.TarInfo("usr/bin/probe")
             member.size = len(binary)
@@ -1143,6 +1144,31 @@ class ImageScanPolicyTests(TestCase):
         self.assertFalse(inventory["cryptographic_build_attestation_verified"])
         self.assertFalse(inventory["cxx_template_instantiation_verified"])
         same_inventory = inventory_path.read_bytes()
+        extended = list(blocked)
+        extended_path = self.repo / "extended-inventory.json"
+        extended_policy = self.repo / "extended-policy.json"
+        extended[extended.index("--output") + 1] = str(extended_policy)
+        extended[extended.index("--elf-inventory-output") + 1] = str(extended_path)
+        extended.append("--observe-elf-linkage")
+        with patch.object(gate, "TOOL_SHA256", scanner_sha):
+            self.assertEqual(gate.main(extended), 2)
+        self.assertEqual(extended_policy.read_bytes(), rejected.read_bytes())
+        self.assertEqual(gate.read_json(extended_path), {
+            **inventory, "schema": "pamolive.image-elf-inventory.v2",
+            "elf_linkage": {
+                hashlib.sha256(binary).hexdigest(): {"status": "observed", "needed": ["libc.so.6"]},
+            },
+        })
+        too_small = self.repo / "limited-inventory.json"
+        extended[extended.index("--output") + 1] = str(self.repo / "limited-policy.json")
+        extended[extended.index("--elf-inventory-output") + 1] = str(too_small)
+        with (patch.object(gate, "TOOL_SHA256", scanner_sha),
+              patch.object(gate, "ELF_INVENTORY_BUDGET", len(same_inventory) + 90)):
+            self.assertEqual(gate.main(extended), 2)
+        self.assertEqual(gate.read_json(too_small), {
+            **inventory, "schema": "pamolive.image-elf-inventory.v2", "elf_linkage": {},
+            "elf_linkage_status": "output_budget_exceeded",
+        })
         collision = list(blocked)
         collision[collision.index("--output") + 1] = str(self.repo / "collision.json")
         with patch.object(gate, "TOOL_SHA256", scanner_sha):
@@ -1160,8 +1186,9 @@ class ImageScanPolicyTests(TestCase):
                          "scanner_archive_hash")
         self.assertFalse(absent_inventory.exists())
 
-    def layered_facts(self, changes, capture_set=False):
-        binary = b"\x7fELF\x02\x01" + b"synthetic compiled bytes"
+    def layered_facts(self, changes, capture_set=False, *, binary=None, observe_elf_linkage=False):
+        if binary is None:
+            binary = b"\x7fELF\x02\x01" + b"synthetic compiled bytes"
         target = "/usr/lib/private/probe.so"
         condition = {"kind": "elf", "path": target, "class": 64,
                      "sha256": hashlib.sha256(binary).hexdigest()}
@@ -1202,7 +1229,9 @@ class ImageScanPolicyTests(TestCase):
                 item.size = len(data)
                 outer.addfile(item, io.BytesIO(data))
         conditions = [condition, {"kind": "elf_set"}] if capture_set else [condition]
-        return gate.archive_facts(archive, conditions), condition
+        return gate.archive_facts(
+            archive, conditions, observe_elf_linkage=observe_elf_linkage,
+        ), condition
 
     def test_directory_whiteout_and_opaque_layer_invalidate_all_selected_elf_descendants(self):
         for deletion in ("usr/lib/.wh.private", "usr/lib/private/.wh..wh..opq"):
@@ -1333,6 +1362,35 @@ class ImageScanPolicyTests(TestCase):
         self.assertEqual(baseline.elf_set["count"], changed.elf_set["count"])
         self.assertEqual(baseline.elf_set["alias_count"], changed.elf_set["alias_count"])
         self.assertNotEqual(baseline.elf_set["sha256"], changed.elf_set["sha256"])
+
+    def test_elf_linkage_tracks_the_surviving_hardlink_content(self):
+        changes = [
+            [("usr/lib/private/probe.so", "elf_changed"),
+             ("usr/lib/survivor.so", "hardlink_probe")],
+            [("usr/lib/private/.wh.probe.so", "file"),
+             ("usr/lib/private/probe.so", "elf"), ("usr/lib/alias.so", "symlink")],
+        ]
+        base, _ = self.layered_facts(changes, capture_set=True, binary=dynamic_elf())
+        measured, _ = self.layered_facts(
+            changes, capture_set=True, binary=dynamic_elf(), observe_elf_linkage=True,
+        )
+        self.assertEqual(base.elf_set, measured.elf_set)
+        self.assertEqual(base.entries, measured.entries)
+        hardlink = measured.entries["/usr/lib/survivor.so"]
+        self.assertNotEqual(hardlink["sha256"],
+                            measured.entries["/usr/lib/private/probe.so"]["sha256"])
+        self.assertEqual(measured.elf_linkage[hardlink["sha256"]], {
+            "status": "observed", "needed": ["libc.so.6"],
+        })
+        self.assertEqual(len(measured.elf_linkage), 2)
+        with patch.object(gate, "ELF_LINKAGE_BUDGET", 0):
+            limited, _ = self.layered_facts(
+                changes, capture_set=True, binary=dynamic_elf(), observe_elf_linkage=True,
+            )
+        self.assertEqual(limited.elf_set, measured.elf_set)
+        self.assertEqual(limited.elf_linkage, dict.fromkeys(
+            measured.elf_linkage, {"status": "budget_exceeded"},
+        ))
 
     def test_overwriting_a_live_hardlink_group_is_refused_not_guessed(self):
         with self.assertRaisesRegex(gate.ScanPolicyError, "elf_set_hardlink_replacement"):

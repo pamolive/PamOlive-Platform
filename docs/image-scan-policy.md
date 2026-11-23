@@ -127,8 +127,25 @@ même relevé est produit lorsque le scan retourne des groupes
 High bloquants, après vérification des entrées. Le reçu reste une
 mesure de l'image. Sa lecture exige le rapport de politique exact
 et la concordance de son empreinte avec celle du reçu.
-La provenance des consommateurs modifiés
-et l'absence d'instanciation PBDS exigent une revue distincte.
+
+La CI demande le schéma `pamolive.image-elf-inventory.v2` via
+`--observe-elf-linkage`. V2 conserve les lignes et la sentinelle V1. Il ajoute
+un relevé `elf_linkage` par SHA-256 des ELF finaux, y compris les octets des
+hardlinks qui survivent au retrait de leur nom d'origine. Les symlinks
+conservent leur cible déclarée. Les binaires ne sont jamais exécutés.
+
+`observed` conserve l'ordre des noms `DT_NEEDED`, même lorsque la liste est
+vide. Les statuts `no_dynamic_segment`, `unsupported`, `unparsed` et
+`budget_exceeded` expriment les limites du relevé. L'observation est limitée
+aux ELF exécutables et partagés Linux amd64 et aux noms de bibliothèques sans
+chemin. Si le JSON dépasse quatre Mio, le reçu indique
+`output_budget_exceeded` et conserve la sentinelle. Le format V1 reste
+disponible sans le relevé et sert de dernier repli à la limite de taille.
+
+Le relevé ne résout aucun fournisseur de bibliothèque et n'entre dans
+aucune disposition du scan. La provenance des consommateurs modifiés et
+l'absence d'instanciation PBDS exigent une revue distincte couvrant les
+sources, les en-têtes et les objets liés.
 
 ### Modules Perl exclus de l’image
 

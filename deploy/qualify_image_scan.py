@@ -20,10 +20,11 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import quote, urlsplit
 
 try:
-    from deploy import build_recipe, krb5_inventory, qualified_image
+    from deploy import build_recipe, krb5_inventory, native_inventory, qualified_image
 except ModuleNotFoundError:
     import build_recipe
     import krb5_inventory
+    import native_inventory
     import qualified_image
 
 SCHEMA = "pamolive.image-scan-policy.v1"
@@ -33,6 +34,8 @@ EXPECTED_CONTROL = {("freerdp", "3.15.0", "CVE-2026-45700"),
                     ("guacamole-server", "1.5.5", "CVE-2024-35164")}
 SEVERITIES = {"Critical", "High", "Medium", "Low", "Negligible", "Unknown"}
 MAX_JSON = 32 * 1024 * 1024
+ELF_LINKAGE_BUDGET = 512 * 1024
+ELF_INVENTORY_BUDGET = 4 * 1024**2
 SHA = re.compile(r"[0-9a-f]{64}\Z")
 DISPOSITIONS = {"untriaged", "not_reachable", "fixed_by_backport",
                 "not_affected_build", "code_not_present"}
@@ -315,7 +318,7 @@ class ArchiveFacts(tuple):
 
     def __new__(cls, names, files, elf_set=None, *, entries=None, contents=None, captured=None,
                 layer_digests=None, attributes=None, verified_debconf_text=frozenset(),
-                ncurses_stock_seen=None):
+                ncurses_stock_seen=None, elf_linkage=None):
         value = super().__new__(cls, (names, files))
         value.elf_set = elf_set
         value.entries = entries
@@ -325,6 +328,7 @@ class ArchiveFacts(tuple):
         value.attributes = attributes
         value.verified_debconf_text = verified_debconf_text
         value.ncurses_stock_seen = ncurses_stock_seen
+        value.elf_linkage = elf_linkage
         return value
 
     def __getnewargs__(self):
@@ -558,10 +562,11 @@ class LayerReader:
 
 def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                   archive_stream=None, forbidden_elf_sha256=(), reject_cjson_elf=False,
-                  attribute_paths=(), capture_elf_set=False):
+                  attribute_paths=(), capture_elf_set=False, observe_elf_linkage=False):
     """Stream final file/ELF/link identities, without extraction or following links."""
     require(type(reject_cjson_elf) is bool, "archive_cjson_option")
     require(type(capture_elf_set) is bool, "archive_elf_set_option")
+    require(type(observe_elf_linkage) is bool, "archive_elf_linkage_option")
     requested = {checked_path(item["path"]) for item in conditions
                  if item.get("kind") in ("elf", "file_sha256")}
     require(isinstance(read_paths, (list, tuple, set)) and len(read_paths) <= 32,
@@ -587,7 +592,7 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
             and all(isinstance(value, str) and SHA.fullmatch(value)
                     for value in forbidden_elf_sha256), "forbidden_elf_hashes")
     capture_set = (
-        capture_elf_set or reject_cjson_elf or bool(forbidden_elf_sha256)
+        capture_elf_set or observe_elf_linkage or reject_cjson_elf or bool(forbidden_elf_sha256)
         or bool(read_paths) or any(item.get("kind") == "elf_set" for item in conditions)
     )
     debconf_text = DEBCONF_TEXT_SHA256 if {
@@ -596,6 +601,7 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
     changed_debconf_text = set()
     names, elves, entries = set(), {}, {}
     captured, attributes = {}, {}
+    linkage_cache = {}
     # Hardlinks retain bytes even after their original path is removed. Track
     # immutable content snapshots and link groups, never filesystem links.
     contents, link_groups, next_group = {}, {}, 0
@@ -623,7 +629,7 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                 if not link_groups[group]:
                     del link_groups[group]
 
-    total = count = 0
+    total = count = linkage_size = 0
     stream_budget, layer_digests = [0], []
     with tarfile.open(name=archive if archive_stream is None else None,
                       fileobj=archive_stream, mode="r:", tarinfo=BoundedTarInfo) as outer:
@@ -749,6 +755,9 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                                     and member.size > NCURSES_RECEIPT_LIMIT
                                 )
                                 parts = [header] if keep_payload else None
+                                keep_linkage = observe_elf_linkage and is_elf
+                                elf_payload = (bytearray(header) if keep_linkage
+                                               and linkage_size < ELF_LINKAGE_BUDGET else None)
                                 # Inspect every physical ELF in every layer, including
                                 # copies later hidden by whiteouts. This optional migration
                                 # guard never grants a vulnerability policy exception.
@@ -765,6 +774,8 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                                         tail = combined[-32:]
                                     if parts is not None:
                                         parts.append(block)
+                                    if elf_payload is not None:
+                                        elf_payload.extend(block)
                                 if expected_text and (
                                     sha.hexdigest() != expected_text
                                     or (member.uid, member.gid, member.mode) != (0, 0, 0o644)
@@ -794,9 +805,20 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                                         "sha256": sha.hexdigest()}
                                 if capture_set:
                                     next_group += 1
+                                    digest = sha.hexdigest()
                                     contents[name] = {"group": next_group,
-                                        "sha256": sha.hexdigest(), "class": elf_class,
+                                        "sha256": digest, "class": elf_class,
                                         "machine": machine}
+                                    if elf_payload is not None and digest not in linkage_cache:
+                                        require(len(elf_payload) == member.size,
+                                                "elf_linkage_short_read")
+                                        observation = native_inventory.observe_elf_needed(
+                                            elf_payload)
+                                        # Count the JSON key, separators and value.
+                                        value_size = len(canonical(observation))
+                                        linkage_size += len(digest) + 4 + value_size
+                                        if linkage_size <= ELF_LINKAGE_BUDGET:
+                                            linkage_cache[digest] = observation
                                     link_groups[next_group] = {name}
                         require(not capture_set or len(entries) <= 5000, "elf_set_count")
                 while reader.read(1024**2):
@@ -813,6 +835,10 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                                   for name, item in contents.items()} if capture_set else None,
                         captured=captured, layer_digests=layer_digests, attributes=attributes,
                         ncurses_stock_seen=ncurses_stock_seen,
+                        elf_linkage={item["sha256"]: linkage_cache.get(
+                            item["sha256"], {"status": "budget_exceeded"}
+                        ) for item in contents.values() if item["class"] is not None}
+                        if observe_elf_linkage else None,
                         verified_debconf_text=frozenset(
                             (debconf_text.keys() & names) - changed_debconf_text))
 
@@ -1628,8 +1654,18 @@ def elf_inventory_bytes(metadata, facts, policy_report):
         "cryptographic_build_attestation_verified": False,
         "cxx_template_instantiation_verified": False,
     }
+    if facts.elf_linkage is not None:
+        extended = dict(inventory, schema="pamolive.image-elf-inventory.v2",
+                        elf_linkage=facts.elf_linkage)
+        raw = (canonical(extended) + "\n").encode()
+        if len(raw) <= ELF_INVENTORY_BUDGET:
+            return raw
+        extended.update(elf_linkage={}, elf_linkage_status="output_budget_exceeded")
+        raw = (canonical(extended) + "\n").encode()
+        if len(raw) <= ELF_INVENTORY_BUDGET:
+            return raw
     raw = (canonical(inventory) + "\n").encode()
-    require(len(raw) <= 4 * 1024**2, "elf_inventory_budget")
+    require(len(raw) <= ELF_INVENTORY_BUDGET, "elf_inventory_budget")
     return raw
 
 
@@ -1639,10 +1675,13 @@ def main(argv=None):
                  "positive-report", "scanner-archive", "policy", "output"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--elf-inventory-output", type=Path)
+    parser.add_argument("--observe-elf-linkage", action="store_true")
     args = parser.parse_args(argv)
     fd, inventory_fd = None, None
     try:
         fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        require(not args.observe_elf_linkage or args.elf_inventory_output is not None,
+                "elf_linkage_output_required")
         policy_path = Path(args.policy).resolve(strict=True)
         require(policy_path.parent.name == "qualification" and
                 policy_path.parent.parent.name == ".github", "policy_location")
@@ -1671,6 +1710,7 @@ def main(argv=None):
                       for condition in entry.get("conditions", [])]
         facts = archive_facts(
             archive, conditions, capture_elf_set=args.elf_inventory_output is not None,
+            observe_elf_linkage=args.observe_elf_linkage,
         )
         os_report, compiled, positive, sbom = (read_json(path) for path in (
             args.os_report, args.compiled_report, args.positive_report, args.compiled_sbom))
