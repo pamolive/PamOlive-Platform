@@ -25,13 +25,18 @@ jobs:
           context=$(mktemp -d "$RUNNER_TEMP/util-linux-trixie-context.XXXXXX")
           evidence="$RUNNER_TEMP/util-linux-trixie-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           test ! -e "$evidence"
-          git archive "$GITHUB_SHA:qualification/util_linux_trixie_backport" \
+          git archive "$GITHUB_SHA" qualification/util_linux_trixie_backport \
+            deploy/krb5-remediation/abi_data.py deploy/krb5-remediation/common.py \
+            deploy/krb5-remediation/bounded_io.py deploy/krb5-remediation/legacy_inventory.py \
+            deploy/krb5-remediation/source_model.py \
             | tar -x -C "$context" --no-same-owner
           docker build --platform linux/amd64 --no-cache --progress plain \
-            --target util-linux-trixie-backport-evidence --output "type=local,dest=$evidence" "$context"
+            --target util-linux-trixie-backport-evidence --output "type=local,dest=$evidence" \
+            --file "$context/qualification/util_linux_trixie_backport/Dockerfile" "$context"
           cmp <(find "$evidence" -mindepth 1 -printf '%y %P\n' | LC_ALL=C sort) - <<'EXPECTED'
           f bsdutils.deb
           f buildinfo
+          f candidate.json
           f checksums.sha256
           f libblkid1.deb
           f liblastlog2-2.deb
@@ -40,6 +45,8 @@ jobs:
           f libuuid1.deb
           f login.deb
           f mount.deb
+          f qualification.json
+          f stock.json
           f test-summary.txt
           f util-linux.deb
           EXPECTED

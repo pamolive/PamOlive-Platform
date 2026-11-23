@@ -35,9 +35,16 @@ Elle publie neuf paquets
 identifiés comme entrées de qualification, avec leur buildinfo et
 leurs empreintes.
 
-L'admission dans PamOlive exige ensuite un inventaire des fichiers
-réellement installés, la comparaison de l'ABI publique avec Debian,
-un contrôle des programmes et consommateurs, puis le scan de l'image
-exacte. CVE-2026-78409 reste à instruire en comparant le chemin signalé
-dans la source à celui compilé et distribué dans l'image. La campagne de
-build ne change aucune disposition de la politique de scan.
+La qualification installe les neuf paquets Debian de référence puis les
+neuf candidats dans un environnement jetable. Elle compare les exports
+versionnés de cinq bibliothèques et vérifie leurs chemins chargés par
+le processus. Les programmes sont examinés en lecture seule, dont
+`findmnt` sur la table de montage du conteneur. L'admission exige
+ensuite les vérifications des consommateurs PamOlive et le scan de
+l'image exacte.
+
+Le chemin de CVE-2026-78409 a été introduit dans la série 2.42.
+Son applicabilité au binaire effectivement distribué reste à
+documenter. Le laboratoire ne change aucune disposition de la
+politique de scan.
+[Introduction du chemin amont](https://github.com/util-linux/util-linux/commit/ae19f7546ccb038966fc121e287e1a1385ba94bb)

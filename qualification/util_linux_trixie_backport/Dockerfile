@@ -1,5 +1,5 @@
 FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS trixie
-COPY --chmod=0444 materials.sh source.sha256 patches.sha256 preimage.sha256 postimage.sha256 /opt/util-linux-inputs/
+COPY --chmod=0444 qualification/util_linux_trixie_backport/materials.sh qualification/util_linux_trixie_backport/source.sha256 qualification/util_linux_trixie_backport/patches.sha256 qualification/util_linux_trixie_backport/preimage.sha256 qualification/util_linux_trixie_backport/postimage.sha256 /opt/util-linux-inputs/
 RUN test "$(dpkg --print-architecture)" = amd64 \
  && test -s /usr/share/keyrings/debian-archive-keyring.pgp \
  && chmod 0755 /opt/util-linux-inputs
@@ -25,5 +25,23 @@ USER 65534:65534
 RUN --network=none --mount=from=builder,source=/work,target=/packages,ro \
     sh /opt/util-linux-inputs/materials.sh export
 
+FROM trixie AS stock
+RUN sh /opt/util-linux-inputs/materials.sh baseline \
+ && install -d -m 0755 -o 65534 -g 65534 /evidence
+COPY --chmod=0444 qualification/util_linux_trixie_backport/check.py /opt/util-linux-checks/
+COPY --chmod=0444 deploy/krb5-remediation/abi_data.py deploy/krb5-remediation/common.py deploy/krb5-remediation/bounded_io.py deploy/krb5-remediation/legacy_inventory.py deploy/krb5-remediation/source_model.py /opt/util-linux-checks/
+RUN chmod 0755 /opt/util-linux-checks
+USER 65534:65534
+RUN --network=none python -I -B -S /opt/util-linux-checks/check.py stock
+
+FROM stock AS corrected
+USER root
+RUN --network=none --mount=from=export,source=/evidence,target=/packages,ro \
+    sh /opt/util-linux-inputs/materials.sh install
+USER 65534:65534
+RUN --network=none --mount=from=export,source=/evidence,target=/packages,ro \
+    python -I -B -S /opt/util-linux-checks/check.py candidate
+
 FROM scratch AS util-linux-trixie-backport-evidence
 COPY --from=export /evidence/ /
+COPY --from=corrected /evidence/ /

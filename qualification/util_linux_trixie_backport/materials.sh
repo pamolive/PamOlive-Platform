@@ -59,7 +59,9 @@ case "${1-}" in
 
     export DEB_BUILD_OPTIONS=parallel=2
     if ! dpkg-buildpackage -B -us -uc -j2 >/work/debian-build.log 2>&1; then
-      tail -n 100 /work/debian-build.log >&2
+      grep -niE 'error:|undefined reference|No rule to make|No such file|Permission denied|FAILED' \
+        /work/debian-build.log | sed -n '1,50p' >&2
+      tail -n 50 /work/debian-build.log >&2
       exit 1
     fi
     sha256sum --check --strict "$inputs/postimage.sha256"
@@ -70,6 +72,14 @@ case "${1-}" in
     fi
     grep -Ei '(All [0-9]+ tests PASSED|skipped|[[:space:]]SKIP|KNOWN FAILED)' \
       /work/debian-build.log > /work/test-summary.txt
+    ;;
+  baseline)
+    apt-get -o APT::Update::Error-Mode=any update
+    apt-get install -y --no-install-recommends --no-remove \
+      "bsdutils=1:$baseline" "login=1:4.16.0-2+really$baseline" \
+      "libblkid1=$baseline" "liblastlog2-2=$baseline" "libmount1=$baseline" \
+      "libsmartcols1=$baseline" "libuuid1=$baseline" "mount=$baseline" "util-linux=$baseline"
+    rm -rf /var/lib/apt/lists/*
     ;;
   export)
     for package in $packages; do
@@ -91,6 +101,12 @@ case "${1-}" in
     install -m 0444 /packages/test-summary.txt /evidence/test-summary.txt
     cd /evidence
     sha256sum ./buildinfo ./test-summary.txt ./*.deb > checksums.sha256
+    ;;
+  install)
+    cd /packages
+    sha256sum --check --strict checksums.sha256
+    apt-get install -y --no-download --no-install-recommends --no-remove /packages/*.deb
+    test -z "$(dpkg --audit)"
     ;;
   *) exit 42 ;;
 esac
