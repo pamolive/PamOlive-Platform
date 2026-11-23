@@ -26,7 +26,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          umask 077
+          # Context directories must have canonical 0755 mode inside the private root.
+          umask 022
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           mkdir -m 700 "$RUNNER_TEMP/p1g-context"
           python -m deploy.build_context --revision "$GITHUB_SHA" \
