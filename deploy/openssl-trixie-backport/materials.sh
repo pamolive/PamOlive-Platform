@@ -8,6 +8,23 @@ baseline='3.5.9-1~deb13u1'
 candidate="$baseline+pamolive1"
 packages='libssl3t64 libssl-dev openssl openssl-provider-legacy'
 
+summarize_tests() {
+    log=$1
+    summary=$2
+    if grep -Eq '^[[:space:]]*(Skipping tests|Result:[[:space:]]*(FAIL|NOTESTS))[[:space:]]*$' "$log"; then
+      printf '%s\n' 'Debian OpenSSL test suite was skipped or failed.' >&2
+      return 1
+    fi
+    if ! grep -Eq '^[[:space:]]*([^[:space:]]*/)?g?make[[:space:]]+-C[[:space:]]+build_shared[[:space:]]+test([[:space:]]|$)' "$log" \
+      || ! grep -Eq '^[[:space:]]*Files=[1-9][0-9]*,[[:space:]]*Tests=[1-9][0-9]*,' "$log" \
+      || ! grep -Eq '^[[:space:]]*Result:[[:space:]]+PASS[[:space:]]*$' "$log"; then
+      printf '%s\n' 'Debian OpenSSL shared test invocation, counts or passing TAP result missing.' >&2
+      grep -E '(build_shared.* test|Files=|Tests=|Result:)' "$log" | tail -n 24 >&2
+      return 1
+    fi
+    grep -Ei '(/SKIP| skipped: |Files=|Result:)' "$log" > "$summary"
+}
+
 case "${1-}" in
   acquire)
     apt-get -o APT::Get::AllowUnauthenticated=false --download-only source "openssl=$baseline"
@@ -41,9 +58,7 @@ case "${1-}" in
       exit 1
     fi
     sha256sum --check --strict "$inputs/postimage.sha256"
-    grep -Fxq 'Result: PASS' /work/debian-build.log
-    if grep -Fiq 'Skipping tests' /work/debian-build.log; then exit 1; fi
-    grep -E '(/SKIP| skipped: |Result:)' /work/debian-build.log > /work/test-summary.txt
+    summarize_tests /work/debian-build.log /work/test-summary.txt
     ;;
   baseline)
     apt-get -o APT::Update::Error-Mode=any update
@@ -66,6 +81,10 @@ case "${1-}" in
     test -z "$(dpkg --audit)"
     install -m 0444 "/packages/openssl_${candidate}_amd64.buildinfo" /evidence/buildinfo
     install -m 0444 /packages/test-summary.txt /evidence/test-summary.txt
+    ;;
+  test-summary)
+    test "$#" -eq 3
+    summarize_tests "$2" "$3"
     ;;
   *) exit 42 ;;
 esac

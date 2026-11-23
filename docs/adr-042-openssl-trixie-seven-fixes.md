@@ -30,3 +30,21 @@ de l'image produit restent indispensables. La politique de livraison ne
 change pas. Le binaire de laboratoire conserve son identité locale Debian.
 [Suivi Debian](https://security-tracker.debian.org/tracker/CVE-2026-84786) ·
 [Correction amont en revue](https://github.com/openssl/openssl/pull/33634)
+
+## Qualification et intégration
+
+Le laboratoire sur `7fc4465` a vérifié 5 868 exports de `libcrypto.so.3`
+et 609 de `libssl.so.3` face aux paquets officiels. La suite principale
+reporte `PASS` pour 4 932 tests comptabilisés. Le résumé conserve les
+cas ignorés. Le SDK, le chargement des providers et la session TLS 1.3
+sont également vérifiés.
+[Artefact natif](https://github.com/pamolive/PamOlive-Platform/actions/runs/45134682372/artifacts/14799723947)
+
+La recette produit reconstruit les quatre paquets avec les mêmes entrées
+et vérifie leurs empreintes avant installation. Les trois paquets runtime
+et le SDK sont installés explicitement à la version locale. L'inventaire
+compare les deux bibliothèques, le programme `openssl` et le module
+`legacy.so` aux ELF extraits de l'artefact qualifié. Le rapport de l'image
+et son SBOM lient les paquets et le reçu au digest de l'archive et à
+l'identifiant de configuration. L'intégration et le scan restent à
+exécuter sur le candidat produit complet.

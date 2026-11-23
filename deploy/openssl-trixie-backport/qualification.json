@@ -1,0 +1,35 @@
+{
+  "installed_elf_sha256": {
+    "/usr/bin/openssl": "238d03b1d3a7f5aa3c9cf8171d483a32c227df0f5a606a55ab31f154c8aa60be",
+    "/usr/lib/x86_64-linux-gnu/libcrypto.so.3": "cea80bc204669f51a6d296b6b4fc2d9650597d461333fdac0beb3b002d52407d",
+    "/usr/lib/x86_64-linux-gnu/libssl.so.3": "327e3c6a8728f6213c5c3aaf9f8dd44f91bc862e7266277d451b70778332c169",
+    "/usr/lib/x86_64-linux-gnu/ossl-modules/legacy.so": "47af7436924d44b49719792780eaee3c472df720908cb969f00c940c219cba45"
+  },
+  "packages": {
+    "libssl-dev": {
+      "bytes": 2976796,
+      "sha256": "2d1560c700c89b9ffccc295cca8de9f17eb1f3dd3a2651f2c165bab57c624cd5"
+    },
+    "libssl3t64": {
+      "bytes": 2467096,
+      "sha256": "ca405bcacf3f61327fdd039d02313e0bcd11764481f152b340b16014ede9969f"
+    },
+    "openssl": {
+      "bytes": 1519156,
+      "sha256": "c9249f5082ecad29e25713cde9ca32d579c423b3f966c7b0460a68e2218c2437"
+    },
+    "openssl-provider-legacy": {
+      "bytes": 322476,
+      "sha256": "be036c425d9e52f20b1f41473d1fa7d644426d4589a74763c5917b11626e69df"
+    }
+  },
+  "qualification": {
+    "artifact_digest": "sha256:a58ea994f6f83fdaba53e57e8e3d610cbecb0407ab74a6b6c52c563938cbafbe",
+    "artifact_id": 14799723947,
+    "commit": "7fc4465c5f45f72195b860f141c619d6d2ab6422",
+    "run_id": 45134682372
+  },
+  "schema": "pamolive.openssl-trixie-materials/1",
+  "source": "openssl",
+  "version": "3.5.9-1~deb13u1+pamolive1"
+}

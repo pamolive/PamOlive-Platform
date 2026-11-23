@@ -1,5 +1,15 @@
 # État réel de l’implémentation
 
+## OpenSSL qualifié en laboratoire — 23 novembre 2026
+
+Le candidat `7fc4465` passe la compilation Debian et la vérification
+des ABI de `libcrypto` et `libssl`. Les quatre paquets et le rapport
+de tests correspondent à l'empreinte de l'artefact. La suite principale
+rapporte 4 932 tests comptabilisés. Les essais du SDK et de TLS 1.3
+passent. L'intégration à l'image reste soumise à la CI et au verdict
+du scan. Le suivi de CVE-2026-84786 reste ouvert.
+[Qualification](https://github.com/pamolive/PamOlive-Platform/actions/runs/45134682372)
+
 ## Kerberos Trixie et chantier OpenSSL — 23 novembre 2026
 
 Sur `0b0d524`, le correctif ciblé Kerberos produit dix paquets Trixie
