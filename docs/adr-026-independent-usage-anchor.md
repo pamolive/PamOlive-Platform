@@ -293,8 +293,19 @@ protection du stockage contre son administrateur. La campagne `run_witness_ancho
 exerce des écritures concurrentes, la relecture après le PITR de PostgreSQL,
 l'import dans un second répertoire et la réouverture par un nouveau processus.
 Les deux dossiers du laboratoire résident sur le même système de fichiers
-temporaire. Une panne électrique, un transfert multi-hôte et une séparation
-opérationnelle des dépositaires demandent une qualification dédiée.
+temporaire. Une panne électrique, une restauration des bases entre hôtes et une
+séparation opérationnelle des dépositaires demandent une qualification dédiée.
+
+La campagne complémentaire `run_witness_anchor_handoff` transfère le document
+synthétique relu après le PITR vers une seconde VM GitHub hébergée. Le premier
+job transmet la clef publique et le SHA-256 attendu via ses sorties. L'artefact
+contient uniquement le document signé et est téléchargé par son identifiant
+exact. Le second job compare les empreintes de démarrage, vérifie le contenu
+avec les références du producteur, l'importe dans un dossier neuf, puis lance
+un nouveau processus qui relit ce dossier. Le plan de contrôle GitHub est
+commun aux deux jobs. La campagne porte sur le transfert du document et ne
+couvre pas une restauration complète des bases entre hôtes, une panne physique
+ou la garde des preuves par deux autorités administratives distinctes.
 
 Un V compromis disposant d'un unwrap KMS générique peut ignorer W. Avant remise,
 une garde indépendante devra imposer chaque usage W avec claim d'émission unique,
