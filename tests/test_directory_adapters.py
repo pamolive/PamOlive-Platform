@@ -161,8 +161,38 @@ class GraphHttpsTests(SimpleTestCase):
             self.read()
         self.assertEqual(len(self.peer.requests), 1)
 
+    def test_error_status_retains_retry_policy_without_reading_error_body(self):
+        for status, retryable in ((403, False), (429, True), (503, True)):
+            self.peer.error_status = status
+            self.peer.requests.clear()
+            with (
+                self.subTest(status=status),
+                patch("http.client.HTTPResponse.read1") as read,
+                self.assertRaisesMessage(DirectoryFailure, "directory_http_failed") as caught,
+            ):
+                self.read()
+            read.assert_not_called()
+            self.assertIs(caught.exception.retryable, retryable)
+            self.assertEqual(len(self.peer.requests), 1)
+
+    def test_interrupted_https_body_remains_retryable(self):
+        self.peer.interrupt_response = True
+        with self.assertRaisesMessage(DirectoryFailure, "directory_network_failed") as caught:
+            self.read()
+        self.assertTrue(caught.exception.retryable)
+        self.assertEqual(len(self.peer.requests), 1)
+
     def test_raw_body_size_is_bounded_before_parsing(self):
         self.peer.pages = [{"value": [self.user()], "padding": "x" * 1_048_576}]
+        with self.assertRaisesMessage(DirectoryFailure, "directory_response_too_large"):
+            self.read()
+
+    def test_chunked_responses_keep_the_same_streaming_budget(self):
+        self.peer.chunked_response = True
+        row = self.user()
+        self.peer.pages = [{"value": [row]}]
+        self.assertEqual(self.read().records[0]["id"], row["id"])
+        self.peer.pages = [{"value": [row], "padding": "x" * 1_048_576}]
         with self.assertRaisesMessage(DirectoryFailure, "directory_response_too_large"):
             self.read()
 

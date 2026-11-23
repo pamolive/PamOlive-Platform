@@ -32,6 +32,7 @@ MAX_RECORDS = 1000
 MAX_PAGES = 20
 PAGE_SIZE = 100
 MAX_BYTES = 4 * 1024 * 1024
+GRAPH_MAX_BODY = 1024 * 1024
 MAX_GROUPS = 32
 DEADLINE_SECONDS = 45
 _DNS_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="directory-dns")
@@ -247,6 +248,27 @@ def _strict_json(content):
         raise DirectoryFailure("directory_response_invalid") from None
 
 
+def _graph_body_length(response):
+    declared = response.getheader("Content-Length")
+    transfer = response.getheader("Transfer-Encoding")
+    if transfer is not None and (
+        response.version != 11 or transfer.lower() != "chunked" or declared is not None
+    ):
+        raise DirectoryFailure("directory_response_invalid")
+    if declared is None:
+        return None
+    declared = declared.strip(" \t")
+    if not re.fullmatch(r"[0-9]+", declared):
+        raise DirectoryFailure("directory_response_invalid")
+    digits = declared.lstrip("0") or "0"
+    if len(digits) > len(str(GRAPH_MAX_BODY)):
+        raise DirectoryFailure("directory_response_too_large")
+    expected = int(digits)
+    if expected > GRAPH_MAX_BODY:
+        raise DirectoryFailure("directory_response_too_large")
+    return expected
+
+
 class _GraphReader:
     def __init__(self):
         self.identity = {}
@@ -274,24 +296,26 @@ class _GraphReader:
                     "Accept": "application/json",
                 },
             )
-            response = connection.getresponse()
-            content = bytearray()
-            while not response.isclosed():
-                # Bound the entire body, including a peer that trickles bytes
-                # often enough to avoid a per-recv socket timeout.
-                tls_socket.settimeout(_remaining(deadline))
-                chunk = response.read1(min(65536, 1_048_577 - len(content)))
-                if not chunk:
-                    break
-                content.extend(chunk)
-                if len(content) > 1_048_576:
-                    raise DirectoryFailure("directory_response_too_large")
-            if response.status != 200:
-                raise DirectoryFailure(
-                    "directory_http_failed",
-                    retryable=response.status == 429 or response.status >= 500,
-                )
-            return _strict_json(content)
+            with connection.getresponse() as response:
+                if response.status != 200:
+                    raise DirectoryFailure(
+                        "directory_http_failed",
+                        retryable=response.status == 429 or response.status >= 500,
+                    )
+                expected = _graph_body_length(response)
+                content = bytearray()
+                while not response.isclosed():
+                    # Refresh the remaining time between bounded payload reads.
+                    tls_socket.settimeout(_remaining(deadline))
+                    chunk = response.read1(min(65536, GRAPH_MAX_BODY + 1 - len(content)))
+                    if not chunk:
+                        break
+                    content.extend(chunk)
+                    if len(content) > GRAPH_MAX_BODY:
+                        raise DirectoryFailure("directory_response_too_large")
+                if expected is not None and len(content) != expected:
+                    raise DirectoryFailure("directory_network_failed", retryable=True)
+                return _strict_json(content)
         except ssl.SSLError:
             raise DirectoryFailure("directory_tls_verification_failed") from None
         except (OSError, TimeoutError, http.client.HTTPException):
