@@ -33,11 +33,12 @@ TEST_MODULES = (
     "test_archive_reader",
     "test_anchor_capture",
     "test_anchor_store",
+    "test_recovery_cli",
     "test_recovery_manifest",
     "test_recovery_store",
     "test_signed_anchor",
 )
-TEST_COUNT = 136
+TEST_COUNT = 143
 attempts = []
 
 

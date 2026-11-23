@@ -1,5 +1,6 @@
 """Check the PITR archive against a checkpoint retained by the lab driver."""
 
+import json
 import os
 import subprocess
 import sys
@@ -93,12 +94,14 @@ def restore_lab_anchor(references, advance):
         "new_process_reopened": True,
         "checkpoint_key_rotation_verified": True,
         "custody_atomic_rotation_verified": True,
+        "custody_cli_verified": True,
     }
 
 
 def qualify_recovery_manifest(point, raw, public, pin, alternate):
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     from pamolive_usage_anchor import codec, recovery_manifest, recovery_store
+    from pamolive_usage_anchor.audit_archive import GENESIS_SHA256
     from pamolive_usage_anchor.signed_anchor import sign_checkpoint
 
     governor = Ed25519PrivateKey.generate()
@@ -116,14 +119,32 @@ def qualify_recovery_manifest(point, raw, public, pin, alternate):
     initial = recovery_manifest.sign_manifest(body, sign=governor.sign, **facts)
     directory = Path("/work/anchor-custody")
     directory.mkdir(mode=0o700)
+    incoming = Path("/work/anchor-custody-incoming")
+    incoming.mkdir(mode=0o700)
     store = recovery_store.RecoveryStore(directory, owner_uid=os.geteuid(), **facts)
-    initial_pin = store.commission(initial, checkpoints={pin: raw})
 
+    def inputs(manifest, document):
+        manifest_pin, digest = codec.sha(manifest), codec.sha(document)
+        manifest_file = incoming / (manifest_pin + ".manifest")
+        object_file = incoming / (digest + ".checkpoint")
+        for path, data in ((manifest_file, manifest), (object_file, document)):
+            with path.open("xb") as stream:
+                stream.write(data)
+        return manifest_pin, (
+            "--manifest", str(manifest_file), "--proposal-sha256", manifest_pin,
+            "--checkpoint", str(object_file),
+        )
+
+    initial_pin, flags = inputs(initial, raw)
+    initialized = custody_command(directory, facts, "commission", *flags)
+    custody_success(initialized, "commission", initial_pin)
+
+    next_point = replace(point, last_seq=0, head_sha256=GENESIS_SHA256)
     proposals = []
     for _ in range(2):
         signer = Ed25519PrivateKey.generate()
         key = signer.public_key().public_bytes_raw()
-        document = sign_checkpoint(point, public_key=key, sign=signer.sign)
+        document = sign_checkpoint(next_point, public_key=key, sign=signer.sign)
         digest = codec.sha(document)
         entry = {"checkpoint_sha256": digest, "generation": 2}
         candidate = dict(
@@ -132,74 +153,73 @@ def qualify_recovery_manifest(point, raw, public, pin, alternate):
             admissions=sorted((first_entry, entry), key=lambda item: item["checkpoint_sha256"]),
         )
         manifest = recovery_manifest.sign_manifest(candidate, sign=governor.sign, **facts)
-        proposals.append((manifest, {digest: document}))
+        proposed, flags = inputs(manifest, document)
+        proposals.append((proposed, digest, ("advance", "--current-sha256", initial_pin, *flags)))
 
     barrier = Barrier(2, timeout=3)
 
     def compete(proposal):
-        manifest, checkpoints = proposal
+        proposed, _, command = proposal
         barrier.wait()
-        try:
-            return store.advance(manifest, expected=initial_pin, checkpoints=checkpoints)
-        except codec.Error as error:
-            require((error.code, error.status) in {
-                ("idempotency_conflict", 409), ("unavailable", 503),
-            })
-            return None
+        child = custody_command(directory, facts, *command)
+        if child.returncode == 0:
+            custody_success(child, "advance", proposed)
+            return proposed
+        require(child.returncode == 1 and not child.stdout)
+        require(child.stderr in (b"idempotency_conflict\n", b"unavailable\n"))
+        return None
 
     with ThreadPoolExecutor(max_workers=2) as writers:
         outcomes = tuple(writers.map(compete, proposals))
     current, = [outcome for outcome in outcomes if outcome]
-    chosen, checkpoints = proposals[outcomes.index(current)]
-    rejected, other_documents = proposals[outcomes.index(None)]
-    require(current == store.advance(chosen, expected=initial_pin, checkpoints=checkpoints))
-    expect_error(
-        "idempotency_conflict", 409, lambda: store.advance(
-            rejected, expected=initial_pin, checkpoints=other_documents
-        ),
-    )
-    for digest in (pin, *checkpoints):
-        require(store.restore(expected=current, checkpoint_sha256=digest) == point)
+    _, chosen_digest, chosen = proposals[outcomes.index(current)]
+    _, _, rejected = proposals[outcomes.index(None)]
+    custody_success(custody_command(directory, facts, *chosen), "advance", current)
+    custody_refused(custody_command(directory, facts, *rejected), b"idempotency_conflict\n")
+
+    def restore(digest):
+        return custody_command(
+            directory, facts, "restore", "--current-sha256", current, "--checkpoint-sha256", digest,
+        )
+
+    with store._locked(write=True):
+        custody_refused(restore(pin), b"unavailable\n")
+    for digest, expected_point in ((pin, point), (chosen_digest, next_point)):
+        custody_success(
+            restore(digest), "restore", current, checkpoint_sha256=digest,
+            checkpoint=asdict(expected_point),
+        )
     alternate_digest = codec.sha(alternate)
     # An object retained before an interrupted publication is not an admission.
     with store._locked(write=True) as fd:
         store._files._retain(fd, alternate_digest + ".checkpoint", alternate)
         os.fsync(fd)
-    expect_error("anchor_refused", 403, lambda: store.restore(
-        expected=current, checkpoint_sha256=alternate_digest
-    ))
-    verify_custody_process(store, directory, scope, facts["governance_key"], current, pin)
+    custody_refused(restore(alternate_digest), b"anchor_refused\n")
 
 
-def verify_custody_process(store, directory, scope, governor, current, historical_pin):
-    code = (
-        "import os, sys\n"
-        "from pamolive_usage_anchor import codec, recovery_manifest, recovery_store\n"
-        "scope = recovery_manifest.RecoveryScope(*sys.argv[5:])\n"
-        "store = recovery_store.RecoveryStore(sys.argv[1], owner_uid=os.geteuid(),\n"
-        "    governance_key=bytes.fromhex(sys.argv[2]), scope=scope)\n"
-        "try:\n"
-        "    store.restore(expected=sys.argv[3], checkpoint_sha256=sys.argv[4])\n"
-        "    print('W01_CUSTODY_REOPENED')\n"
-        "except codec.Error as exc:\n"
-        "    if (exc.code, exc.status) != ('unavailable', 503):\n"
-        "        raise\n"
-        "    print('W01_CUSTODY_BUSY')\n"
-    )
+def custody_command(directory, facts, *arguments):
+    scope = facts["scope"]
     argv = [
-        sys.executable, "-I", "-B", "-c", code, str(directory), governor.hex(), current,
-        historical_pin, *asdict(scope).values(),
+        sys.executable, "-I", "-B", "-m", "pamolive_usage_anchor.recovery_cli",
+        "--directory", str(directory), "--governance-key", facts["governance_key"].hex(),
+        "--organization", scope.organization_id, "--installation", scope.installation_id,
+        "--context", scope.context_id, "--slot-sha256", scope.slot_sha256, *arguments,
     ]
+    return subprocess.run(
+        argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=8, check=False
+    )
 
-    def run(expected):
-        child = subprocess.run(
-            argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=8, check=False,
-        )
-        require(child.returncode == 0 and child.stdout == expected and not child.stderr)
 
-    with store._locked(write=True):
-        run(b"W01_CUSTODY_BUSY\n")
-    run(b"W01_CUSTODY_REOPENED\n")
+def custody_success(child, operation, manifest_pin, **result):
+    require(child.returncode == 0 and not child.stderr and 0 < len(child.stdout) <= 1024)
+    require(json.loads(child.stdout) == {
+        "schema": "pamolive.witness-custody-result/1", "operation": operation,
+        "manifest_sha256": manifest_pin, **result,
+    })
+
+
+def custody_refused(child, code):
+    require(child.returncode == 1 and not child.stdout and child.stderr == code)
 
 
 def receive_lab_checkpoint(slot, material, advance):
