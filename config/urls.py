@@ -230,6 +230,11 @@ urlpatterns = [
         name="pam-endpoint-action",
     ),
     path("pam/intents/<uuid:intent_id>/open/", pam_views.launch, name="pam-launch"),
+    path(
+        "pam/intents/<uuid:intent_id>/revoke/",
+        pam_views.withdraw_mandate,
+        name="pam-mandate-revoke",
+    ),
     path("pam/connections/<uuid:connection_id>/", pam_views.detail, name="pam-connection"),
     path("pam/connections/<uuid:connection_id>/stop/", pam_views.stop, name="pam-stop"),
     path(

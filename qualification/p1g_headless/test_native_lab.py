@@ -49,7 +49,8 @@ class NativeLabContracts(unittest.TestCase):
             "native_PAM_transport_observed": True, "browser_E2E_executed": True,
             "SDK_cleanup_completed": True, "live_server_thread_closed": True,
             "fresh_test_database_absent_after_runner": True, "base_database_OID_preserved": True,
-            "observed_UI_phases": [native_lab.run_lab.STOP_PHASE],
+            "observed_UI_phases": [native_lab.run_lab.STOP_PHASE,
+                                   native_lab.support.NATIVE_MANDATE_PHASE],
         }
         with patch.object(native_lab.support, "sandbox_receipt", return_value=True):
             self.assertTrue(native_lab.acceptable(packet, REVISION))
@@ -61,6 +62,9 @@ class NativeLabContracts(unittest.TestCase):
                         {item: value for item, value in packet.items() if item != key}, REVISION
                     ))
             self.assertFalse(native_lab.acceptable({**packet, "skips": 1}, REVISION))
+            self.assertFalse(native_lab.acceptable(
+                {**packet, "observed_UI_phases": [native_lab.run_lab.STOP_PHASE]}, REVISION
+            ))
 
     def test_guacd_is_bound_to_one_image_and_network_without_public_ports(self):
         network = "container:" + "4" * 64
@@ -103,7 +107,8 @@ class NativeLabContracts(unittest.TestCase):
             "native_PAM_transport_observed": True, "browser_E2E_executed": True,
             "SDK_cleanup_completed": True, "live_server_thread_closed": True,
             "fresh_test_database_absent_after_runner": True, "base_database_OID_preserved": True,
-            "observed_UI_phases": [native_lab.run_lab.RDP_STOP_PHASE],
+            "observed_UI_phases": [native_lab.run_lab.RDP_STOP_PHASE,
+                                   native_lab.support.NATIVE_MANDATE_PHASE],
             "native_RDP_display_and_NLA_observed": True,
         }
         with patch.object(native_lab.support, "sandbox_receipt", return_value=True):

@@ -1,24 +1,29 @@
 # P1-G native browser acceptance
 
-The guarded worker offers a separate `--native-ssh` case for the admitted
-disposable Linux job. It binds the launch, stop and recording sources to
-the committed context. The case verifies the real target public key before
-the authority snapshot, obtains the two browser votes, launches through
-WebAuthn and matches the WSS UUID to the exact intent, endpoint and browser
-session. It sends the keyboard sentinel and submits the stop from another
-tab. It requires WSS closure, closure of the SSH terminal connection and an
-authorized playback of the integrity-checked partial capture.
+Les parcours natifs SSH et RDP du commit `8ed3f88` ont vérifié les votes,
+le lancement WebAuthn, l'ouverture et la fermeture du transport, et la
+lecture autorisée de la capture partielle. Le banc a tourné sur le runner
+Linux isolé de la PR #95. [Reçus](https://github.com/pamolive/PamOlive-Platform/actions/runs/45247882731/artifacts/14856749904)
 
-The combined Linux runner must admit the browser and the installed native
-runtime for that invocation. A browser-only preflight, the loopback unit
-tests and the standalone native transport gates each cover separate
-prerequisites. The combined browser test has yet to run.
+Le parcours étendu part de la même demande. Il soumet une observation
+synthétique via l'API du collecteur, vérifie le reçu V8 et l'évaluation qui
+référence la demande, puis révoque le mandat depuis la fiche du parcours.
+Le test attend la fermeture WSS et celle du transport de la cible synthétique.
+Il vérifie la capture et l'événement d'audit, ainsi que la disparition du
+bouton d'ouverture pour ce mandat. La validation du parcours étendu dépend
+de sa propre CI.
 
-The present test is one increment, not a substitute for full P1-G. It has two
-separate subjects: a browser-created PAM intention with two genuine UI votes;
-and a seeded Observe demonstration plus a new, independently reviewed local
-fixture grant revoked through the existing UI. It never claims those are one
-end-to-end intention or that the in-memory provider is a real target.
+Le demandeur peut renoncer à son mandat depuis sa session. La révocation
+du mandat d'un autre utilisateur est réservée à un administrateur de
+l'organisation sous MFA récente. Le service révoque les baux liés et
+retire l'autorité des relais sous le verrou de l'organisation. Le broker
+ferme les transports actifs et scelle les captures. Le journal décrit le
+retrait local et la demande de fermeture. Le collecteur rapporte les faits
+synthétiques et le rapprochement décrit leur concordance avec la demande.
+
+Le démonstrateur historique PC-483/PC-991 et la révocation du droit IAM de
+fixture restent des cas distincts. Le parcours natif s'exécute uniquement
+sur des cibles dédiées de laboratoire.
 
 The next native case can reuse P1GBrowser.login/enroll/request/votes and override
 only after_approval and install_websocket_policy plus the server/endpoint

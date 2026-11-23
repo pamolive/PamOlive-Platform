@@ -34,6 +34,7 @@ from qualification.p1g_headless import (  # noqa: E402
 
 REF = "refs/heads/" + support.NATIVE_BRANCH
 RDP_REF = "refs/heads/" + support.NATIVE_RDP_BRANCH
+MANDATE_REF = "refs/heads/" + support.NATIVE_MANDATE_BRANCH
 PREFIX = "pamolive-native-private-"
 PARAMETERS = {
     "ssh": {"hostname", "port", "username", "password", "host-key"},
@@ -100,6 +101,7 @@ def acceptable(packet, revision, protocol="ssh"):
             "base_database_OID_preserved",
         ))
         and stop_phase in packet.get("observed_UI_phases", [])
+        and support.NATIVE_MANDATE_PHASE in packet.get("observed_UI_phases", [])
         and (protocol != "rdp" or packet.get("native_RDP_display_and_NLA_observed") is True)
         and support.sandbox_receipt(packet.get("browser_sandbox"))
     )
@@ -224,8 +226,10 @@ def main():
     parser.add_argument("--protocol", choices=("ssh", "rdp"), default="ssh")
     args = parser.parse_args()
     os.umask(0o077)
-    branch = RDP_REF if os.environ.get("GITHUB_REF") == RDP_REF else REF
-    support.need(args.protocol == "ssh" or branch == RDP_REF, "native_rdp_branch_scope")
+    branch = os.environ.get("GITHUB_REF")
+    support.need(branch in (REF, RDP_REF, MANDATE_REF), "native_branch_scope")
+    support.need(args.protocol == "ssh" or branch in (RDP_REF, MANDATE_REF),
+                 "native_rdp_branch_scope")
     identity = chrome.run_identity(os.environ, branch=branch)
     scratch = Path(os.environ["RUNNER_TEMP"]).resolve(strict=True)
     support.need(

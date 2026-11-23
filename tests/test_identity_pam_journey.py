@@ -11,15 +11,20 @@ import asyncssh
 import pyotp
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 from platform_core.audit import verify_chain
 from platform_core.models import AuditEvent, ModuleActivation, Organization, OrganizationMembership
+from platform_core.services import install_module
 from platform_core.tenancy import organization_context
-from platform_modules.access.models import AccessIntent
+from platform_modules.access.evidence import verify_evaluation
+from platform_modules.access.models import AccessEvent, AccessIntent
+from platform_modules.access.provenance import verify_provenance_receipt
 from platform_modules.approvals.models import ApprovalDecision
+from platform_modules.connectors.services import create_source
 from platform_modules.governance.policy import approval_requirements
 from platform_modules.identity.models import (
     ExternalAccount,
@@ -36,7 +41,8 @@ from platform_modules.pam.models import (
     SessionLease,
 )
 from platform_modules.pam.probe import ProbeResult
-from platform_modules.pam.sessions import authority_seal, browser_hash
+from platform_modules.pam.services import open_lease
+from platform_modules.pam.sessions import authority_seal, browser_hash, revoke_mandate
 from platform_modules.pam.target_binding import target_scope
 from platform_modules.pam.trust_auth import verify_authorization_evidence
 
@@ -46,6 +52,38 @@ PASSWORD = secrets.token_urlsafe(32)
 TARGET_PASSWORD = secrets.token_urlsafe(32)
 HOST = "pam.example.test"
 ORIGIN = "https://" + HOST
+
+
+def ingest_collector_observation(test, intent, external_id):
+    with organization_context(test.org):
+        install_module("connectors", actor=test.admin, organization=test.org)
+        source, token = create_source(
+            "Synthetic peer observer", actor=test.admin, organization=test.org,
+        )
+        response = test.client.post(
+            reverse("api-events"),
+            {
+                "external_id": external_id,
+                "identity": str(intent.identity_id),
+                "account": str(intent.account_id),
+                "resource": str(intent.resource_id),
+                "method": intent.method,
+                "privilege": intent.privilege,
+                "action": "synthetic.native_session_observed",
+                "domain": "pam",
+                "result": "success",
+                "occurred_at": timezone.now().isoformat(),
+            },
+            content_type="application/json", secure=True, HTTP_HOST=HOST,
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        test.assertEqual(response.status_code, 201)
+        event = AccessEvent.objects.get(pk=response.json()["event_id"], collector_source=source)
+        test.assertTrue(verify_provenance_receipt(event.provenance_receipt))
+        evaluation = event.evaluations.get()
+        test.assertTrue(verify_evaluation(evaluation))
+        test.assertEqual(evaluation.intent_id, intent.pk)
+        return event.pk
 
 
 class _Page(HTMLParser):
@@ -536,6 +574,109 @@ class IdentityPamJourneyTests(TestCase):
             self.assertEqual(event.metadata["intent_id"], str(intent.pk))
         self.assertEqual(self._get(self.browser, reverse("audit-log")).status_code, 200)
         self.assertTrue(verify_chain(self.org))
+
+    def test_withdraw_from_the_same_contract_invalidates_ticket_and_preserves_proofs(self):
+        intent = self._approved()
+        launch = reverse("pam-launch", args=[intent.pk])
+        self.assertTemplateUsed(self._signed_post(self.browser, launch, {}), "pam/session.html")
+        relay = RelayConnection.objects.get(lease__intent=intent)
+        self.assertTrue(relay.ticket_hash)
+        self.assertEqual(relay.status, "pending")
+        observation = ingest_collector_observation(self, intent, "synthetic-withdrawal")
+        other_intent = AccessIntent.objects.create(
+            organization=self.org, identity=self.person, account=self.account,
+            resource=self.resource, requested_by=self.operator, method="SSH", fulfillment="pam",
+            status="approved", reason="Unrelated synthetic mandate",
+            starts_at=intent.starts_at, ends_at=intent.ends_at,
+        )
+        other_lease = SessionLease.objects.create(
+            organization=self.org, intent=other_intent, opened_by=self.operator,
+            expires_at=other_intent.ends_at,
+        )
+        path = reverse("pam-mandate-revoke", args=[intent.pk])
+        contract = reverse("access-contract-detail", args=[intent.pk])
+        self.assertIn(path, _Page(self._get(self.browser, contract)).forms)
+        self.assertEqual(self._get(self.browser, path).status_code, 405)
+        self.assertEqual(self.browser.post(path, secure=True).status_code, 403)
+
+        # The requester's normal session can give up its own authority.
+        session = self.browser.session
+        session.pop("mfa_verified_at", None)
+        session.save()
+        self.assertRedirects(
+            self._post(self.browser, path, {}), contract, fetch_redirect_response=False
+        )
+        intent.refresh_from_db()
+        relay.refresh_from_db()
+        self.assertEqual(intent.status, "revoked")
+        self.assertIsNotNone(intent.revoked_at)
+        self.assertEqual((relay.lease.status, relay.lease.ended_at), ("revoked", intent.revoked_at))
+        self.assertEqual((relay.status, relay.end_reason), ("ended", "stop_requested"))
+        self.assertEqual(relay.ticket_hash, "")
+        self.assertEqual(relay.stop_requested_at, intent.revoked_at)
+
+        other_intent.refresh_from_db()
+        other_lease.refresh_from_db()
+        self.account.refresh_from_db()
+        self.assertEqual((other_intent.status, other_lease.status), ("approved", "active"))
+        self.assertTrue(self.account.active)
+        self._verify_request(intent)
+        self.assertTrue(all(trust.verified_vote(intent, row) for row in intent.decisions.all()))
+        self.assertTrue(trust.verify_launch(intent, relay.authority_snapshot["pam_trust_launch"]))
+        with self.assertRaises(ValidationError):
+            open_lease(intent.pk, actor=self.operator, organization=self.org)
+        self.assertNotIn(path, _Page(self._get(self.browser, contract)).forms)
+        self.assertEqual(self._post(self.browser, path, {}).status_code, 302)
+        revoked_at = intent.revoked_at
+        intent.refresh_from_db()
+        self.assertEqual(intent.revoked_at, revoked_at)
+        history = AuditEvent.objects.get(action="pam.mandate.revoked.v1", object_id=str(intent.pk))
+        self.assertEqual(history.actor_id, self.operator.pk)
+        self.assertEqual(history.metadata, {"leases_revoked": 1, "relay_stop_requests": 1})
+        self.assertTrue(verify_chain(self.org))
+        exported = self._get(
+            self.browser, reverse("access-contract-export", args=[intent.pk])
+        ).json()
+        self.assertEqual(exported["intention"]["status"], "revoked")
+        self.assertEqual(len(exported["approval_decisions"]["items"]), 2)
+        self.assertEqual(len(exported["observations"]["items"]), 1)
+        self.assertEqual(exported["observations"]["items"][0]["id"], str(observation))
+        self.assertTrue(exported["observations"]["items"][0]["provenance_verified"])
+
+    def test_administrative_withdrawal_requires_recent_mfa_in_the_same_organization(self):
+        intent = self._approved()
+        path = reverse("pam-mandate-revoke", args=[intent.pk])
+        other_operator, other_browser = self._actor("other-operator", "operator")
+        self.assertEqual(self._post(other_browser, path, {}).status_code, 403)
+        self.assertEqual(self._post(self.reviewers[0][1], path, {}).status_code, 403)
+        with self.assertRaises(PermissionDenied):
+            revoke_mandate(intent.pk, actor=other_operator, organization=self.org)
+        with self.assertRaises(PermissionDenied):
+            revoke_mandate(intent.pk, actor=self.admin, organization=self.org)
+
+        self._switch(self.browser, self.other)
+        self.assertEqual(self._post(self.browser, path, {}).status_code, 404)
+        self._switch(self.browser, self.org)
+        intent.refresh_from_db()
+        self.assertEqual(intent.status, "approved")
+        self.assertFalse(AuditEvent.objects.filter(action="pam.mandate.revoked.v1").exists())
+
+        session = self.admin_browser.session
+        previous_mfa = session.pop("mfa_verified_at")
+        session.save()
+        challenge = self._post(self.admin_browser, path, {})
+        self.assertRedirects(challenge, reverse("account-security"), fetch_redirect_response=False)
+        intent.refresh_from_db()
+        self.assertEqual(intent.status, "approved")
+        session = self.admin_browser.session
+        session["mfa_verified_at"] = previous_mfa
+        session.save()
+        response = self._post(self.admin_browser, path, {})
+        self.assertEqual(response.status_code, 302)
+        intent.refresh_from_db()
+        self.assertEqual(intent.status, "revoked")
+        event = AuditEvent.objects.get(action="pam.mandate.revoked.v1", object_id=str(intent.pk))
+        self.assertEqual(event.actor_id, self.admin.pk)
 
     def test_ceremony_resume_and_foreign_object_reads_stay_in_selected_tenant(self):
         path = self._entry()
