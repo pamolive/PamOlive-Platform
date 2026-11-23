@@ -130,7 +130,7 @@ def runtime(version):
         "version": version,
         "core_sha256": sha(CORE),
         "db_sha256": sha(DB),
-        "exports": exports(CORE),
+        "exports": {"core": exports(CORE), "database": exports(DB)},
         "client_initialization": True,
         "digestmd5_plugin_absent": True,
     }
@@ -146,14 +146,21 @@ def compare(root):
             item["client_initialization"] is True and item["digestmd5_plugin_absent"] is True,
             "runtime_profile",
         )
-    require(set(baseline["exports"]) <= set(candidate["exports"]), "missing_legacy_exports")
+    libraries = ("core", "database")
+    require(
+        all(
+            set(baseline["exports"][name]) <= set(candidate["exports"][name])
+            for name in libraries
+        ),
+        "missing_legacy_exports",
+    )
     return {
         "schema": "pamolive.sasl-trixie-qualification/1",
         "architecture": "amd64",
         "version": CANDIDATE,
         "core_sha256": candidate["core_sha256"],
         "db_sha256": candidate["db_sha256"],
-        "preserved_exports": len(baseline["exports"]),
+        "preserved_exports": {name: len(baseline["exports"][name]) for name in libraries},
         "package_sha256": {name: sha(root / f"{name}.deb") for name in PACKAGES},
         "buildinfo_sha256": sha(root / "buildinfo"),
         "client_initialization": True,

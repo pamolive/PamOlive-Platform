@@ -23,8 +23,9 @@ Les programmes du SDK et les modules facultatifs restent dans le builder.
 [Correction Debian](https://bugs.debian.org/1150516)
 
 Le témoin et le candidat vérifient l'identité dpkg du couple, les SONAME,
-les exports dynamiques et la chaîne libpq, libldap, libsasl2. Les trois
-bibliothèques sont initialisées sur des valeurs synthétiques hors réseau.
+les exports dynamiques des deux ELF et la chaîne libpq, libldap, libsasl2.
+Les trois bibliothèques clientes sont initialisées sur des valeurs synthétiques
+hors réseau.
 Le laboratoire conserve les deux paquets, le buildinfo et les empreintes
 des bibliothèques. Une qualification produit devra ensuite vérifier la
 liaison depuis `_ldap` et Psycopg, des connexions LDAP StartTLS et PostgreSQL
