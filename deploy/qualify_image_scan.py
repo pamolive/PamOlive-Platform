@@ -97,7 +97,7 @@ SQLITE_FIXES = {
     "CVE-2026-119379": "https://sqlite.org/src/info/3f57024aecea0f3b",
 }
 SQLITE_VERSION = "3.54.1-2~pamolive13u1"
-SQLITE_STATUS = "/var/lib/dpkg/status"
+DPKG_STATUS = "/var/lib/dpkg/status"
 SQLITE_LIBRARY = "/usr/lib/x86_64-linux-gnu/libsqlite3.so.3.54.1"
 SQLITE_ALIAS = "/usr/lib/x86_64-linux-gnu/libsqlite3.so.0"
 SQLITE_ELF_SHA256 = "f3efdeb6d18f5168d14511e0aec614f7b84e8daf1c319a77089d58e50d4ff317"
@@ -126,6 +126,53 @@ EXPAT_PROOFS = {
         "7a0f98e4c36ce3c7a9d3c21493986236a3db72e6aa7a9d281e781ee025e2e3a1",
 }
 EXPAT_CONDITION = {"kind": "expat_rebuild", "sha256": EXPAT_PROOFS[EXPAT_MATERIALS]}
+PRUNED_RUNTIME = {
+    "CVE-2026-54370": {
+        "source": "acl",
+        "version": "2.4.0-1~pamolive13u1",
+        "packages": ("libacl1",),
+        "additional_package_globs": ("acl", "acl-udeb", "libacl1-*"),
+        "disposition": "code_not_present",
+        "vendor": "https://www.openwall.com/lists/oss-security/2026/06/29/1",
+        "proofs": {
+            "deploy/acl-rebuild/source.sha256":
+                "732f4add75c88da8c0d712d2143a0f947044032165676e5855847e918a9b8ebe",
+            "deploy/acl-rebuild/package.sha256":
+                "881f2edda13164a4e432e458fa142d0340b35ef140428295dde4cc188fbf8be2",
+            "deploy/acl-rebuild/materials.sh":
+                "d179b0fad4b0727292b2d156e7758a09b70f1d1a4413516083850802bf3bc956",
+        },
+        "forbidden": ("getfacl*", "setfacl*", "chacl*", "libacl.a"),
+        "providers": (
+            ("/usr/lib/x86_64-linux-gnu/libacl.so.1.2.2400", ("libacl.so.1",),
+             "32d112de5fb4ec3124c7a4b859b738b45e4c4a9db3b3115f167625f082909dd1"),
+        ),
+    },
+    "CVE-2026-107161": {
+        "source": "cyrus-sasl2",
+        "version": "2.1.28+dfsg1-12~pamolive13u1",
+        "packages": ("libsasl2-2", "libsasl2-modules-db"),
+        "additional_package_globs": ("libsasl2-*", "sasl2-bin"),
+        "disposition": "fixed_by_backport",
+        "vendor": "https://bugs.debian.org/1150516",
+        "proofs": {
+            "deploy/sasl-rebuild/source.sha256":
+                "456d596fba6794463d113f1d78a10bb945a22ac1588689aa221eb68ffc4a9e69",
+            "deploy/sasl-rebuild/package.sha256":
+                "a0c377726ad0bb95f6180d4455affd949a77ed025fd76a20df566b7f7c9a6d20",
+            "deploy/sasl-rebuild/materials.sh":
+                "6fa8733ecdcdb49e6fdf7959bf5caf7caa2a6c1e98fca06ce1fc8add41887017",
+        },
+        "forbidden": ("libdigestmd5*", "libsasl2.a"),
+        "providers": (
+            ("/usr/lib/x86_64-linux-gnu/libsasl2.so.2.0.25", ("libsasl2.so.2",),
+             "f915d8cd6cb9e2ba4f69a9a5c9df3f7a355bf3fdef793be75408705bb513599b"),
+            ("/usr/lib/x86_64-linux-gnu/sasl2/libsasldb.so.2.0.25",
+             ("libsasldb.so.2", "libsasldb.so"),
+             "58ecbb6b49dfa9452023a47c615aa43973fe91734a08b46210308aa86be736ea"),
+        ),
+    },
+}
 ELF_SET_SCHEMA = "pamolive.elf-set.v1"
 GCC_VERSION = "14.2.0-19"
 GCC_PACKAGES = {"gcc-14-base", "libatomic1", "libgcc-s1", "libstdc++6"}
@@ -435,8 +482,9 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
     require(isinstance(read_paths, (list, tuple, set)) and len(read_paths) <= 32,
             "archive_read_paths")
     read_paths = {checked_path(name) for name in read_paths}
-    if any(item.get("kind") == "sqlite_rebuild" for item in conditions):
-        read_paths.add(SQLITE_STATUS)
+    if any(item.get("kind") in {"sqlite_rebuild", "pruned_debian_runtime"}
+           for item in conditions):
+        read_paths.add(DPKG_STATUS)
         require(len(read_paths) <= 32, "archive_read_paths")
     require(isinstance(attribute_paths, (list, tuple, set)) and len(attribute_paths) <= 32,
             "archive_attribute_paths")
@@ -986,7 +1034,7 @@ def sqlite_rebuild_holds(entry, finding, *, facts, proofs):
             and all({"path": path, "sha256": digest} in proofs
                     for path, digest in SQLITE_PROOFS.items()),
             "sqlite_rebuild_recipe")
-    raw_status = (getattr(facts, "captured", None) or {}).get(SQLITE_STATUS, b"")
+    raw_status = (getattr(facts, "captured", None) or {}).get(DPKG_STATUS, b"")
     require(0 < len(raw_status) <= 8 * 1024**2, "sqlite_rebuild_status")
     rows = [row for row in controls(raw_status)
             if row.get("Package") == "libsqlite3-0"
@@ -1004,6 +1052,64 @@ def sqlite_rebuild_holds(entry, finding, *, facts, proofs):
         SQLITE_ALIAS: {"path": SQLITE_ALIAS, "type": "symlink",
                        "target": PurePosixPath(SQLITE_LIBRARY).name},
     }
+
+
+def pruned_runtime_holds(entry, finding, *, facts, proofs):
+    from qualification.debian_138_refresh.verify_refresh import controls
+
+    cve = finding["vulnerability_id"]
+    rule = PRUNED_RUNTIME.get(cve)
+    require(rule is not None and rule["vendor"] in entry["vendor_evidence"],
+            "pruned_runtime_scope")
+    source, version = rule["source"], rule["version"]
+    packages = [{"name": name, "type": "deb", "version": version,
+                 "purl": f"pkg:deb/debian/{name}@{quote(version, safe='')}"
+                         f"?arch=amd64&distro=debian-13.8&upstream={source}"}
+                for name in rule["packages"]]
+    require(finding == {
+        "vulnerability_id": cve, "source_package": source, "scope": "os",
+        "severity": "High", "distro": {"name": "debian", "version": "13.8"},
+        "fix_state": "wont-fix", "namespace": "debian:distro:debian:13",
+        "data_source": "https://security-tracker.debian.org/tracker/" + cve,
+        "packages": packages,
+    }, "pruned_runtime_scope")
+    require(entry["disposition"] == rule["disposition"]
+            and entry["conditions"] == [{"kind": "pruned_debian_runtime", "source": source}]
+            and not {"trixie_backport_receipt", "backport_inventory", "build_recipe"} & entry.keys()
+            and all({"path": path, "sha256": digest} in proofs
+                    for path, digest in rule["proofs"].items()), "pruned_runtime_evidence")
+    raw_status = (getattr(facts, "captured", None) or {}).get(DPKG_STATUS, b"")
+    require(0 < len(raw_status) <= 8 * 1024**2, "pruned_runtime_dpkg")
+    installed = [row for row in controls(raw_status)
+                 if row.get("Status", "").endswith(" installed")
+                 and (row.get("Package") in rule["packages"]
+                      or row.get("Source", row.get("Package", "")).partition(" ")[0] == source
+                      or any(fnmatch.fnmatchcase(row.get("Package", ""), pattern)
+                             for pattern in rule["additional_package_globs"]))]
+    require(len(installed) == len(packages)
+            and {row.get("Package") for row in installed} == set(rule["packages"])
+            and all(row.get("Version") == version and row.get("Architecture") == "amd64"
+                    and row.get("Source") in (source, f"{source} ({version})")
+                    and row.get("Status") == "install ok installed" for row in installed),
+            "pruned_runtime_dpkg")
+    if not conditions_hold([{"kind": "absent_basename_glob", "pattern": pattern}
+                            for pattern in rule["forbidden"]], facts):
+        return False
+    entries = facts.entries or {}
+    for target, aliases, digest in rule["providers"]:
+        path = PurePosixPath(target)
+        loader_name = path.name.partition(".so")[0] + ".so"
+        paths = {name for name in entries
+                 if fnmatch.fnmatchcase(PurePosixPath(name).name, loader_name + "*")}
+        allowed = {str(path.with_name(alias)) for alias in aliases}
+        if paths != {target, *allowed} or entries[target] != {
+            "path": target, "type": "elf", "class": 64, "machine": 62, "sha256": digest,
+        }:
+            return False
+        if any(entries[alias]["type"] != "symlink"
+               or entries[alias].get("target") not in (path.name, target) for alias in allowed):
+            return False
+    return True
 
 
 def expat_rebuild_holds(entry, finding, *, proofs, report):
@@ -1068,6 +1174,8 @@ def reviewed_exception(entry, finding, *, facts, repo, now, archive=None, artifa
                 proof.get("sha256"), "proof_changed")
     if any(item.get("kind") == "sqlite_rebuild" for item in entry.get("conditions", ())):
         return sqlite_rebuild_holds(entry, finding, facts=facts, proofs=proofs)
+    if any(item.get("kind") == "pruned_debian_runtime" for item in entry.get("conditions", ())):
+        return pruned_runtime_holds(entry, finding, facts=facts, proofs=proofs)
     if any(item.get("kind") == "expat_rebuild" for item in entry.get("conditions", ())):
         return expat_rebuild_holds(entry, finding, proofs=proofs, report=expat_report)
     if "trixie_backport_receipt" in entry:

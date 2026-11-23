@@ -243,3 +243,30 @@ checks are repeated when a matching Expat decision applies. The report
 retains its existing limits on build attestation and operational
 authority. The two local Expat patches and findings from other
 versions, builds or scan scopes require separate decisions.
+
+### ACL command-line utilities and Cyrus SASL
+
+The ACL decision for CVE-2026-54370 covers the exact Debian 13.8
+amd64 libacl1 rebuild. The installed DPKG records and ELF identity
+must match. The three command-line utilities and the static ACL
+archive must be absent by name across all physical layers,
+including lower layers later masked by a whiteout. The retained
+libacl ABI still exposes path-based functions. CVE-2026-54369 has
+a distinct exposure and remains subject to its own decision.
+[ACL upstream advisory](https://www.openwall.com/lists/oss-security/2026/06/29/1) |
+[Debian tracking](https://security-tracker.debian.org/tracker/CVE-2026-54370)
+
+The Cyrus SASL decision for CVE-2026-107161 covers only the two
+reviewed runtime packages rebuilt from Debian source 2.1.28+dfsg1-12.
+The correction is in that source. The gate verifies the exact installed
+package identities, the two ELF files and their SONAME aliases, and
+requires the named DIGEST-MD5 plugin and libsasl2.a to be absent from
+all layers. The existing live and wire tests remain in CI.
+[Debian tracking](https://security-tracker.debian.org/tracker/CVE-2026-107161) |
+[Reviewed Debian correction](https://bugs.debian.org/1150516)
+
+The two decisions apply to observed OS package groups. The archive
+checks cover the named programs and libraries and their exact installed
+identities. Other package versions, statically embedded implementations
+in unrelated binaries and separately reported findings require their
+own evidence.

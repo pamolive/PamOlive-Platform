@@ -9,6 +9,126 @@
   "coverage": "OS archive plus declared FreeRDP/Guacamole and application SBOM; bundled wheel libraries are not automatically covered",
   "findings": [
     {
+      "analysis": "CVE-2026-107161 The audited Debian source already contains the vendor correction, and the two runtime packages carry the verified rebuilt ELF bytes. The runtime image must also exclude the named DIGEST-MD5 plugin and SDK static library at every layer.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "pruned_debian_runtime",
+          "source": "cyrus-sasl2"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T11:10:36+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-107161",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libsasl2-2",
+            "purl": "pkg:deb/debian/libsasl2-2@2.1.28%2Bdfsg1-12~pamolive13u1?arch=amd64&distro=debian-13.8&upstream=cyrus-sasl2",
+            "type": "deb",
+            "version": "2.1.28+dfsg1-12~pamolive13u1"
+          },
+          {
+            "name": "libsasl2-modules-db",
+            "purl": "pkg:deb/debian/libsasl2-modules-db@2.1.28%2Bdfsg1-12~pamolive13u1?arch=amd64&distro=debian-13.8&upstream=cyrus-sasl2",
+            "type": "deb",
+            "version": "2.1.28+dfsg1-12~pamolive13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "cyrus-sasl2",
+        "vulnerability_id": "CVE-2026-107161"
+      },
+      "fingerprint": "sha256:df4b32e06167b409a41bf376f0de8281ecf63dabc2666d8310f9dcbff4b351c3",
+      "local_evidence": [
+        {
+          "path": "deploy/sasl-rebuild/materials.sh",
+          "sha256": "6fa8733ecdcdb49e6fdf7959bf5caf7caa2a6c1e98fca06ce1fc8add41887017"
+        },
+        {
+          "path": "deploy/sasl-rebuild/package.sha256",
+          "sha256": "a0c377726ad0bb95f6180d4455affd949a77ed025fd76a20df566b7f7c9a6d20"
+        },
+        {
+          "path": "deploy/sasl-rebuild/source.sha256",
+          "sha256": "456d596fba6794463d113f1d78a10bb945a22ac1588689aa221eb68ffc4a9e69"
+        }
+      ],
+      "reviewed_at": "2026-11-23T11:10:36+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/acl_sasl_scan_review"
+      ],
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-107161",
+        "https://bugs.debian.org/1150516"
+      ]
+    },
+    {
+      "analysis": "CVE-2026-54370 The exact Debian runtime library is installed. The affected command-line tools are delivered by the absent acl package. The gate checks the DPKG record, exact ELF and SONAME, and absence of the specific utilities across all layers.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "pruned_debian_runtime",
+          "source": "acl"
+        }
+      ],
+      "disposition": "code_not_present",
+      "expires": "2026-12-07T11:10:36+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-54370",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libacl1",
+            "purl": "pkg:deb/debian/libacl1@2.4.0-1~pamolive13u1?arch=amd64&distro=debian-13.8&upstream=acl",
+            "type": "deb",
+            "version": "2.4.0-1~pamolive13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "acl",
+        "vulnerability_id": "CVE-2026-54370"
+      },
+      "fingerprint": "sha256:3a5eadc2aecb6b20cab816640fe2730542bfeee4b12d6d7f2727455864f1525b",
+      "local_evidence": [
+        {
+          "path": "deploy/acl-rebuild/materials.sh",
+          "sha256": "d179b0fad4b0727292b2d156e7758a09b70f1d1a4413516083850802bf3bc956"
+        },
+        {
+          "path": "deploy/acl-rebuild/package.sha256",
+          "sha256": "881f2edda13164a4e432e458fa142d0340b35ef140428295dde4cc188fbf8be2"
+        },
+        {
+          "path": "deploy/acl-rebuild/source.sha256",
+          "sha256": "732f4add75c88da8c0d712d2143a0f947044032165676e5855847e918a9b8ebe"
+        }
+      ],
+      "reviewed_at": "2026-11-23T11:10:36+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/acl_sasl_scan_review"
+      ],
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-54370",
+        "https://www.openwall.com/lists/oss-security/2026/06/29/1"
+      ]
+    },
+    {
       "analysis": "CVE-2026-76642 The authenticated Trixie rebuild incorporates the reviewed upstream correction. The patch manifest and resulting sources are pinned. This decision requires the exact nine-package runtime set, the V4 archive receipt and the matching SBOM.",
       "analyst": "codex:/root",
       "conditions": [
