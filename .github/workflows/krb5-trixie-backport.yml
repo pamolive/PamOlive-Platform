@@ -2,7 +2,7 @@ name: Kerberos Trixie 107778 backport qualification
 
 on:
   push:
-    branches: [agent/krb5-trixie-107778-qualification]
+    branches: [agent/krb5-trixie-107778-qualification, agent/krb5-trixie-product-runtime]
 
 permissions:
   contents: read
@@ -26,6 +26,8 @@ jobs:
           evidence="$RUNNER_TEMP/krb5-trixie-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           test ! -e "$evidence"
           git archive "$GITHUB_SHA" qualification/krb5_trixie_backport \
+            deploy/krb5-trixie-backport/materials.sh deploy/krb5-trixie-backport/source.sha256 \
+            deploy/krb5-trixie-backport/test-patch.sha256 \
             qualification/debian_138_refresh/smoke.c qualification/debian_138_refresh/verify_refresh.py \
             deploy/krb5-test-keyring-seccomp.patch deploy/krb5-remediation/abi_data.py \
             deploy/krb5-remediation/bounded_io.py deploy/krb5-remediation/common.py \

@@ -12,7 +12,7 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import patch
 
-from deploy import build_context, qualified_image
+from deploy import build_context, krb5_trixie_materials, qualified_image
 from deploy import debian_refresh_inventory as inventory
 from qualification.debian_138_refresh import verify_refresh as refresh
 
@@ -26,10 +26,12 @@ def native_files():
     return {path: bytes(header) + path.encode("ascii") for path in sorted(inventory.ELF_PATHS)}
 
 
-def installed_status(names):
+def installed_status(names, *, kerberos_version=None):
     rows = []
     for package in sorted(names):
         source, version, _, _ = refresh.PACKAGES[package]
+        if source == "krb5" and kerberos_version is not None:
+            version = kerberos_version
         rows.append(
             f"Package: {package}\nStatus: install ok installed\n"
             f"Architecture: amd64\nSource: {source} ({version})\nVersion: {version}\n"
@@ -74,6 +76,37 @@ def write_tar(files, *, aliases=None):
     return stream.getvalue()
 
 
+class KerberosPackageMaterialsTests(TestCase):
+    def setUp(self):
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.directory = Path(directory.name).resolve()
+        self.packages = {}
+        self.receipt = {"packages": {}}
+        for name in (*krb5_trixie_materials.RUNTIME_PACKAGES, *krb5_trixie_materials.SDK_PACKAGES):
+            payload = name.encode("ascii")
+            path = self.directory / f"{name}_{krb5_trixie_materials.VERSION}_amd64.deb"
+            path.write_bytes(payload)
+            self.packages[name] = path
+            self.receipt["packages"][name] = {"bytes": len(payload), "sha256": refresh.sha(payload)}
+        pin = patch.object(krb5_trixie_materials, "load_reviewed", return_value=self.receipt)
+        pin.start()
+        self.addCleanup(pin.stop)
+
+    def test_runtime_and_sdk_verify_only_their_qualified_archives(self):
+        krb5_trixie_materials.verify_packages(self.directory, sdk=True)
+        self.packages["libkrb5-dev"].unlink()
+        krb5_trixie_materials.verify_packages(self.directory)
+        with self.assertRaises(FileNotFoundError):
+            krb5_trixie_materials.verify_packages(self.directory, sdk=True)
+
+    def test_same_size_replacement_is_refused_before_installation(self):
+        path = self.packages["libkrb5-3"]
+        path.write_bytes(b"!" * path.stat().st_size)
+        with self.assertRaisesRegex(ValueError, "kerberos_package_digest"):
+            krb5_trixie_materials.verify_packages(self.directory)
+
+
 class DebianRuntimeInventoryTests(TestCase):
     def setUp(self):
         tmp = TemporaryDirectory()
@@ -106,7 +139,7 @@ class DebianRuntimeInventoryTests(TestCase):
             # Synthesized files are made read-only for consistent POSIX and NT checks.
             path.chmod(0o444)
 
-    def inspect_fixture_root(self, *, sdk=False, aliases=None):
+    def inspect_fixture_root(self, *, sdk=False, aliases=None, kerberos_backport=False):
         lstat = Path.lstat
         links = {self.root.resolve() / name.lstrip("/"): target
                  for name, target in (self.aliases if aliases is None else aliases).items()}
@@ -124,7 +157,7 @@ class DebianRuntimeInventoryTests(TestCase):
         with patch.object(Path, "lstat", fixture_owner), patch.object(
             inventory.os, "readlink", fixture_readlink
         ):
-            return inventory.inspect_root(self.root, sdk=sdk)
+            return inventory.inspect_root(self.root, sdk=sdk, kerberos_backport=kerberos_backport)
 
     def bundle(self, payload, *, declared_image=None, aliases=None):
         layer = write_tar(payload, aliases=self.aliases if aliases is None else aliases)
@@ -275,3 +308,94 @@ class DebianRuntimeInventoryTests(TestCase):
         self.bundle({**self.payload, inventory.RECEIPT: json.dumps(receipt).encode("ascii")})
         with self.assertRaisesRegex(inventory.InventoryError, "unreviewed_debian_materials"):
             inventory.inspect_bundle(self.root, REVISION)
+
+    def backport_fixture(self):
+        from deploy import krb5_trixie_materials as materials
+
+        kerberos = materials.load_reviewed()
+        files = {path: self.files[path] + b"local" for path in kerberos["installed_elf_sha256"]}
+        kerberos["installed_elf_sha256"] = {path: refresh.sha(data) for path, data in files.items()}
+        raw = json.dumps(kerberos, sort_keys=True).encode("ascii")
+        for attribute, value in (("SHA256", refresh.sha(raw)), ("load_reviewed", lambda: kerberos)):
+            replacement = patch.object(materials, attribute, value)
+            replacement.start()
+            self.addCleanup(replacement.stop)
+        payload = {
+            **self.payload,
+            **files,
+            str(materials.PATH): raw,
+            inventory.DPKG_STATUS: installed_status(
+                inventory.RUNTIME_PACKAGES, kerberos_version=materials.VERSION,
+            ),
+        }
+        return materials, payload, kerberos
+
+    def test_backport_live_and_archive_report_the_same_reviewed_facts(self):
+        materials, payload, kerberos = self.backport_fixture()
+        metadata = self.bundle(payload)
+        archive = inventory.inspect_bundle(self.root, REVISION, kerberos_backport=True)
+        self.assertEqual(archive["image_config_id"], metadata["image_id"])
+        self.assertEqual(archive["archive_sha256"], metadata["archive_sha256"])
+        self.assertEqual(archive["revision"], REVISION)
+        self.assertEqual(inventory.validate_report(archive, archive=True), archive)
+        with TemporaryDirectory() as output_folder:
+            report_path = Path(output_folder) / "report.json"
+            self.assertEqual(inventory.main([
+                "--bundle", str(self.root), "--revision", REVISION,
+                "--kerberos-backport", "--output", str(report_path),
+            ]), 0)
+            self.assertEqual(json.loads(report_path.read_bytes()), archive)
+
+        self.filesystem(payload)
+        live = self.inspect_fixture_root(kerberos_backport=True)
+        self.assertEqual(live, {key: value for key, value in archive.items()
+                                if key not in inventory.IMAGE_FIELDS})
+        self.assertEqual(live["schema"], inventory.SCHEMA_V2)
+        self.assertEqual(live["receipt_sha256"], refresh.sha(self.receipt))
+        self.assertEqual(live["kerberos_receipt_sha256"], materials.SHA256)
+        library = next(row for row in live["packages"] if row["package"] == "libkrb5-3")
+        package = kerberos["packages"]["libkrb5-3"]
+        self.assertEqual(library, {
+            "package": "libkrb5-3", "source": "krb5", "version": materials.VERSION,
+            "suite": inventory.KERBEROS_SUITE, "archive_sha256": package["sha256"],
+            "archive_bytes": package["bytes"],
+        })
+        with self.assertRaisesRegex(inventory.InventoryError, "status_identity"):
+            self.inspect_fixture_root()
+
+    def test_backport_requires_reviewed_receipt_installed_elf_and_official_materials(self):
+        materials, payload, kerberos = self.backport_fixture()
+        path = next(iter(kerberos["installed_elf_sha256"]))
+        official = json.loads(self.receipt)
+        official["installed_elf_sha256"][path] = "e" * 64
+        receipt_path = str(materials.PATH)
+        for changes, expected in (
+            ({receipt_path: payload[receipt_path] + b"\n"}, "kerberos_receipt_hash"),
+            ({path: payload[path] + b"changed"}, "installed_elf_changed"),
+            ({inventory.RECEIPT: json.dumps(official).encode()}, "unreviewed_debian_materials"),
+            ({inventory.DPKG_STATUS: self.payload[inventory.DPKG_STATUS]}, "status_identity"),
+        ):
+            with self.subTest(expected=expected):
+                self.bundle({**payload, **changes})
+                with self.assertRaisesRegex(inventory.InventoryError, expected):
+                    inventory.inspect_bundle(self.root, REVISION, kerberos_backport=True)
+        self.bundle({name: data for name, data in payload.items() if name != receipt_path})
+        with self.assertRaisesRegex(inventory.InventoryError, "archive_evidence"):
+            inventory.inspect_bundle(self.root, REVISION, kerberos_backport=True)
+
+    def test_backport_sdk_requires_all_and_only_the_selected_sdk_packages(self):
+        materials, payload, _ = self.backport_fixture()
+        self.filesystem(payload)
+        with self.assertRaisesRegex(inventory.InventoryError, "status_missing"):
+            self.inspect_fixture_root(sdk=True, kerberos_backport=True)
+        payload[inventory.DPKG_STATUS] = installed_status(
+            refresh.PACKAGES, kerberos_version=materials.VERSION,
+        )
+        self.filesystem(payload)
+        with self.assertRaisesRegex(inventory.InventoryError, "status_package_overlap"):
+            self.inspect_fixture_root(kerberos_backport=True)
+        report = self.inspect_fixture_root(sdk=True, kerberos_backport=True)
+        self.assertEqual(inventory.validate_report(report, sdk=True), report)
+        versions = {row["package"]: row["version"] for row in report["packages"]}
+        self.assertEqual(set(versions), set(refresh.PACKAGES))
+        self.assertEqual(versions["krb5-multidev"], materials.VERSION)

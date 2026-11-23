@@ -185,7 +185,7 @@ IDENTITY_FIELDS = ("dev", "ino", "mode", "uid", "gid", "nlink", "size", "mtime_n
 # Finite current-profile policy: never parse arbitrary future .dockerignore rules.
 PROFILE_ID = "pamolive-current-dockerignore-typed-dirs-v3"
 DOCKERIGNORE_SHA = "116f2ac21b5a2cb6c97738ebd7808394139de3361679cd2766c96fa64e395bd0"
-DOCKERFILE_SHA = "3fbe4e1a016f4a4934aa6bbf8933e3408c10cff1efad9a509c577802bffee5c3"
+DOCKERFILE_SHA = "21d4164678c60f5a1111ec2da3f2f44c6785b5b0ea8e89ec08ef6c226d58be58"
 ROOT_FILES = frozenset(
     {
         "Dockerfile",
