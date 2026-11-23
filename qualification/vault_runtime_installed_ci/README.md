@@ -89,3 +89,38 @@ methods; their errors still prevent success. No messages, paths, bodies or local
 variables are exported. Old child `/2` is refused, including when rehashed. Empty
 diagnostics are required for success; diagnostic observations never promote a
 failed child or relax guards, profiles, RECORD, source or SQL bindings.
+
+An explicit `transfer_verified_wheels` workflow dispatch can retain a private
+handoff for a subsequent laboratory step in the same job. The existing
+offline builder sends a bounded frame containing its normal success packet,
+its exact installed-input descriptor and the three verified wheels. The host
+checks the original success packet and bindings, then checks each wheel's size
+and digest. It retains `verified-wheels.bin` with mode 0600 only after the
+existing exit, reap and cleanup checks pass. The workflow uploads the public
+report through its existing allowlist. The frame stays in the job's private
+temporary directory, outside that allowlist. The default run keeps its original
+packet protocol. The handoff only receives verified installation materials.
+The PostgreSQL and mutual TLS laboratory has its own acceptance requirements.
+
+The opt-in job then reopens the private handoff alongside both host cleanup
+receipts. It revalidates the three archives against the checkout and builds a
+separate test image with those exact wheels. Its database driver uses the
+project's pinned psycopg 3.2.10 C source and Debian libpq 17.12. APT installs the
+pinned Debian dependencies in the build stages. Wheel construction, installation
+and verification run without network. The image stays in the ephemeral runner's
+local store for the laboratory. This step performs no database connection or
+mutual TLS exchange. [Dockerfile network modes](https://docs.docker.com/reference/dockerfile/#run---network).
+
+Set both `transfer_verified_wheels` and `run_synthetic_lab` to exercise the
+installed service. The workflow allocates one private internal Docker network,
+three role volumes and four containers in the ephemeral job. PostgreSQL uses
+new `PGDATA` in tmpfs. Its bootstrap checks the local socket and an empty
+catalog before running the installed schema. The offline preparer stages only
+the files of each role and exits before Vault starts. The server sees its own
+read-only volume. The client uses the existing six PostgreSQL and four TLS tests
+against those exact installed packages. There are no published ports.
+
+Only the closed count, phase and cleanup result are uploaded in `lab-public.json`.
+The preparer retains its transient material in memory and tmpfs. The workflow
+keeps the historical wildcard and the existing pure-install profiles separate.
+Cleanup verifies the identities of the objects created for this execution.

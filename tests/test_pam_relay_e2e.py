@@ -23,7 +23,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
 from django.core.exceptions import PermissionDenied
-from django.db import OperationalError
+from django.db import DatabaseError, OperationalError
 from django.test import Client, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -57,12 +57,44 @@ from .pam_trust_fixtures import TrustFixture
 from .person_fixtures import bind_person
 
 BINARY = Path("/opt/pamolive-guac/sbin/guacd")
+STARTUP_STATUSES = {"pending", "connecting", "active", "ended", "failed", "expired"}
+STARTUP_REASONS = {
+    "authority_lost",
+    "database_unavailable",
+    "native_closed",
+    "native_error",
+    "native_handshake_failed",
+    "relay_failed",
+    "relay_shutdown",
+    "session_credentials_unavailable",
+    "ssh_host_key_mismatch",
+    "ssh_identity_probe_failed",
+    "stop_requested",
+}
 
 
 def unused_port():
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
         return reservation.getsockname()[1]
+
+
+async def ssh_open_failure(opened, display, *, timeout=10):
+    """Distinguish an early relay close from the SSH server failing to open a shell."""
+    opening = asyncio.create_task(opened.wait())
+    try:
+        done, _ = await asyncio.wait(
+            (opening, display), timeout=timeout, return_when=asyncio.FIRST_COMPLETED
+        )
+        if opening in done or opened.is_set():
+            return None
+        if display in done:
+            display.result()
+            return "websocket_closed_before_ssh"
+        return "ssh_open_deadline"
+    finally:
+        opening.cancel()
+        await asyncio.gather(opening, return_exceptions=True)
 
 
 @skipUnless(BINARY.is_file() or os.environ.get("PAM_REQUIRE_NATIVE"), "native image gate")
@@ -246,10 +278,15 @@ class RelayHarness(TransactionTestCase):
             endpoint = self.make_endpoint(
                 host_key, target_port, private_key, protocol, certificate_pin, password
             )
-            self.trust = TrustFixture(self, self.org, [endpoint], [
-                (self.actor, self.identity, ["requester"]),
-                (self.reviewer, self.reviewer_binding.identity, ["reviewer", "sponsor"]),
-            ])
+            self.trust = TrustFixture(
+                self,
+                self.org,
+                [endpoint],
+                [
+                    (self.actor, self.identity, ["requester"]),
+                    (self.reviewer, self.reviewer_binding.identity, ["reviewer", "sponsor"]),
+                ],
+            )
             with self.trust.personal_action(self.actor):
                 intent = create_record(
                     "intent",
@@ -357,6 +394,31 @@ class NativeRelayTests(RelayHarness):
             await self.exercise("logout")
         self.assertTrue(delayed.is_set())
 
+    async def startup_observation(self, connection_id, websocket):
+        def snapshot():
+            with organization_context(self.org):
+                return (
+                    RelayConnection.objects.filter(pk=connection_id)
+                    .values_list("status", "end_reason")
+                    .first()
+                )
+
+        try:
+            row = await asyncio.wait_for(sync_to_async(snapshot)(), timeout=1)
+        except (DatabaseError, TimeoutError):
+            state, reason = "unavailable", "unknown"
+        else:
+            if row is None:
+                state, reason = "missing", "unknown"
+            else:
+                state, reason = row
+                state = state if state in STARTUP_STATUSES else "other"
+                reason = reason if reason in STARTUP_REASONS else "other" if reason else "none"
+        return (
+            f"state={state} reason={reason} websocket_code={websocket.close_code} "
+            f"guacd_exit={self.native.poll()}"
+        )
+
     async def exercise(self, termination, private_key=False, shared=False):
         opened, echoed, lost = asyncio.Event(), asyncio.Event(), asyncio.Event()
         processes = []
@@ -413,6 +475,7 @@ class NativeRelayTests(RelayHarness):
                     account_key.export_private_key("openssh").decode() if account_key else None,
                     shared=shared,
                 )
+                connection_id = config["websocket_path"].split("/")[3]
                 async with connect(
                     f"ws://127.0.0.1:{self.web_port}" + config["websocket_path"],
                     proxy=None,
@@ -456,7 +519,10 @@ class NativeRelayTests(RelayHarness):
 
                     drain = asyncio.create_task(display())
                     try:
-                        await asyncio.wait_for(opened.wait(), timeout=10)
+                        failure = await ssh_open_failure(opened, drain)
+                        if failure is not None:
+                            observation = await self.startup_observation(connection_id, websocket)
+                            self.fail(f"Native relay startup failed: {failure} {observation}")
 
                         # MFA freshness expiring during a session must NOT cut or challenge it.
                         def expire_mfa_only():
@@ -535,7 +601,6 @@ class NativeRelayTests(RelayHarness):
                         drain.cancel()
                         await asyncio.gather(drain, return_exceptions=True)
                 self.assertTrue(any(instruction.opcode == "sync" for instruction in received))
-                connection_id = config["websocket_path"].split("/")[3]
 
                 def verify_recording():
                     with organization_context(self.org):

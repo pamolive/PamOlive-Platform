@@ -20,6 +20,7 @@ CONTROLLER_FILES = {
     "orchestrate.py",
     "records.py",
     "wheel_gate.py",
+    "wheel_transfer.py",
     "workload_schema.py",
     "workload_entry.py",
     "workload_host.py",
@@ -76,7 +77,9 @@ def assets(root, digest):
     return value
 
 
-def prepare(work, source_root, material_directory, *, assets_sha256, pins):
+def prepare(
+    work, source_root, material_directory, *, assets_sha256, pins, transfer_verified_wheels=False
+):
     """No daemon call. This function must only be invoked under a later Root GO."""
     control, gate, qualifier = (
         load("controller.py"),
@@ -85,6 +88,7 @@ def prepare(work, source_root, material_directory, *, assets_sha256, pins):
     )
     control.ci_guard(work)
     s0_pins(pins)
+    need(type(transfer_verified_wheels) is bool)
     need(not work.exists())
     inventory = assets(source_root, assets_sha256)
     payload, buffers = orchestrate.source_payloads(source_root / "inputs")
@@ -138,6 +142,7 @@ def prepare(work, source_root, material_directory, *, assets_sha256, pins):
         "image_config": pins["image_config"],
         "pull": "not_attempted",
         "started": False,
+        "transfer_verified_wheels": transfer_verified_wheels,
         "identities": identities,
         "assets_sha256": assets_sha256,
         "IO": [],
