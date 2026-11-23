@@ -557,6 +557,7 @@ def run_cases(
     restore_cluster=False,
     audit_archive=False,
     signed_anchor=False,
+    anchor_store=False,
 ):
     from cryptography.hazmat.primitives import serialization
     from pamolive_usage_anchor import codec
@@ -752,6 +753,10 @@ def run_cases(
 
                         advance("signed_anchor_capture")
                         signed_material = sign_lab_checkpoint(checkpoint)
+                        if anchor_store:
+                            from .witness_archive_cases import retain_lab_anchor
+
+                            signed_material = retain_lab_anchor(signed_material, advance)
 
                     def restore():
                         advance("restore_wait")
@@ -790,6 +795,13 @@ def run_cases(
                             from .witness_archive_cases import receive_lab_checkpoint
 
                             report["schema"] = "W01-signed-audit-anchor-results/1"
+                            if anchor_store:
+                                from .witness_archive_cases import restore_lab_anchor
+
+                                report["schema"] = "W01-audit-anchor-store-results/1"
+                                signed_material, report["anchor_store"] = restore_lab_anchor(
+                                    signed_material, advance
+                                )
                             verified, report["signed_anchor"] = receive_lab_checkpoint(
                                 fixture.slot, signed_material, advance
                             )
@@ -813,6 +825,7 @@ def main():
     restoration.add_argument("--restore-cluster", action="store_true")
     parser.add_argument("--audit-archive", action="store_true")
     parser.add_argument("--signed-audit-anchor", action="store_true")
+    parser.add_argument("--audit-anchor-store", action="store_true")
     args = parser.parse_args()
     phase = "boundary"
 
@@ -827,6 +840,7 @@ def main():
         require(not args.restore_cluster or args.restart_history)
         require(not args.audit_archive or args.restore_cluster)
         require(not args.signed_audit_anchor or args.audit_archive)
+        require(not args.audit_anchor_store or args.signed_audit_anchor)
         os.environ.clear()
         os.environ.update(LANG="C.UTF-8", LC_ALL="C.UTF-8", PSYCOPG_IMPL="c")
         require(
@@ -871,6 +885,7 @@ def main():
             restore_cluster=args.restore_cluster,
             audit_archive=args.audit_archive,
             signed_anchor=args.signed_audit_anchor,
+            anchor_store=args.audit_anchor_store,
         )
         publish("public.json", encode(report))
         phase = "acknowledge"

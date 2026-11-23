@@ -136,6 +136,9 @@ DRIVER_PHASES = frozenset(
         b"signed_anchor_capture\n",
         b"signed_anchor_receive\n",
         b"signed_anchor_refusals\n",
+        b"anchor_store_retain\n",
+        b"anchor_store_transfer\n",
+        b"anchor_store_reopen\n",
         b"acknowledge\n",
     )
 )
@@ -199,6 +202,13 @@ AUDIT_ARCHIVE_CASES = (
     "databases_unchanged",
 )
 SIGNED_ANCHOR_CASES = ("signature_verified", "wrong_signer_refused", "valid_alternate_refused")
+ANCHOR_STORE_CASES = (
+    "concurrent_exact_saves",
+    "reopened_after_database_recovery",
+    "restore_copy_exact",
+    "missing_pin_no_fallback",
+    "new_process_reopened",
+)
 STORAGE_CASES = (
     "archive_verified",
     "distinct_database_created",
@@ -253,6 +263,7 @@ def create(
     pitr=False,
     audit_archive=False,
     signed_anchor=False,
+    anchor_store=False,
 ):
     pg_environment = {
         "PGDATA": "/var/lib/postgresql/data",
@@ -280,6 +291,9 @@ def create(
     if signed_anchor:
         need(audit_archive)
         driver_args = (*driver_args, "--signed-audit-anchor")
+    if anchor_store:
+        need(signed_anchor)
+        driver_args = (*driver_args, "--audit-anchor-store")
     specs = [
         Container(
             consumer,
@@ -472,7 +486,7 @@ def collect_pure(lab, prepare, source_sha, descriptor_sha):
     expected = {
         "schema": "pamolive.witness-installed-pure/1",
         "phase": "complete",
-        "tests": 114,
+        "tests": 122,
         "failures": 0,
         "errors": 0,
         "skips": 0,
@@ -493,6 +507,7 @@ def collect_pure(lab, prepare, source_sha, descriptor_sha):
 def collect_native(
     raw, source_sha, *, fence=False, history=False, restart=False,
     restore_witness=False, restore_cluster=False, audit_archive=False, signed_anchor=False,
+    anchor_store=False,
 ):
     # Consume only a closed receipt. No child payload, request, or private
     # material may cross into an uploaded qualification artifact.
@@ -552,6 +567,10 @@ def collect_native(
         need(audit_archive)
         expected["schema"] = "W01-signed-audit-anchor-results/1"
         expected["signed_anchor"] = dict.fromkeys(SIGNED_ANCHOR_CASES, True)
+    if anchor_store:
+        need(signed_anchor)
+        expected["schema"] = "W01-audit-anchor-store-results/1"
+        expected["anchor_store"] = dict.fromkeys(ANCHOR_STORE_CASES, True)
     canonical = json.dumps(expected, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
     need(raw == canonical.encode("ascii") + b"\n")
     return expected
@@ -678,7 +697,7 @@ def restore_closed_witness(
 def run(
     lab, report, *, fence=False, history=False, restart=False,
     restore_witness=False, restore_cluster=False, pitr=False, audit_archive=False,
-    signed_anchor=False,
+    signed_anchor=False, anchor_store=False,
 ):
     work = lab.work
     stage_root = work / "verified-consumer-context"
@@ -706,6 +725,7 @@ def run(
         pitr=pitr,
         audit_archive=audit_archive,
         signed_anchor=signed_anchor,
+        anchor_store=anchor_store,
     )
     prepare, driver, witness = (roles[name] for name in ("preparer", "driver", "witness"))
     lab.start(*prepare)
@@ -787,6 +807,7 @@ def run(
         restore_cluster=restore_cluster,
         audit_archive=audit_archive,
         signed_anchor=signed_anchor,
+        anchor_store=anchor_store,
     )
     mark(lab, driver, "acknowledge")
     need(lab.engine.checked("container", "wait", driver[0]["identity"], timeout=5) == b"0\n")
@@ -807,6 +828,7 @@ def main():
     parser.add_argument("--pitr", action="store_true")
     parser.add_argument("--audit-archive", action="store_true")
     parser.add_argument("--signed-audit-anchor", action="store_true")
+    parser.add_argument("--audit-anchor-store", action="store_true")
     options = parser.parse_args()
     if options.history and not options.fence:
         parser.error("--history requires --fence")
@@ -822,6 +844,8 @@ def main():
         parser.error("--audit-archive requires --pitr")
     if options.signed_audit_anchor and not options.audit_archive:
         parser.error("--signed-audit-anchor requires --audit-archive")
+    if options.audit_anchor_store and not options.signed_audit_anchor:
+        parser.error("--audit-anchor-store requires --signed-audit-anchor")
     report = {
         "schema": "pamolive.witness-installed-dual-cluster/2",
         "phase": "reservation",
@@ -853,6 +877,8 @@ def main():
         report["schema"] = "pamolive.witness-installed-pitr-audit/1"
     if options.signed_audit_anchor:
         report["schema"] = "pamolive.witness-installed-pitr-signed-anchor/1"
+    if options.audit_anchor_store:
+        report["schema"] = "pamolive.witness-installed-pitr-anchor-store/1"
     lab = None
     try:
         lab = lab_type(options.work)
@@ -867,6 +893,7 @@ def main():
             pitr=options.pitr,
             audit_archive=options.audit_archive,
             signed_anchor=options.signed_audit_anchor,
+            anchor_store=options.audit_anchor_store,
         )
     except Exception:
         pass
