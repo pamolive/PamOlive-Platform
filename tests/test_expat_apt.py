@@ -45,12 +45,14 @@ def tar(entries):
     return out.getvalue()
 
 
-def deb(name, version, control_extra=b""):
+def deb(name, version, control_extra=b"", *, payload_entries=None):
     control = f"Package: {name}\nVersion: {version}\nArchitecture: amd64\n".encode() + control_extra
+    if payload_entries is None:
+        payload_entries = [("usr/share/synthetic-c/" + name, b"PUBLIC_SYNTHETIC_DATA")]
     members = [
         ("debian-binary", b"2.0\n"),
         ("control.tar", tar([("control", control)])),
-        ("data.tar", tar([("usr/share/synthetic-c/" + name, b"PUBLIC_SYNTHETIC_DATA")])),
+        ("data.tar", tar(payload_entries)),
     ]
     out = bytearray(b"!<arch>\n")
     for filename, raw in members:

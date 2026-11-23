@@ -2,7 +2,7 @@ name: glibc Trixie backport qualification
 
 on:
   push:
-    branches: [agent/glibc-trixie-qualification]
+    branches: [agent/glibc-trixie-qualification, agent/glibc-trixie-suite-summary]
 
 permissions:
   contents: read
@@ -16,7 +16,17 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           persist-credentials: false
+      - name: Verify test-summary classifications
+        run: python3 -B -m unittest qualification.glibc_trixie_backport.test_suite_summary
+      - name: Verify exact runtime package inventory contracts
+        run: python3 -B -m unittest qualification.glibc_trixie_backport.test_runtime_inventory
+      - name: Exercise the positive fixture on the hosted runner libc
+        if: github.ref == 'refs/heads/agent/glibc-trixie-suite-summary'
+        run: >-
+          python3 -B -c 'from qualification.glibc_trixie_backport.check import positive_smoke;
+          print(positive_smoke(locale_sources="/usr/share/i18n"))'
       - name: Rebuild the authenticated Trixie glibc and compare its installed ABI
+        if: github.ref == 'refs/heads/agent/glibc-trixie-qualification'
         shell: bash
         run: |
           set -euo pipefail
@@ -48,6 +58,7 @@ jobs:
           EXPECTED
           (cd "$evidence" && sha256sum --check --strict checksums.sha256)
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: github.ref == 'refs/heads/agent/glibc-trixie-qualification'
         with:
           name: glibc-trixie-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/glibc-trixie-${{ github.run_id }}-${{ github.run_attempt }}/

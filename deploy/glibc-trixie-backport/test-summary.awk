@@ -19,6 +19,6 @@ END {
   if (!count["PASS"] || unexpected) exit 1
   for (i = 1; i <= 6; i++)
     print "suite." flavour "." status[i] "=" count[status[i]]
-  failed = count["FAIL"] || count["UNRESOLVED"]
+  failed = count["FAIL"] || count["XPASS"] || count["UNRESOLVED"]
   print "suite." flavour ".result=" (failed ? "reported_failures" : "no_unexpected_failures")
 }
