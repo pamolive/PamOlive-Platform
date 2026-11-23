@@ -15,7 +15,6 @@ from pathlib import Path
 from unittest import skipUnless
 from unittest.mock import patch
 
-import asyncssh
 import pyotp
 import uvicorn
 from asgiref.sync import sync_to_async
@@ -53,6 +52,7 @@ from platform_modules.pam.protocol import Instruction, Parser
 from platform_modules.pam.recordings import issue_recording_grant, recording_page
 from platform_modules.pam.trust import launch_payload
 
+from .fixtures.ssh import INPUT, SSHFixture
 from .pam_trust_fixtures import TrustFixture
 from .person_fixtures import bind_person
 
@@ -420,59 +420,16 @@ class NativeRelayTests(RelayHarness):
         )
 
     async def exercise(self, termination, private_key=False, shared=False):
-        opened, echoed, lost = asyncio.Event(), asyncio.Event(), asyncio.Event()
-        processes = []
-        account_key = asyncssh.generate_private_key("ssh-ed25519") if private_key else None
-
-        class SSH(asyncssh.SSHServer):
-            authenticated = False
-
-            def begin_auth(self, username):
-                return True
-
-            def password_auth_supported(self):
-                return not private_key
-
-            def public_key_auth_supported(self):
-                return private_key
-
-            def validate_public_key(self, username, key):
-                self.authenticated = (
-                    username == "fixture" and key.public_data == account_key.public_data
-                )
-                return self.authenticated
-
-            def validate_password(self, username, password):
-                self.authenticated = username == "fixture" and password == "fixture-secret"
-                return self.authenticated
-
-            def connection_lost(self, error):
-                if self.authenticated:
-                    lost.set()
-
-        async def terminal(process):
-            processes.append(process)
-            opened.set()
-            process.stdout.write("PAM-olive actual WebSocket SSH fixture\r\n")
-            if (await process.stdin.readline()).strip() == "native-broker-proof":
-                process.stdout.write("Round-trip confirmed\r\n")
-                echoed.set()
-            await process.stdin.read()
-
-        key = asyncssh.generate_private_key("ssh-ed25519")
-        server = await asyncssh.create_server(
-            SSH, "127.0.0.1", 0, server_host_keys=[key], process_factory=terminal
-        )
-        target_port = server.get_port()
-        try:
+        async with SSHFixture(key_auth=private_key) as peer:
             with override_settings(
-                PAM_ALLOWED_HOSTS={f"127.0.0.1:{target_port}"},
+                PAM_ALLOWED_HOSTS={f"{peer.host}:{peer.port}"},
                 PAM_ALLOWED_NETWORKS=("127.0.0.0/8",),
             ):
                 endpoint_id, _, config = await sync_to_async(self.create_launch)(
-                    key.export_public_key().decode(),
-                    target_port,
-                    account_key.export_private_key("openssh").decode() if account_key else None,
+                    peer.host_key,
+                    peer.port,
+                    peer.private_key,
+                    password=peer.password,
                     shared=shared,
                 )
                 connection_id = config["websocket_path"].split("/")[3]
@@ -519,7 +476,7 @@ class NativeRelayTests(RelayHarness):
 
                     drain = asyncio.create_task(display())
                     try:
-                        failure = await ssh_open_failure(opened, drain)
+                        failure = await ssh_open_failure(peer.opened, drain)
                         if failure is not None:
                             observation = await self.startup_observation(connection_id, websocket)
                             self.fail(f"Native relay startup failed: {failure} {observation}")
@@ -537,7 +494,7 @@ class NativeRelayTests(RelayHarness):
 
                         await sync_to_async(expire_mfa_only)()
                         await asyncio.sleep(1.2)
-                        for char in "native-broker-proof":
+                        for char in INPUT:
                             for pressed in ("1", "0"):
                                 await websocket.send(
                                     Instruction("key", (str(ord(char)), pressed)).encode().decode()
@@ -546,7 +503,7 @@ class NativeRelayTests(RelayHarness):
                             await websocket.send(
                                 Instruction("key", ("65293", pressed)).encode().decode()
                             )
-                        await asyncio.wait_for(echoed.wait(), timeout=5)
+                        await asyncio.wait_for(peer.echoed.wait(), timeout=5)
 
                         def revoke():
                             with organization_context(self.org):
@@ -594,8 +551,8 @@ class NativeRelayTests(RelayHarness):
                                         .decode()
                                     )
                                 elif termination == "quota":
-                                    processes[0].stdout.write("capture quota test\r\n" * 100)
-                                await asyncio.wait_for(lost.wait(), timeout=6)
+                                    peer.process.stdout.write("capture quota test\r\n" * 100)
+                                await asyncio.wait_for(peer.lost.wait(), timeout=6)
                                 await asyncio.wait_for(drain, timeout=6)
                     finally:
                         drain.cancel()
@@ -620,6 +577,9 @@ class NativeRelayTests(RelayHarness):
                         for chunk in RecordingChunk.objects.filter(connection=item):
                             payload = cipher().decrypt(bytes(chunk.encrypted_payload))
                             self.assertNotIn(b"fixture-secret", payload)
+                            self.assertFalse(
+                                peer.password.encode() in payload, "Fixture password in recording"
+                            )
                             self.assertNotIn(b"PRIVATE KEY", payload)
                             self.assertNotIn(b"4.argv", payload)
                         # Re-authenticate for playback, never during the transport.
@@ -651,6 +611,3 @@ class NativeRelayTests(RelayHarness):
                         self.assertEqual(total, item.recording_bytes)
 
                 await sync_to_async(verify_recording)()
-        finally:
-            server.close()
-            await server.wait_closed()

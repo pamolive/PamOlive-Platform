@@ -10,14 +10,14 @@ The next native case can reuse P1GBrowser.login/enroll/request/votes and overrid
 only after_approval and install_websocket_policy plus the server/endpoint
 fixture. No product authentication or synthetic assertion generator is needed.
 
-1. Reuse the owned native environment from tests/test_pam_relay_e2e.py:
-   RelayHarness.setUp owns guacd, Uvicorn and their termination; exercise creates
-   an actual AsyncSSH server and awaits server.close/wait_closed. Extract a
-   **test-fixture-only** context around that lifetime, leaving its existing tests
-   unchanged. Expose the assigned loopback port, generated host key and synthetic
-   target credential to the SERVER fixture only. Do not reuse its pre-authorized
-   lease/assurance as a browser action: the new driver must create its own request,
-   two votes and launch through the shipped forms and pam-trust.js.
+1. Reuse `tests.fixtures.ssh.SSHFixture`, which owns the loopback listener and
+   accepts only generated test credentials. It reports shell opening, a fixed
+   round trip and closure of the transport that owns that shell. Fixture cleanup
+   cannot supply the closure signal. RelayHarness already uses this peer and
+   still owns guacd and Uvicorn. In the browser lab, set up and probe the target
+   before the test authority snapshot is frozen. Keep the private target
+   credential on the server side. The browser must create its own request, two
+   votes and launch through the shipped forms and pam-trust.js.
 2. Replace the initial WSGI TLS thread with TLS Uvicorn serving config.asgi plus
    Django's ASGI static-files wrapper. Reuse the same private CA/server-key/NSS
    trust handling; configure the exact HTTPS/WSS origin and synthetic RP ID.
@@ -40,8 +40,11 @@ fixture. No product authentication or synthetic assertion generator is needed.
    then exercise the fixed keyboard/output sentinel already used by RelayHarness.
    Target passwords/private keys never enter the page; the ordinary short-lived
    application session capability must not be retained in artifacts.
-5. Exercise actual UI stop through the existing pam-stop form, then independently
-   await WSS closure, native SSH connection closure and ended_at/end_reason.
+5. Keep the player open. Open the relay detail and its pam-stop form in a second
+   tab of the same browser context, since navigating the player away would close
+   the client socket on pagehide. Submit the form, then independently await WSS
+   closure, native SSH connection closure, stop_requested_at, ended_at and
+   end_reason=stop_requested.
    Reuse backend verification of RecordingChunk/recording_page from
    RelayHarness.exercise: bounded sequence/hash chain, byte totals, completion
    and absence of fixture-secret/PRIVATE KEY/4.argv. Do not infer closure from a
