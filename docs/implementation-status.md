@@ -1,5 +1,17 @@
 # État réel de l’implémentation
 
+## Parcours SSH du portail en laboratoire GitHub
+
+La PR #92 a mesuré le sandbox Chromium actif et une connexion SCRAM
+au PostgreSQL synthétique dans le même espace réseau. Le banc intégré
+ajoute le moteur guacd construit sur la révision du portail, puis exerce
+le parcours depuis la demande jusqu'à l'arrêt administratif de la session.
+Le reçu du banc exige la fermeture WSS et SSH, la vérification de la
+capture partielle et le nettoyage de la base et des conteneurs. La première
+exécution de ce banc reste à valider. Le contrôle de livraison de l'image
+est effectué par sa propre CI.
+[Mesure de la PR #92](https://github.com/pamolive/PamOlive-Platform/actions/runs/45239143671)
+
 ## Vérifications de livraison — 23 novembre 2026
 
 Les deux scans de la PR #72 au commit `bdfacd7` donnent 43 groupes
@@ -254,6 +266,30 @@ La composition et le scan du candidat suivant sont relevés ci-dessus.
 [CI du laboratoire](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087805069)
 
 ## Livraison du code de développement — 17 novembre 2026
+
+## Préparation actuelle de la mesure privée Chrome — 18 novembre 2026
+
+Main reçu reste `3532232`. Les notes ci-dessous conservent leurs SHA historiques.
+Le candidat navigateur `6d4c7db` de la PR #28 a reçu deux inventaires authentifiés
+identiques de 261 entrées, puis refusé le profil non commissionné avant staging
+et UI. La revue R13 a ensuite confirmé et corrigé une perte de contrôle CI :
+l'étape UI doit rester présente, avec HOLD42 impératif même après un cycle privé.
+
+La décision source de l'[ADR-036](adr-036-authenticated-browser-test-bundle.md)
+admet uniquement STAGE_CLEANUP_ONLY pour le package, l'arbre et l'unique helper
+exacts. Préfixe privé 0700, aucun payload exécuté, nettoyage limité aux objets
+possédés et absence finale indépendante restent requis. Le profil opérationnel
+v3 demeure désactivé. Les 223 tests Chrome et 14 contrats UI passent en préparation
+locale, sans skip ; la mesure Linux de ce nouveau candidat reste à recevoir.
+Ce n'est pas un sandbox actif ni un parcours P1-G qualifié.
+
+Le kit OpenSSL indépendant `e4fa523`, PR #29, a passé ses deux suites de 82 tests
+purs Linux, PostgreSQL et Directory. Les deux scans exacts refusent 37 groupes,
+dont les deux constats OpenSSL supplémentaires documentés dans cette PR.
+Aucune image nouvelle qualifiée, fusion de ces candidats ou installation NAS
+ne découle de cette préparation. Aucun ancien succès n'est transféré au nouveau SHA.
+
+## Historique de livraison du code de développement — 17 novembre 2026
 
 À la demande explicite du propriétaire, la capture Expat APT et ses diagnostics
 sont intégrés à main avec le contrat de contexte typé et le diagnostic navigateur.
@@ -1485,3 +1521,32 @@ archives ont chacune 25 utilisateurs directs observés de `libstdc++.so.6`.
 Le relevé aide à attribuer les nouveaux binaires. Le blocage GCC PBDS
 reste soumis à la preuve d'attribution des sources, en-têtes et objets
 liés pour l'image candidate exacte. [Contrat du reçu](image-scan-policy.md#deux-justifications-gcc-bornées)
+
+
+## Validation exacte de main 3532232
+
+Le [rapport de validation](validation-main-3532232.md) recense l'erreur de
+fixture de la suite PostgreSQL (1 747 tests, une erreur, 42 skips), les suites
+dediees reussies et les etapes image non atteintes. Le correctif de fixture
+Python conserve la garde d'execution et ajoute deux regressions ; 84 tests purs
+passent sous les deux modes de lancement. La réception du commit corrigé est
+décrite ci-dessous. Les observations du runner et l'essai Expat C4 sont presentes
+avec leurs identites distinctes, sans qualification ou image nouvelle induite.
+
+## Réception du correctif de fixture et bundle navigateur — 18 novembre 2026
+
+Les deux CI de `96f7fa7`, push et PR #27, ont terminé : PostgreSQL annonce
+Found 1754, Ran 1749, OK (skipped=42). Le comptage des lignes donne 1709 méthodes
+réussies, 40 méthodes ignorées et deux setUpClass ignorés ; ne pas soustraire
+42 du total Ran. Directory passe ses 130 tests. Le scan strict de chaque image
+refuse encore 35 groupes de vulnérabilités ; aucune image nouvelle qualifiée.
+Le [rapport de validation](validation-main-3532232.md) lie les deux contextes.
+
+[ADR-036](adr-036-authenticated-browser-test-bundle.md) introduit un bundle
+de navigateur TEST authentifié distinct de l'installation mutable du runner.
+R12 corrige deux points de revue : budget physique TAR avant extensions et
+vérification indépendante du véritable interpréteur Root. Les 196 tests Chrome
+et 14 contrats UI passent sans skip ; la revue ajoute dix défis indépendants.
+Le profil reste non commissionné. La prochaine mesure Linux dédiée ne doit
+produire qu'un inventaire authentifié ou un refus borné ; staging et parcours
+UI restent interdits par ce profil. Aucune modification NAS n'est réalisée.

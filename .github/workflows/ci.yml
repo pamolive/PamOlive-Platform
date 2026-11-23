@@ -55,10 +55,10 @@ jobs:
         run: python -m bandit -r config platform_core platform_modules components/vault/src components/vault/runtime/pamolive_vault_runtime components/vault-registry/src components/pam-trust-verifier/src components/usage-anchor/pamolive_usage_anchor -ll -f json -o "$RUNNER_TEMP/pamolive-bandit-application.json"
       - name: Retain all deployment and browser bootstrap findings for review
         if: always()
-        run: python -m bandit -r deploy qualification/p1g_headless/chrome_bootstrap.py qualification/p1g_headless/chrome_gpg.py qualification/p1g_headless/chrome_key_scope.py qualification/p1g_headless/chrome_key_scope_native.py qualification/p1g_headless/gpg_fixture --exit-zero -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-all.json"
+        run: python -m bandit -r deploy qualification/p1g_headless/chrome_bootstrap.py qualification/p1g_headless/chrome_bundle.py qualification/p1g_headless/chrome_phase_a.py qualification/p1g_headless/chrome_gpg.py qualification/p1g_headless/chrome_key_scope.py qualification/p1g_headless/chrome_key_scope_native.py qualification/p1g_headless/gpg_fixture --exit-zero -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-all.json"
       - name: Reject high severity deployment and browser bootstrap findings
         if: always()
-        run: python -m bandit -r deploy qualification/p1g_headless/chrome_bootstrap.py qualification/p1g_headless/chrome_gpg.py qualification/p1g_headless/chrome_key_scope.py qualification/p1g_headless/chrome_key_scope_native.py qualification/p1g_headless/gpg_fixture -lll -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-high.json"
+        run: python -m bandit -r deploy qualification/p1g_headless/chrome_bootstrap.py qualification/p1g_headless/chrome_bundle.py qualification/p1g_headless/chrome_phase_a.py qualification/p1g_headless/chrome_gpg.py qualification/p1g_headless/chrome_key_scope.py qualification/p1g_headless/chrome_key_scope_native.py qualification/p1g_headless/gpg_fixture -lll -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-high.json"
       - name: Reject new secrets against the reviewed baseline without network verification
         if: always()
         shell: bash
@@ -810,8 +810,8 @@ jobs:
   p1g-headless:
     if: >-
       github.repository == 'pamolive/PamOlive-Platform' &&
-      ((github.event_name == 'push' && github.ref == 'refs/heads/agent/p1-g-headless') ||
-       (github.event_name == 'pull_request' && github.head_ref == 'agent/p1-g-headless' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/agent/p1g-chrome158-private-stage') ||
+       (github.event_name == 'pull_request' && github.head_ref == 'agent/p1g-chrome158-private-stage' &&
         github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -862,7 +862,7 @@ jobs:
           PAMOLIVE_TEST_DATABASE_NAME: test_pamolive_p1g_browser
           PAMOLIVE_P1G_DISPOSABLE: '1'
           P1G_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          P1G_CHROME_PINS_SHA: 697e5e6275f110c3bbc635559ff02ae546a187acb64e4f2ec3ddc21b609375e7
+          P1G_CHROME_PINS_SHA: f3e631b96bdef42c35cc45539ab7e1d442206e73b6139795865b2d66b37b38cf
         shell: bash
         run: |
           set -euo pipefail
@@ -928,7 +928,7 @@ jobs:
               captured["qualification/p1g_headless/lab_support.py"],
               root / "qualification/p1g_headless/lab_support.py",
           )
-          support.guard(os.environ, uid=int(os.environ["SUDO_UID"]))
+          support.guard(os.environ, uid=int(os.environ["SUDO_UID"]), stage_only=True)
           io = support.bounded(root)
           before_python = boot.root_interpreter_runtime(
               support,
@@ -1137,7 +1137,7 @@ jobs:
                   if not primary_failure:
                       raise
           PY
-      - name: Authenticate scoped certificate, require native negatives, reinstall reviewed Chrome
+      - name: Authenticate scoped certificate, require native negatives, private stage and cleanup only
         timeout-minutes: 15
         env:
           DATABASE_URL: postgresql://p1g:p1g-synthetic-disposable-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/pamolive_p1g
@@ -1161,7 +1161,7 @@ jobs:
               assert len(raw) == row.st_size and len(raw) <= cap
               return raw
           name = "qualification/p1g_headless/chrome-bootstrap-pins.json"
-          expected = "697e5e6275f110c3bbc635559ff02ae546a187acb64e4f2ec3ddc21b609375e7"
+          expected = "f3e631b96bdef42c35cc45539ab7e1d442206e73b6139795865b2d66b37b38cf"
           raw = read(root / name, 131072)
           assert len(raw) <= 131072 and hashlib.sha256(raw).hexdigest() == expected
           receipt = json.loads(read(receipt_path, 4 * 1024**2))
@@ -1177,10 +1177,14 @@ jobs:
               assert hashlib.sha256(raw).hexdigest() == expected == receipt["files"][name]
           PY
           python -I -B -S "$source/qualification/p1g_headless/run_chrome_pure.py"
-          "$RUNNER_TEMP/p1g-venv/bin/python" -I -B -S "$source/qualification/p1g_headless/chrome_bootstrap.py" --pins-sha 697e5e6275f110c3bbc635559ff02ae546a187acb64e4f2ec3ddc21b609375e7 --native-scope-preflight-required
+          "$RUNNER_TEMP/p1g-venv/bin/python" -I -B -S "$source/qualification/p1g_headless/chrome_bootstrap.py" --pins-sha f3e631b96bdef42c35cc45539ab7e1d442206e73b6139795865b2d66b37b38cf --native-scope-preflight-required --stage-cleanup-only
+      - name: HOLD phase A - full UI qualification awaits separate Phase B review
+        shell: bash
+        run: exit 42
       - name: Exercise the synthetic P1-G JavaScript increment
         timeout-minutes: 12
         env:
+          P1G_CHROME_MODE: test-bundle-v3
           DATABASE_URL: postgresql://p1g:p1g-synthetic-disposable-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/pamolive_p1g
           PAMOLIVE_TEST_DATABASE_NAME: test_pamolive_p1g_browser
           PAMOLIVE_P1G_DISPOSABLE: '1'

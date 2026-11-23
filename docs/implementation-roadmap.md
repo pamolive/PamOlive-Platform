@@ -11,12 +11,13 @@ constitue une preuve propre à ce candidat.
 [ADR ncurses-bin](adr-044-ncurses-bin-trixie-backport.md) ·
 [Inventaire ELF](https://github.com/pamolive/PamOlive-Platform/pull/87)
 
-Pour P1-G, le pair SSH synthétique commun fournit les signaux d'ouverture,
-d'aller-retour et de fermeture du transport. Le prochain raccord doit garder
-le lecteur ouvert pendant l'arrêt par le portail et vérifier le motif de
-fermeture côté relais. L'admission du navigateur sous sandbox non-root et
-le parcours TLS/WSS complet restent à qualifier.
-[Préflight P1-G](https://github.com/pamolive/PamOlive-Platform/pull/82) ·
+Pour P1-G, la PR #92 a validé le navigateur sous sandbox non-root
+avec PostgreSQL dans le même espace réseau. Le nouveau banc ajoute
+guacd à cet espace et doit démontrer la demande, les votes, le
+transport SSH et l'arrêt administratif depuis le portail, lecteur
+ouvert. La qualification complète inclura aussi le scénario RDP et
+les parcours de gouvernance restants.
+[Admission Chromium et PostgreSQL](https://github.com/pamolive/PamOlive-Platform/pull/92) ·
 [Raccord SSH](../qualification/p1g_headless/NEXT-NATIVE.md)
 
 ## Image intégrée — qualification des dépendances Trixie
@@ -160,6 +161,28 @@ La qualification de l'image reste une porte distincte.
 [CI branche](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087528395)
 
 ## Livraison du code de développement — 17 novembre 2026
+
+## Prochaine mesure limitée — 18 novembre 2026
+
+Publier le delta R13 après revue du profil stage-only exact, fermeture de ses
+pins et régression CI persistante. La première mesure Linux autorisée par
+l'[ADR-036](adr-036-authenticated-browser-test-bundle.md) est uniquement une copie
+privée 0700, vérification et nettoyage du préfixe possédé. Elle répète toutes
+les authentifications et refuse toute dérive, expiration, état inconnu ou
+nettoyage incomplet. Aucun payload/helper/navigateur n'est exécuté.
+
+Même en cas de cycle positif, conserver HOLD42 et l'étape UI historique : le job
+reste non qualifié pour le parcours complet. Phase B devra vérifier séparément
+la relocalisation, le sandbox actif et AppArmor avant l'UI. Les 223 tests Chrome
+et 14 contrats UI locaux ne remplacent pas ces mesures.
+
+La PR #29 OpenSSL a reçu ses propres tests Linux/PostgreSQL/Directory, puis deux
+refus stricts de scan à 37 groupes. Poursuivre ses remédiations et les autres
+travaux réalisables sans promouvoir une image non qualifiée ni contacter le NAS.
+Main reçu reste `3532232`. Les paragraphes suivants sont des notes historiques
+liées à leurs révisions, sans transfert automatique de leurs résultats.
+
+## Historique de livraison du code de développement — 17 novembre 2026
 
 À la demande explicite du propriétaire, la capture Expat APT et ses diagnostics
 sont intégrés à main avec le contrat de contexte typé et le diagnostic navigateur.
@@ -1019,3 +1042,33 @@ Les quatorze nouveaux tests purs passent sans skip et disposent de leur job CI.
 Les résultats PostgreSQL et scans cités dans ce rapport sont liés à leur SHA ;
 la nouvelle fusion doit recevoir sa propre CI. Aucun déploiement ni image
 nouvelle qualifiée ne résulte de cette publication de code.
+
+
+## Validation exacte de main 3532232
+
+Le [rapport de validation](validation-main-3532232.md) recense l'erreur de
+fixture de la suite PostgreSQL (1 747 tests, une erreur, 42 skips), les suites
+dediees reussies et les etapes image non atteintes. Le correctif de fixture
+Python conserve la garde d'execution et ajoute deux regressions ; 84 tests purs
+passent sous les deux modes de lancement. La réception du commit corrigé est
+décrite ci-dessous. Les observations du runner et l'essai Expat C4 sont presentes
+avec leurs identites distinctes, sans qualification ou image nouvelle induite.
+
+## Prochaines portes de qualification — 18 novembre 2026
+
+Les deux CI de `96f7fa7` ont validé la suite PostgreSQL et Directory ; leurs
+scans image restent bloquants sur 35 groupes. Voir les identités et compteurs
+exacts dans [la validation](validation-main-3532232.md). La PR #27 reste une
+correction de fixture, sans transfert de qualification vers un nouveau SHA.
+
+Publier le candidat SOURCE R12 de [l'ADR-036](adr-036-authenticated-browser-test-bundle.md)
+sur la branche de qualification du navigateur. Recevoir sa propre mesure
+Linux : inventaire authentifié, ou refus borné d'une extension non admise.
+Conserver le profil non commissionné et refuser avant staging/UI. Examiner
+ensuite ressources, rôle sandbox et contraintes de relocalisation avant toute
+admission explicite. Les 196 tests Chrome, 14 contrats UI et dix défis de revue
+ne remplacent pas le parcours réel TLS/MFA/WebAuthn et multi-organisations.
+
+En parallèle, poursuivre les remédiations des bibliothèques système et les
+revues indépendantes. Aucun passage de ces portes ne découle de la seule
+publication du code ; aucune nouvelle image ni installation NAS n'est admise.

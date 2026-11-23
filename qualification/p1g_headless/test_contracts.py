@@ -20,13 +20,32 @@ def environment():
         "PAMOLIVE_P1G_DISPOSABLE": "1",
         "GITHUB_REPOSITORY": "pamolive/PamOlive-Platform",
         "GITHUB_EVENT_NAME": "push",
-        "GITHUB_REF": "refs/heads/agent/p1-g-headless",
+        "GITHUB_REF": "refs/heads/" + lab.BRANCH,
         "GITHUB_SHA": "a" * 40,
         "GITHUB_RUN_ID": "123",
         "GITHUB_RUN_ATTEMPT": "1",
         "DATABASE_URL": "postgresql://p1g:synthetic-only@127.0.0.1:15432/pamolive_p1g",
         "PAMOLIVE_TEST_DATABASE_NAME": "test_pamolive_p1g_browser",
     }
+
+
+def sandbox_rows():
+    return [
+        ["Layer 1 Sandbox", "Namespace"],
+        ["PID namespaces", "Yes"],
+        ["Network namespaces", "Yes"],
+        ["Seccomp-BPF sandbox", "Yes"],
+        ["Seccomp-BPF sandbox supports TSYNC", "Yes"],
+    ]
+
+
+def kernel_status(pid, uid, depth, filters, *, no_new_privs=1, seccomp=2, caps=0):
+    pids = str(pid) + " 7" * (depth - 1)
+    return (
+        f"Pid:\t{pid}\nUid:\t{uid}\t{uid}\t{uid}\t{uid}\nNSpid:\t{pids}\n"
+        f"NoNewPrivs:\t{no_new_privs}\nSeccomp:\t{seccomp}\nSeccomp_filters:\t{filters}\n"
+        f"CapEff:\t{caps:016x}\n"
+    ).encode("ascii")
 
 
 class Contracts(unittest.TestCase):
@@ -44,6 +63,103 @@ class Contracts(unittest.TestCase):
                        "https://pam.example.test:65536", "https://pam.example.test:15443/"):
             with self.assertRaisesRegex(ValueError, "native_browser_origin"):
                 lab.relay_socket_pattern(origin)
+
+    def test_sandbox_diagnostic_refuses_absent_missing_or_duplicate_rows(self):
+        good = "You are adequately sandboxed."
+        lab.sandbox_diagnostic(sandbox_rows(), good)
+        suid_rows = sandbox_rows()
+        suid_rows[0][1] = "SUID"
+        lab.sandbox_diagnostic(suid_rows, good)
+        for index, value in enumerate(("None", "No", "No", "No")):
+            rows = sandbox_rows()
+            rows[index][1] = value
+            with self.assertRaisesRegex(ValueError, "chromium_sandbox_not_active"):
+                lab.sandbox_diagnostic(rows, good)
+        with self.assertRaisesRegex(ValueError, "sandbox_diagnostic_shape"):
+            lab.sandbox_diagnostic(sandbox_rows() + [sandbox_rows()[0]], good)
+        with self.assertRaisesRegex(ValueError, "sandbox_diagnostic_rows"):
+            lab.sandbox_diagnostic(sandbox_rows()[:-1], good)
+
+    def test_kernel_renderer_requires_its_own_namespace_and_filter(self):
+        host = lab.process_sandbox_status(kernel_status(100, 1001, 1, 1), 100, 1001)
+        good = lab.process_sandbox_status(kernel_status(200, 1001, 2, 2), 200, 1001)
+        self.assertTrue(lab.renderer_sandboxed(good, host))
+        for changed in ({"pid_depth": 1}, {"filters": 1}, {"restricted": False}):
+            self.assertFalse(lab.renderer_sandboxed({**good, **changed}, host))
+        for flags in ({"no_new_privs": 0}, {"seccomp": 0}, {"caps": 8}):
+            observed = lab.process_sandbox_status(
+                kernel_status(200, 1001, 2, 2, **flags),
+                200,
+                1001,
+            )
+            self.assertFalse(lab.renderer_sandboxed(observed, host))
+        with self.assertRaisesRegex(ValueError, "sandbox_status_identity"):
+            lab.process_sandbox_status(kernel_status(200, 1001, 2, 2), 200, 1002)
+
+    def test_sandbox_receipt_keeps_apparmor_mode_separate(self):
+        self.assertEqual(lab.apparmor_mode(b"synthetic (enforce)\n"), "enforce")
+        self.assertEqual(lab.apparmor_mode(b"unconfined\n"), "unconfined")
+        self.assertEqual(lab.apparmor_mode(b"synthetic (complain)\n"), "complain")
+        with self.assertRaisesRegex(ValueError, "sandbox_apparmor_unknown"):
+            lab.apparmor_mode(b"synthetic (unknown)\n")
+        receipt = {
+            "schema": "pamolive.p1g-active-sandbox/1",
+            "browser_apparmor": "unconfined",
+            "renderer_apparmor": ["unconfined"],
+            "renderers_checked": 1,
+        }
+        self.assertTrue(lab.sandbox_receipt(receipt))
+        self.assertFalse(lab.sandbox_receipt({**receipt, "renderers_checked": True}))
+        self.assertFalse(lab.sandbox_receipt({**receipt, "renderer_apparmor": [[]]}))
+        self.assertFalse(lab.sandbox_receipt({**receipt, "apparmor_enforced": True}))
+
+    def test_active_browser_probe_uses_inert_pages_and_closes_them_on_failure(self):
+        for remove_renderer in (False, True):
+            with self.subTest(remove_renderer=remove_renderer):
+                browser = mock.Mock()
+                context = browser.new_context.return_value
+                diagnostic, inert = mock.Mock(), mock.Mock()
+                context.new_page.side_effect = [diagnostic, inert]
+                diagnostic.url = lab.SANDBOX_URL
+                diagnostic.locator.side_effect = [
+                    mock.Mock(evaluate_all=mock.Mock(return_value=sandbox_rows())),
+                    mock.Mock(text_content=mock.Mock(return_value="You are adequately sandboxed.")),
+                ]
+                session = browser.new_browser_cdp_session.return_value
+                root_process = {"id": 100, "type": "browser"}
+                renderer = {"id": 200, "type": "renderer"}
+                all_processes = [root_process, renderer]
+                session.send.side_effect = [
+                    {"processInfo": all_processes},
+                    {"processInfo": [root_process] if remove_renderer else all_processes},
+                ]
+                facts = [
+                    {"pid_depth": 1, "filters": 1, "restricted": False, "apparmor": "unconfined"},
+                    {"pid_depth": 2, "filters": 2, "restricted": True, "apparmor": "enforce"},
+                ]
+                path = Path("/synthetic-review/chrome")
+                with (
+                    mock.patch.object(lab.os, "getuid", return_value=1001, create=True),
+                    mock.patch.object(lab, "observe_process", side_effect=facts) as observe,
+                ):
+                    if remove_renderer:
+                        with self.assertRaisesRegex(ValueError, "sandbox_renderer_missing"):
+                            lab.observe_browser_sandbox(browser, path)
+                    else:
+                        receipt = lab.observe_browser_sandbox(browser, path)
+                        self.assertTrue(lab.sandbox_receipt(receipt))
+                        self.assertEqual(receipt["renderer_apparmor"], ["enforce"])
+                    observe.assert_has_calls(
+                        [mock.call(100, 1001, executable=path), mock.call(200, 1001)]
+                    )
+                diagnostic.goto.assert_called_once_with(
+                    lab.SANDBOX_URL,
+                    wait_until="load",
+                    timeout=10000,
+                )
+                inert.set_content.assert_called_once()
+                session.detach.assert_called_once()
+                context.close.assert_called_once()
 
     def test_chrome_refusal_codes_are_exact_closed_and_phase_exclusive(self):
         class PrivateValueError(ValueError):
@@ -286,13 +402,29 @@ class Contracts(unittest.TestCase):
         lab.guard(env, platform="linux", uid=1001)
         env.update(
             GITHUB_EVENT_NAME="pull_request",
-            GITHUB_HEAD_REF="agent/p1-g-headless",
+            GITHUB_HEAD_REF=lab.BRANCH,
             P1G_HEAD_REPOSITORY="pamolive/PamOlive-Platform",
         )
         lab.guard(env, platform="linux", uid=1001)
         env["P1G_HEAD_REPOSITORY"] = "foreign/fork"
         with self.assertRaises(ValueError):
             lab.guard(env, platform="linux", uid=1001)
+
+    def test_stage_branch_is_not_authorized_to_run_the_portal(self):
+        stage = {**environment(), "GITHUB_REF": "refs/heads/" + lab.STAGE_BRANCH}
+        lab.guard(stage, platform="linux", uid=1001, stage_only=True)
+        with self.assertRaisesRegex(ValueError, "closed_event_ref_required"):
+            lab.guard(stage, platform="linux", uid=1001)
+        with self.assertRaisesRegex(ValueError, "closed_event_ref_required"):
+            lab.guard(environment(), platform="linux", uid=1001, stage_only=True)
+        stage.update(
+            GITHUB_EVENT_NAME="pull_request",
+            GITHUB_HEAD_REF=lab.STAGE_BRANCH,
+            P1G_HEAD_REPOSITORY="pamolive/PamOlive-Platform",
+        )
+        lab.guard(stage, platform="linux", uid=1001, stage_only=True)
+        with self.assertRaisesRegex(ValueError, "closed_event_ref_required"):
+            lab.guard(stage, platform="linux", uid=1001)
 
     def test_PC_root_unknown_event_repo_branch_refused(self):
         for platform, uid in (("win32", 1001), ("linux", 0)):
@@ -414,6 +546,25 @@ class Contracts(unittest.TestCase):
         self.assertEqual(len(launch), 1)
         options = {item.arg: item.value for item in launch[0].keywords}
         self.assertTrue(ast.literal_eval(options["chromium_sandbox"]))
+        sandbox = next(
+            node
+            for node in calls
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "observe_browser_sandbox"
+        )
+        method = next(
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name == "test_synthetic_JS_increment"
+        )
+        first_login = min(
+            node.lineno
+            for node in ast.walk(method)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "login"
+        )
+        self.assertLess(launch[0].lineno, sandbox.lineno)
+        self.assertLess(sandbox.lineno, first_login)
         self.assertNotIn("--no-sandbox", body)
         self.assertNotIn("ignore_https_errors=True", body)
         self.assertNotIn("force_login", body)
@@ -435,11 +586,19 @@ class Contracts(unittest.TestCase):
     def test_controller_capture_precedes_failure_gate_and_full_P1G_stays_open(self):
         body = (Path(__file__).resolve().parent / "run_lab.py").read_text(encoding="utf-8")
         tree = ast.parse(body)
-        capture_line = next(
+        failure_capture, success_capture = sorted(
             node.lineno
             for node in ast.walk(tree)
             if isinstance(node, ast.Constant) and node.value == "worker-data.json"
         )
+        failure_branch = next(
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.If)
+            and ast.unparse(node.test) == "packet['state'] == 'FAILED_OR_UNKNOWN'"
+        )
+        self.assertLess(failure_branch.lineno, failure_capture)
+        self.assertEqual(failure_branch.end_lineno, failure_capture)
         refusal_line = next(
             node.lineno
             for node in ast.walk(tree)
@@ -450,8 +609,22 @@ class Contracts(unittest.TestCase):
                 isinstance(child, ast.Attribute) and child.attr == "ok" for child in ast.walk(node)
             )
         )
-        self.assertLess(capture_line, refusal_line)
+        packet_gate = next(
+            node.lineno
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "need"
+            and any(
+                isinstance(child, ast.Constant) and child.value == "worker_packet_refused"
+                for child in ast.walk(node)
+            )
+        )
+        self.assertLess(failure_capture, refusal_line)
+        self.assertLess(packet_gate, success_capture)
         self.assertIn("test_pamolive_p1g_browser", body)
         self.assertIn("before[2] is None", body)
         self.assertIn('"VM_teardown_is_not_cleanup_evidence": True', body)
         self.assertIn('"full_P1G_qualified": False', body)
+        self.assertIn('sandbox_receipt(value["browser_sandbox"])', body)
+        self.assertIn('sandbox_receipt(report.get("browser_sandbox"))', body)

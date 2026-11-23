@@ -3,28 +3,28 @@ Label: Google
 Suite: stable
 Codename: stable
 Version: 1.0
-Date: Sun, 15 Nov 2026 20:27:25 UTC
+Date: Sun, 22 Nov 2026 20:53:33 UTC
 Architectures: amd64 arm64
 Components: main
 Description: Google chrome-linux software repository
 MD5Sum:
- 4135cb7bb22058a39dbced001f8c99cb 6205 main/binary-amd64/Packages
- d3c4ea9342946d3e2927f05f3de91198 1411 main/binary-amd64/Packages.gz
+ 14c62c43aed8ad0d6a90c50e7a8af01c 6207 main/binary-amd64/Packages
+ 6cbcc796211518b5eee1339055e033c9 1404 main/binary-amd64/Packages.gz
  156e5ea7a0c6bed5973a68a45e546dc9 151 main/binary-amd64/Release
- e240c951d42b5c2095e3041c3c8bcd7b 6205 main/binary-arm64/Packages
- 75ac76a4f56ffc9bc834dfab1cef941a 1410 main/binary-arm64/Packages.gz
+ 8d67b97d8c58df6ce2d535bf908add4a 6207 main/binary-arm64/Packages
+ 7cd99f2b842f67077eae651f116d53fb 1402 main/binary-arm64/Packages.gz
  fa9332f7f48fabf2a9015ece5b110dd6 151 main/binary-arm64/Release
 SHA1:
- 528dadf126ae708da184568250db746d1c84b1e5 6205 main/binary-amd64/Packages
- b92e790c7c7c7777ceabe780ca9b27de006b8395 1411 main/binary-amd64/Packages.gz
+ 25ebd68d39002aac11ed9c051194e677e1d62b72 6207 main/binary-amd64/Packages
+ 5cd4a5006f0e7ba1b746faacfe3c9472d114a6a5 1404 main/binary-amd64/Packages.gz
  0f4348c2d4d7cc1f8e59b5934d87f1ca872f6e34 151 main/binary-amd64/Release
- d929459034379c2bbf8b4cbc60a35ff8d62f7458 6205 main/binary-arm64/Packages
- d29a24bc9ed511a7c195e061c09485e76ee3e37b 1410 main/binary-arm64/Packages.gz
+ 47828c7e0172a9aeb5d89dec88a20444f26ec56a 6207 main/binary-arm64/Packages
+ f69d63dbe37af6b9a19b29a79b326dc9952a39e3 1402 main/binary-arm64/Packages.gz
  1192bce6bc4c2f641a0287ad41c6bd47e7b2e81d 151 main/binary-arm64/Release
 SHA256:
- 95b8d7f908a83ecf7b682ce11e943985f2dad24fa890db761061055b44289ef0 6205 main/binary-amd64/Packages
- 202d2dcf8f83b2fbaf567120ea011d3493dc5816ccb2b7362e94545e7257b5a9 1411 main/binary-amd64/Packages.gz
+ 3b933a4fd67aba8f46a3ab36d9fe6cfc5365d6f7d7131af816278016940dd426 6207 main/binary-amd64/Packages
+ 4e1150b2d8e8359412ea0d1148a8695978eb17eb3a9cce5afa1c4704275d2f69 1404 main/binary-amd64/Packages.gz
  c1e3c9318381862306adcdc4fd4fe2d85be8aa4c4f3dcbb40fce80413f588286 151 main/binary-amd64/Release
- 5c5001848d3e52032ead18664f48e0f76992b45d8df7d7eb7b06841e0f02ccc3 6205 main/binary-arm64/Packages
- da234b6f0709ccbf4efdf88a5d1c3cce1a19804fc2bf5f3617cd40baebd72264 1410 main/binary-arm64/Packages.gz
+ d2ad456c7d797ecb4078caf3eb14c3a5bb90729d0444ad8b86f79764ddf379e0 6207 main/binary-arm64/Packages
+ 487d7ad6c8ab0c55ad8d99237d3f75d24ab80d4454d53bb54c29cb3c0065dc56 1402 main/binary-arm64/Packages.gz
  0146ffd3e2f8867413c78a453f9fdf691a39b0c205f8d3f152c555cb2040c7da 151 main/binary-arm64/Release

@@ -25,7 +25,7 @@ CAPTURE_LIMIT = 2 * 1024**2
 class NativeSSHBrowser(P1GBrowser):
     @classmethod
     def _start_server_thread(cls):
-        support.guard(os.environ)
+        support.guard(os.environ, native_lab="isolated_guacd_port" in TLS)
         cls.server_thread = cls.enterClassContext(
             TLSASGIServer(TLS["server_certificate"], TLS["server_key"])
         )
@@ -33,7 +33,9 @@ class NativeSSHBrowser(P1GBrowser):
     def setUp(self):
         self.ssh = self.enterContext(ThreadedSSHFixture())
         peer = self.ssh.peer
-        native_port, _ = self.enterContext(guacd_fixture(owned_by_worker=True))
+        native_port = TLS.get("isolated_guacd_port")
+        if native_port is None:
+            native_port, _ = self.enterContext(guacd_fixture(owned_by_worker=True))
         self.enterContext(override_settings(
             PAM_ALLOWED_HOSTS={f"{peer.host}:{peer.port}"},
             PAM_ALLOWED_NETWORKS=("127.0.0.1/32",),
