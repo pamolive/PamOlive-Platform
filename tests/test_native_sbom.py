@@ -221,6 +221,85 @@ class NativeSbomTests(TestCase):
                 self.merge(image_digest_kind="image_config",
                            debian_report={**valid, field: replacement})
 
+    def openssl_backport_report(self):
+        from deploy import debian_refresh_inventory as inventory
+        from deploy import openssl_trixie_materials as openssl
+
+        report, _ = self.debian_backport_report()
+        reviewed = openssl.load_reviewed()
+        report["schema"] = inventory.SCHEMA_V3
+        report["openssl_receipt_sha256"] = openssl.SHA256
+        report["installed_elf_sha256"].update(reviewed["installed_elf_sha256"])
+        for name in openssl.RUNTIME_PACKAGES:
+            package = reviewed["packages"][name]
+            report["packages"].append({
+                "package": name, "source": "openssl", "version": openssl.VERSION,
+                "suite": inventory.BACKPORT_SUITE, "archive_sha256": package["sha256"],
+                "archive_bytes": package["bytes"],
+            })
+        report["packages"].sort(key=lambda row: row["package"])
+        return report, reviewed
+
+    def test_openssl_sbom_links_packages_elfs_and_provenance_to_the_image_archive(self):
+        from deploy import openssl_trixie_materials as openssl
+
+        self.hashes["debian"] = "4" * 64
+        report, reviewed = self.openssl_backport_report()
+        result = self.merge(image_digest_kind="image_config", debian_report=report)
+        components = {row["bom-ref"]: row for row in result["components"]}
+        packages = {row["name"]: row for row in components.values()
+                    if ":debian:" in row["bom-ref"]}
+        dependencies = {row["ref"]: row.get("dependsOn", []) for row in result["dependencies"]}
+        expected_url = ("https://github.com/pamolive/PamOlive-Platform/actions/runs/"
+                        "45134682372/artifacts/14799723947")
+        artifact_sha = reviewed["qualification"]["artifact_digest"].removeprefix("sha256:")
+        for name in openssl.RUNTIME_PACKAGES:
+            package = packages[name]
+            self.assertEqual(package["purl"], f"pkg:deb/debian/{name}@3.5.9-1~deb13u1%2Bpamolive1"
+                             "?arch=amd64&distro=debian-13&upstream=openssl")
+            self.assertEqual(package["hashes"][0]["content"], reviewed["packages"][name]["sha256"])
+            ref, = package["externalReferences"]
+            self.assertEqual(ref["url"], expected_url)
+            self.assertEqual(ref["hashes"][0]["content"], artifact_sha)
+            self.assertNotEqual(package["hashes"][0]["content"], artifact_sha)
+            properties = {item["name"]: item["value"] for item in package["properties"]}
+            self.assertEqual(properties["pamolive:debian:origin"], "pamolive-openssl-backport")
+            self.assertEqual(properties["pamolive:debian:receipt-sha256"], openssl.SHA256)
+            self.assertEqual(properties["pamolive:debian:qualification-commit"],
+                             reviewed["qualification"]["commit"])
+            files = [components[ref] for ref in dependencies[package["bom-ref"]]]
+            self.assertEqual({file["properties"][0]["value"]: file["hashes"][0]["content"]
+                              for file in files},
+                             {path: reviewed["installed_elf_sha256"][path]
+                              for path in openssl.ELF_BY_PACKAGE[name]})
+        self.assertEqual(packages["openssl"]["type"], "application")
+        metadata = {item["name"]: item["value"] for item in result["metadata"]["properties"]}
+        self.assertEqual(metadata["pamolive:sbom:image-digest"], report["image_config_id"])
+        self.assertEqual(metadata["pamolive:sbom:debian-archive-sha256"], report["archive_sha256"])
+        self.assertEqual(metadata["pamolive:sbom:openssl-receipt-sha256"], openssl.SHA256)
+        prior, _ = self.debian_backport_report()
+        before = self.merge(image_digest_kind="image_config", debian_report=prior)
+        for name in ("libc6", "libkrb5-3"):
+            self.assertEqual(packages[name], next(row for row in before["components"]
+                                                 if row["name"] == name))
+
+    def test_openssl_sbom_rejects_changed_provenance_and_mismatched_image(self):
+        self.hashes["debian"] = "4" * 64
+        report, reviewed = self.openssl_backport_report()
+        path = next(iter(reviewed["installed_elf_sha256"]))
+        for field, replacement, code in (
+            ("openssl_receipt_sha256", "e" * 64, "debian_report"),
+            ("installed_elf_sha256", {**report["installed_elf_sha256"], path: "e" * 64},
+             "debian_report"),
+            ("packages", [{**row, "archive_sha256": "e" * 64} if row["package"] == "libssl3t64"
+                          else row for row in report["packages"]], "debian_report"),
+            ("archive_sha256", "unknown", "debian_report"),
+            ("image_config_id", "sha256:" + "e" * 64, "debian_image_binding"),
+        ):
+            with self.subTest(field=field), self.assertRaisesRegex(sbom.SbomError, code):
+                self.merge(image_digest_kind="image_config",
+                           debian_report={**report, field: replacement})
+
     def test_debian_sbom_requires_one_exact_image_and_unambiguous_package_identity(self):
         self.hashes["debian"] = "4" * 64
         report = self.debian_report()

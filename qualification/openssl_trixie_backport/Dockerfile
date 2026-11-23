@@ -1,5 +1,5 @@
 FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS trixie
-COPY --chmod=0444 qualification/openssl_trixie_backport/materials.sh qualification/openssl_trixie_backport/patches.py qualification/openssl_trixie_backport/patches.txt qualification/openssl_trixie_backport/source.sha256 qualification/openssl_trixie_backport/preimage.sha256 qualification/openssl_trixie_backport/postimage.sha256 /opt/openssl-inputs/
+COPY --chmod=0444 deploy/openssl-trixie-backport/materials.sh deploy/openssl-trixie-backport/patches.py deploy/openssl-trixie-backport/patches.txt deploy/openssl-trixie-backport/source.sha256 deploy/openssl-trixie-backport/preimage.sha256 deploy/openssl-trixie-backport/postimage.sha256 /opt/openssl-inputs/
 RUN test "$(dpkg --print-architecture)" = amd64 \
  && test -s /usr/share/keyrings/debian-archive-keyring.pgp \
  && chmod 0755 /opt/openssl-inputs

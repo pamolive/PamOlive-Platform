@@ -3,9 +3,10 @@
 import argparse
 import hashlib
 import json
-import stat
 import sys
 from pathlib import Path
+
+from deploy.native_package_materials import verify_archives
 
 PATH = "/usr/share/pamolive/krb5-trixie/qualification.json"
 SHA256 = "115ba95dff1152115bfbc03d84eed5c30061c7fe72f97038616cd8f8dc3b65b4"
@@ -32,20 +33,8 @@ def load_reviewed():
 
 
 def verify_packages(directory, *, sdk=False):
-    if not (directory.is_absolute() and directory.is_dir() and not directory.is_symlink()):
-        raise ValueError("kerberos_package_directory")
-    receipt = load_reviewed()
     names = RUNTIME_PACKAGES + SDK_PACKAGES if sdk else RUNTIME_PACKAGES
-    for name in names:
-        expected = receipt["packages"][name]
-        package = directory / f"{name}_{VERSION}_amd64.deb"
-        info = package.lstat()
-        if not stat.S_ISREG(info.st_mode) or info.st_size != expected["bytes"]:
-            raise ValueError("kerberos_package_identity")
-        with package.open("rb") as stream:
-            data = stream.read(expected["bytes"] + 1)
-        if hashlib.sha256(data).hexdigest() != expected["sha256"]:
-            raise ValueError("kerberos_package_digest")
+    verify_archives(directory, VERSION, names, load_reviewed()["packages"], scope="kerberos")
 
 
 def main():

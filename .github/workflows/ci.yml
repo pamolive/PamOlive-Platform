@@ -370,7 +370,7 @@ jobs:
             > "$proof/sasl-runtime.json"
           python -m deploy.check_sasl_ldap_ci --image-id "$image_ref" > "$proof/sasl-ldap.json"
           python -m deploy.check_sasl_postgres_ci --image-id "$image_ref" > "$proof/sasl-postgres.json"
-          docker run --rm --pull never --no-healthcheck --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -m deploy.debian_refresh_inventory --kerberos-backport --root / --output /proof/debian-runtime-live.json
+          docker run --rm --pull never --no-healthcheck --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport --root / --output /proof/debian-runtime-live.json
           timeout --signal=TERM --kill-after=2s 25s docker run --rm --pull never --no-healthcheck \
             --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges \
             --read-only --cpus 1 --memory 256m --memory-swap 256m --pids-limit 32 \
@@ -393,7 +393,7 @@ jobs:
           docker container rm "$acl_container" >/dev/null
           rm -- "$acl_snapshot"
           trap - EXIT
-          python -m deploy.debian_refresh_inventory --kerberos-backport \
+          python -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport \
             --bundle "$RUNNER_TEMP/pamolive-qualified-image" --revision "$GITHUB_SHA" \
             --output "$proof/debian-runtime-image.json"
           PAMOLIVE_IMAGE_PROOF="$proof" python - <<'PY'

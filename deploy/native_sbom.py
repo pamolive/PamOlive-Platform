@@ -319,7 +319,13 @@ def expat_components(report, image_digest, image_digest_kind):
 
 
 def debian_components(report, image_digest, image_digest_kind):
-    from deploy.debian_refresh_inventory import KERBEROS_SUITE, SCHEMA_V2, validate_report
+    from deploy.debian_refresh_inventory import (
+        BACKPORT_SUITE,
+        RECEIPT_FIELDS,
+        SCHEMA_V2,
+        SCHEMA_V3,
+        validate_report,
+    )
     from qualification.debian_138_refresh.verify_refresh import NATIVE_FILES, PACKAGES, archive_name
 
     require(image_digest_kind == "image_config", "debian_image_digest_kind")
@@ -328,11 +334,18 @@ def debian_components(report, image_digest, image_digest_kind):
     except ValueError as exc:
         raise SbomError("debian_report") from exc
     require(report["image_config_id"] == image_digest, "debian_image_binding")
-    qualification = None
-    if report["schema"] == SCHEMA_V2:
+    qualifications = {}
+    native_files = NATIVE_FILES
+    if report["schema"] in (SCHEMA_V2, SCHEMA_V3):
         from deploy import krb5_trixie_materials
 
-        qualification = krb5_trixie_materials.load_reviewed()["qualification"]
+        qualifications["krb5"] = krb5_trixie_materials.load_reviewed()["qualification"]
+    if report["schema"] == SCHEMA_V3:
+        from deploy import openssl_trixie_materials
+
+        qualifications["openssl"] = openssl_trixie_materials.load_reviewed()["qualification"]
+        native_files = {**NATIVE_FILES, **openssl_trixie_materials.ELF_BY_PACKAGE}
+    origins = {"krb5": "pamolive-kerberos-backport", "openssl": "pamolive-openssl-backport"}
     components, deps, roots = [], [], []
     for item in report["packages"]:
         name, version = item["package"], item["version"]
@@ -342,7 +355,7 @@ def debian_components(report, image_digest, image_digest_kind):
             + "?arch=amd64&distro=debian-13&upstream=" + item["source"]
         )
         component = {
-            "type": "application" if name == "libc-bin" else "library",
+            "type": "application" if name in {"libc-bin", "openssl"} else "library",
             "name": name,
             "version": version,
             "bom-ref": ref,
@@ -354,11 +367,13 @@ def debian_components(report, image_digest, image_digest_kind):
         archive_sha = item["archive_sha256"]
         receipt_sha = report["receipt_sha256"]
         reference = {"type": "distribution"}
-        if item["suite"] == KERBEROS_SUITE:
+        if item["suite"] == BACKPORT_SUITE:
             # The component hash is for the binary .deb. The distribution URL
             # locates the GitHub artifact ZIP containing the qualified build.
+            source = item["source"]
+            qualification = qualifications[source]
             component["hashes"] = [{"alg": "SHA-256", "content": archive_sha}]
-            receipt_sha = report["kerberos_receipt_sha256"]
+            receipt_sha = report[RECEIPT_FIELDS[source]]
             archive_sha = qualification["artifact_digest"].removeprefix("sha256:")
             reference.update(
                 url="https://github.com/pamolive/PamOlive-Platform/actions/runs/"
@@ -366,7 +381,7 @@ def debian_components(report, image_digest, image_digest_kind):
                 comment="GitHub Actions qualification artifact ZIP",
             )
             component["properties"].extend([
-                {"name": "pamolive:debian:origin", "value": "pamolive-kerberos-backport"},
+                {"name": "pamolive:debian:origin", "value": origins[source]},
                 {"name": "pamolive:debian:deb-bytes", "value": str(item["archive_bytes"])},
                 {"name": "pamolive:debian:qualification-commit", "value": qualification["commit"]},
             ])
@@ -383,7 +398,7 @@ def debian_components(report, image_digest, image_digest_kind):
         components.append(component)
         roots.append(ref)
         files = []
-        for path in NATIVE_FILES.get(name, ()):
+        for path in native_files.get(name, ()):
             sha = report["installed_elf_sha256"][path]
             file_ref = PREFIX + "debian-elf:" + digest({"path": path, "sha256": sha})
             components.append({
@@ -480,6 +495,9 @@ def merge(app, manifest, report, *, image_digest, input_hashes,
                   "manifest-canonical-sha256": digest(manifest),
                   **{name + "-input-sha256": value for name, value in input_hashes.items()},
                   "coverage": coverage}
+    if debian_report is not None and "openssl_receipt_sha256" in debian_report:
+        provenance["debian-archive-sha256"] = debian_report["archive_sha256"]
+        provenance["openssl-receipt-sha256"] = debian_report["openssl_receipt_sha256"]
     properties.extend({"name": "pamolive:sbom:" + key, "value": value}
                       for key, value in sorted(provenance.items()))
     result["serialNumber"] = "urn:uuid:" + str(uuid.uuid5(uuid.NAMESPACE_URL,

@@ -3,14 +3,14 @@
   "deploy/freerdp-jansson-compat.patch": "7a3694d19f3fda9ea248905e1adf3b2048e911510420240f5c71a6aec2842500",
   "deploy/jansson_image_absence.py": "cd2721ba1bfc0d5e70809d781507ef44879e29172e0c32b8b4390b77e9dab1c8",
   "deploy/native_inventory.py": "0ae411ff3971470b7d62aba8d27bf307e948258aac2853ed82fdddcf8edd20c1",
-  "deploy/native_sbom.py": "efdf35d29339021591ab82d20cf904b95a2fb386e0f094f59738e677435559d2",
+  "deploy/native_sbom.py": "e806ac41d926adbca0f01784df78b40d869bb7f6914595f6df0ddf585456892e",
   "deploy/qualify_image_scan.py": "af7c376c12f4ab58a1436bd6d149cb9f89425355df3cec45899c1f47ecde79e5",
-  "Dockerfile": "21d4164678c60f5a1111ec2da3f2f44c6785b5b0ea8e89ec08ef6c226d58be58",
+  "Dockerfile": "38841109129a41bf912cbc5d4bdd90a5bd5155ee2d72a0d5fa23ea9664248d4b",
   "tests/fixtures/json_backend_reference.c": "20219f982f64dee9338fc86b141fe77bc19db5692f7abf687963031f9790bb6f",
   "tests/fixtures/winpr_jansson_regression.c": "94c6ed39e585ab8014904d0fc297da0873a2823450f82cb0c38e141af96f0482",
   "tests/test_jansson_image_absence.py": "cb0de8537f143d10a0067fce9cf9d6de9e4090f80c9d23a7bc5286361b261738",
   "tests/test_jansson_input_binding.py": "a664cfedb43d7ef4298d3abde8b550114d61aa941fdf19db82940f46085cde4b",
   "tests/test_jansson_sbom.py": "609930d57e570a89a10dd1aa5b92dc096d28f7134e48ddf6803f809dfa44f6bd",
   "tests/test_native_inventory.py": "a7edeadae96959e7990f6dfc757a38e4fba34899bb25187b1bafb168a6945722",
-  "tests/test_native_sbom.py": "22f8b4289f360f81c18c283413d32482df9db430af430fce9dee71faf1806625"
+  "tests/test_native_sbom.py": "f4349f1dbe997d7cc2e712b5ed5987912904ca66c67029b48e3a05f469ceca38"
 }
