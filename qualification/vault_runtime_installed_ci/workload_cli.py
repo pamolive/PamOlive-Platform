@@ -22,7 +22,10 @@ def main():
     parser.add_argument("--work", type=Path, required=True)
     parser.add_argument("--materials", type=Path)
     parser.add_argument("--repository", type=Path)
+    parser.add_argument("--transfer-verified-wheels", action="store_true")
     args = parser.parse_args()
+    if args.transfer_verified_wheels and args.mode != "prepare":
+        parser.error("--transfer-verified-wheels requires prepare mode")
     assets = prepare.assets(ROOT, args.assets_sha256)
     pins = schema.parse(support.read_regular(ROOT / "s0-pins.json", 65536), 65536)
     prepare.s0_pins(pins)
@@ -65,14 +68,25 @@ def main():
     if args.mode == "prepare":
         support.need(args.materials is not None)
         prepare.prepare(
-            args.work, ROOT, args.materials, assets_sha256=args.assets_sha256, pins=pins
+            args.work,
+            ROOT,
+            args.materials,
+            assets_sha256=args.assets_sha256,
+            pins=pins,
+            transfer_verified_wheels=args.transfer_verified_wheels,
         )
         print(schema.encode({"state": "STAGED_NOT_EXECUTED", "authority": False}).decode(), end="")
         return
     if args.mode != "cleanup":
         state = schema.parse(control.regular(args.work / "state.json", 256 * 1024), 256 * 1024)
     support.need(state["assets_sha256"] == args.assets_sha256 and state["bindings"] == bindings)
-    entry = host.bootstrap(assets["controller_files"]["workload_entry.py"]["sha256"], bindings)
+    transfer = state.get("transfer_verified_wheels", False)
+    support.need(type(transfer) is bool)
+    entry = host.bootstrap(
+        assets["controller_files"]["workload_entry.py"]["sha256"],
+        bindings,
+        transfer_verified_wheels=transfer,
+    )
     entry_sha = support.sha(entry)
     if args.mode == "pull":
         host.pull_owned(args.work, pins, state, entry, entry_sha)
@@ -82,7 +96,14 @@ def main():
         )
         return
     result = (
-        host.run_owned(args.work, pins, state, entry, entry_sha, bindings=bindings)
+        host.run_owned(
+            args.work,
+            pins,
+            state,
+            entry,
+            entry_sha,
+            bindings=bindings,
+        )
         if args.mode == "run"
         else host.cleanup_owned(args.work, pins, state, entry, entry_sha)
     )

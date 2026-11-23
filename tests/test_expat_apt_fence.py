@@ -253,6 +253,10 @@ class FenceTests(unittest.TestCase):
         )
         with (
             patch.object(f.sys, "argv", args),
+            patch.object(
+                f.sys, "flags", change.get("flags", SimpleNamespace(isolated=1, no_site=1))
+            ),
+            patch.object(f.sys, "dont_write_bytecode", change.get("dont_write_bytecode", True)),
             patch.dict(vars(f), {"CAPTURED_HELPER_SHA": helper}),
             patch.object(f, "captured_file", side_effect=capture),
             patch.object(f.os, "stat", return_value=py_row),
@@ -593,3 +597,41 @@ class FenceTests(unittest.TestCase):
         )
         self.assertIn("CAPTURED_HELPER_SHA", f.LOADER)
         self.assertIn("CAPTURED_NATIVE_SHA", native.LOADER)
+
+
+class InterpreterFixtureTests(unittest.TestCase):
+    def test_explicit_invalid_flags_remain_rejected_by_the_real_entrypoint(self):
+        fixture = FenceTests()
+        for change in (
+            {"flags": SimpleNamespace(isolated=0, no_site=1)},
+            {"flags": SimpleNamespace(isolated=1, no_site=0)},
+            {"dont_write_bytecode": False},
+        ):
+            with self.subTest(change=change), patch.object(f, "need", wraps=f.need) as checks:
+                events, written = fixture.main_model(change)
+            rejected = [args.args for args in checks.call_args_list if args.args[0] is False]
+            self.assertEqual(rejected, [(False, "fence_interpreter")])
+            self.assertNotIn("filter", events)
+            self.assertFalse(
+                any(isinstance(event, tuple) and event[0] == "execFD" for event in events)
+            )
+            self.assertEqual(written, [])
+
+    def test_parent_interpreter_state_is_restored_after_the_positive_fixture(self):
+        fixture = FenceTests()
+        original_flags = f.sys.flags
+        original_bytecode = f.sys.dont_write_bytecode
+        parent_flags = SimpleNamespace(isolated=0, no_site=0)
+        with (
+            patch.object(f.sys, "flags", parent_flags),
+            patch.object(f.sys, "dont_write_bytecode", False),
+        ):
+            events, written = fixture.main_model()
+            self.assertTrue(
+                any(isinstance(event, tuple) and event[0] == "execFD" for event in events)
+            )
+            self.assertEqual(len(written), 1)
+            self.assertIs(f.sys.flags, parent_flags)
+            self.assertIs(f.sys.dont_write_bytecode, False)
+        self.assertIs(f.sys.flags, original_flags)
+        self.assertEqual(f.sys.dont_write_bytecode, original_bytecode)

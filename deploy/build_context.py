@@ -183,9 +183,9 @@ IDENTITY_FIELDS = ("dev", "ino", "mode", "uid", "gid", "nlink", "size", "mtime_n
 
 
 # Finite current-profile policy: never parse arbitrary future .dockerignore rules.
-PROFILE_ID = "pamolive-current-dockerignore-typed-dirs-v2"
-DOCKERIGNORE_SHA = "5ae994f8624c68308c7b6070364db7371c63a719fd1efe818f891624ae387d87"
-DOCKERFILE_SHA = "618bad8a36158bfecff7df0f1a5039d89904e18881c41cd12553b9b45aa2c01c"
+PROFILE_ID = "pamolive-current-dockerignore-typed-dirs-v3"
+DOCKERIGNORE_SHA = "116f2ac21b5a2cb6c97738ebd7808394139de3361679cd2766c96fa64e395bd0"
+DOCKERFILE_SHA = "891dac21301be68d1c882333400012aa81c71ae3126a14c21f8b6178096258ce"
 ROOT_FILES = frozenset(
     {
         "Dockerfile",
@@ -220,6 +220,24 @@ ROOT_DIRS = frozenset(
         "third_party",
     }
 )
+# Only the product inputs from the qualified Debian package receipt enter this
+# context. Their identities come from the reviewed lab source ledger.
+DEBIAN_REFRESH_DIR = "qualification/debian_138_refresh"
+DEBIAN_REFRESH_DIRS = frozenset({"qualification", DEBIAN_REFRESH_DIR})
+DEBIAN_REFRESH_INPUTS = {
+    f"{DEBIAN_REFRESH_DIR}/{name}": digest
+    for name, digest in {
+        "Dockerfile": "1adf4b273213cf010998339c982e9f5d3ec1f42fca1edc8e9253fb3cb69e51a6",
+        "apt.conf": "ec2ba55cefa0244808e5ca657b85deae2dbea9a4667bfed44f416b0152f64aba",
+        "debian.list": "faafef0e0c43bbb8d6722c0e512f7054c803c6470be99d9e9cfe076faa2cbc40",
+        "smoke.c": "ba5180eb3384cb2b2720056ab983601f65a9e1eaecbadbfb9be0b2003b922fa1",
+        "source-checksums.sha256": (
+            "b31443e2a347fe7e403c98de21306605341c9027e79b28d8fe20488fc94b3bd7"
+        ),
+        "test_refresh.py": "63ee205b5b615f4a986b28c00d4972bdacdcf2f966e9067d762d3d9df6ac4a5d",
+        "verify_refresh.py": "7bd0f4a7fc82cb30fcdbcb302bdf1f03f8cbbb87899c58f3550d72be548cf304",
+    }.items()
+}
 EXCLUDED_COMPONENTS = (
     ".git",
     ".venv",
@@ -267,11 +285,26 @@ def copy_selected(name):
     if name == ".env.example":
         return True
     path = PurePosixPath(name)
-    if name not in ROOT_FILES and path.parts[0] not in ROOT_DIRS:
+    if not (
+        name in ROOT_FILES or name in DEBIAN_REFRESH_INPUTS or path.parts[0] in ROOT_DIRS
+    ):
         return False
     return not (
         any(fnmatchcase(part, pattern) for part in path.parts for pattern in EXCLUDED_COMPONENTS)
         or any(name == path or name.startswith(path + "/") for path in EXCLUDED_PATHS)
+    )
+
+
+def copy_directory_selected(name):
+    return name in DEBIAN_REFRESH_DIRS or (
+        PurePosixPath(name).parts[0] in ROOT_DIRS and copy_selected(name)
+    )
+
+
+def require_debian_refresh_inputs(file_hashes):
+    require(
+        all(file_hashes.get(name) == digest for name, digest in DEBIAN_REFRESH_INPUTS.items()),
+        "context_debian_refresh_inputs",
     )
 
 
@@ -299,22 +332,10 @@ def directory_selection(file_names):
             str(parent) for parent in PurePosixPath(name).parents if str(parent) != "."
         )
         require(len(file_names) + len(directories) <= MAX_FILES, "context_seal_members_budget")
-    require(
-        not directories & (set(ROOT_FILES) | set(CONTROLS) | {".env.example"}),
-        "context_directory_role",
-    )
+    file_only = ROOT_FILES | set(CONTROLS) | {".env.example"} | DEBIAN_REFRESH_INPUTS.keys()
+    require(not directories & file_only, "context_directory_role")
     expected_nodes([(name, b"", 0o644) for name in file_names])
-    selected = {
-        name
-        for name in directories
-        if PurePosixPath(name).parts[0] in ROOT_DIRS
-        and not any(
-            fnmatchcase(part, pattern)
-            for part in PurePosixPath(name).parts
-            for pattern in EXCLUDED_COMPONENTS
-        )
-        and not any(name == path or name.startswith(path + "/") for path in EXCLUDED_PATHS)
-    }
+    selected = {name for name in directories if copy_directory_selected(name)}
     require(
         all(
             str(parent) in selected
@@ -355,6 +376,12 @@ def selection(files):
         and hashlib.sha256(table[".dockerignore"]).hexdigest() == DOCKERIGNORE_SHA
         and "Dockerfile.dockerignore" not in table,
         "context_selection_profile",
+    )
+    require_debian_refresh_inputs(
+        {
+            name: hashlib.sha256(table[name]).hexdigest()
+            for name in DEBIAN_REFRESH_INPUTS.keys() & table.keys()
+        }
     )
     selected = [row for row in files if row[0] in CONTROLS or copy_selected(row[0])]
     omitted = sorted(name for name in table if name not in {row[0] for row in selected})
@@ -415,6 +442,7 @@ def source_manifest(path, receipt, revision):
         and "Dockerfile.dockerignore" not in files,
         "context_selection_profile",
     )
+    require_debian_refresh_inputs(files)
     selected = [name for name in files if name in CONTROLS or copy_selected(name)]
     omitted = sorted(set(files) - set(selected))
     require(
@@ -839,6 +867,10 @@ PROBE_COUNTERS = (
     ("deploy/check_image_scan_ci.sh.txt", True),
     ("unreviewed-root/public.txt", False),
     ("requirements-unreviewed.lock", False),
+    ("qualification/unreviewed.txt", False),
+    ("qualification/other-qualification/public.txt", False),
+    (f"{DEBIAN_REFRESH_DIR}/unreviewed.txt", False),
+    (f"{DEBIAN_REFRESH_DIR}/unreviewed/public.txt", False),
     ("config/__profile_probe__/n01/.git/marker", False),
     ("config/__profile_probe__/n02/.venv/marker", False),
     ("config/__profile_probe__/n03/.nas-access/marker", False),
@@ -1093,6 +1125,7 @@ def verified_tar(stream, receipt, manifest):
 PROBE_DIAGNOSTIC_CODES = frozenset(
     {
         "context_tar_contract",
+        "context_debian_refresh_inputs",
         "context_git_directory_unrepresented",
         "context_directory_role",
         "context_directory_ancestors",

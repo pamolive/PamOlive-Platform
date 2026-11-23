@@ -118,6 +118,63 @@ class NativeSbomTests(TestCase):
             self.assertEqual(len(result["components"]), 6)
             self.assertEqual(result["components"][0], self.app["components"][0])
 
+    def debian_report(self):
+        from qualification.debian_138_refresh.verify_refresh import NATIVE_FILES, PACKAGES
+
+        runtime = {*NATIVE_FILES, "libc-bin"}
+        return {
+            "schema": "pamolive.debian-refresh-runtime/1",
+            "architecture": "amd64",
+            "receipt_sha256": "9" * 64,
+            "packages": [
+                {
+                    "package": name,
+                    "source": PACKAGES[name][0],
+                    "version": PACKAGES[name][1],
+                    "suite": PACKAGES[name][2],
+                    "archive_sha256": "8" * 64,
+                    "archive_bytes": 2048,
+                }
+                for name in sorted(runtime)
+            ],
+            "installed_elf_sha256": {
+                path: "7" * 64 for paths in NATIVE_FILES.values() for path in paths
+            },
+            "image_config_id": "sha256:" + "d" * 64,
+            "archive_sha256": "6" * 64,
+            "revision": "5" * 40,
+        }
+
+    def test_debian_sbom_links_official_packages_and_verified_installed_files(self):
+        self.hashes["debian"] = "4" * 64
+        report = self.debian_report()
+        result = self.merge(image_digest_kind="image_config", debian_report=report)
+        packages = [row for row in result["components"] if ":debian:" in row["bom-ref"]]
+        self.assertEqual({row["name"] for row in packages},
+                         {item["package"] for item in report["packages"]})
+        package = next(item for item in packages if item["name"] == "libkrb5-3")
+        self.assertIn("deb13u2", package["purl"])
+        self.assertIn("%2B", package["purl"])
+        source = package["externalReferences"][0]
+        self.assertIn("/debian-security/", source["url"])
+        self.assertEqual(source["hashes"][0]["content"], "8" * 64)
+        files = [row for row in result["components"] if ":debian-elf:" in row["bom-ref"]]
+        self.assertEqual(len(files), 6)
+        self.assertTrue(all(row["hashes"][0]["content"] == "7" * 64 for row in files))
+
+    def test_debian_sbom_requires_one_exact_image_and_unambiguous_package_identity(self):
+        self.hashes["debian"] = "4" * 64
+        report = self.debian_report()
+        with self.assertRaisesRegex(sbom.SbomError, "debian_image_digest_kind"):
+            self.merge(debian_report=report)
+        with self.assertRaisesRegex(sbom.SbomError, "debian_image_binding"):
+            self.merge(image_digest_kind="image_config", debian_report={
+                **report, "image_config_id": "sha256:" + "e" * 64,
+            })
+        self.app["components"].append({"type": "library", "name": "libc6", "version": "2.41"})
+        with self.assertRaisesRegex(sbom.SbomError, "component_identity_conflict"):
+            self.merge(image_digest_kind="image_config", debian_report=report)
+
     def test_missing_or_fake_live_native_verification_fails(self):
         for key, value in (("verified", False), ("verified", "true"),
                            ("live_link_probe", False), ("schema", "other")):

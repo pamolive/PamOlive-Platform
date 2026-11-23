@@ -3,7 +3,7 @@
 import http.client
 import ssl
 
-from pamolive_vault_contracts import body_hash, parse_transcript
+from pamolive_vault_contracts import body_hash, final_assertions_digest, parse_transcript
 from psycopg.rows import dict_row
 
 from .codec import (
@@ -11,6 +11,7 @@ from .codec import (
     Error,
     b64,
     baseline,
+    bundle,
     closed,
     commitment,
     digest,
@@ -18,6 +19,7 @@ from .codec import (
     need,
     parse,
     sha,
+    terminal_receipt,
     unb64,
     uuid,
 )
@@ -85,6 +87,39 @@ class VaultMirror:
     def __init__(self, connect, client):
         self.connect, self.client = connect, client
 
+    @staticmethod
+    def _active_reservation(cursor, reservation_id, *, lock=False):
+        # Only the commissioned-state row permits locking under ADR024.
+        # The reservation stays append-only, and a restored incarnation
+        # cannot authorize an older row.
+        query = """SELECT r.canonical_draft,r.nonce,r.issued_at,r.expires_at,r.state,
+                          r.slot_sha256,r.incarnation
+                   FROM vault_reservation.reservations AS r
+                   JOIN vault_reservation.commissioned_state AS s
+                     ON s.slot_sha256=r.slot_sha256 AND s.incarnation=r.incarnation
+                   WHERE r.reservation_id=%s AND s.serving_state='open'"""
+        if lock:
+            cursor.execute("SET LOCAL lock_timeout = '2000ms'")
+        cursor.execute(query + (" FOR UPDATE OF s" if lock else ""), (reservation_id,))
+        row = cursor.fetchone()
+        need(row is not None and row["state"] == "pending_proofs", "context_refused", 403)
+        return row
+
+    @staticmethod
+    def _matching_mirror(cursor, reservation_id, value, *, lock=False):
+        query = """SELECT operation_id,body_hash,bound_response,terminal_response,state
+                   FROM vault_reservation.usage_mirrors WHERE reservation_id=%s"""
+        cursor.execute(query + (" FOR UPDATE" if lock else ""), (reservation_id,))
+        row = cursor.fetchone()
+        need(
+            row is not None
+            and str(row["operation_id"]) == value["operation_id"]
+            and row["body_hash"] == value["body_hash"],
+            "context_refused",
+            403,
+        )
+        return row
+
     def prepare_reserved(self, reservation_id):
         try:
             return self._prepare_reserved(reservation_id)
@@ -96,17 +131,10 @@ class VaultMirror:
 
     def _prepare_reserved(self, reservation_id):
         uuid(reservation_id)
-        # The authoritative V0 row must already be committed in ADR024's real ledger.
+        # No database lock spans the network call. The local commit below
+        # must still observe the same authority after the witness responds.
         with self.connect() as conn, conn.cursor(row_factory=dict_row) as c:
-            c.execute(
-                (
-                    """SELECT canonical_draft,nonce,issued_at,expires_at,state FROM
-                    vault_reservation.reservations WHERE reservation_id=%s"""
-                ),
-                (reservation_id,),
-            )
-            row = c.fetchone()
-        need(row is not None and row["state"] == "pending_proofs", "context_refused", 403)
+            row = self._active_reservation(c, reservation_id)
         raw = encode(
             {
                 "draft_b64": b64(bytes(row["canonical_draft"])),
@@ -160,22 +188,11 @@ class VaultMirror:
             "context_refused",
             403,
         )
-        # Commit mirror before exposing the transcript. Retries compare bytes.
+        # Serialize mirrors through the same commissioned-state lock as the
+        # reservation ledger. The runtime cannot update reservation rows.
         with self.connect() as conn, conn.transaction(), conn.cursor(row_factory=dict_row) as c:
-            c.execute(
-                (
-                    """SELECT canonical_draft,nonce,issued_at,expires_at,state FROM
-                    vault_reservation.reservations WHERE reservation_id=%s FOR UPDATE"""
-                ),
-                (reservation_id,),
-            )
-            current = c.fetchone()
             need(
-                current is not None
-                and all(
-                    current[k] == row[k]
-                    for k in ("canonical_draft", "nonce", "issued_at", "expires_at", "state")
-                ),
+                self._active_reservation(c, reservation_id, lock=True) == row,
                 "context_refused",
                 403,
             )
@@ -206,97 +223,106 @@ class VaultMirror:
             code, status = "unavailable", 503
         raise Error(code, status) from None
 
-    def _consume(self, reservation_id, bundle_raw):
-        from .codec import bundle
+    def _witness_terminal(self, route, reservation_id, value, bundle_raw):
+        status, raw = self.client.request(route, bundle_raw)
+        need(status == 200, "unavailable", 503)
+        terminal = terminal_receipt(
+            raw,
+            reservation_id=reservation_id,
+            operation_id=value["operation_id"],
+            body_hash=value["body_hash"],
+            final_digest=final_assertions_digest(bundle_raw),
+        )
+        return terminal, raw
 
+    @staticmethod
+    def _check_stored_terminal(row, terminal, raw):
+        need(
+            row["terminal_response"] is None
+            or (bytes(row["terminal_response"]) == raw and row["state"] == terminal["state"]),
+            "idempotency_conflict",
+            409,
+        )
+
+    def observe_terminal(self, reservation_id, bundle_raw):
+        """Retrieve authenticated W evidence through a historical local binding."""
+        try:
+            uuid(reservation_id)
+            value = bundle(bundle_raw)
+            with self.connect() as conn, conn.transaction(), conn.cursor(row_factory=dict_row) as c:
+                c.execute("SET TRANSACTION READ ONLY")
+                c.execute("SET LOCAL statement_timeout='3000ms'")
+                row = self._matching_mirror(c, reservation_id, value)
+            terminal, raw = self._witness_terminal(
+                "/v1/operations/observe-terminal", reservation_id, value, bundle_raw
+            )
+            self._check_stored_terminal(row, terminal, raw)
+            return raw
+        except Error as error:
+            code, status = error.code, error.status
+        except Exception:
+            code, status = "unavailable", 503
+        raise Error(code, status) from None
+
+    def _consume(self, reservation_id, bundle_raw):
+        uuid(reservation_id)
         value = bundle(bundle_raw)
         with self.connect() as conn, conn.cursor(row_factory=dict_row) as c:
-            c.execute(
-                "SELECT * FROM vault_reservation.usage_mirrors WHERE reservation_id=%s",
-                (reservation_id,),
-            )
-            row = c.fetchone()
-        need(
-            row is not None
-            and str(row["operation_id"]) == value["operation_id"]
-            and row["body_hash"] == value["body_hash"],
-            "context_refused",
-            403,
-        )
+            reservation = self._active_reservation(c, reservation_id)
+            row = self._matching_mirror(c, reservation_id, value)
         try:
-            _, terminal_raw = self.client.request("/v1/operations/consume", bundle_raw)
-            terminal = parse(terminal_raw, 4096, special=True)
-            closed(
-                terminal,
-                {
-                    "schema",
-                    "operation_id",
-                    "reservation_id",
-                    "state",
-                    "body_hash",
-                    "final_assertions_digest",
-                    "issued_at",
-                    "expires_at",
-                    "terminal_at",
-                    "authorized",
-                },
-            )
-            need(
-                terminal.get("authorized") is False
-                and terminal.get("schema") == "pamolive.vault.usage-terminal/1"
-                and terminal.get("state") in ("consumed_no_release", "refused_no_release")
-                and terminal.get("operation_id") == value["operation_id"]
-                and terminal.get("body_hash") == value["body_hash"]
-                and terminal.get("reservation_id") == reservation_id,
-                "context_refused",
-                403,
-            )
-            from pamolive_vault_contracts import final_assertions_digest
-
-            need(
-                terminal.get("final_assertions_digest") == final_assertions_digest(bundle_raw),
-                "context_refused",
-                403,
+            terminal, terminal_raw = self._witness_terminal(
+                "/v1/operations/consume", reservation_id, value, bundle_raw
             )
             with self.connect() as conn, conn.transaction(), conn.cursor(row_factory=dict_row) as c:
-                c.execute(
-                    (
-                        """SELECT * FROM vault_reservation.usage_mirrors WHERE reservation_id=%s
-                        FOR UPDATE"""
-                    ),
-                    (reservation_id,),
-                )
-                old = c.fetchone()
                 need(
-                    old is not None
-                    and (
-                        old["terminal_response"] is None
-                        or bytes(old["terminal_response"]) == terminal_raw
-                    ),
-                    "idempotency_conflict",
-                    409,
+                    self._active_reservation(c, reservation_id, lock=True) == reservation,
+                    "context_refused",
+                    403,
                 )
-                c.execute(
-                    (
-                        """UPDATE vault_reservation.usage_mirrors SET state=%s,terminal_response=%s
-                        WHERE reservation_id=%s"""
-                    ),
-                    (terminal["state"], terminal_raw, reservation_id),
+                old = self._matching_mirror(c, reservation_id, value, lock=True)
+                need(
+                    bytes(old["bound_response"]) == bytes(row["bound_response"]),
+                    "context_refused",
+                    403,
                 )
+                self._check_stored_terminal(old, terminal, terminal_raw)
+                if old["terminal_response"] is None:
+                    c.execute(
+                        (
+                            """UPDATE vault_reservation.usage_mirrors
+                            SET state=%s,terminal_response=%s WHERE reservation_id=%s"""
+                        ),
+                        (terminal["state"], terminal_raw, reservation_id),
+                    )
             return terminal_raw
         except Exception as failure:
             if isinstance(failure, Error) and failure.status != 503:
                 raise Error(failure.code, failure.status) from None
             # A lost W response/unknown commit burns availability; never regenerate nonce or proofs.
             try:
-                with self.connect() as conn, conn.transaction(), conn.cursor() as c:
-                    c.execute(
-                        (
-                            """UPDATE vault_reservation.usage_mirrors SET state='uncertain' WHERE
-                            reservation_id=%s AND terminal_response IS NULL"""
-                        ),
-                        (reservation_id,),
+                with (
+                    self.connect() as conn,
+                    conn.transaction(),
+                    conn.cursor(row_factory=dict_row) as c,
+                ):
+                    need(
+                        self._active_reservation(c, reservation_id, lock=True) == reservation,
+                        "context_refused",
+                        403,
                     )
+                    old = self._matching_mirror(c, reservation_id, value, lock=True)
+                    need(
+                        bytes(old["bound_response"]) == bytes(row["bound_response"]),
+                        "context_refused",
+                        403,
+                    )
+                    if old["terminal_response"] is None and old["state"] != "uncertain":
+                        c.execute(
+                            """UPDATE vault_reservation.usage_mirrors SET state='uncertain'
+                               WHERE reservation_id=%s""",
+                            (reservation_id,),
+                        )
             except Exception:
                 pass
             raise Error("unavailable", 503) from None

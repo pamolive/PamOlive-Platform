@@ -1,4 +1,371 @@
-# Plan de validation W1 — réception réelle restant à exécuter
+# Validation W1 et campagnes restantes
+
+## Réception native W01 — 22 novembre 2026
+
+La [CI du commit `1756244`](https://github.com/pamolive/PamOlive-Platform/actions/runs/45078177751)
+qualifie le témoin mTLS et deux clusters PostgreSQL 17.12 neufs sur un seul
+runner éphémère. Les 62 tests hors ligne depuis la wheel et les neuf scénarios
+natifs passent. Chaque connexion PostgreSQL valide le certificat du serveur
+auprès de son autorité de certification, vérifie son nom et exige la liaison
+SCRAM au canal. Les rôles, le refus du verrou sur les réservations et le
+nettoyage des ressources sont vérifiés.
+
+Le reçu confirme trois opérations, cinq usages de preuve, deux états terminaux
+et leurs relectures identiques. Les miroirs Vault persistent dans la seconde
+base. Les refus laissent les lignes observées inchangées. Aucune remise de
+secret ni autorité d'accès ne résulte de l'essai.
+
+Le SHA-256 du reçu vérifié est
+`8a54f2f267d205c68f681cfc178846426aad49f77c9b75eb924b7996264e8a3c`.
+L'archive GitHub `14775644488` a été vérifiée indépendamment par rapport au
+digest publié par l'API. L'étape Vault seul a été ignorée pour cette exécution.
+
+Le pilote utilise la base V pour les réservations et les miroirs. Les contrôles
+du listener Vault séparé, les campagnes W04 à W08, la fermeture concurrente
+de l'état V et l'indépendance multi-hôte restent à qualifier. Une fermeture
+peut laisser une liaison W orpheline et la consommation du miroir historique
+ne vérifie pas l'état V actuel.
+
+## Campagne de fermeture du Vault — 22 novembre 2026
+
+L'entrée `run_witness_fence` ajoute la campagne de fermeture au laboratoire
+`run_witness_lab`. Après le parcours nominal, une liaison et deux
+consommations identiques synchronisent leurs réponses mTLS avant un commit
+de fermeture par le rôle d'administration Vault. L'une des réponses
+identiques est simulée perdue après le commit W. Les contrôles exigent le
+refus du nouveau miroir,
+la conservation du miroir préexistant, la présence des preuves du témoin
+et l'absence d'appel W lorsque le commissionnement est fermé ou incompatible.
+Le [choix d'architecture](adr-026-independent-usage-anchor.md#fermeture-concurrente-du-vault)
+définit la limite des appels qui ont déjà quitté Vault.
+
+La [CI du commit `0d8b7cc`](https://github.com/pamolive/PamOlive-Platform/actions/runs/45079293012)
+passe les 62 tests du paquet installé, les neuf scénarios W01 et les huit
+contrôles de fermeture. Elle confirme zéro appel au témoin après refus du
+commissionnement, la conservation des lignes historiques V et le maintien
+des preuves W. L'exécution ajoute deux opérations W et un usage de preuve
+aux compteurs W01, puis nettoie ses conteneurs, ses volumes et son réseau.
+La revue indépendante a vérifié l'archive `14777030815` et le SHA-256 du
+reçu public
+`c7e10e3ee898a091f0ddd466954cd21aed2f9b2302f9d8ebceced56bab341315`.
+L'étape Vault seul a été ignorée. La reprise historique par un chemin dédié,
+la révocation indépendante du bail W et la qualification multi-hôte restent
+ouvertes. [PR nº 35](https://github.com/pamolive/PamOlive-Platform/pull/35)
+
+## Consultation historique des reçus — 23 novembre 2026
+
+L'entrée `run_witness_history` prolonge les campagnes de fermeture et W01.
+Le client historique récupère le reçu authentifié après fermeture de Vault,
+même si sa ligne locale est restée liée sans terminal. Le pilote tient aussi
+des verrous sur le contexte et l'opération W pendant une lecture pour vérifier
+que la route n'attend pas ces verrous. Il vérifie les refus d'une opération
+absente, en attente, d'un mauvais usage du certificat et d'un bundle divergent.
+Après fermeture du bail W par son administrateur, le reçu doit encore être
+identique. Les comparaisons SQL contrôlent la conservation des opérations,
+preuves, compteurs, journaux et miroirs après ces consultations.
+
+Le [run `45080374417`, tentative 2](https://github.com/pamolive/PamOlive-Platform/actions/runs/45080374417/attempts/2)
+sur `c1f8017` valide les 70 tests du paquet installé, les neuf scénarios W01,
+les huit contrôles de fermeture et les sept contrôles historiques. Les deux
+clusters PostgreSQL 17.12 et le témoin mTLS s'exécutent sur un seul runner.
+La lecture réussit sous verrou administratif, puis après fermeture du Vault
+et du bail W. Après chaque phase de lecture, les états SQL comparés sont
+identiques. Le reçu conserve `authorized=false` et le nettoyage passe.
+
+La revue indépendante a validé l'archive `14777335283` et le SHA-256 du reçu
+public `8f90604af11a312786b08bcd0b7c0dd806fe6eda476a864956e477df36711226`.
+La [première tentative](https://github.com/pamolive/PamOlive-Platform/actions/runs/45080374417/attempts/1)
+s'arrête au téléchargement de l'image Python épinglée et son contrôle de
+réconciliation échoue. Les essais natifs y sont ignorés. La relance conserve
+le même commit et utilise un nouveau runner.
+
+L'essai couvre un processus W déjà démarré avec l'identité d'origine encore
+autorisée. Le redémarrage d'un témoin fermé, une rotation de l'identité,
+l'isolation sous deux tenants réels et la reprise multi-hôte restent à
+qualifier. [PR nº 36](https://github.com/pamolive/PamOlive-Platform/pull/36)
+
+## Redémarrage du témoin en consultation seule — 23 novembre 2026
+
+L'entrée `run_witness_restart` prolonge la campagne historique. Après
+fermeture du bail, le contrôleur arrête le témoin réservé et tente le même
+démarrage ordinaire. Il exige le refus explicite du contexte fermé avant
+de retirer ce conteneur par son identifiant. Il démarre alors un nouveau
+conteneur sur les mêmes adresse et identité TLS. Son montage contient
+seulement la configuration de lecture et son rôle PostgreSQL restreint.
+Le témoin doit retrouver le reçu exact, refuser une opération en attente et
+refuser les quatre routes d'écriture. Les instantanés des deux bases sont
+comparés après le redémarrage et les appels.
+
+La [CI de `7d37e0d`](https://github.com/pamolive/PamOlive-Platform/actions/runs/45081802652)
+confirme le refus du démarrage ordinaire sur contexte fermé. Le conteneur
+de reprise sert le reçu d'origine sous la même identité mTLS avec le rôle
+observateur. Quatre contrôles dédiés vérifient le reçu exact, le refus d'une
+opération en attente, le refus des quatre routes de mutation et la
+conservation des deux états SQL. Les 77 tests installés et les 24 scénarios
+W01, de fermeture et d'historique passent aussi. Le nettoyage est confirmé.
+
+L'archive `14777970828` correspond au digest GitHub et le reçu public porte le
+SHA-256 `a888891dac1a47bca417fe6ec235fff49dec02525dfe44393c98386e6349c9fc`.
+L'étape du laboratoire Vault seul est ignorée pour ce profil. L'essai
+remplace le processus témoin sur un seul runner et conserve ses bases
+PostgreSQL 17.12 et son certificat. La campagne suivante couvre la
+restauration logique du stockage.
+[PR nº 37](https://github.com/pamolive/PamOlive-Platform/pull/37)
+
+## Restauration logique du stockage du témoin
+
+L'entrée CI `run_witness_restore` exige la campagne de redémarrage fermé.
+Après la consultation de contrôle, le contrôleur utilise le socket local de
+l'instance PostgreSQL W réservée. Il vérifie le contexte et le bail fermés,
+puis copie le schéma du témoin avec `pg_dump` et `pg_restore` dans une base
+neuve. L'archive native est bornée à 1 Mio et reste en mémoire. Son contenu
+et les empreintes SQL de comparaison ne figurent dans aucun artefact.
+
+La campagne vérifie les neuf tables, les droits sur le schéma restauré et
+l'accès SQL limité à l'observateur. Elle remplace le conteneur de consultation
+avec un montage dédié à la base restaurée. Le client vérifie l'identité TLS,
+relit le reçu terminal octet pour octet, vérifie le refus de l'opération en
+attente et des routes d'écriture, puis compare les trois bases. Le contexte
+et le bail restent fermés et le témoin ne reçoit aucun droit de remise.
+
+L'essai utilise une base distincte dans le même cluster PostgreSQL W.
+L'identité TLS et le rôle observateur synthétiques sont réutilisés. Ce périmètre
+couvre l'intégrité et les autorisations de la restauration logique. La
+section suivante documente l'essai de reprise sur un cluster distinct.
+
+La campagne native de `b4ff379` passe sur PostgreSQL 17.12. Le reçu confirme
+77 tests de la wheel installée, 28 scénarios natifs antérieurs, six contrôles
+de consultation sur la base restaurée, quatre constats de restauration SQL
+et le nettoyage complet. Le profil Vault seul est ignoré dans cette campagne.
+Le ZIP `14777808833` a été vérifié contre le digest GitHub. Le reçu public
+porte le SHA-256 `c8a09771e5cd8c8494116413bbd3f3440e892d3b40573904012af8ac19745420`.
+[CI de restauration](https://github.com/pamolive/PamOlive-Platform/actions/runs/45084090436)
+
+Le candidat `57af79e` échouait à la validation de l'adresse SQL avant toute
+restauration. Une variable de génération des règles de connexion écrasait
+l'adresse du cluster. Le test de régression échoue sur ce candidat et passe
+sur `b4ff379`. La revue indépendante a vérifié cet écart et les 23 tests
+de configuration PostgreSQL. Les 26 tests d'isolation Docker, les 11 tests
+du contrôleur et les sept tests du stockage passent également.
+[CI ayant détecté l'erreur](https://github.com/pamolive/PamOlive-Platform/actions/runs/45083784603)
+[PR nº 38](https://github.com/pamolive/PamOlive-Platform/pull/38)
+
+## Reprise logique sur un cluster PostgreSQL vierge
+
+L'entrée CI `run_witness_restore_cluster` sélectionne la reprise après
+arrêt du cluster source. Elle exige le scénario de redémarrage fermé. Le
+contrôleur conserve en mémoire l'archive du schéma scellé et vérifie l'état
+source avant de couper le témoin de consultation et le PostgreSQL d'origine.
+Il démarre ensuite un troisième PostgreSQL sur un stockage vierge, vérifie
+que son identifiant système diffère et y restaure l'archive.
+
+Le cluster cible utilise un nouveau nom TLS, une nouvelle autorité SQL et
+un nouveau mot de passe synthétique pour le rôle observateur. Les anciens rôles
+applicatifs nécessaires à la restitution des ACL sont créés sans capacité
+de connexion. Le contrôleur vérifie les empreintes de lignes et de droits
+sur les neuf tables, la fermeture du bail et l'arrêt confirmé du cluster
+source. Le client vérifie aussi que le port PostgreSQL source reste
+inaccessible pendant que le nouveau témoin sert les reçus historiques.
+Le pilote utilise les données de la base Vault restée en service. Le
+certificat mTLS du témoin reste celui du slot signé.
+
+La [CI de `8da2d76`](https://github.com/pamolive/PamOlive-Platform/actions/runs/45085143496)
+confirme la reprise logique réelle sur PostgreSQL 17.12 et mTLS. Elle vérifie
+77 tests installés, 35 scénarios natifs, six constats SQL, trois clusters
+initialisés et le nettoyage complet. Le reçu terminal est exact et le
+pilote constate l'indisponibilité du cluster source avant et après les
+appels. L'archive GitHub `14779131936` et le SHA-256 du reçu public
+`8ae8cbcc647b860758c06d8fe78a0d7feb0f5459ecbae29ebe116335bd486a80`
+ont été vérifiés. Le profil Vault seul est ignoré dans cette campagne.
+[PR nº 39](https://github.com/pamolive/PamOlive-Platform/pull/39)
+
+Une seconde CI de `8da2d76` confirme que la restauration dans le cluster
+d'origine fonctionne toujours. Les 77 tests installés, 34 scénarios natifs
+et quatre constats SQL passent. Le reçu confirme le nettoyage. Son
+SHA-256 est `926ae03fdd42d0f28d00a0265064c94143fe237d863dff58796bd43764ce8c67`
+et l'archive GitHub vérifiée porte le numéro `14778544187`.
+[CI de non-régression](https://github.com/pamolive/PamOlive-Platform/actions/runs/45085370136)
+
+Une copie logique en mémoire a une durée de vie limitée à ce laboratoire.
+L'essai utilise un seul hôte et s'arrête à la consultation. La section suivante
+qualifie la sauvegarde physique et le rejeu des WAL au point nommé. La rotation
+du certificat applicatif et la reprise multi-hôte restent ouvertes.
+
+## Restauration physique à un point nommé
+
+L'entrée CI `run_witness_pitr` utilise le même parcours du témoin fermé. Le
+contrôleur réserve des volumes distincts pour la sauvegarde et le stockage
+restauré. Il prend un `pg_basebackup`, avec WAL et manifeste SHA-256, avant
+de créer les preuves du scénario. PostgreSQL archive les segments qui
+contiennent les transactions suivantes.
+
+Après fermeture durable du contexte et du bail, le contrôleur ajoute un
+marqueur de contrôle et crée le point PostgreSQL nommé. Il ajoute un second
+marqueur après ce point et vérifie que les segments nécessaires sont
+présents dans l'archive. Seul un conteneur de copie sans réseau peut préparer
+le volume restauré après l'arrêt du PostgreSQL source. Il monte l'archive
+en lecture seule. Le serveur récupéré doit retrouver l'identifiant physique
+de la source, avancer de timeline et contenir uniquement le premier marqueur.
+
+Le contrôleur restreint les connexions avant de démarrer le témoin de
+consultation. Il vérifie l'intégrité des neuf tables, l'état fermé du bail,
+le reçu mTLS exact et le refus des routes d'écriture. La base Vault reste
+disponible et le PostgreSQL source reste arrêté. L'archive synthétique
+reste sur les volumes éphémères du runner. Les seuls éléments publiés
+sont les constats du scénario et du nettoyage.
+
+La CI de `eb1eba8` valide le parcours sur PostgreSQL 17.12 et mTLS.
+Les 77 tests installés, 35 scénarios natifs et neuf contrôles de sauvegarde
+et de restauration passent. Les contrôles confirment le rejeu au point nommé,
+l'identifiant système d'origine, la nouvelle timeline et l'exclusion d'une
+transaction ultérieure archivée. Les deux bases initiales sont issues de
+`initdb`. L'instance restaurée retrouve la même lignée PostgreSQL que le
+témoin source, sur son propre volume. Le reçu confirme le nettoyage.
+L'archive GitHub `14778924470` a été vérifiée. Le SHA-256 du reçu public est
+`69dc52b29eb2d8def072347d35e4012d4e8d77b90469f7f450bfc5333a0899c7`.
+Le profil Vault seul n'est pas exécuté dans cette campagne.
+[CI PITR](https://github.com/pamolive/PamOlive-Platform/actions/runs/45086358011)
+[PR nº 40](https://github.com/pamolive/PamOlive-Platform/pull/40)
+
+La restauration logique sur un cluster distinct a été rejouée sur le même
+commit. Les 77 tests installés, 35 scénarios natifs et six contrôles SQL
+passent. Le reçu de l'archive GitHub `14779149456` confirme le nettoyage.
+Son SHA-256 est `4911285bdf6d143eab8cbc6119d9dce23bc7fbbb72960169fa4b1f06d5663543`.
+[CI de non-régression](https://github.com/pamolive/PamOlive-Platform/actions/runs/45086587313)
+
+La sauvegarde et la reprise utilisent un seul hôte. La conservation durable
+des archives, la restauration multi-hôte et le rétablissement d'une autorité
+de service nécessitent leurs propres procédures et validations.
+
+## Archive d'audit vérifiée après PITR
+
+La campagne `run_witness_audit_archive` ajoute une vérification de l'archive
+à la restauration physique. Le pilote conserve en mémoire le point d'ancrage
+du témoin original scellé avant son arrêt. Il lit la chaîne restaurée avec le
+rôle observateur et vérifie la progression à partir de la genèse avec trois
+événements par page. Il vérifie aussi le rejet d'une tête différente et d'une
+organisation étrangère, ainsi que l'identité des instantanés W et V avant et
+après lecture. Le rapport CI contient les cinq constats booléens.
+
+Les tests hors ligne vérifient les formats canoniques, les bornes, les refus
+de pages incomplètes ou réordonnées et la conservation des octets historiques.
+La campagne sur un seul hôte qualifie la comparaison à une référence
+capturée avant restauration. L'authenticité et la durabilité d'un registre de
+points d'ancrage exploité séparément demandent une qualification dédiée.
+
+La campagne sur `c39bfec` passe les 96 tests installés, les 35 contrôles
+antérieurs, les neuf contrôles PITR et les cinq constats d'archive. Le reçu
+public de l'artefact GitHub `14783493475` a été vérifié et porte l'empreinte
+SHA-256 `4d6acf3b2555aa9454cde112e2f60e0b11e3fa8038a9ee98f39eb968ac9f1205`.
+[CI de l'archive](https://github.com/pamolive/PamOlive-Platform/actions/runs/45096782576)
+
+## Wheel W1 installée — 18 novembre 2026
+
+La [CI installée](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191)
+du commit `de63044` construit la wheel W1 séparément et vérifie les 18 entrées
+de l'archive, le `RECORD` installé et la relocalisation SQL. Les trois wheels
+Vault conservées dans le transfert historique servent de base au consommateur.
+Les 62 tests W1 existants passent depuis le paquet installé, sans échec,
+exclusion ni tentative d'I/O externe. Le reçu public SHA-256
+`e7d31f341396914841efeca051788fb9d61ddc09c6119941a66decf2a5b2431a`
+est lié à la [PR nº 34](https://github.com/pamolive/PamOlive-Platform/pull/34).
+
+Le profil Docker W01 autorise six conteneurs et cinq volumes de fixtures. Les deux
+clusters PostgreSQL utilisent chacun leur PGDATA dédié. Les deux précontrôles
+de clusters vierges doivent être acceptés avant la première écriture. Les 21
+tests de propriété des ressources, les 19 tests du provisionnement sous
+doublures et les 13 régressions Vault passent. Le commissionnement réel,
+les deux terminaux durables et leurs reprises, les rôles PostgreSQL et le mTLS
+entre processus attendent la campagne W01. Les limites de 30 s et 40 s restent
+celles du contrat existant.
+
+### Exécution du laboratoire W01 installé
+
+Le workflow `Installed Vault reservation runtime` propose l'entrée
+`run_witness_lab`. Elle requiert `transfer_verified_wheels` et
+`build_witness_consumer`. Elle s'exécute séparément du laboratoire de
+restauration Vault. La campagne crée cinq conteneurs et cinq volumes dédiés
+sur un runner éphémère.
+
+Le préparateur hors réseau attribue des identifiants temporaires indépendants
+aux deux clusters PostgreSQL 17.12. Le contrôleur vérifie les deux reçus de
+lecture seule sur les conteneurs réservés avant toute création de schéma. Il
+attend ensuite la confirmation du cluster W avant d'autoriser l'application du
+schéma V. Le processus témoin charge la wheel installée et son seul rôle
+PostgreSQL, via TLS avec validation du nom du serveur. Le pilote conserve les clés
+de signature synthétiques en mémoire et génère le dossier nécessaire au
+service témoin après la préparation des bases.
+
+Le reçu `witness-lab-public.json` contient le résultat des 62 tests hors ligne,
+les confirmations PostgreSQL, les cas natifs et le résultat du nettoyage des
+objets réservés. Il exclut les scripts de provisionnement, les pièces privées
+du pilote et les journaux des conteneurs. W01 exerce le serveur témoin en mTLS
+et la persistance des réservations et des miroirs dans la base V. Le listener
+Vault reste hors du périmètre de ce scénario. Les essais inter-hôtes et la
+qualification d'un témoin de production restent à effectuer.
+
+L'[exécution du 22 novembre](https://github.com/pamolive/PamOlive-Platform/actions/runs/45075125056)
+sur `c8af05f` a passé les 62 tests installés, vérifié les deux clusters vierges,
+appliqué leurs deux schémas et confirmé le nettoyage. Elle a échoué au
+démarrage du pilote, avant le scénario mTLS. Le reçu public porte le SHA-256
+`792e7e157c6bf599424cd593820896bab6fdc3bd3ff704c064bd3c6428005a56`.
+Le reçu de version 2 indique la phase du pilote en cas d'arrêt. Sa valeur
+provient d'une liste fermée de phases et ne comprend aucun texte d'exception.
+Le [second essai](https://github.com/pamolive/PamOlive-Platform/actions/runs/45075774749)
+sur `5d48a5c` situe l'arrêt dans l'ouverture d'une connexion du pilote à
+PostgreSQL ou dans la vérification de sa liaison, avant la requête de contrôle
+des rôles. Les deux précontrôles, les deux provisionnements et le nettoyage
+sont confirmés. SHA-256 du reçu
+`206e760bfd5aaa88f93994cf626cfca84b5043b0610ebcf829e6722c4cc0ecad`.
+
+Les certificats PostgreSQL du laboratoire sont désormais signés en
+ECDSA P-256 avec SHA-256. PostgreSQL 17.12 dérive la liaison SCRAM au
+canal TLS à partir du condensat utilisé par la signature du certificat.
+Les connexions exigent cette liaison et conservent la validation du nom
+et de leur autorité propre. La prochaine exécution doit confirmer que la
+négociation et les requêtes des rôles aboutissent.
+[Code de libpq 17.12](https://github.com/postgres/postgres/blob/REL_17_12/src/interfaces/libpq/fe-secure-openssl.c#L390-L426)
+
+Sur [`68b4cd5`](https://github.com/pamolive/PamOlive-Platform/actions/runs/45076401798),
+le pilote franchit les neuf connexions PostgreSQL avec liaison SCRAM au
+certificat, la vérification des rôles et la préparation du témoin. La CI
+s'arrête pendant les essais natifs après préparation. La revue indépendante
+a identifié deux erreurs dans le client HTTP de test. Le contrôle compare
+désormais deux requêtes de liaison valides octet pour octet, dont la seconde
+porte un en-tête d'identité transmis. La première doit réussir et la seconde
+doit être explicitement refusée. SHA-256 du reçu de cet essai
+`186ba70f4772205dddfe59ae6ffe775d04d98a6f02987a270506ab74bc9b521c`.
+
+Le [run `fdd5f95`](https://github.com/pamolive/PamOlive-Platform/actions/runs/45076825039)
+confirme aussi le démarrage mTLS du témoin et l'activation des identités de
+test. L'exécution s'arrête dans la transaction de bout en bout. Le miroir
+tente de verrouiller une réservation alors que le rôle Vault ne dispose que
+de `SELECT` et `INSERT` sur cette table. PostgreSQL exige un droit de mise
+à jour pour ce verrou. Le miroir prend désormais le verrou sur l'état de
+commissionnement utilisé par le registre Vault et revalide la correspondance
+entre l'incarnation, l'empreinte et l'état ouvert. Le laboratoire vérifie aussi
+que le rôle ne peut toujours pas verrouiller les réservations.
+[Règles du verrouillage PostgreSQL 17](https://www.postgresql.org/docs/17/sql-select.html#SQL-FOR-UPDATE-SHARE)
+
+Le [run `8dfe562`](https://github.com/pamolive/PamOlive-Platform/actions/runs/45077348076)
+franchit la persistance des deux terminaux et des miroirs, les relectures à
+l'identique, la préparation d'une troisième liaison et le contrôle d'en-tête.
+Il s'arrête au groupe des refus TLS, avant le contrôle final des droits SQL.
+La comparaison TLS sur tampons mémoire a confirmé les refus en cas de
+certificat client absent, d'autorité inconnue ou de nom d'hôte divergent.
+SHA-256 du reçu du run
+`3ce9abb2e9c0d34bcae74bceef28c4c52897d2e3b16850810bb2c32f0f0c6abd`.
+
+Le [run `583cdec`](https://github.com/pamolive/PamOlive-Platform/actions/runs/45077750153)
+s'arrête au premier contrôle sans certificat client. L'essai local avec
+`asyncio` montre que le serveur peut fermer le transport pendant le refus
+du certificat avant l'envoi de l'alerte TLS. Le test accepte une fin de flux
+TLS précise ou une réinitialisation uniquement après établissement de TCP
+et pendant la négociation TLS 1.2. Deux connexions TLS 1.2 valides, avec
+validation du nom et de l'empreinte DER du serveur, encadrent le refus. Le
+parcours nominal conserve sa négociation TLS habituelle.
+
+## Plan des campagnes restantes
 
 Source W1 implémentée localement. La régression HTTP a été exécutée sur
 62 tests purs avant correction, avec un échec attendu, puis sur 62 tests après

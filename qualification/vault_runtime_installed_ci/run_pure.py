@@ -12,7 +12,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(ROOT))
 attempts = {}
 support = importlib.import_module("support")
-IDS_SHA = "46b13c9fdfbbccbd2d1e235bdc2c8e14a98fc702496fb3867b8597191a81e7e4"
+IDS_SHA = "17b72be1b33a6b5cb070f16ec175917cb844bab876b5ea170857681ebc675dda"
 PRODUCTION = {
     "pamolive_vault_runtime",
     "pamolive_vault_contracts",

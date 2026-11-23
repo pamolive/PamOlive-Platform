@@ -102,17 +102,21 @@
       "bytes": 6858,
       "sha256": "efae894120a464ec5f332d7e8f3b83e347af8abfe9f02d889c98715e1ed5e5e9"
     },
+    "wheel_transfer.py": {
+      "bytes": 3417,
+      "sha256": "867e36fcae623c653618acaa8b46d8b680d0f828bb1ce4ea02676d13969abf1a"
+    },
     "workload_entry.py": {
-      "bytes": 2936,
-      "sha256": "c31fef9c839d48e7ab7ca2dd4e69b1a54b99018933f7911789cb684c1b37d0de"
+      "bytes": 3866,
+      "sha256": "8556bbe648cca944e011b96330420848e365392cb5612631eeaf91803d5a1687"
     },
     "workload_host.py": {
-      "bytes": 10945,
-      "sha256": "9782ec5b5572bb0b62afd900ede64605d4bfd50c3c8b6338d414b1a433ab274e"
+      "bytes": 11706,
+      "sha256": "3680ed6999230772968526487e109f2076ebaa9f38e9e7c4422f43a031b1b40f"
     },
     "workload_prepare.py": {
-      "bytes": 5420,
-      "sha256": "567a36fe18beb5498b1e4c26a8d0a7584687e63838f857a3f638ebd069fd3e54"
+      "bytes": 5594,
+      "sha256": "a5dd0df535dffc85df99ff85ea977184977d90eed0290d0559fead21391a5655"
     },
     "workload_schema.py": {
       "bytes": 10554,
