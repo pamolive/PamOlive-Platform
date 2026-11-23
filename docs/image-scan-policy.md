@@ -84,6 +84,17 @@ correctifs exigent leur propre qualification.
 [ADR-041](adr-041-kerberos-trixie-backport.md) ·
 [ADR-042](adr-042-openssl-trixie-seven-fixes.md)
 
+Pour `util-linux`, un signalement admissible exige en plus le reçu
+v4 et les quatre empreintes de la recette et des sources. Les neuf
+paquets ont leurs versions binaires exactes, dont deux avec epoch.
+Les PURL OS portent la version source quand elle diffère de la
+version binaire. Le contrôle autorise `fixed_by_backport` pour
+CVE-2026-76642, CVE-2026-78408 et CVE-2026-78410.
+`code_not_present` est réservé à CVE-2026-78409 dans ce lot. La CI
+doit produire les empreintes exactes des signalements avant de les
+enregistrer dans la politique.
+[Preuves par avis](adr-043-util-linux-trixie-backport.md)
+
 ### Deux justifications GCC bornées
 
 `not_affected_build` est réservé à CVE-2026-95619, scope OS/gcc-14, distribution Debian et aux quatre paquets du groupe brut gcc-14-base/libatomic1/libgcc-s1/libstdc++6, de version14.2.0-19. Un paquet inattendu est refusé ; cette liste décrit l'attribution par paquet source du scanner, sans prétendre que chacun embarque l'allocateur vulnérable. La justification décrit une implémentation POSIX non affectée, sans prétendre que l'allocateur n'est jamais appelé. La preuve `gcc_evidence`, hashée et revue, suit `pamolive.gcc-finding-evidence.v1` et fixe :

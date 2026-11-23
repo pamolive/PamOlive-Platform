@@ -347,9 +347,18 @@ def inspect_bundle(directory, revision, *, kerberos_backport=False, openssl_back
             need(entry.get("type") == "symlink", code)
             verify_alias_target(entry.get("target"), canonical, code=code)
         if util_linux_backport:
+            material = modules["util-linux"]
             need(facts.attributes == dict.fromkeys(
-                attribute_paths, modules["util-linux"].SPECIAL_FILE_METADATA,
+                attribute_paths, material.SPECIAL_FILE_METADATA,
             ), "archive_util_linux_special_mode")
+            mount_libraries = {
+                name for name in facts.entries
+                if PurePosixPath(name).name == "libmount.so"
+                or PurePosixPath(name).name.startswith("libmount.so.")
+            }
+            mount_alias, mount_target = material.LIBRARIES["libmount1"]
+            need(mount_libraries == {material.LIBDIR + mount_alias, material.LIBDIR + mount_target},
+                 "archive_util_linux_libmount_copies")
         archive_sha = qualified_image.archive_hash(None, archive_stream=stream)
         after_fd, after_path = os.fstat(stream.fileno()), path.lstat()
         need(archive_sha == metadata["archive_sha256"]

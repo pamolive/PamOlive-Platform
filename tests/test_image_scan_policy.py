@@ -14,7 +14,13 @@ from unittest import TestCase
 from unittest.mock import patch
 from urllib.parse import quote
 
-from deploy import debian_refresh_inventory, native_sbom, openssl_trixie_materials, qualified_image
+from deploy import (
+    debian_refresh_inventory,
+    native_sbom,
+    openssl_trixie_materials,
+    qualified_image,
+    util_linux_trixie_materials,
+)
 from deploy import qualify_image_scan as gate
 from tests import test_krb5_inventory as krbtest
 
@@ -95,39 +101,53 @@ class ImageScanPolicyTests(TestCase):
         self.policy["findings"] = [entry]
         return entry
 
-    def trixie_exception(self, scope, cve="CVE-2026-124709"):
+    def trixie_exception(self, scope, cve="CVE-2026-124709", *, source="openssl"):
         entry = self.add_exception()
         self.os["matches"] = []
         report = self.os if scope == "os" else self.compiled
         distro = "13.8" if scope == "os" else "13"
         report["distro"]["version"] = distro
-        material = openssl_trixie_materials
-        for name in material.RUNTIME_PACKAGES:
-            row = self.match(cve, name=name, version=material.VERSION, source="openssl")
-            suffix = "&upstream=openssl" if scope == "compiled" or name != "openssl" else ""
+        if source == "util-linux":
+            material = util_linux_trixie_materials
+            versions = material.PACKAGE_VERSIONS
+        else:
+            material = openssl_trixie_materials
+            versions = dict.fromkeys(material.RUNTIME_PACKAGES, material.VERSION)
+        for name, version in versions.items():
+            row = self.match(cve, name=name, version=version, source=source)
+            upstream = source
+            if scope == "os" and version != material.VERSION:
+                upstream += "@" + material.VERSION
+            suffix = (f"&upstream={quote(upstream, safe='')}"
+                      if scope == "compiled" or name != source else "")
             row["artifact"]["purl"] = (
-                f"pkg:deb/debian/{name}@{quote(material.VERSION, safe='')}"
+                f"pkg:deb/debian/{name}@{quote(version, safe='')}"
                 f"?arch=amd64&distro=debian-{distro}{suffix}"
             )
             report["matches"].append(row)
         key, finding = next(iter(gate.high_groups(report, scope).items()))
-        receipt = "deploy/openssl-trixie-backport/qualification.json"
-        recipe = "deploy/openssl-trixie-backport/patches.txt"
+        directory = f"deploy/{source}-trixie-backport"
+        pins = gate.TRIXIE_BACKPORT_PINS[source]
+        materials = [name for name, _ in pins.get("materials", ())]
+        files = ("qualification.json", pins["recipe"][0], *materials)
         source_root = Path(__file__).resolve().parents[1]
-        for name in (receipt, recipe):
+        for basename in files:
+            name = f"{directory}/{basename}"
             target = self.repo / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes((source_root / name).read_bytes())
             entry["local_evidence"].append({"path": name, "sha256": gate.hash_file(target)})
+        disposition = "code_not_present" if cve == "CVE-2026-78409" else "fixed_by_backport"
         entry.update(
-            fingerprint=key, finding=finding, disposition="fixed_by_backport",
+            fingerprint=key, finding=finding, disposition=disposition,
             trixie_backport_receipt=entry["local_evidence"][1],
             conditions=[{"kind": "debian_trixie_backport", "sha256": material.SHA256}],
         )
-        entry["vendor_evidence"].append(gate.TRIXIE_BACKPORT_COMMITS["openssl"]["CVE-2026-124709"])
+        commits = gate.TRIXIE_BACKPORT_COMMITS[source]
+        entry["vendor_evidence"].append(commits.get(cve, next(iter(commits.values()))))
         return entry
 
-    def trixie_fixture(self):
+    def trixie_fixture(self, *, util_linux=False):
         receipt = openssl_trixie_materials.SHA256
         archive_digest = "a" * 64
         self.sbom["metadata"]["properties"].extend([
@@ -138,6 +158,12 @@ class ImageScanPolicyTests(TestCase):
             "image_config_id": self.config_id, "archive_sha256": archive_digest,
             "openssl_receipt_sha256": receipt,
         }
+        if util_linux:
+            report["util_linux_receipt_sha256"] = util_linux_trixie_materials.SHA256
+            self.sbom["metadata"]["properties"].append({
+                "name": "pamolive:sbom:util-linux-receipt-sha256",
+                "value": report["util_linux_receipt_sha256"],
+            })
         component = {
             "bom-ref": "synthetic-native-ref", "name": "synthetic ssl", "purl": "pkg:deb/ssl@1",
         }
@@ -195,6 +221,7 @@ class ImageScanPolicyTests(TestCase):
         with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_fix"):
             self.evaluate(**bundle)
         entry["finding"]["vulnerability_id"] = "CVE-2026-124709"
+        entry["vendor_evidence"].append(gate.TRIXIE_BACKPORT_COMMITS["openssl"]["CVE-2026-124709"])
         entry["finding"]["packages"][0].update(
             name="cryptography", type="python", purl="pkg:pypi/cryptography@50.0.2",
         )
@@ -215,6 +242,47 @@ class ImageScanPolicyTests(TestCase):
         self.sbom["components"].pop()
         subject["name"] = "changed"
         with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_sbom_components"):
+            self.evaluate(**bundle)
+
+    def test_util_linux_absent_code_requires_v4_and_correct_disposition(self):
+        entry = self.trixie_exception("os", "CVE-2026-78409", source="util-linux")
+        bundle, inspector = self.trixie_fixture(util_linux=True)
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        inspector.assert_called_once_with(
+            self.repo, bundle["revision"], kerberos_backport=True, openssl_backport=True,
+            util_linux_backport=True,
+        )
+        receipt = inspector.return_value.pop("util_linux_receipt_sha256")
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_image"):
+            self.evaluate(**bundle)
+        inspector.return_value["util_linux_receipt_sha256"] = receipt
+        entry["disposition"] = "fixed_by_backport"
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_disposition"):
+            self.evaluate(**bundle)
+        entry["disposition"] = "code_not_present"
+        entry["local_evidence"] = [
+            row for row in entry["local_evidence"] if not row["path"].endswith("postimage.sha256")
+        ]
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_receipt"):
+            self.evaluate(**bundle)
+
+    def test_util_linux_epoch_packages_require_the_exact_os_upstream_version(self):
+        entry = self.trixie_exception("os", "CVE-2026-78408", source="util-linux")
+        bundle, _ = self.trixie_fixture(util_linux=True)
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        artifact = next(row["artifact"] for row in self.os["matches"]
+                        if row["artifact"]["name"] == "login")
+        artifact["purl"] = artifact["purl"].split("%40", 1)[0]
+        entry["fingerprint"], entry["finding"] = next(iter(gate.high_groups(self.os, "os").items()))
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_package_identity"):
+            self.evaluate(**bundle)
+
+    def test_util_linux_compiled_receipt_must_match_the_archive(self):
+        self.trixie_exception("compiled", "CVE-2026-76642", source="util-linux")
+        bundle, _ = self.trixie_fixture(util_linux=True)
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        self.sbom["metadata"]["properties"].pop()
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_util_linux_sbom_binding"):
             self.evaluate(**bundle)
 
     def test_complete_empty_reports_with_positive_control_pass(self):
