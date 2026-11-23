@@ -23,6 +23,10 @@ paquets du même build dans une image jetable. Il vérifie l'état
 dpkg, les dépendances, les symboles versionnés et le chargeur,
 puis exécute les contrôles fonctionnels avec des données de
 locale et des noms réservés à la boucle locale.
+La fixture vérifie le repli sous `C.UTF-8` et le chargement d'un
+catalogue MO synthétique sous `fr_FR.UTF-8`. `localedef` produit
+la locale dans le répertoire temporaire de la fixture, à partir
+des sources du paquet déjà authentifié.
 Le résumé conserve les cas ignorés et les échecs que l'emballage
 Debian tolère. Un `FAIL`, un `UNRESOLVED` ou un `XPASS` produit
 `reported_failures`. Les détails `XFAIL` et `UNSUPPORTED` restent

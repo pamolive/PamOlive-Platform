@@ -43,6 +43,7 @@ RUN --network=none --mount=from=export,source=/evidence,target=/packages,ro \
  && apt-get check
 USER 65534:65534
 RUN --network=none --mount=from=export,source=/evidence,target=/packages,ro \
+    --mount=from=builder,source=/work/tree/localedata,target=/opt/glibc-localedata,ro \
     python -I -B -S /opt/glibc-checks/check.py stock
 
 FROM stock AS corrected
@@ -52,6 +53,7 @@ RUN --network=none --mount=from=export,source=/evidence,target=/packages,ro \
  && apt-get check
 USER 65534:65534
 RUN --network=none --mount=from=export,source=/evidence,target=/packages,ro \
+    --mount=from=builder,source=/work/tree/localedata,target=/opt/glibc-localedata,ro \
     python -I -B -S /opt/glibc-checks/check.py candidate
 
 FROM scratch AS glibc-trixie-backport-evidence

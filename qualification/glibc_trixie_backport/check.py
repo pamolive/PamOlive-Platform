@@ -8,6 +8,7 @@ import os
 import platform
 import re
 import stat
+import struct
 import subprocess
 import sys
 import tarfile
@@ -107,10 +108,14 @@ static int loopback_dns(void) {
     return success;
 }
 
-int main(void) {
-    if (!setlocale(LC_ALL, "C.UTF-8") || strcmp(nl_langinfo(CODESET), "UTF-8") ||
+int main(int argc, char **argv) {
+    if (argc != 2 || !bindtextdomain("pamolive-qualification", argv[1]) ||
+        !setlocale(LC_ALL, "C.UTF-8") || strcmp(nl_langinfo(CODESET), "UTF-8") ||
         strcmp(dgettext("pamolive-qualification", "synthetic message"), "synthetic message"))
         return 1;
+    if (!setlocale(LC_MESSAGES, "fr_FR.UTF-8") ||
+        strcmp(dgettext("pamolive-qualification", "synthetic message"), "message synthetique"))
+        return 5;
     pthread_t worker;
     int value = 0;
     void *result = NULL;
@@ -128,7 +133,7 @@ int main(void) {
         ((struct sockaddr_in *)addresses->ai_addr)->sin_addr.s_addr == htonl(INADDR_LOOPBACK);
     freeaddrinfo(addresses);
     if (!numeric_loopback || !loopback_dns()) return 4;
-    puts("locale gettext-fallback pthread local-nss loopback-dns");
+    puts("locale gettext-fallback gettext-translation pthread local-nss loopback-dns");
     return 0;
 }
 """
@@ -143,8 +148,9 @@ def require(condition, reason):
         raise Refused(reason)
 
 
-def run(*args):
-    result = subprocess.run(args, capture_output=True, env=ENV, check=False, timeout=35)
+def run(*args, locale_environment=None):
+    env = ENV if locale_environment is None else {**ENV, **locale_environment}
+    result = subprocess.run(args, capture_output=True, env=env, check=False, timeout=35)
     require(result.returncode == 0, f"{Path(args[0]).name} exited with status {result.returncode}")
     return result.stdout
 
@@ -285,7 +291,27 @@ def elf_contract(path):
     }
 
 
-def positive_smoke():
+def gettext_catalogue(work):
+    root = work / "catalogue"
+    messages = root / "fr" / "LC_MESSAGES"
+    messages.mkdir(parents=True)
+    original = b"synthetic message"
+    translated = b"message synthetique"
+    header_size = struct.calcsize("<7I")
+    descriptor_size = struct.calcsize("<2I")
+    text_offset = header_size + 2 * descriptor_size
+    # Normal revision-zero GNU MO with one entry and no hash table.
+    table = struct.pack(
+        "<11I",
+        0x950412DE, 0, 1, header_size, header_size + descriptor_size, 0, 0,
+        len(original), text_offset, len(translated), text_offset + len(original) + 1,
+    )
+    catalogue = messages / "pamolive-qualification.mo"
+    catalogue.write_bytes(table + original + b"\0" + translated + b"\0")
+    return root
+
+
+def positive_smoke(*, locale_sources="/opt/glibc-localedata"):
     maps = Path("/proc/self/maps").read_text(encoding="ascii")
     for library in (LIBC, LOADER):
         paths = {
@@ -305,8 +331,15 @@ def positive_smoke():
         locale.setlocale(locale.LC_CTYPE, previous_locale)
 
     with tempfile.TemporaryDirectory(prefix="glibc-qualification-") as directory:
-        source = Path(directory) / "fixture.c"
-        binary = Path(directory) / "fixture"
+        work = Path(directory)
+        source = work / "fixture.c"
+        binary = work / "fixture"
+        locales = work / "locales"
+        locales.mkdir()
+        run(
+            "/usr/bin/localedef", "--no-archive", "-i", "fr_FR", "-f", "UTF-8",
+            locales / "fr_FR.utf8", locale_environment={"I18NPATH": locale_sources},
+        )
         source.write_text(FIXTURE, encoding="ascii")
         run(
             "/usr/bin/gcc",
@@ -334,8 +367,14 @@ def positive_smoke():
                 len(paths) == 1 and Path(paths[0]).resolve(strict=True) == Path(library),
                 f"fixture resolves an unexpected {name}",
             )
-        kinds = "locale gettext-fallback pthread local-nss loopback-dns"
-        require(run(binary) == (kinds + "\n").encode("ascii"), "positive native fixture failed")
+        kinds = "locale gettext-fallback gettext-translation pthread local-nss loopback-dns"
+        require(
+            run(
+                binary, gettext_catalogue(work),
+                locale_environment={"LOCPATH": str(locales), "LANGUAGE": "fr"},
+            ) == (kinds + "\n").encode("ascii"),
+            "positive native fixture failed",
+        )
     return {"interpreter": interpreters[0], "checks": kinds.split()}
 
 
