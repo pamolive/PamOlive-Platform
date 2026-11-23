@@ -191,6 +191,33 @@ L'essai utilise un seul hôte et s'arrête à la consultation. Les sauvegardes
 physiques, la chaîne WAL, le PITR, la rotation du certificat applicatif
 et la reprise multi-hôte demandent des campagnes dédiées.
 
+## Restauration physique à un point nommé
+
+L'entrée CI `run_witness_pitr` utilise le même parcours du témoin fermé. Le
+contrôleur réserve des volumes distincts pour la sauvegarde et le stockage
+restauré. Il prend un `pg_basebackup`, avec WAL et manifeste SHA-256, avant
+de créer les preuves du scénario. PostgreSQL archive les segments qui
+contiennent les transactions suivantes.
+
+Après fermeture durable du contexte et du bail, le contrôleur ajoute un
+marqueur de contrôle et crée le point PostgreSQL nommé. Il ajoute un second
+marqueur après ce point et vérifie que les segments nécessaires sont
+présents dans l'archive. Seul un conteneur de copie sans réseau peut préparer
+le volume restauré après l'arrêt du PostgreSQL source. Il monte l'archive
+en lecture seule. Le serveur récupéré doit retrouver l'identifiant physique
+de la source, avancer de timeline et contenir uniquement le premier marqueur.
+
+Le contrôleur restreint les connexions avant de démarrer le témoin de
+consultation. Il vérifie l'intégrité des neuf tables, l'état fermé du bail,
+le reçu mTLS exact et le refus des routes d'écriture. La base Vault reste
+disponible et le PostgreSQL source reste arrêté. L'archive synthétique
+reste sur les volumes éphémères du runner. Les seuls éléments publiés
+sont les constats du scénario et du nettoyage.
+
+La sauvegarde et la reprise utilisent un seul hôte. La conservation durable
+des archives, la restauration multi-hôte et le rétablissement d'une autorité
+de service nécessitent leurs propres procédures et validations.
+
 ## Wheel W1 installée — 18 novembre 2026
 
 La [CI installée](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191)

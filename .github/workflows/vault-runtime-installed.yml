@@ -45,6 +45,10 @@ on:
         description: Stop the original witness database and recover into a fresh PostgreSQL cluster
         type: boolean
         default: false
+      run_witness_pitr:
+        description: Replay physical PostgreSQL WAL to the named witness closure point
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -55,7 +59,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     env:
-      VAULT_SOURCES_SHA: e7731372821292c91446fd66a1c5df86a2cc0ed8c9c94c672d13c075f057ffb2
+      VAULT_SOURCES_SHA: afc627f520ceecd62b1c2bef55f6f3d79fe7e7ed8593a8f01d6ef50b96d0409f
       VAULT_ASSETS_SHA: 71d26e9cc4b1c27465f875879fff28c0c657688f70f797b91f174f86fed6a1eb
       VAULT_PAYLOAD_SHA: d9e7ff40d7395a109833225b5051feb1f85f6dc9f7061a07c3fa97110bc6b4a6
     steps:
@@ -99,6 +103,7 @@ jobs:
           python -I -B -S qualification/vault_runtime_installed_ci/witness_postgres_adversarial.py
           python -I -B -S qualification/vault_runtime_installed_ci/witness_runner_adversarial.py
           python -I -B -S qualification/vault_runtime_installed_ci/witness_restore_storage_adversarial.py
+          python -I -B -S qualification/vault_runtime_installed_ci/witness_pitr_storage_adversarial.py
       - name: Require the installed consumer before running the synthetic lab
         if: inputs.run_synthetic_lab == true && inputs.transfer_verified_wheels != true
         run: exit 42
@@ -125,6 +130,9 @@ jobs:
         run: exit 42
       - name: Require a distinct closed restart scenario before changing witness clusters
         if: inputs.run_witness_restore_cluster == true && (inputs.run_witness_restart != true || inputs.run_witness_restore == true)
+        run: exit 42
+      - name: Require the dedicated database recovery scenario for PITR
+        if: inputs.run_witness_pitr == true && inputs.run_witness_restore_cluster != true
         run: exit 42
       - name: Seventeen existing wheel DATA regressions
         run: python -I -B qualification/vault_reservation/test_wheel.py
@@ -243,6 +251,7 @@ jobs:
           VAULT_WITNESS_RESTART: ${{ inputs.run_witness_restart }}
           VAULT_WITNESS_RESTORE: ${{ inputs.run_witness_restore }}
           VAULT_WITNESS_RESTORE_CLUSTER: ${{ inputs.run_witness_restore_cluster }}
+          VAULT_WITNESS_PITR: ${{ inputs.run_witness_pitr }}
         shell: bash
         run: |
           set -euo pipefail
@@ -261,6 +270,9 @@ jobs:
           fi
           if [[ "$VAULT_WITNESS_RESTORE_CLUSTER" == true ]]; then
             options+=(--restore-cluster)
+          fi
+          if [[ "$VAULT_WITNESS_PITR" == true ]]; then
+            options+=(--pitr)
           fi
           python -I -B -S qualification/vault_runtime_installed_ci/run_witness_lab.py \
             --work "$VAULT_WORK" "${options[@]}"

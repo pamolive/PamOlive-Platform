@@ -503,6 +503,10 @@ class WitnessLab(Lab):
     preparer_mounts = WITNESS_PREPARER_MOUNTS
     postgres_roles = frozenset({"w-postgres", "v-postgres"})
 
+    @staticmethod
+    def service_mounts(role):
+        return (Volume(role, "/lab"),)
+
     def reserve(self, kind, role, name):
         allowed = {
             "network": {"network"},
@@ -524,7 +528,7 @@ class WitnessLab(Lab):
         else:
             need(spec.chown is False)
             need((spec.user, spec.address, spec.alias) == self.endpoints[spec.role])
-            need(spec.volumes == (Volume(spec.role, "/lab"),))
+            need(spec.volumes == self.service_mounts(spec.role))
         need(not spec.environment or spec.role in self.postgres_roles)
         need(all(self.volumes.get(m.role) == self.reservation + "-" + m.role for m in spec.volumes))
         # Tmpfs never shadows a role mount or introduces a second fixture tree.
@@ -537,6 +541,7 @@ class WitnessLab(Lab):
         }
         need(len(dict(spec.tmpfs)) == len(spec.tmpfs))
         need(set(dict(spec.tmpfs)) <= targets.get(spec.role, set()))
+        need(set(dict(spec.tmpfs)).isdisjoint(m.destination for m in spec.volumes))
 
     def container_profile(self, item, spec):
         self.validate_spec(spec)
@@ -684,24 +689,104 @@ class WitnessClusterRestoreLab(WitnessRestoreLab):
             and state["ExitCode"] == 0
         )
 
-    def _require_restore_slot(self):
+    def _require_stopped_source(self):
         super()._require_restore_slot()
-        need(self._stopped_source is not None and self._started_target is not None)
+        need(self._stopped_source is not None)
         self._assert_source_stopped(*self._stopped_source)
+        return self._stopped_source[1]
+
+    def _require_restore_slot(self):
+        self._require_stopped_source()
+        need(self._started_target is not None)
         state = self.container_profile(*self._started_target)["State"]
         need(state["Status"] == "running" and state["Running"] is True and not state["OOMKilled"])
+
+    @staticmethod
+    def _target_tmpfs(source):
+        return source.tmpfs
 
     def start(self, item, spec, **options):
         if spec.role != self.role:
             return super().start(item, spec, **options)
-        super()._require_restore_slot()
-        need(self._stopped_source is not None and self._started_target is None)
-        self._assert_source_stopped(*self._stopped_source)
-        _, source = self._stopped_source
+        source = self._require_stopped_source()
+        need(self._started_target is None)
         need(
             (spec.image, spec.command, spec.tmpfs, spec.environment)
-            == (source.image, source.command, source.tmpfs, source.environment)
+            == (source.image, source.command, self._target_tmpfs(source), source.environment)
         )
         result = super().start(item, spec, **options)
         self._started_target = item, spec
         return result
+
+
+class WitnessPitrLab(WitnessClusterRestoreLab):
+    """Transfer one owned physical backup into a separate owned PGDATA."""
+
+    archive_role = "w-pitr-archive"
+    data_role = "w-pitr-data"
+    copy_role = "w-pitr-copy"
+    data_path = "/var/lib/postgresql/data"
+    endpoints = {**WitnessClusterRestoreLab.endpoints, copy_role: ("999:999", None, None)}
+    volume_roles = WitnessClusterRestoreLab.volume_roles | {archive_role, data_role}
+    container_roles = WitnessClusterRestoreLab.container_roles | {copy_role}
+    preparer_mounts = (
+        *WitnessClusterRestoreLab.preparer_mounts,
+        Volume(archive_role, "/stage/" + archive_role, False),
+        Volume(data_role, "/stage/" + data_role, False),
+    )
+    _completed_copy = None
+
+    @classmethod
+    def service_mounts(cls, role):
+        archive = Volume(cls.archive_role, "/backup", role != "w-postgres")
+        data = Volume(cls.data_role, cls.data_path, False)
+        if role == "w-postgres":
+            return Volume(role, "/lab"), archive
+        if role == cls.role:
+            return Volume(role, "/lab"), archive, data
+        if role == cls.copy_role:
+            return archive, data
+        return super().service_mounts(role)
+
+    @classmethod
+    def _target_tmpfs(cls, source):
+        need(cls.data_path in dict(source.tmpfs))
+        return tuple(mount for mount in source.tmpfs if mount[0] != cls.data_path)
+
+    def validate_spec(self, spec):
+        super().validate_spec(spec)
+        if spec.role == self.copy_role:
+            from lab.witness_pitr_storage import COPY_COMMAND
+
+            need(spec.command == ("/bin/sh", "-ec", COPY_COMMAND))
+
+    def _require_completed_copy(self):
+        need(self._completed_copy is not None)
+        state = self.container_profile(*self._completed_copy)["State"]
+        need(
+            state["Status"] == "exited"
+            and state["Running"] is False
+            and state["OOMKilled"] is False
+            and state["ExitCode"] == 0
+        )
+
+    def _require_restore_slot(self):
+        super()._require_restore_slot()
+        self._require_completed_copy()
+
+    def start(self, item, spec, **options):
+        if spec.role == self.copy_role:
+            from lab.witness_pitr_storage import COPY_READY
+
+            source = self._require_stopped_source()
+            need(self._completed_copy is None and self._started_target is None)
+            need(spec.image == source.image and options.get("attach") is True)
+            result = super().start(item, spec, **options)
+            need(result.returncode == 0)
+            need(result.stdout == COPY_READY and result.stderr == b"")
+            self._completed_copy = item, spec
+            self._require_completed_copy()
+            return result
+        if spec.role == self.role:
+            self._require_completed_copy()
+        return super().start(item, spec, **options)

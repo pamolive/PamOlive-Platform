@@ -402,6 +402,71 @@ class WitnessPostgresTests(unittest.TestCase):
         with self.assertRaises(pg.Refused):
             pg.prepare_restore_cluster(RUN, credentials=reused, tls=tls)
 
+    def test_26_pitr_archive_only_changes_the_witness_source(self):
+        baseline = pg.prepare_pair(**inputs(), recovery=True)
+        pitr = pg.prepare_pair(**inputs(), recovery=True, pitr=True)
+        source = pitr.clusters["wpg"].files
+        original = baseline.clusters["wpg"].files
+        self.assertEqual(
+            source["postgresql.conf"].raw,
+            original["postgresql.conf"].raw + pg.PITR_SOURCE.encode("ascii"),
+        )
+        self.assertIn(b'"/backup/wal/%f"', source["postgresql.conf"].raw)
+        self.assertIn(b'cmp -s "%p" "$dst" && sync -f /backup/wal', source["postgresql.conf"].raw)
+        self.assertIn(b"wal_keep_size='64MB'\n", source["postgresql.conf"].raw)
+        peer = b"local replication postgres peer\n"
+        hba = source["pg_hba.conf"].raw
+        self.assertEqual(hba.replace(peer, b""), original["pg_hba.conf"].raw)
+        self.assertLess(hba.index(peer), hba.index(b"local all all reject"))
+        self.assertEqual(pitr.clusters["vpg"].files, baseline.clusters["vpg"].files)
+        with self.assertRaises(pg.Refused):
+            pg.prepare_pair(**inputs(), pitr=True)
+        with self.assertRaises(pg.Refused):
+            pg.prepare_pair(**inputs(), recovery=True, restore_witness=True, pitr=True)
+
+    def test_27_pitr_target_keeps_observer_only_hba_and_promotes_at_named_point(self):
+        parameters = {
+            "credentials": {"postgres": "p" * 40, "usage_anchor_observer": "o" * 40},
+            "tls": inputs()["tls"]["wpg"],
+        }
+        logical = pg.prepare_restore_cluster(RUN, **parameters)
+        physical = pg.prepare_restore_cluster(RUN, **parameters, pitr=True)
+        self.assertEqual(physical.files["pg_hba.conf"].raw, logical.files["pg_hba.conf"].raw)
+        config = physical.files["postgresql.conf"].raw
+        self.assertIn(b'restore_command=\'cp "/backup/wal/%f" "%p"\'\n', config)
+        self.assertIn(b"recovery_target_name='pamolive_w01_closed'\n", config)
+        self.assertIn(b"recovery_target_action='promote'\n", config)
+        self.assertNotIn(b"local replication ", physical.files["pg_hba.conf"].raw)
+        with self.assertRaises(pg.Refused):
+            pg.restore_cluster_scripts(RUN, physical, "a" * 40)
+        with self.assertRaises(pg.Refused):
+            pg.restrict_physical_restore(RUN, logical, "a" * 40)
+
+    def test_28_pitr_restriction_requires_promoted_peer_and_retires_old_logins(self):
+        passwords = {"postgres": "p" * 40, "usage_anchor_observer": "o" * 40}
+        cluster = pg.prepare_restore_cluster(
+            RUN, credentials=passwords, tls=inputs()["tls"]["wpg"], pitr=True
+        )
+        script = pg.restrict_physical_restore(RUN, cluster, passwords["usage_anchor_observer"])
+        self.assertIn(b"inet_server_addr() IS NULL AND NOT pg_is_in_recovery()", script)
+        self.assertIn(b"current_setting('listen_addresses')='10.253.249.7'", script)
+        self.assertIn(b"\\if :w01_pitr_restrict\nREVOKE ALL PRIVILEGES ON DATABASE", script)
+        self.assertIn(b'REVOKE "usage_anchor_owner" FROM "usage_anchor_admin";', script)
+        for role in set(pg.ROLES["wpg"]) - {"usage_anchor_observer"}:
+            self.assertIn(f'ALTER ROLE "{role}" NOLOGIN PASSWORD NULL;'.encode(), script)
+        self.assertIn(b"ALTER ROLE postgres PASSWORD NULL;", script)
+        self.assertNotIn(b'ALTER ROLE "usage_anchor_observer" NOLOGIN', script)
+        self.assertIn(passwords["usage_anchor_observer"].encode(), script)
+        self.assertNotIn(passwords["postgres"].encode(), script)
+        self.assertIn(
+            f'ALTER DATABASE "w01_{RUN}_wpg" RENAME TO "w01_{RUN}_wpg_restored";'.encode(),
+            script,
+        )
+        self.assertIn(f"COMMIT;\n\\echo W01_{RUN}_wpr_PITR_RESTRICTED\n".encode(), script)
+        self.assertIn(b"\\else\nROLLBACK;\n\\echo W01_CLUSTER_REFUSED", script)
+        self.assertNotIn(b"CREATE SCHEMA", script)
+        self.assertNotIn(b"GRANT ", script)
+
 
 def main():
     result = unittest.TestResult()
