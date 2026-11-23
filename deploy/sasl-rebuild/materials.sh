@@ -37,6 +37,9 @@ case "${1-}" in
       > debian/pamolive-changelog
     cat debian/changelog >> debian/pamolive-changelog
     mv debian/pamolive-changelog debian/changelog
+    # The subsequent build runs as nobody, including from a private build context.
+    chmod 0755 "$inputs"
+    chmod 0444 "$inputs/materials.sh"
     chown -R 65534:65534 /opt/sasl-build
     ;;
   build)
