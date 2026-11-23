@@ -799,8 +799,17 @@ prouve la différence d'identité PostgreSQL et l'arrêt du cluster initial.
 Le témoin utilise les nouveaux justificatifs SQL de l'observateur. Il sert
 le reçu exact sous le certificat d'origine du slot, avec le bail fermé.
 La CI confirme les 77 tests installés, 35 scénarios natifs, six constats SQL
-et le nettoyage. Le PITR et la reprise multi-hôte restent à qualifier.
+et le nettoyage. Le scénario PITR suivant ajoute la sauvegarde physique.
 [CI de reprise](https://github.com/pamolive/PamOlive-Platform/actions/runs/45085143496)
+
+La [PR nº 40](https://github.com/pamolive/PamOlive-Platform/pull/40) qualifie
+sur `eb1eba8` un `pg_basebackup` vérifié et le rejeu des WAL au point nommé
+après fermeture du bail. Le contrôleur vérifie la nouvelle timeline et
+l'absence d'une écriture pourtant archivée après le point. Le témoin
+restauré rend le reçu terminal exact et refuse les écritures. La CI confirme
+77 tests installés, 35 scénarios natifs, neuf contrôles de restauration et
+le nettoyage. Les archives sont éphémères sur un seul runner.
+[CI PITR](https://github.com/pamolive/PamOlive-Platform/actions/runs/45086358011)
 
 Le parent `6c17536` conserve ses résultats distincts : PR fonctionnelle puis
 scan High en échec, push arrêté au timeout TLS d'acquisition avant assertion

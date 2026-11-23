@@ -1,5 +1,16 @@
 # Roadmap d’implémentation et qualification
 
+## Reprise physique du témoin à un point nommé — 23 novembre 2026
+
+La [PR nº 40](https://github.com/pamolive/PamOlive-Platform/pull/40) qualifie
+sur `eb1eba8` la sauvegarde physique, l'archivage des WAL et le PITR du témoin.
+Le rejeu s'arrête au point nommé après fermeture du bail. Une transaction
+archivée plus tard est absente. La consultation mTLS, la nouvelle timeline,
+les 77 tests installés et les 35 scénarios natifs sont vérifiés. Le test
+utilise un seul hôte et des archives éphémères. La conservation durable des
+archives et la reprise multi-hôte restent à qualifier.
+[CI PITR](https://github.com/pamolive/PamOlive-Platform/actions/runs/45086358011)
+
 ## Reprise après arrêt du cluster du témoin — 23 novembre 2026
 
 La [PR nº 39](https://github.com/pamolive/PamOlive-Platform/pull/39) qualifie
@@ -7,9 +18,9 @@ sur `8da2d76` la reprise logique sur un cluster PostgreSQL neuf, après arrêt
 du cluster source. Le témoin restauré consulte le reçu d'origine sous un
 compte SQL observateur doté de nouveaux justificatifs. Le bail reste fermé
 et le port PostgreSQL source reste inaccessible. Les 77 tests installés,
-35 scénarios natifs et six constats SQL passent. La sauvegarde physique,
-le PITR, la rotation du certificat applicatif et la reprise multi-hôte
-restent ouverts.
+35 scénarios natifs et six constats SQL passent. Le PITR ci-dessus prolonge
+cette preuve de restauration logique. La rotation du certificat applicatif
+et la reprise multi-hôte restent ouvertes.
 [CI de reprise](https://github.com/pamolive/PamOlive-Platform/actions/runs/45085143496)
 
 ## Restauration logique du témoin — 23 novembre 2026
