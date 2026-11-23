@@ -21,6 +21,7 @@ from qualification.p1g_headless import lab_support
 HERE = Path(__file__).resolve().parent
 PINS = json.loads((HERE / "chrome-bootstrap-pins.json").read_bytes())
 NOW = int(datetime(2026, 11, 16, 12, tzinfo=UTC).timestamp())
+OBSERVED_METADATA_TIME = int(datetime(2026, 11, 23, 12, tzinfo=UTC).timestamp())
 
 
 class PublicJournalTests(unittest.TestCase):
@@ -761,9 +762,8 @@ class ChromeBootstrapTests(unittest.TestCase):
                     patch.object(boot, "ROOT", base / "p1g-source"),
                     patch.object(boot.os, "getuid", return_value=1001, create=True),
                     patch.object(boot.os, "umask", return_value=0),
-                    patch.dict(boot.os.environ, env),
-                    patch.object(boot.time, "time", return_value=NOW),
-                    patch.object(scope.time, "time", return_value=NOW),
+                    patch.dict(boot.os.environ, env, clear=True),
+                    patch.object(boot.time, "time", return_value=OBSERVED_METADATA_TIME),
                     patch.object(boot, "context", return_value=(PINS, captured)),
                     patch.object(
                         boot,
@@ -819,7 +819,7 @@ class ChromeBootstrapTests(unittest.TestCase):
     def test_received_metadata_has_exact_stanza_and_seven_day_freshness(self):
         release = (HERE / "chrome_materials/Release").read_bytes()
         packages = (HERE / "chrome_materials/Packages").read_bytes()
-        timestamp = boot.release_check(release, packages, NOW)
+        timestamp = boot.release_check(release, packages, OBSERVED_METADATA_TIME)
         boot.package_check(packages, PINS["package"])
         self.assertEqual(boot.release_check(release, packages, timestamp + 604800), timestamp)
         self.assertEqual(boot.release_check(release, packages, timestamp - 300), timestamp)
@@ -827,7 +827,7 @@ class ChromeBootstrapTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "freshness"):
                 boot.release_check(release, packages, now)
         with self.assertRaises(ValueError):
-            boot.release_check(release, b"changed", NOW)
+            boot.release_check(release, b"changed", OBSERVED_METADATA_TIME)
 
     def test_wrong_or_duplicate_package_path_version_arch_refuses(self):
         raw = (HERE / "chrome_materials/Packages").read_bytes()
@@ -1802,13 +1802,15 @@ class RootAptCacheTests(unittest.TestCase):
                     if self_action == "--simulate":
                         if failure == "simulation":
                             raise ValueError("command_UNKNOWN")
+                        version = PINS["package"]["Version"]
                         return (
-                            b"Inst google-chrome-stable (157.0.8103.78-1)\n"
-                            b"Conf google-chrome-stable (157.0.8103.78-1)\n"
-                        )
+                            f"Inst google-chrome-stable ({version})\n"
+                            f"Conf google-chrome-stable ({version})\n"
+                        ).encode()
                     return b""
                 events.append("query")
-                return b"google-chrome-stable\n157.0.8103.78-1\namd64\ninstall ok installed\n"
+                version = PINS["package"]["Version"]
+                return f"google-chrome-stable\n{version}\namd64\ninstall ok installed\n".encode()
 
         def copy(private, source, expected):
             events.append("copy")
@@ -1837,6 +1839,8 @@ class RootAptCacheTests(unittest.TestCase):
             "GITHUB_RUN_ID": "123",
             "GITHUB_RUN_ATTEMPT": "1",
             "SUDO_UID": "1001",
+            "GITHUB_REF": "",
+            "GITHUB_HEAD_REF": "",
         }
         with (
             patch.object(boot, "Path", MP),
@@ -1846,7 +1850,7 @@ class RootAptCacheTests(unittest.TestCase):
             patch.dict(boot.os.environ, env),
             patch.object(boot.os, "getuid", return_value=0, create=True),
             patch.object(boot.os, "umask", return_value=0),
-            patch.object(boot.time, "time", return_value=NOW),
+            patch.object(boot.time, "time", return_value=OBSERVED_METADATA_TIME),
             patch.object(boot.time, "monotonic", return_value=0),
             patch.object(boot, "context", return_value=(PINS, captured)),
             patch.object(boot, "load", side_effect=[support, gpg, scope_model, native]),
@@ -1905,6 +1909,10 @@ class RootAptCacheTests(unittest.TestCase):
         tree = ast.parse(script)  # No module/native recipe execution.
         self.assertLess(script.index("rc=100"), script.index("cache.mkdir(mode=0o700)"))
         self.assertIn("assert exact_error in negative.splitlines(keepends=True)", script)
+        self.assertIn(
+            'support.guard(os.environ, uid=int(os.environ["SUDO_UID"]), stage_only=True)',
+            script,
+        )
         self.assertIn("== status_before", script)
         self.assertIn('"--simulate"', script)
         self.assertIn('"--assume-yes"', script)
@@ -1934,7 +1942,7 @@ class RootAptCacheTests(unittest.TestCase):
             "GITHUB_ACTIONS": "true",
             "GITHUB_REPOSITORY": "pamolive/PamOlive-Platform",
             "GITHUB_EVENT_NAME": "push",
-            "GITHUB_REF": "refs/heads/agent/p1-g-headless",
+            "GITHUB_REF": "refs/heads/" + lab_support.STAGE_BRANCH,
             "GITHUB_SHA": "a" * 40,
             "GITHUB_RUN_ID": "123",
             "GITHUB_RUN_ATTEMPT": "1",
@@ -1948,7 +1956,7 @@ class RootAptCacheTests(unittest.TestCase):
             (HERE / "lab_support.py").read_bytes(),
             HERE / "lab_support.py",
         )
-        support.guard(handed_off, platform="linux", uid=1001)
+        support.guard(handed_off, platform="linux", uid=1001, stage_only=True)
         for key, code in (
             ("DATABASE_URL", "loopback_disposable_database_required"),
             ("PAMOLIVE_TEST_DATABASE_NAME", "fresh_test_database_required"),
@@ -1956,7 +1964,7 @@ class RootAptCacheTests(unittest.TestCase):
             missing = dict(handed_off)
             del missing[key]
             with self.assertRaisesRegex(ValueError, code):
-                support.guard(missing, platform="linux", uid=1001)
+                support.guard(missing, platform="linux", uid=1001, stage_only=True)
         # Execute only the isolated DATA reader with memory OS/FD doubles.
         reader = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "read")
         model = CacheMemory()

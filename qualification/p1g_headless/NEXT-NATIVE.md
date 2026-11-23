@@ -1,4 +1,18 @@
-# Concrete next raccord — full P1-G remains the objective
+# P1-G native browser acceptance
+
+The guarded worker offers a separate `--native-ssh` case for the admitted
+disposable Linux job. It binds the launch, stop and recording sources to
+the committed context. The case verifies the real target public key before
+the authority snapshot, obtains the two browser votes, launches through
+WebAuthn and matches the WSS UUID to the exact intent, endpoint and browser
+session. It sends the keyboard sentinel and submits the stop from another
+tab. It requires WSS closure, closure of the SSH terminal connection and an
+authorized playback of the integrity-checked partial capture.
+
+The combined Linux runner must admit the browser and the installed native
+runtime for that invocation. A browser-only preflight, the loopback unit
+tests and the standalone native transport gates each cover separate
+prerequisites. The combined browser test has yet to run.
 
 The present test is one increment, not a substitute for full P1-G. It has two
 separate subjects: a browser-created PAM intention with two genuine UI votes;
@@ -10,22 +24,22 @@ The next native case can reuse P1GBrowser.login/enroll/request/votes and overrid
 only after_approval and install_websocket_policy plus the server/endpoint
 fixture. No product authentication or synthetic assertion generator is needed.
 
-1. Reuse the owned native environment from tests/test_pam_relay_e2e.py:
-   RelayHarness.setUp owns guacd, Uvicorn and their termination; exercise creates
-   an actual AsyncSSH server and awaits server.close/wait_closed. Extract a
-   **test-fixture-only** context around that lifetime, leaving its existing tests
-   unchanged. Expose the assigned loopback port, generated host key and synthetic
-   target credential to the SERVER fixture only. Do not reuse its pre-authorized
-   lease/assurance as a browser action: the new driver must create its own request,
-   two votes and launch through the shipped forms and pam-trust.js.
-2. Replace the initial WSGI TLS thread with TLS Uvicorn serving config.asgi plus
-   Django's ASGI static-files wrapper. Reuse the same private CA/server-key/NSS
-   trust handling; configure the exact HTTPS/WSS origin and synthetic RP ID.
-   The current WSGI thread cannot serve WebSockets. Do not treat a mocked socket
-   or driver WebSocket interception as the real transport. The native follow-up
-   disables the current fail-on-any-WebSocket test policy only inside its owned
-   fixture network, permits the actual same-origin /ws/pam/<connection-id>/ path,
-   and observes native browser socket closure.
+1. Reuse `tests.fixtures.ssh.SSHFixture`, which owns the loopback listener and
+   accepts only generated test credentials. It reports shell opening, a fixed
+   round trip and closure of the transport that owns that shell. Fixture cleanup
+   cannot supply the closure signal. RelayHarness already uses this peer and
+   still owns guacd and Uvicorn. In the browser lab, set up and probe the target
+   before the test authority snapshot is frozen. Keep the private target
+   credential on the server side. The browser must create its own request, two
+   votes and launch through the shipped forms and pam-trust.js.
+2. Reuse `tests.fixtures.asgi.TLSASGIServer` in the separate browser native case.
+   It owns a TLS listener on a kernel-selected loopback port and serves the
+   static wrapper and the real `config.asgi` application. The synthetic SSH
+   and RDP test clients use certificate verification for their WSS connection.
+   Pass the browser lab leaf and key to this listener. Keep the private NSS
+   trust database and use the exact DNS name and port for the HTTPS origin and
+   synthetic RP ID. The browser case must allow only the actual same-origin
+   `/ws/pam/<connection-id>/` socket and observe its closure.
 3. Use the delivered native-test image for guacd/FreeRDP and its ABI closure;
    do not extract Debian-native ELF onto the Ubuntu host and assume ABI equality.
    A test-only derivative with browser tooling is one concrete execution context.
@@ -40,8 +54,11 @@ fixture. No product authentication or synthetic assertion generator is needed.
    then exercise the fixed keyboard/output sentinel already used by RelayHarness.
    Target passwords/private keys never enter the page; the ordinary short-lived
    application session capability must not be retained in artifacts.
-5. Exercise actual UI stop through the existing pam-stop form, then independently
-   await WSS closure, native SSH connection closure and ended_at/end_reason.
+5. Keep the player open. Open the relay detail and its pam-stop form in a second
+   tab of the same browser context, since navigating the player away would close
+   the client socket on pagehide. Submit the form, then independently await WSS
+   closure, native SSH connection closure, stop_requested_at, ended_at and
+   end_reason=stop_requested.
    Reuse backend verification of RecordingChunk/recording_page from
    RelayHarness.exercise: bounded sequence/hash chain, byte totals, completion
    and absence of fixture-secret/PRIVATE KEY/4.argv. Do not infer closure from a
@@ -65,11 +82,9 @@ fixture. No product authentication or synthetic assertion generator is needed.
    server pin, protocol restrictions and encrypted recording oracle. Start with
    SSH to obtain a small real closure receipt; do not transfer that success to RDP.
 
-Run shape after independent source/profile review: the existing Platform
-native-test build and gates remain mandatory; add the native browser case to a
-separate test-only target/job at the exact same source head. The scoped P1-G job
-must return a new artifact with actual start/transport/end/recording facts.
-No such case, image allocation, native process, browser, SQL or artifact was run
-in this preparation. The next prerequisite is the explicit execution-context/
-sandbox decision above, followed by this narrow fixture-lifetime extraction;
-there is no new product route or new service/ADR required to invent authority.
+The existing Platform native-test build continues to exercise SSH and RDP.
+The browser job needs its own admitted Linux context at the same source head.
+Its native receipt requires actual opening, keyboard input, administrative
+stop, both transport closures and verified partial capture playback. Local
+configuration and fixture tests exercise the synthetic target and key exchange.
+The browser and native engine have yet to run together in that job.

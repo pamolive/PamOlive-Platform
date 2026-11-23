@@ -15,6 +15,34 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 from qualification.p1g_headless import lab_support as support  # noqa: E402
 
+NATIVE_INPUTS = (
+    "qualification/p1g_headless/browser_case.py",
+    "qualification/p1g_headless/native_browser_case.py",
+    "qualification/p1g_headless/run_lab.py",
+    "qualification/p1g_headless/lab_support.py",
+    "tests/fixtures/asgi.py",
+    "tests/fixtures/guacd.py",
+    "tests/fixtures/ssh.py",
+    "config/asgi.py",
+    "platform_modules/pam/broker.py",
+    "platform_modules/pam/context.py",
+    "platform_modules/pam/recordings.py",
+    "platform_modules/pam/sessions.py",
+    "platform_modules/pam/views.py",
+    "platform_core/static/platform_core/pam.js",
+    "platform_core/static/platform_core/vendor/guacamole-1.6.0.min.js",
+    "templates/governance/pam.html",
+    "templates/pam/detail.html",
+    "templates/pam/session.html",
+)
+ISOLATED_INPUTS = (
+    "qualification/p1g_headless/native_lab.py",
+    "qualification/p1g_headless/chrome_sandbox_probe.py",
+    "qualification/p1g_headless/postgres_namespace.py",
+    "qualification/p1g_headless/guacd_namespace.py",
+)
+STOP_PHASE = "same_relay_stop_WSS_SSH_and_verified_partial_capture"
+
 
 def paths():
     root = Path(os.environ["RUNNER_TEMP"]).resolve(strict=True)
@@ -22,8 +50,9 @@ def paths():
     return root / ("p1g-private-" + name), root / ("p1g-headless-" + name)
 
 
-def worker(private):
+def worker(private, *, native_ssh=False, isolated=False):
     need = support.need
+    need(not isolated or native_ssh, "isolated_worker_requires_native_case")
     row = private.lstat()
     need(
         stat.S_ISDIR(row.st_mode)
@@ -42,20 +71,47 @@ def worker(private):
         "skips": 0,
         "full_P1G_qualified": False,
         "OS_or_VM_resources_released": False,
+        "case": "native_ssh" if native_ssh else "portal",
     }
     result = None
     try:
         value["phase"] = "source_binding"
         value["source"] = support.source_binding(
-            REPO, Path(os.environ["RUNNER_TEMP"]) / "p1g-source.json", os.environ["GITHUB_SHA"]
+            REPO, Path(os.environ["RUNNER_TEMP"]) / "p1g-source.json", os.environ["GITHUB_SHA"],
+            additional=(
+                NATIVE_INPUTS + ISOLATED_INPUTS if isolated else NATIVE_INPUTS if native_ssh else ()
+            ),
         )
         value["phase"] = "resource_preflight"
         value["resources_before_browser"] = support.resources(private)
         value["phase"] = "chrome_tool_preflight"
-        chrome_preflight = support.tool_pin(Path("/opt/google/chrome/chrome"))
+        if isolated:
+            from qualification.p1g_headless import chrome_sandbox_probe as admitted_chrome
+            from qualification.p1g_headless.guacd_namespace import PORT
+
+            chrome = private / "chrome/chrome"
+            chrome_preflight = support.tool_pin(chrome, root_owner=False)
+            need(
+                chrome_preflight["sha256"] == admitted_chrome.CHROME_SHA
+                and chrome_preflight["bytes"] == admitted_chrome.CHROME_BYTES,
+                "isolated_chrome_pin",
+            )
+        else:
+            _, chrome_preflight = support.chrome_target(REPO)
+        if native_ssh and not isolated:
+            value["phase"] = "guacd_tool_preflight"
+            from tests.fixtures.guacd import BINARY
+
+            value["guacd_tool"] = support.tool_pin(BINARY)
         value["phase"] = "TLS_setup"
         tls = support.prepare_tls(private, REPO)
         tls["browser_binary_pin"] = chrome_preflight
+        tls["browser_mode"] = os.environ.get("P1G_CHROME_MODE", "legacy-installed-v2")
+        if isolated:
+            tls.update(
+                isolated_chrome=chrome, isolated_chrome_version=admitted_chrome.BROWSER_VERSION,
+                isolated_guacd_port=PORT,
+            )
         os.environ["DJANGO_SETTINGS_MODULE"] = "config.settings"
         import django
 
@@ -65,6 +121,11 @@ def worker(private):
 
         from qualification.p1g_headless import browser_case
 
+        selected = browser_case.P1GBrowser
+        if native_ssh:
+            from qualification.p1g_headless.native_browser_case import NativeSSHBrowser
+
+            selected = NativeSSHBrowser
         browser_case.TLS.update(tls)
         value["phase"] = "fresh_PostgreSQL_precondition"
         connection = connections["default"]
@@ -101,7 +162,7 @@ def worker(private):
         runner = DiscoverRunner(verbosity=0, interactive=False, keepdb=False)
         runner.test_runner = PrivateRunner
         value["phase"] = "browser_increment"
-        failed = runner.run_tests(["qualification.p1g_headless.browser_case.P1GBrowser"])
+        failed = runner.run_tests([selected.__module__ + "." + selected.__name__])
         value.update(browser_case.FACTS)
         value["tests"], value["failures"], value["errors"], value["skips"] = (
             result.testsRun,
@@ -120,18 +181,27 @@ def worker(private):
         value["fresh_test_database_absent_after_runner"] = after[2] is None
         value["base_database_OID_preserved"] = before[1] == after[1]
         value["TLS"] = {"CA_DER_SHA256": tls["CA_DER_SHA256"], "NSS_commands": tls["NSS_commands"]}
-        value["live_server_thread_closed"] = not browser_case.P1GBrowser.server_thread.is_alive()
+        server = getattr(selected, "server_thread", None)
+        value["live_server_thread_closed"] = server is not None and not server.is_alive()
         need(
             failed == 0
             and value["tests"] == 1
             and not value["skips"]
             and value["SDK_cleanup_completed"] is True
             and value["browser_E2E_executed"] is True
+            and support.sandbox_receipt(value["browser_sandbox"])
             and value["live_server_thread_closed"] is True
             and value["fresh_test_database_absent_after_runner"] is True
             and value["base_database_OID_preserved"] is True,
             "increment_not_complete",
         )
+        if native_ssh:
+            need(
+                value["native_PAM_transport_observed"] is True
+                and STOP_PHASE in value["observed_UI_phases"]
+                and (isolated or value["guacd_tool"] == support.tool_pin(BINARY)),
+                "native_ssh_incomplete",
+            )
         value["state"] = "OBSERVED_SYNTHETIC_INCREMENT_ONLY"
     except BaseException as error:
         value["error_class"] = type(error).__name__
@@ -149,6 +219,7 @@ def worker(private):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker", action="store_true")
+    parser.add_argument("--native-ssh", action="store_true")
     args = parser.parse_args()
     support.guard(os.environ)
     os.umask(0o077)
@@ -158,7 +229,7 @@ def main():
         "committed_source_directory_required",
     )
     if args.worker:
-        return worker(private)
+        return worker(private, native_ssh=args.native_ssh)
     private.mkdir(mode=0o700)
     public.mkdir(mode=0o700)
     worker_home = private / "worker-home"
@@ -178,6 +249,7 @@ def main():
         "PAMOLIVE_TEST_DATABASE_NAME",
         "DATABASE_URL",
         "RUNNER_TEMP",
+        "P1G_CHROME_MODE",
     }
     env = {key: os.environ[key] for key in keys if key in os.environ}
     env.update(
@@ -201,8 +273,11 @@ def main():
         ).encode(),
     )
     try:
+        command = [sys.executable, "-I", "-B", str(Path(__file__).resolve()), "--worker"]
+        if args.native_ssh:
+            command.append("--native-ssh")
         outcome = io_helper.run_capped(
-            [sys.executable, "-I", "-B", str(Path(__file__).resolve()), "--worker"],
+            command,
             env=env,
             cwd=str(REPO),
             timeout=660,
@@ -230,7 +305,8 @@ def main():
                 in {"FAILED_OR_UNKNOWN", "OBSERVED_SYNTHETIC_INCREMENT_ONLY"},
                 "worker_diagnostic_shape",
             )
-            support.fresh_write(public / "worker-data.json", raw)
+            if packet["state"] == "FAILED_OR_UNKNOWN":
+                support.fresh_write(public / "worker-data.json", raw)
         support.need(
             outcome.ok
             and outcome.spawn_attempted
@@ -245,9 +321,12 @@ def main():
             report.get("schema") == "pamolive.p1g-browser-worker/1"
             and report.get("state") == "OBSERVED_SYNTHETIC_INCREMENT_ONLY"
             and report.get("tests") == 1
+            and report.get("case") == ("native_ssh" if args.native_ssh else "portal")
+            and support.sandbox_receipt(report.get("browser_sandbox"))
             and report.get("full_P1G_qualified") is False,
             "worker_packet_refused",
         )
+        support.fresh_write(public / "worker-data.json", raw)
         support.fresh_write(public / "report.json", raw)
         return 0
     except BaseException as error:

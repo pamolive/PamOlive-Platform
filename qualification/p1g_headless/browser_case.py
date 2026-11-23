@@ -35,6 +35,7 @@ from tests import test_identity_pam_journey as fixture
 
 FACTS = {
     "phase": "not_started",
+    "browser_sandbox": None,
     "browser_E2E_executed": False,
     "full_P1G_qualified": False,
     "target_system_contacted": False,
@@ -47,6 +48,13 @@ FACTS = {
     "real_provider_effect_proved": False,
 }
 TLS = {}
+
+
+def browser_target():
+    if "isolated_chrome" in TLS:
+        binary = TLS["isolated_chrome"]
+        return binary, support.tool_pin(binary, root_owner=False)
+    return support.chrome_target(Path(__file__).resolve().parents[2], mode=TLS["browser_mode"])
 
 
 class TLSLiveServer(LiveServerThread):
@@ -420,10 +428,9 @@ class P1GBrowser(StaticLiveServerTestCase):
         node = Path(
             importlib.metadata.distribution("playwright").locate_file("playwright/driver/node")
         )
-        node_before = support.tool_pin(node, root_owner=False, cap=128 * 1024**2)
+        node_before = support.playwright_node_pin(node)
         FACTS["SDK_Node_tool"] = node_before
-        binary = Path("/opt/google/chrome/chrome")
-        before = support.tool_pin(binary)
+        binary, before = browser_target()
         self.assertEqual(before, TLS["browser_binary_pin"])
         clean_env = {
             "HOME": TLS["browser_home"],
@@ -445,8 +452,16 @@ class P1GBrowser(StaticLiveServerTestCase):
             )
             self.assertRegex(browser.version, r"^[0-9]{1,3}(\.[0-9]{1,5}){3}$")
             self.assertGreaterEqual(int(browser.version.split(".", 1)[0]), 146)
+            if TLS["browser_mode"] == "test-bundle-v3":
+                self.assertEqual(browser.version, support.BUNDLE_BROWSER_VERSION)
+            if "isolated_chrome" in TLS:
+                self.assertEqual(browser.version, TLS["isolated_chrome_version"])
             FACTS["browser_version"] = browser.version
             FACTS["browser_tool"] = before
+            self.phase("active_browser_sandbox")
+            FACTS["browser_sandbox"] = support.observe_browser_sandbox(
+                browser, binary, namespace_only="isolated_chrome" in TLS
+            )
             pages = []
             for actor in [self.operator, *(actor for actor, _ in self.reviewers)]:
                 self.phase("UI_password_TOTP_and_enrollment")
@@ -461,7 +476,9 @@ class P1GBrowser(StaticLiveServerTestCase):
             self.revoke_local_right_UI(browser)
             self.assertEqual(self.errors, [])
             self.assertEqual(self.denied, [])
-            self.assertEqual(support.tool_pin(binary), before)
+            final_binary, final_pin = browser_target()
+            self.assertEqual(final_binary, binary)
+            self.assertEqual(final_pin, before)
             FACTS["browser_E2E_executed"] = True
         finally:
             cleanup_errors = []
@@ -479,7 +496,7 @@ class P1GBrowser(StaticLiveServerTestCase):
             try:
                 playwright.stop()
                 self.assertEqual(
-                    support.tool_pin(node, root_owner=False, cap=128 * 1024**2), node_before
+                    support.playwright_node_pin(node), node_before
                 )
             except Exception:
                 cleanup_errors.append("driver_stop_unknown")

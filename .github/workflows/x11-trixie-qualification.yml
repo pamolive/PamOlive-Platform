@@ -1,0 +1,55 @@
+name: X11 and Xrender Trixie source qualification
+
+on:
+  push:
+    branches: [agent/x11-trixie-qualification]
+
+permissions:
+  contents: read
+
+jobs:
+  x11-trixie-amd64:
+    if: github.repository == 'pamolive/PamOlive-Platform'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Rebuild X11 and Xrender and compare headless rendering
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          umask 077
+          archive="$RUNNER_TEMP/pamolive-x11-context-$GITHUB_RUN_ID.tar"
+          context="$RUNNER_TEMP/pamolive-x11-context-$GITHUB_RUN_ID"
+          evidence="$RUNNER_TEMP/pamolive-x11-evidence-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test ! -e "$evidence"
+          (
+            set -o noclobber
+            git archive "$GITHUB_SHA" deploy/sasl-rebuild/forky.sources qualification/x11_trixie_build > "$archive"
+          )
+          mkdir -m 700 "$context"
+          tar --extract --file "$archive" --directory "$context" --no-same-owner
+          docker build --platform=linux/amd64 --no-cache --progress=plain \
+            --target x11-qualification --output "type=local,dest=$evidence" \
+            --file "$context/qualification/x11_trixie_build/Dockerfile" "$context"
+          cmp <(find "$evidence" -mindepth 1 -printf '%f\n' | LC_ALL=C sort) - <<'EXPECTED'
+          baseline.json
+          candidate.json
+          libx11-6.deb
+          libx11-data.deb
+          libx11.buildinfo
+          libxrender.buildinfo
+          libxrender1.deb
+          qualification.json
+          EXPECTED
+          python3 -I -B -S "$context/qualification/x11_trixie_build/check.py" compare "$evidence" \
+            | cmp "$evidence/qualification.json" -
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: x11-trixie-qualification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pamolive-x11-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 7

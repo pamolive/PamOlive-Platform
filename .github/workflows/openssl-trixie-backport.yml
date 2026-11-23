@@ -1,0 +1,53 @@
+name: OpenSSL Trixie seven-fix qualification
+
+on:
+  push:
+    branches: [agent/openssl-trixie-seven-fixes, agent/openssl-trixie-product-runtime]
+
+permissions:
+  contents: read
+
+jobs:
+  openssl-trixie-backport:
+    if: github.repository == 'pamolive/PamOlive-Platform'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Rebuild Debian OpenSSL and qualify the same native ABI and TLS runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          umask 077
+          context=$(mktemp -d "$RUNNER_TEMP/openssl-trixie-context.XXXXXX")
+          evidence="$RUNNER_TEMP/openssl-trixie-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          test ! -e "$evidence"
+          git archive "$GITHUB_SHA" qualification/openssl_trixie_backport \
+            deploy/openssl-trixie-backport \
+            deploy/krb5-remediation/abi_data.py deploy/krb5-remediation/bounded_io.py \
+            deploy/krb5-remediation/common.py deploy/krb5-remediation/legacy_inventory.py \
+            deploy/krb5-remediation/source_model.py \
+            | tar -x -C "$context" --no-same-owner
+          docker build --platform linux/amd64 --no-cache --progress plain \
+            --target openssl-trixie-backport-evidence --output "type=local,dest=$evidence" \
+            --file "$context/qualification/openssl_trixie_backport/Dockerfile" "$context"
+          cmp <(find "$evidence" -mindepth 1 -printf '%f\n' | LC_ALL=C sort) - <<'EXPECTED'
+          buildinfo
+          candidate.json
+          libssl-dev.deb
+          libssl3t64.deb
+          openssl-provider-legacy.deb
+          openssl.deb
+          qualification.json
+          stock.json
+          test-summary.txt
+          EXPECTED
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: openssl-trixie-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/openssl-trixie-${{ github.run_id }}-${{ github.run_attempt }}/
+          retention-days: 7
+          if-no-files-found: error

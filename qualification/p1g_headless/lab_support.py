@@ -13,8 +13,16 @@ from urllib.parse import urlsplit
 
 HOST = "pam.example.test"
 BRANCH = "agent/p1-g-headless"
+STAGE_BRANCH = "agent/p1g-chrome158-private-stage"
+NATIVE_BRANCH = "agent/p1g-native-portal-isolated-ci"
 BOUNDED_SHA = "72b778ad6e441744e8bd9ac84ba7f47b1f6b577b7885a2e0daf3b4584cc0150a"
 SDK_VERSION = "1.65.2"
+RELAY_PATH = r"/ws/pam/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})/"
+SDK_NODE_BYTES = 150348872
+SDK_NODE_SHA = "d931c649850ffa7155b8ceffb400dc916ef325866e509cc52ae36e33e8fbb9a9"
+BUNDLE_BROWSER_VERSION = "157.0.8103.78"
+SANDBOX_URL = "chrome://sandbox/"
+APPARMOR_MODES = {"enforce", "complain", "unconfined"}
 
 
 def need(value, code):
@@ -22,7 +30,18 @@ def need(value, code):
         raise ValueError(code)
 
 
-def guard(env, *, platform=sys.platform, uid=None):
+def relay_socket_pattern(origin):
+    """Return the single WSS route grammar for the synthetic lab origin."""
+    match = re.fullmatch(r"https://" + re.escape(HOST) + r":([1-9][0-9]{0,4})", origin)
+    need(match and int(match[1]) <= 65535, "native_browser_origin")
+    return re.escape("wss://" + origin.removeprefix("https://")) + RELAY_PATH
+
+
+def guard(env, *, platform=sys.platform, uid=None, stage_only=False, native_lab=False):
+    need(type(stage_only) is bool and type(native_lab) is bool and not (
+        stage_only and native_lab
+    ), "closed_operation_required")
+    branch = NATIVE_BRANCH if native_lab else STAGE_BRANCH if stage_only else BRANCH
     uid = os.getuid() if uid is None and platform == "linux" else uid
     need(platform == "linux" and type(uid) is int and uid > 0, "linux_nonroot_required")
     need(
@@ -32,12 +51,15 @@ def guard(env, *, platform=sys.platform, uid=None):
         "disposable_repository_required",
     )
     event = env.get("GITHUB_EVENT_NAME")
-    allowed = event == "push" and env.get("GITHUB_REF") == "refs/heads/" + BRANCH
+    allowed = event == "push" and env.get("GITHUB_REF") == "refs/heads/" + branch
     allowed |= (
-        event == "pull_request"
-        and env.get("GITHUB_HEAD_REF") == BRANCH
+        not native_lab
+        and event == "pull_request"
+        and env.get("GITHUB_HEAD_REF") == branch
         and env.get("P1G_HEAD_REPOSITORY") == "pamolive/PamOlive-Platform"
     )
+    if native_lab:
+        need(env.get("RUNNER_ENVIRONMENT") == "github-hosted", "native_runner_required")
     need(
         allowed and re.fullmatch(r"[a-f0-9]{40}", env.get("GITHUB_SHA", "")) is not None,
         "closed_event_ref_required",
@@ -82,7 +104,197 @@ def same_origin(url, origin):
         return False
 
 
-def source_binding(repo, receipt, revision):
+def sandbox_diagnostic(rows, evaluation):
+    need(type(rows) is list and 5 <= len(rows) <= 16, "sandbox_diagnostic_rows")
+    flags = {}
+    for row in rows:
+        need(
+            type(row) is list
+            and len(row) == 2
+            and isinstance(row[0], str)
+            and 0 < len(row[0]) <= 80
+            and row[0] not in flags
+            and row[1]
+            in (("SUID", "Namespace", "None") if row[0] == "Layer 1 Sandbox" else ("Yes", "No")),
+            "sandbox_diagnostic_shape",
+        )
+        flags[row[0]] = row[1]
+    required = ("PID namespaces", "Network namespaces", "Seccomp-BPF sandbox")
+    need(
+        evaluation == "You are adequately sandboxed."
+        and flags.get("Layer 1 Sandbox") in ("SUID", "Namespace")
+        and all(flags.get(name) == "Yes" for name in required),
+        "chromium_sandbox_not_active",
+    )
+    return flags["Layer 1 Sandbox"]
+
+
+def process_ids(packet):
+    need(type(packet) is dict, "sandbox_process_packet")
+    rows = packet.get("processInfo")
+    need(type(rows) is list and 1 <= len(rows) <= 64, "sandbox_process_list")
+    browsers, renderers, seen = [], set(), set()
+    for row in rows:
+        need(type(row) is dict, "sandbox_process_item")
+        pid, kind = row.get("id"), row.get("type")
+        need(type(pid) is int and 1 < pid < 2**31 and pid not in seen, "sandbox_process_id")
+        seen.add(pid)
+        if kind == "browser":
+            browsers.append(pid)
+        elif kind == "renderer":
+            renderers.add(pid)
+    need(len(browsers) == 1 and renderers, "sandbox_renderer_missing")
+    return browsers[0], renderers
+
+
+def process_sandbox_status(raw, pid, uid):
+    need(type(raw) is bytes and 0 < len(raw) <= 16384, "sandbox_status_budget")
+    wanted = {"Pid", "Uid", "NSpid", "CapEff", "NoNewPrivs", "Seccomp", "Seccomp_filters"}
+    fields = {}
+    for line in raw.decode("ascii").splitlines():
+        field, _, value = line.partition(":")
+        if field in wanted:
+            need(field not in fields, "sandbox_status_duplicate")
+            fields[field] = value.strip()
+    need(
+        fields.keys() == wanted
+        and fields["Pid"] == str(pid)
+        and fields["Uid"].split() == [str(uid)] * 4
+        and uid > 0
+        and re.fullmatch(r"[1-9][0-9]*(?:\s+[1-9][0-9]*){0,7}", fields["NSpid"])
+        and fields["NSpid"].split()[0] == str(pid)
+        and fields["Seccomp"] in ("0", "1", "2")
+        and fields["NoNewPrivs"] in ("0", "1")
+        and re.fullmatch(r"[0-9a-f]{16}", fields["CapEff"])
+        and re.fullmatch(r"[0-9]{1,8}", fields["Seccomp_filters"]),
+        "sandbox_status_identity",
+    )
+    return {
+        "pid_depth": len(fields["NSpid"].split()),
+        "filters": int(fields["Seccomp_filters"]),
+        "restricted": fields["Seccomp"] == "2"
+        and fields["NoNewPrivs"] == "1"
+        and int(fields["CapEff"], 16) == 0,
+    }
+
+
+def apparmor_mode(raw):
+    need(type(raw) is bytes and 0 < len(raw) <= 4096, "sandbox_apparmor_budget")
+    label = raw.decode("ascii").strip()
+    if label == "unconfined":
+        return label
+    mode = re.fullmatch(r"[^\x00-\x1f\x7f]+ \((enforce|complain|unconfined)\)", label)
+    need(mode is not None, "sandbox_apparmor_unknown")
+    return mode.group(1)
+
+
+def read_process_field(directory, name, cap):
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK
+    with os.fdopen(os.open(name, flags, dir_fd=directory), "rb") as stream:
+        need(stat.S_ISREG(os.fstat(stream.fileno()).st_mode), "sandbox_proc_field_type")
+        raw = stream.read(cap + 1)
+    need(0 < len(raw) <= cap, "sandbox_proc_field_budget")
+    return raw
+
+
+def observe_process(pid, uid, *, executable=None):
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
+    directory = os.open(f"/proc/{pid}", flags)
+    try:
+        if executable is not None:
+            running = os.stat("exe", dir_fd=directory)
+            reviewed = executable.lstat()
+            need(
+                stat.S_ISREG(reviewed.st_mode)
+                and (running.st_dev, running.st_ino) == (reviewed.st_dev, reviewed.st_ino),
+                "sandbox_running_binary_changed",
+            )
+        result = process_sandbox_status(read_process_field(directory, "status", 16384), pid, uid)
+        result["apparmor"] = apparmor_mode(
+            read_process_field(directory, "attr/apparmor/current", 4096)
+        )
+        return result
+    finally:
+        os.close(directory)
+
+
+def renderer_sandboxed(renderer, browser):
+    return (
+        renderer["restricted"]
+        and renderer["filters"] > browser["filters"]
+        and renderer["pid_depth"] > browser["pid_depth"]
+    )
+
+
+def sandbox_receipt(value):
+    return (
+        type(value) is dict
+        and value.keys() == {"schema", "browser_apparmor", "renderer_apparmor", "renderers_checked"}
+        and value["schema"] == "pamolive.p1g-active-sandbox/1"
+        and type(value["browser_apparmor"]) is str
+        and value["browser_apparmor"] in APPARMOR_MODES
+        and type(value["renderer_apparmor"]) is list
+        and 0 < len(value["renderer_apparmor"]) <= 3
+        and all(type(mode) is str and mode in APPARMOR_MODES for mode in value["renderer_apparmor"])
+        and len(set(value["renderer_apparmor"])) == len(value["renderer_apparmor"])
+        and type(value["renderers_checked"]) is int
+        and len(value["renderer_apparmor"]) <= value["renderers_checked"] < 64
+    )
+
+
+def observe_browser_sandbox(browser, executable, *, namespace_only=False):
+    """Check the running browser before navigations to the synthetic application."""
+    uid = os.getuid()
+    context = browser.new_context(ignore_https_errors=False, service_workers="block")
+    try:
+
+        def restrict(route):
+            parsed = urlsplit(route.request.url)
+            if parsed.scheme == "chrome" and parsed.netloc in {"sandbox", "resources"}:
+                route.continue_()
+            else:
+                route.abort()
+
+        context.route("**/*", restrict)
+        diagnostic = context.new_page()
+        diagnostic.goto(SANDBOX_URL, wait_until="load", timeout=10000)
+        need(diagnostic.url == SANDBOX_URL, "sandbox_internal_origin")
+        rows = diagnostic.locator("#sandbox-status tr").evaluate_all(
+            """rows => rows.slice(0, 17).map(row =>
+                Array.from(row.cells).slice(0, 3)
+                    .map(cell => cell.textContent.trim().slice(0, 81)))"""
+        )
+        evaluation = diagnostic.locator("#evaluation").text_content(timeout=5000)
+        layer_one = sandbox_diagnostic(rows, evaluation)
+        need(not namespace_only or layer_one == "Namespace", "sandbox_namespace_required")
+        inert = context.new_page()
+        inert.set_content("<title>PamOlive sandbox probe</title>", timeout=5000)
+        session = browser.new_browser_cdp_session()
+        try:
+            pid, renderers = process_ids(session.send("SystemInfo.getProcessInfo"))
+            host = observe_process(pid, uid, executable=executable)
+            apparmor = set()
+            for renderer in renderers:
+                facts = observe_process(renderer, uid)
+                need(renderer_sandboxed(facts, host), "renderer_sandbox_not_active")
+                apparmor.add(facts["apparmor"])
+            later_pid, later_renderers = process_ids(session.send("SystemInfo.getProcessInfo"))
+            need(pid == later_pid and renderers <= later_renderers, "sandbox_process_set_changed")
+        finally:
+            session.detach()
+        proof = {
+            "schema": "pamolive.p1g-active-sandbox/1",
+            "browser_apparmor": host["apparmor"],
+            "renderer_apparmor": sorted(apparmor),
+            "renderers_checked": len(renderers),
+        }
+        need(sandbox_receipt(proof), "sandbox_receipt_invalid")
+        return proof
+    finally:
+        context.close()
+
+
+def source_binding(repo, receipt, revision, *, additional=()):
     reader = bounded(repo)
     raw = reader.read_regular(receipt, 2 * 1024**2)
     value = json.loads(raw)
@@ -100,6 +312,9 @@ def source_binding(repo, receipt, revision):
     )
     pins = json.loads(pin_raw)
     need(isinstance(pins, dict) and len(pins) == 24, "UI_input_pin_budget")
+    need(len(additional) <= 24 and not set(additional).intersection(pins), "native_input_budget")
+    for name in additional:
+        pins[name] = value["files"].get(name)
     result = {}
     for name, expected in pins.items():
         path = Path(name)
@@ -203,6 +418,15 @@ def tool_pin(path, *, root_owner=True, cap=512 * 1024**2):
         "uid": before.st_uid,
         "mode": stat.S_IMODE(before.st_mode),
     }
+
+
+def playwright_node_pin(path):
+    facts = tool_pin(path, root_owner=False, cap=SDK_NODE_BYTES)
+    need(
+        facts["bytes"] == SDK_NODE_BYTES and facts["sha256"] == SDK_NODE_SHA,
+        "playwright_driver_identity",
+    )
+    return facts
 
 
 def chrome_tool_diagnostic(error, *, phase):
@@ -425,3 +649,102 @@ def prepare_tls(private, repo):
         "server_certificate": str(private / "server.pem"),
         "server_key": str(private / "server.key"),
     }
+
+
+def chrome_target(repo, *, mode=None):
+    """One typed resolver for all three readers; v3 is explicit, never fallback."""
+    mode = os.environ.get("P1G_CHROME_MODE", "legacy-installed-v2") if mode is None else mode
+    need(mode in {"legacy-installed-v2", "test-bundle-v3"}, "chrome_mode")
+    if mode == "legacy-installed-v2":
+        path = Path("/opt/google/chrome/chrome")
+        return path, tool_pin(path)
+    guard(os.environ)
+    source_binding(
+        repo, Path(os.environ["RUNNER_TEMP"]) / "p1g-source.json", os.environ["GITHUB_SHA"]
+    )
+    reader = bounded(repo)
+    context_raw = reader.read_regular(
+        Path(os.environ["RUNNER_TEMP"]) / "p1g-source.json", 2 * 1024**2
+    )
+    context = json.loads(context_raw)
+    name = "qualification/p1g_headless/chrome-bootstrap-pins.json"
+    pins_raw = reader.read_regular(repo / name, 131072)
+    need(
+        hashlib.sha256(pins_raw).hexdigest() == context["files"].get(name),
+        "bundle_manifest_context",
+    )
+    pins = json.loads(pins_raw)
+    name = "qualification/p1g_headless/chrome_bundle.py"
+    raw = reader.read_regular(repo / name, 131072)
+    need(
+        hashlib.sha256(raw).hexdigest()
+        == pins["source_files"].get(name)
+        == context["files"].get(name),
+        "bundle_helper_context",
+    )
+    spec = importlib.util.spec_from_file_location("p1g_reviewed_bundle", repo / name)
+    bundle = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = bundle
+    exec(compile(raw, str(repo / name), "exec"), bundle.__dict__)
+    name = "qualification/p1g_headless/chrome-bundle-profile.json"
+    profile_raw = reader.read_regular(repo / name, 4 * 1024**2)
+    need(
+        hashlib.sha256(profile_raw).hexdigest()
+        == bundle.PROFILE_SHA
+        == pins["source_files"].get(name)
+        == context["files"].get(name),
+        "bundle_profile_context",
+    )
+    expected = {
+        "revision": os.environ["GITHUB_SHA"],
+        "pins_manifest_sha256": hashlib.sha256(pins_raw).hexdigest(),
+        "context_receipt_sha256": hashlib.sha256(context_raw).hexdigest(),
+        "package_version": pins["package"]["Version"],
+    }
+    runtime_check, runtime_postcheck = bundle_runtime_checker(
+        repo, pins, context, pins_raw, context_raw, reader
+    )
+    path, pin = bundle.verify(
+        os.environ,
+        expected,
+        profile_raw,
+        bundle.PROFILE_SHA,
+        until=__import__("time").monotonic() + 30,
+        runtime_check=runtime_check,
+    )
+    runtime_postcheck()
+    # Preserve the existing strong ELF/ancestry guard as an additional check.
+    need(tool_pin(path) == pin, "bundle_target_changed")
+    return path, pin
+
+
+def bundle_runtime_checker(repo, pins, context, pins_raw, context_raw, reader):
+    """Reuse the historical Root proof contract, never a producer boolean."""
+    name = "qualification/p1g_headless/chrome_bootstrap.py"
+    raw = reader.read_regular(repo / name, 131072)
+    source_sha = hashlib.sha256(raw).hexdigest()
+    need(
+        source_sha == pins["source_files"].get(name) == context["files"].get(name),
+        "bundle_runtime_validator_context",
+    )
+    spec = importlib.util.spec_from_file_location("p1g_reviewed_root_validator", repo / name)
+    validator = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = validator
+    exec(compile(raw, str(repo / name), "exec"), validator.__dict__)
+    support = sys.modules[__name__]
+    role = validator.root_interpreter_pin(support)
+
+    def check(facts):
+        validator.check_root_interpreter(
+            facts,
+            role,
+            context_sha=hashlib.sha256(context_raw).hexdigest(),
+            pins_sha=hashlib.sha256(pins_raw).hexdigest(),
+            source_sha=source_sha,
+            revision=os.environ["GITHUB_SHA"],
+        )
+
+    def postcheck():
+        need(validator.root_interpreter_pin(support) == role, "root_interpreter_changed")
+
+    return check, postcheck

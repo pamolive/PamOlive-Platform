@@ -4,26 +4,21 @@ import asyncio
 import json
 import os
 import re
-import signal
-import socket
-import subprocess
+import ssl
 import tempfile
 import threading
 import time
 from datetime import timedelta
-from pathlib import Path
 from unittest import skipUnless
 from unittest.mock import patch
 
-import asyncssh
 import pyotp
-import uvicorn
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
 from django.core.exceptions import PermissionDenied
-from django.db import OperationalError
+from django.db import DatabaseError, OperationalError
 from django.test import Client, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -53,16 +48,45 @@ from platform_modules.pam.protocol import Instruction, Parser
 from platform_modules.pam.recordings import issue_recording_grant, recording_page
 from platform_modules.pam.trust import launch_payload
 
+from .fixtures.asgi import TLSASGIServer
+from .fixtures.guacd import BINARY, guacd_fixture
+from .fixtures.oidc import write_loopback_tls_files
+from .fixtures.ssh import INPUT, SSHFixture
 from .pam_trust_fixtures import TrustFixture
 from .person_fixtures import bind_person
 
-BINARY = Path("/opt/pamolive-guac/sbin/guacd")
+STARTUP_STATUSES = {"pending", "connecting", "active", "ended", "failed", "expired"}
+STARTUP_REASONS = {
+    "authority_lost",
+    "database_unavailable",
+    "native_closed",
+    "native_error",
+    "native_handshake_failed",
+    "relay_failed",
+    "relay_shutdown",
+    "session_credentials_unavailable",
+    "ssh_host_key_mismatch",
+    "ssh_identity_probe_failed",
+    "stop_requested",
+}
 
 
-def unused_port():
-    with socket.socket() as reservation:
-        reservation.bind(("127.0.0.1", 0))
-        return reservation.getsockname()[1]
+async def ssh_open_failure(opened, display, *, timeout=10):
+    """Distinguish an early relay close from the SSH server failing to open a shell."""
+    opening = asyncio.create_task(opened.wait())
+    try:
+        done, _ = await asyncio.wait(
+            (opening, display), timeout=timeout, return_when=asyncio.FIRST_COMPLETED
+        )
+        if opening in done or opened.is_set():
+            return None
+        if display in done:
+            display.result()
+            return "websocket_closed_before_ssh"
+        return "ssh_open_deadline"
+    finally:
+        opening.cancel()
+        await asyncio.gather(opening, return_exceptions=True)
 
 
 @skipUnless(BINARY.is_file() or os.environ.get("PAM_REQUIRE_NATIVE"), "native image gate")
@@ -70,31 +94,8 @@ class RelayHarness(TransactionTestCase):
     def setUp(self):
         self.assertTrue(BINARY.is_file(), "PAM_REQUIRE_NATIVE cannot silently skip this gate")
         self.directory = tempfile.TemporaryDirectory(prefix="pamolive-relay-e2e-")
-        self.log = tempfile.TemporaryFile()
-        self.native_port, self.web_port = unused_port(), unused_port()
-        self.native = subprocess.Popen(
-            [
-                str(BINARY),
-                "-f",
-                "-b",
-                "127.0.0.1",
-                "-l",
-                str(self.native_port),
-                "-p",
-                self.directory.name + "/guacd.pid",
-                "-L",
-                "error",
-            ],
-            env={
-                "PATH": "/usr/local/bin:/usr/bin:/bin",
-                "LANG": "C.UTF-8",
-                "LD_LIBRARY_PATH": "/opt/pamolive-freerdp/lib:/opt/pamolive-guac/lib",
-                "HOME": self.directory.name,
-            },
-            stdout=self.log,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
+        self.addCleanup(self.directory.cleanup)
+        self.native_port, self.native = self.enterContext(guacd_fixture())
         self.overrides = override_settings(
             ALLOWED_HOSTS=["127.0.0.1", "testserver"],
             PAM_PUBLIC_ORIGIN="",
@@ -102,29 +103,10 @@ class RelayHarness(TransactionTestCase):
             PAM_GUACD_PORT=self.native_port,
         )
         self.overrides.enable()
-        self.server = uvicorn.Server(
-            uvicorn.Config(
-                "config.asgi:application",
-                host="127.0.0.1",
-                port=self.web_port,
-                log_level="critical",
-                proxy_headers=False,
-                ws_max_size=65536,
-            )
-        )
-        self.thread = threading.Thread(target=self.server.run, daemon=True)
-        self.thread.start()
-        deadline = time.monotonic() + 10
-        while time.monotonic() < deadline:
-            if self.server.started:
-                try:
-                    with socket.create_connection(("127.0.0.1", self.native_port), timeout=0.1):
-                        break
-                except OSError:
-                    pass
-            time.sleep(0.02)
-        else:
-            self.fail("Native/ASGI fixture did not start")
+        self.addCleanup(self.overrides.disable)
+        certificate, key = write_loopback_tls_files(self.directory.name)
+        self.web = self.enterContext(TLSASGIServer(certificate, key))
+        self.web_tls = ssl.create_default_context(cafile=str(certificate))
         self.org = Organization.objects.create(key="relay", name="Relay test organization")
         self.actor = get_user_model().objects.create_user("operator", password="test-only-password")
         self.reviewer = get_user_model().objects.create_superuser("reviewer", password=None)
@@ -173,21 +155,16 @@ class RelayHarness(TransactionTestCase):
         session.save()
         self.session_key = session.session_key
 
-    def tearDown(self):
-        self.server.should_exit = True
-        self.thread.join(timeout=10)
-        try:
-            os.killpg(self.native.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-        try:
-            self.native.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            os.killpg(self.native.pid, signal.SIGKILL)
-            self.native.wait(timeout=5)
-        self.log.close()
-        self.directory.cleanup()
-        self.overrides.disable()
+    def connect_relay(self, path):
+        return connect(
+            self.web.websocket_origin + path,
+            ssl=self.web_tls,
+            proxy=None,
+            origin=self.web.origin,
+            subprotocols=["guacamole"],
+            additional_headers={"Cookie": f"{settings.SESSION_COOKIE_NAME}={self.session_key}"},
+            max_size=4 * 1024 * 1024,
+        )
 
     def make_endpoint(
         self, host_key, target_port, private_key, protocol, certificate_pin, password
@@ -246,10 +223,15 @@ class RelayHarness(TransactionTestCase):
             endpoint = self.make_endpoint(
                 host_key, target_port, private_key, protocol, certificate_pin, password
             )
-            self.trust = TrustFixture(self, self.org, [endpoint], [
-                (self.actor, self.identity, ["requester"]),
-                (self.reviewer, self.reviewer_binding.identity, ["reviewer", "sponsor"]),
-            ])
+            self.trust = TrustFixture(
+                self,
+                self.org,
+                [endpoint],
+                [
+                    (self.actor, self.identity, ["requester"]),
+                    (self.reviewer, self.reviewer_binding.identity, ["reviewer", "sponsor"]),
+                ],
+            )
             with self.trust.personal_action(self.actor):
                 intent = create_record(
                     "intent",
@@ -357,72 +339,46 @@ class NativeRelayTests(RelayHarness):
             await self.exercise("logout")
         self.assertTrue(delayed.is_set())
 
-    async def exercise(self, termination, private_key=False, shared=False):
-        opened, echoed, lost = asyncio.Event(), asyncio.Event(), asyncio.Event()
-        processes = []
-        account_key = asyncssh.generate_private_key("ssh-ed25519") if private_key else None
-
-        class SSH(asyncssh.SSHServer):
-            authenticated = False
-
-            def begin_auth(self, username):
-                return True
-
-            def password_auth_supported(self):
-                return not private_key
-
-            def public_key_auth_supported(self):
-                return private_key
-
-            def validate_public_key(self, username, key):
-                self.authenticated = (
-                    username == "fixture" and key.public_data == account_key.public_data
+    async def startup_observation(self, connection_id, websocket):
+        def snapshot():
+            with organization_context(self.org):
+                return (
+                    RelayConnection.objects.filter(pk=connection_id)
+                    .values_list("status", "end_reason")
+                    .first()
                 )
-                return self.authenticated
 
-            def validate_password(self, username, password):
-                self.authenticated = username == "fixture" and password == "fixture-secret"
-                return self.authenticated
-
-            def connection_lost(self, error):
-                if self.authenticated:
-                    lost.set()
-
-        async def terminal(process):
-            processes.append(process)
-            opened.set()
-            process.stdout.write("PAM-olive actual WebSocket SSH fixture\r\n")
-            if (await process.stdin.readline()).strip() == "native-broker-proof":
-                process.stdout.write("Round-trip confirmed\r\n")
-                echoed.set()
-            await process.stdin.read()
-
-        key = asyncssh.generate_private_key("ssh-ed25519")
-        server = await asyncssh.create_server(
-            SSH, "127.0.0.1", 0, server_host_keys=[key], process_factory=terminal
-        )
-        target_port = server.get_port()
         try:
+            row = await asyncio.wait_for(sync_to_async(snapshot)(), timeout=1)
+        except (DatabaseError, TimeoutError):
+            state, reason = "unavailable", "unknown"
+        else:
+            if row is None:
+                state, reason = "missing", "unknown"
+            else:
+                state, reason = row
+                state = state if state in STARTUP_STATUSES else "other"
+                reason = reason if reason in STARTUP_REASONS else "other" if reason else "none"
+        return (
+            f"state={state} reason={reason} websocket_code={websocket.close_code} "
+            f"guacd_exit={self.native.poll()}"
+        )
+
+    async def exercise(self, termination, private_key=False, shared=False):
+        async with SSHFixture(key_auth=private_key) as peer:
             with override_settings(
-                PAM_ALLOWED_HOSTS={f"127.0.0.1:{target_port}"},
+                PAM_ALLOWED_HOSTS={f"{peer.host}:{peer.port}"},
                 PAM_ALLOWED_NETWORKS=("127.0.0.0/8",),
             ):
                 endpoint_id, _, config = await sync_to_async(self.create_launch)(
-                    key.export_public_key().decode(),
-                    target_port,
-                    account_key.export_private_key("openssh").decode() if account_key else None,
+                    peer.host_key,
+                    peer.port,
+                    peer.private_key,
+                    password=peer.password,
                     shared=shared,
                 )
-                async with connect(
-                    f"ws://127.0.0.1:{self.web_port}" + config["websocket_path"],
-                    proxy=None,
-                    origin=f"http://127.0.0.1:{self.web_port}",
-                    subprotocols=["guacamole"],
-                    additional_headers={
-                        "Cookie": f"{settings.SESSION_COOKIE_NAME}={self.session_key}"
-                    },
-                    max_size=4 * 1024 * 1024,
-                ) as websocket:
+                connection_id = config["websocket_path"].split("/")[3]
+                async with self.connect_relay(config["websocket_path"]) as websocket:
                     await websocket.send(
                         json.dumps({"ticket": config["ticket"], "width": 1280, "height": 720})
                     )
@@ -456,7 +412,10 @@ class NativeRelayTests(RelayHarness):
 
                     drain = asyncio.create_task(display())
                     try:
-                        await asyncio.wait_for(opened.wait(), timeout=10)
+                        failure = await ssh_open_failure(peer.opened, drain)
+                        if failure is not None:
+                            observation = await self.startup_observation(connection_id, websocket)
+                            self.fail(f"Native relay startup failed: {failure} {observation}")
 
                         # MFA freshness expiring during a session must NOT cut or challenge it.
                         def expire_mfa_only():
@@ -471,7 +430,7 @@ class NativeRelayTests(RelayHarness):
 
                         await sync_to_async(expire_mfa_only)()
                         await asyncio.sleep(1.2)
-                        for char in "native-broker-proof":
+                        for char in INPUT:
                             for pressed in ("1", "0"):
                                 await websocket.send(
                                     Instruction("key", (str(ord(char)), pressed)).encode().decode()
@@ -480,7 +439,7 @@ class NativeRelayTests(RelayHarness):
                             await websocket.send(
                                 Instruction("key", ("65293", pressed)).encode().decode()
                             )
-                        await asyncio.wait_for(echoed.wait(), timeout=5)
+                        await asyncio.wait_for(peer.echoed.wait(), timeout=5)
 
                         def revoke():
                             with organization_context(self.org):
@@ -528,14 +487,13 @@ class NativeRelayTests(RelayHarness):
                                         .decode()
                                     )
                                 elif termination == "quota":
-                                    processes[0].stdout.write("capture quota test\r\n" * 100)
-                                await asyncio.wait_for(lost.wait(), timeout=6)
+                                    peer.process.stdout.write("capture quota test\r\n" * 100)
+                                await asyncio.wait_for(peer.lost.wait(), timeout=6)
                                 await asyncio.wait_for(drain, timeout=6)
                     finally:
                         drain.cancel()
                         await asyncio.gather(drain, return_exceptions=True)
                 self.assertTrue(any(instruction.opcode == "sync" for instruction in received))
-                connection_id = config["websocket_path"].split("/")[3]
 
                 def verify_recording():
                     with organization_context(self.org):
@@ -555,6 +513,9 @@ class NativeRelayTests(RelayHarness):
                         for chunk in RecordingChunk.objects.filter(connection=item):
                             payload = cipher().decrypt(bytes(chunk.encrypted_payload))
                             self.assertNotIn(b"fixture-secret", payload)
+                            self.assertFalse(
+                                peer.password.encode() in payload, "Fixture password in recording"
+                            )
                             self.assertNotIn(b"PRIVATE KEY", payload)
                             self.assertNotIn(b"4.argv", payload)
                         # Re-authenticate for playback, never during the transport.
@@ -586,6 +547,3 @@ class NativeRelayTests(RelayHarness):
                         self.assertEqual(total, item.recording_bytes)
 
                 await sync_to_async(verify_recording)()
-        finally:
-            server.close()
-            await server.wait_closed()

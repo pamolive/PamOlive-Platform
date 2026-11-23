@@ -1,0 +1,59 @@
+{
+  "installed_elf_sha256": {
+    "/usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2": "c290f761873ebeac539911010526e1c5db86218bfcb29672760da46841741de0",
+    "/usr/lib/x86_64-linux-gnu/libk5crypto.so.3.1": "c4c3221d0350f882cee0430b58d5fb289a5776c684d3156964864c8a9719dff1",
+    "/usr/lib/x86_64-linux-gnu/libkrb5.so.3.3": "0f3eec25ca8040f7b1e1e720bec1be3fadb8528ece2d14a6cfd12a290677e0f7",
+    "/usr/lib/x86_64-linux-gnu/libkrb5support.so.0.1": "f559f051ee5d39f151a57d79f2cde475c484030098b0c73f9f7035b421b187c4"
+  },
+  "packages": {
+    "krb5-multidev": {
+      "bytes": 127348,
+      "sha256": "992d823c40f4bf22083763cdc160d85ea32746e46239c786a9d1771b8621033a"
+    },
+    "libgssapi-krb5-2": {
+      "bytes": 139200,
+      "sha256": "c81dc85de108761692fa4c3541fa526425f9db66a820c55bd558ed9896414b46"
+    },
+    "libgssrpc4t64": {
+      "bytes": 61276,
+      "sha256": "79ce70e48eeac5acd3a6cb6e03adee56e4a5bb949a4d9fd1c3fd49eee743baf1"
+    },
+    "libk5crypto3": {
+      "bytes": 82520,
+      "sha256": "c64d6983210c90bb20da235181f24ef927f5c88edb1650df6de960dbc395ff16"
+    },
+    "libkadm5clnt-mit12": {
+      "bytes": 43500,
+      "sha256": "c97a03faaa88a5ecd931c42508362ec10906aa76e5ea71f14d5564d882aa742e"
+    },
+    "libkadm5srv-mit12": {
+      "bytes": 55304,
+      "sha256": "9ae17dcb5f5a02b23e09dd5e60d2a3eb97815884aa524774474dfea047bee2a8"
+    },
+    "libkdb5-10t64": {
+      "bytes": 43672,
+      "sha256": "d99a7ff90529c436331510fd02e34defa8e36dfdbfb1c51c70b337968e084f77"
+    },
+    "libkrb5-3": {
+      "bytes": 327852,
+      "sha256": "c7553afb71073ae762ec8cf63e84dd74626f526db41641d66d49bd8c91c306a4"
+    },
+    "libkrb5-dev": {
+      "bytes": 16996,
+      "sha256": "20b4121e5b6621edc87d6279d0041991f5404e22fd93ddffcd9b4b9702b90817"
+    },
+    "libkrb5support0": {
+      "bytes": 33948,
+      "sha256": "c1c33cb879530991306ea571f8ae64e9caa7fec6f9c41b9af77b40b0dc3b7b4f"
+    }
+  },
+  "qualification": {
+    "artifact_digest": "sha256:153d33369c22809ead7a335b233119d4c770c03d9e89334cffa77c1fde90aae9",
+    "artifact_id": 14798285716,
+    "commit": "0b0d524542d24e70e4ff53a2a84bdfc18556dde9",
+    "run_id": 45131107539
+  },
+  "schema": "pamolive.krb5-trixie-materials/1",
+  "source": "krb5",
+  "version": "1.21.3-5+deb13u2+pamolive1"
+}

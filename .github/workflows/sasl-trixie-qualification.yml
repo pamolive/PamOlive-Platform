@@ -1,0 +1,53 @@
+name: Cyrus SASL Trixie source qualification
+
+on:
+  push:
+    branches: [agent/sasl-trixie-qualification, agent/sasl-product-runtime]
+
+permissions:
+  contents: read
+
+jobs:
+  sasl-trixie-amd64:
+    if: github.repository == 'pamolive/PamOlive-Platform'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Build and compare the SASL runtimes on Debian Trixie
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          umask 077
+          archive="$RUNNER_TEMP/pamolive-sasl-context-$GITHUB_RUN_ID.tar"
+          context="$RUNNER_TEMP/pamolive-sasl-context-$GITHUB_RUN_ID"
+          evidence="$RUNNER_TEMP/pamolive-sasl-evidence-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test ! -e "$evidence"
+          (
+            set -o noclobber
+            git archive "$GITHUB_SHA" deploy/sasl-rebuild qualification/sasl_trixie_build > "$archive"
+          )
+          mkdir -m 700 "$context"
+          tar --extract --file "$archive" --directory "$context" --no-same-owner
+          docker build --platform=linux/amd64 --no-cache --progress=plain \
+            --target sasl-qualification --output "type=local,dest=$evidence" \
+            --file "$context/qualification/sasl_trixie_build/Dockerfile" "$context"
+          cmp <(find "$evidence" -mindepth 1 -printf '%f\n' | LC_ALL=C sort) - <<'EXPECTED'
+          baseline.json
+          buildinfo
+          candidate.json
+          libsasl2-2.deb
+          libsasl2-modules-db.deb
+          qualification.json
+          EXPECTED
+          python3 -I -B -S "$context/qualification/sasl_trixie_build/check.py" compare "$evidence" \
+            | cmp "$evidence/qualification.json" -
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: sasl-trixie-qualification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pamolive-sasl-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 7
