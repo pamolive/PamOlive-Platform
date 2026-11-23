@@ -5,7 +5,7 @@
   "deploy/native_inventory.py": "f8d03b1ec21cb5a49de06ca170ffea2605efe73f5429c619a1446206b43362ff",
   "deploy/native_sbom.py": "6c387bfe2b18e108fef15d2715acd08bc33ef761a7026375435458ab8169975a",
   "deploy/qualify_image_scan.py": "8d6c9b595f8f4b6f11cb22a3323726348a61a24c66aa2cd56213137face04412",
-  "Dockerfile": "4713c183f4e9f434edd8e1124ebbd6f3de8ce39b0a8fd598d523dde13bc3e455",
+  "Dockerfile": "bd5aa3ca74cdc62fad595622dee3424d9253342ed6656049f227a626d261c316",
   "tests/fixtures/json_backend_reference.c": "20219f982f64dee9338fc86b141fe77bc19db5692f7abf687963031f9790bb6f",
   "tests/fixtures/winpr_jansson_regression.c": "94c6ed39e585ab8014904d0fc297da0873a2823450f82cb0c38e141af96f0482",
   "tests/test_jansson_image_absence.py": "cb0de8537f143d10a0067fce9cf9d6de9e4090f80c9d23a7bc5286361b261738",

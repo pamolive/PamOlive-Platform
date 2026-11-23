@@ -2,7 +2,7 @@ name: Python extension compilation provenance lab
 
 on:
   push:
-    branches: [agent/gcc-python-native-provenance]
+    branches: [agent/gcc-python-native-provenance, agent/python-product-native-provenance]
 
 permissions:
   contents: read
@@ -18,7 +18,7 @@ jobs:
           persist-credentials: false
       - name: Verify the observer and the wheel bindings with synthetic records
         run: >-
-          python3 -B -m unittest tests.test_python_native_provenance
+          python3 -B -m unittest qualification.python_native_provenance.test_image_evidence
           qualification.python_native_provenance.test_compiler_probe
       - name: Build the locked wheels offline and verify the compiler evidence
         shell: bash

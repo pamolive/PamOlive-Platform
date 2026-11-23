@@ -424,10 +424,36 @@ RUN --network=none --mount=from=sasl-trixie-package,source=/opt/sasl-build,targe
   sh /opt/sasl-inputs/materials.sh install-sdk /tmp/pamolive-sasl-build
 RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport --root / --sdk --output /tmp/debian-refresh-sdk.json && rm /tmp/debian-refresh-sdk.json
 RUN --network=none test "$(dpkg-query --show --showformat='${Version}' libexpat1)" = '2.10.0-1+pamolive2' && test "$(dpkg-query --show --showformat='${Version}' libexpat1-dev)" = '2.10.0-1+pamolive2'
-COPY requirements-bootstrap.lock requirements-python-runtime-linux.lock requirements-python-build-tools-linux.lock requirements-python-native-sources-linux.lock requirements-python-native-test-linux.lock /tmp/
-COPY deploy/python_materials.py deploy/python-materials.linux-amd64.json /tmp/
-RUN python /tmp/python_materials.py acquire --manifest /tmp/python-materials.linux-amd64.json --locks /tmp --output /opt/python-inputs
-RUN --network=none export PIP_CONFIG_FILE=/dev/null PIP_DISABLE_PIP_VERSION_CHECK=1 && python -m pip install --no-compile --no-cache-dir --no-index --find-links=/opt/python-inputs/bootstrap --only-binary=:all: --no-deps --require-hashes -r /tmp/requirements-bootstrap.lock && python -m pip install --no-compile --no-cache-dir --no-index --find-links=/opt/python-inputs/build-tools --only-binary=:all: --no-deps --require-hashes -r /tmp/requirements-python-build-tools-linux.lock && python -m pip wheel --no-cache-dir --no-index --find-links=/opt/python-inputs/sources --no-binary=:all: --no-build-isolation --check-build-dependencies --no-deps --require-hashes --wheel-dir /opt/directory-wheels -r /tmp/requirements-python-native-sources-linux.lock && python /tmp/python_materials.py capture-derived --manifest /tmp/python-materials.linux-amd64.json --locks /tmp --inputs /opt/python-inputs --wheels /opt/directory-wheels --output /opt/python-evidence && cp /tmp/python-materials.linux-amd64.json /tmp/requirements-bootstrap.lock /tmp/requirements-python-*.lock /opt/python-evidence/
+COPY --chmod=0444 requirements-bootstrap.lock requirements-python-runtime-linux.lock requirements-python-build-tools-linux.lock requirements-python-native-sources-linux.lock requirements-python-native-test-linux.lock /opt/python-build-inputs/
+COPY --chmod=0444 deploy/python_materials.py deploy/native_inventory.py deploy/python-materials.linux-amd64.json /opt/python-build-inputs/
+COPY --chmod=0444 qualification/python_native_provenance/validate_observations.py /opt/python-build-inputs/
+COPY --chmod=0555 qualification/python_native_provenance/compiler_probe.py /opt/compiler-probe
+RUN umask 022 && chmod 0755 /opt/python-build-inputs \
+  && python -B /opt/python-build-inputs/python_materials.py acquire \
+    --manifest /opt/python-build-inputs/python-materials.linux-amd64.json \
+    --locks /opt/python-build-inputs --output /opt/python-inputs
+ENV PIP_CONFIG_FILE=/dev/null PIP_DISABLE_PIP_VERSION_CHECK=1
+RUN --network=none python -m pip install --no-compile --no-cache-dir --no-index \
+    --find-links=/opt/python-inputs/bootstrap --only-binary=:all: --no-deps --require-hashes \
+    -r /opt/python-build-inputs/requirements-bootstrap.lock \
+  && python -m pip install --no-compile --no-cache-dir --no-index \
+    --find-links=/opt/python-inputs/build-tools --only-binary=:all: --no-deps --require-hashes \
+    -r /opt/python-build-inputs/requirements-python-build-tools-linux.lock \
+  && install -d -m 0700 -o 65534 -g 65534 /opt/directory-wheels /opt/trace /opt/python-build
+USER 65534:65534
+RUN --network=none set -eu; \
+  umask 022; inputs=/opt/python-build-inputs; output=/opt/python-build/evidence; \
+  HOME=/tmp LC_ALL=C.UTF-8 PATH=/usr/local/bin:/usr/bin:/bin \
+    CC=/opt/compiler-probe LDSHARED='/opt/compiler-probe -shared' CXX=/bin/false \
+    python -m pip wheel --no-cache-dir --no-index --find-links=/opt/python-inputs/sources \
+      --no-binary=:all: --no-build-isolation --check-build-dependencies --no-deps --require-hashes \
+      --wheel-dir /opt/directory-wheels -r "$inputs/requirements-python-native-sources-linux.lock"; \
+  python -B "$inputs/python_materials.py" capture-derived \
+    --manifest "$inputs/python-materials.linux-amd64.json" --locks "$inputs" \
+    --inputs /opt/python-inputs --wheels /opt/directory-wheels --output "$output"; \
+  python -B "$inputs/validate_observations.py" --product-build; \
+  cp "$inputs/python-materials.linux-amd64.json" "$inputs/requirements-bootstrap.lock" \
+    "$inputs"/requirements-python-*.lock "$output/"
 
 FROM expat-runtime AS runtime-build
 ARG JANSSON_DEBIAN_VERSION
@@ -451,7 +477,19 @@ RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin pamolive && usera
 COPY requirements.lock requirements-bootstrap.lock requirements-python-runtime-linux.lock ./
 COPY --from=directory-builder /opt/python-inputs/runtime-inputs /opt/python-wheels
 COPY --from=directory-builder /opt/directory-wheels /opt/directory-wheels
-COPY --from=directory-builder /opt/python-evidence /usr/share/pamolive/python-materials
+RUN --network=none install -d -m 0755 /usr/share/pamolive/python-materials
+COPY --from=directory-builder --chown=0:0 --chmod=0444 \
+  /opt/python-build/evidence/compiler-build.json \
+  /opt/python-build/evidence/compiler-observations.json \
+  /opt/python-build/evidence/derived-manifest.json \
+  /opt/python-build/evidence/python-materials.linux-amd64.json \
+  /opt/python-build/evidence/requirements-bootstrap.lock \
+  /opt/python-build/evidence/requirements-python-build-tools-linux.lock \
+  /opt/python-build/evidence/requirements-python-derived-linux.lock \
+  /opt/python-build/evidence/requirements-python-native-sources-linux.lock \
+  /opt/python-build/evidence/requirements-python-native-test-linux.lock \
+  /opt/python-build/evidence/requirements-python-runtime-linux.lock \
+  /usr/share/pamolive/python-materials/
 COPY deploy/ensurepip_bundle.py /tmp/ensurepip_bundle.py
 RUN --network=none python -B /tmp/ensurepip_bundle.py --wheel /opt/python-wheels/pip-26.3-py3-none-any.whl && rm /tmp/ensurepip_bundle.py
 RUN --network=none export PIP_CONFIG_FILE=/dev/null PIP_DISABLE_PIP_VERSION_CHECK=1 && python -m pip install --no-compile --no-cache-dir --no-index --find-links=/opt/python-wheels --only-binary=:all: --no-deps --require-hashes -r requirements-bootstrap.lock && python -m pip install --no-compile --no-cache-dir --no-index --find-links=/opt/python-wheels --only-binary=:all: --no-deps --require-hashes -r requirements-python-runtime-linux.lock && python -m pip install --no-compile --no-cache-dir --no-index --find-links=/opt/directory-wheels --only-binary=:all: --no-deps --require-hashes -r /usr/share/pamolive/python-materials/requirements-python-derived-linux.lock && python -m pip check && rm -r /opt/python-wheels /opt/directory-wheels

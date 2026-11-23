@@ -545,11 +545,18 @@ class PythonMaterialsTests(unittest.TestCase):
             directory.index("libpq-dev=${LIBPQ_DEBIAN_VERSION}"),
             directory.index("python_materials.py acquire"),
         )
-        self.assertIn("RUN --network=none export", directory)
+        setup, compile_wheels = directory.split("USER 65534:65534\n", 1)
+        self.assertIn("PIP_CONFIG_FILE=/dev/null", setup)
+        self.assertNotIn(" -m pip wheel", setup)
+        self.assertIn("CC=/opt/compiler-probe", compile_wheels)
+        self.assertIn("--product-build", compile_wheels)
         self.assertIn(
             "--no-build-isolation --check-build-dependencies --no-deps --require-hashes", directory
         )
-        self.assertIn("--find-links=/opt/python-inputs/sources --no-binary=:all:", directory)
+        self.assertIn(
+            "--find-links=/opt/python-inputs/sources --no-binary=:all:",
+            " ".join(compile_wheels.replace("\\\n", " ").split()),
+        )
         runtime = docker.split("FROM expat-runtime AS runtime-build", 1)[1].split(
             "FROM guacd-builder AS native-test-builder", 1
         )[0]
@@ -558,11 +565,13 @@ class PythonMaterialsTests(unittest.TestCase):
         self.assertIn("requirements-python-derived-linux.lock", runtime)
         self.assertNotIn("psycopg_c-3.2.10-*.whl", runtime)
         self.assertEqual(runtime.count("pip install --no-compile"), 3)
-        for line in docker.splitlines():
-            if "pip install" in line or " -m pip " in line:
-                self.assertIn("RUN --network=none", line)
-                self.assertIn("--no-index", line)
-                self.assertIn("--require-hashes", line)
+        for line in docker.replace("\\\n", " ").splitlines():
+            for command in line.split(" -m pip ")[1:]:
+                if command.startswith(("install ", "wheel ")):
+                    invocation = command.split("&&", 1)[0].split(";", 1)[0]
+                    self.assertIn("RUN --network=none ", line)
+                    self.assertIn("--no-index", invocation)
+                    self.assertIn("--require-hashes", invocation)
 
 
 if __name__ == "__main__":

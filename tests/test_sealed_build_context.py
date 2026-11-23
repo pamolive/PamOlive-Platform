@@ -869,6 +869,22 @@ class SealedContextTests(TestCase):
                 with self.assertRaisesRegex(ValueError, "context_debian_refresh_inputs"):
                     gate.selection(files)
 
+    def test_python_compiler_selection_admits_only_the_two_builder_files(self):
+        included = gate.PYTHON_BUILD_INPUTS
+        excluded = {
+            f"{gate.PYTHON_BUILD_DIR}/verify_image.py",
+            f"{gate.PYTHON_BUILD_DIR}/test_compiler_probe.py",
+            f"{gate.PYTHON_BUILD_DIR}/fixtures/.env",
+        }
+        files = [*self.files, *((name, b"public fixture\n", 0o644) for name in included | excluded)]
+        selected, _ = gate.selection(files)
+        self.assertEqual(included, {name for name, _, _ in selected} & (included | excluded))
+        _, directories = gate.directory_selection({name for name, _, _ in files})
+        self.assertIn(gate.PYTHON_BUILD_DIR, directories)
+        self.assertNotIn(f"{gate.PYTHON_BUILD_DIR}/fixtures", directories)
+        with self.assertRaisesRegex(ValueError, "context_directory_role"):
+            gate.directory_selection({"Dockerfile", f"{min(included)}/nested.py"})
+
     def test_rehashed_source_manifest_cannot_approve_changed_debian_qualification(self):
         with self.fs.install():
             receipt = self.seal()

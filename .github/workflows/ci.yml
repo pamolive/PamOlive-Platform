@@ -25,6 +25,10 @@ jobs:
         run: python -m unittest tests.test_acl_runtime_inventory tests.test_acl_consumer_runtime tests.test_native_inventory tests.test_native_sbom tests.test_native_dns tests.test_image_scan_policy tests.test_database_driver tests.test_ldap_fixture_permissions tests.test_krb5_inventory tests.test_krb5_acquisition tests.test_krb5_sbom tests.test_debian_refresh_inventory tests.test_scan_scratch tests.test_build_recipe tests.test_build_context tests.test_sealed_build_context tests.test_runtime_environment tests.test_secret_baseline_metadata tests.test_python_materials tests.test_python_materials_resilience tests.test_ensurepip_bundle tests.test_expat_product tests.test_jansson_image_absence tests.test_jansson_input_binding tests.test_jansson_sbom tests.test_jansson_ci_evidence tests.test_jansson_oracle_identity tests.test_native_migration_composition
       - name: Verify closed public restore report projection
         run: python -m unittest tests.test_restore_public_report
+      - name: Verify native Python compiler and installed image evidence contracts
+        run: >-
+          python -B -m unittest qualification.python_native_provenance.test_image_evidence
+          qualification.python_native_provenance.test_compiler_probe
       - name: Verify public metadata projections without Engine or network
         run: python -I -S -B qualification/public_engine_measurement/run_pure.py
       - name: Verify the confined public PostgreSQL identity owner without Docker
@@ -390,6 +394,10 @@ jobs:
           timeout --signal=TERM --kill-after=5s 180s python -B -m deploy.acl_consumer_runtime \
             --bundle "$RUNNER_TEMP/pamolive-qualified-image" --revision "$GITHUB_SHA" \
             --output "$proof/acl-consumers-image.json"
+          timeout --signal=TERM --kill-after=5s 180s \
+            python -B -m qualification.python_native_provenance.verify_image \
+            --bundle "$RUNNER_TEMP/pamolive-qualified-image" --revision "$GITHUB_SHA" \
+            --output "$proof/python-native-image.json"
           timeout --signal=TERM --kill-after=5s 120s python -B -m deploy.cairo_runtime_inventory \
             --archive "$acl_snapshot" --image-config-id "$config_id" \
             --elf-sha256 "$(cat deploy/cairo-headless/elf.sha256)" > "$proof/cairo-runtime.json"

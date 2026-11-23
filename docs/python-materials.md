@@ -110,9 +110,21 @@ Les jeux de preuves incluent les versions des SDK Debian, les identités des
 outils sélectionnés par GCC, le manifeste des roues et les traces bornées.
 Les empreintes d'en-têtes et d'entrées de lien sont relevées après chaque
 appel. Le résultat suppose l'intégrité du runner et des backends épinglés.
-Le reçu reste une observation du banc avec les SDK Debian d'origine. La
-candidate PamOlive doit établir ces mêmes liaisons avec ses SDK reconstruits
-et son archive exacte. Le résultat du scan GCC reste soumis à cette validation.
+Le reçu du laboratoire décrit une compilation avec les SDK Debian d'origine.
+Le constructeur de l'image instrumente aussi la compilation existante avec
+son propre SDK. Ses entrées restent détenues par root et la compilation
+s'exécute sous l'UID 65534 hors réseau. Seuls les deux fichiers Python du
+constructeur entrent dans le contexte scellé depuis le répertoire du banc.
+
+La CI produit `python-native-image.json` en lisant le manifeste, les traces
+et les trois extensions installées dans la même archive que celle utilisée
+pour la qualification. Elle lie ce reçu à la révision Git, à l'identifiant
+de configuration et au SHA256 de l'archive. Elle recalcule les liens entre
+les sources épinglées, les objets, les roues et les extensions. Les versions
+du SDK et les cartes du lien restent des observations du constructeur.
+Ce reçu dépend de l'intégrité du runner, du SDK et des backends. Il n'accorde
+aucune décision dans la politique de scan GCC.
+
 Upstream inspection and additional role copies use their checked buffer too;
 generated-wheel inspection uses exactly the buffer hashed in its per-run record.
 This avoids a hash/parse mismatch on reopening a path. A compromised runner can

@@ -184,8 +184,8 @@ IDENTITY_FIELDS = ("dev", "ino", "mode", "uid", "gid", "nlink", "size", "mtime_n
 
 # Finite current-profile policy: never parse arbitrary future .dockerignore rules.
 PROFILE_ID = "pamolive-current-dockerignore-typed-dirs-v3"
-DOCKERIGNORE_SHA = "116f2ac21b5a2cb6c97738ebd7808394139de3361679cd2766c96fa64e395bd0"
-DOCKERFILE_SHA = "4713c183f4e9f434edd8e1124ebbd6f3de8ce39b0a8fd598d523dde13bc3e455"
+DOCKERIGNORE_SHA = "77b6a4c788d0c18e500cef535493e0baa64736f2d5855a7a28598c23fda304ad"
+DOCKERFILE_SHA = "bd5aa3ca74cdc62fad595622dee3424d9253342ed6656049f227a626d261c316"
 ROOT_FILES = frozenset(
     {
         "Dockerfile",
@@ -224,6 +224,11 @@ ROOT_DIRS = frozenset(
 # context. Their identities come from the reviewed lab source ledger.
 DEBIAN_REFRESH_DIR = "qualification/debian_138_refresh"
 DEBIAN_REFRESH_DIRS = frozenset({"qualification", DEBIAN_REFRESH_DIR})
+PYTHON_BUILD_DIR = "qualification/python_native_provenance"
+PYTHON_BUILD_INPUTS = frozenset({
+    f"{PYTHON_BUILD_DIR}/compiler_probe.py",
+    f"{PYTHON_BUILD_DIR}/validate_observations.py",
+})
 DEBIAN_REFRESH_INPUTS = {
     f"{DEBIAN_REFRESH_DIR}/{name}": digest
     for name, digest in {
@@ -286,7 +291,8 @@ def copy_selected(name):
         return True
     path = PurePosixPath(name)
     if not (
-        name in ROOT_FILES or name in DEBIAN_REFRESH_INPUTS or path.parts[0] in ROOT_DIRS
+        name in ROOT_FILES or name in DEBIAN_REFRESH_INPUTS or name in PYTHON_BUILD_INPUTS
+        or path.parts[0] in ROOT_DIRS
     ):
         return False
     return not (
@@ -296,7 +302,7 @@ def copy_selected(name):
 
 
 def copy_directory_selected(name):
-    return name in DEBIAN_REFRESH_DIRS or (
+    return name in DEBIAN_REFRESH_DIRS or name == PYTHON_BUILD_DIR or (
         PurePosixPath(name).parts[0] in ROOT_DIRS and copy_selected(name)
     )
 
@@ -332,7 +338,10 @@ def directory_selection(file_names):
             str(parent) for parent in PurePosixPath(name).parents if str(parent) != "."
         )
         require(len(file_names) + len(directories) <= MAX_FILES, "context_seal_members_budget")
-    file_only = ROOT_FILES | set(CONTROLS) | {".env.example"} | DEBIAN_REFRESH_INPUTS.keys()
+    file_only = (
+        ROOT_FILES | set(CONTROLS) | {".env.example"} | DEBIAN_REFRESH_INPUTS.keys()
+        | PYTHON_BUILD_INPUTS
+    )
     require(not directories & file_only, "context_directory_role")
     expected_nodes([(name, b"", 0o644) for name in file_names])
     selected = {name for name in directories if copy_directory_selected(name)}

@@ -1,5 +1,6 @@
-"""Bind the observed C compilation and link inputs to the exact lab wheels."""
+"""Bind observed C compilation and link inputs to their exact Python wheels."""
 
+import argparse
 import json
 import os
 import re
@@ -14,9 +15,15 @@ except ModuleNotFoundError:
     import python_materials as materials
 
 SCHEMA = "pamolive.python-native-compiler-call/1"
+BUILD_SCHEMA = "pamolive.python-native-wheel-build/1"
 FILE = re.compile(r"(compile|link)-[a-f0-9]{64}\.(json|d|map)")
 STATIC_SUPPORT = {"libgcc.a", "libgcc_eh.a", "libc_nonshared.a"}
 MAX_RECORD = 1024 * 1024
+MAX_OBSERVATIONS = 5 * 1024**2
+MAX_TOOL = 64 * 1024**2
+SDK_PACKAGES = (
+    "gcc", "binutils", "libldap2-dev", "libsasl2-dev", "libpq-dev", "libpq5", "libc6-dev",
+)
 SDIST_OUTPUTS = {
     "psycopg-c": {
         "_psycopg": {"psycopg_c/_psycopg.c", "psycopg_c/types/numutils.c"},
@@ -37,7 +44,7 @@ def require(condition, reason):
         raise ValueError(reason)
 
 
-def identity(record):
+def identity(record, *, maximum=materials.MAX_FILE):
     require(set(record) == {"path", "sha256", "size"}, "compiler_file_identity")
     name = record["path"]
     path = PurePosixPath(name)
@@ -45,7 +52,7 @@ def identity(record):
             and 0 < len(name) <= 1024 and all(32 < ord(char) < 127 for char in name),
             "compiler_file_path")
     materials.digest(record["sha256"])
-    require(type(record["size"]) is int and 0 < record["size"] <= materials.MAX_FILE,
+    require(type(record["size"]) is int and 0 < record["size"] <= maximum,
             "compiler_file_size")
     return path
 
@@ -73,16 +80,25 @@ def collect_records(directory):
 
 def match_calls(records, materials_by_name):
     compiled, linked = {}, {}
+    require(len(records) == 15, "compiler_observation_count")
+    toolchain = records[0]["tool"]
+    require(
+        set(toolchain) == {"path", "sha256", "size", "machine", "version", "subprograms"}
+        and toolchain["machine"] == "x86_64-linux-gnu"
+        and re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", toolchain["version"])
+        and set(toolchain["subprograms"]) == {"cc1", "as", "collect2", "ld"},
+        "compiler_toolchain",
+    )
+    identity({key: toolchain[key] for key in ("path", "sha256", "size")}, maximum=MAX_TOOL)
+    for program in toolchain["subprograms"].values():
+        identity(program, maximum=MAX_TOOL)
     for row in records:
         kind = row["kind"]
         output = identity(row["output"])
         cwd = PurePosixPath(row["cwd"])
         require(cwd.is_relative_to("/tmp") and output.is_relative_to(cwd),
                 "compiler_work_directory")
-        tool = row["tool"]
-        require(tool["machine"] == "x86_64-linux-gnu"
-                and set(tool["subprograms"]) == {"cc1", "as", "collect2", "ld"},
-                "compiler_toolchain")
+        require(row["tool"] == toolchain, "compiler_toolchain_inconsistent")
         if kind == "compile":
             require(output.suffix == ".o" and output not in compiled, "compiler_object_duplicate")
             source = identity(row["source"]).relative_to(cwd).as_posix()
@@ -143,53 +159,103 @@ def match_calls(records, materials_by_name):
     return results
 
 
-def main():
-    try:
-        traces = collect_records(Path("/opt/trace"))
-        derived = materials.regular(
-            Path("/opt/qualification-work/derived/derived-manifest.json"), materials.MAX_JSON
+def wheel_rows(raw, input_manifest, input_sha):
+    require(0 < len(raw) <= materials.MAX_JSON, "compiler_derived_budget")
+    derived = json.loads(raw, object_pairs_hook=materials.pairs)
+    require(derived["schema"] == "pamolive.python-derived-wheels.v1"
+            and derived["target"] == materials.TARGET
+            and derived["input_manifest_sha256"] == input_sha
+            and derived["build_verified"] is False and derived["attestation_verified"] is False,
+            "compiler_derived_schema")
+    inputs = {row["name"]: row for row in input_manifest["materials"] if row["kind"] == "sdist"}
+    wheels = {row["name"]: row for row in derived["materials"]}
+    require(len(derived["materials"]) == 2 and set(wheels) == set(inputs) == set(SDIST_OUTPUTS),
+            "compiler_derived_packages")
+    for name, row in wheels.items():
+        source = inputs[name]
+        require(
+            row["version"] == source["version"] and row["source_filename"] == source["filename"]
+            and row["source_sha256"] == source["sha256"]
+            and row["source_files"] == source["source_files"]
+            and set(row["extensions"]) == materials.SO_PATHS[name],
+            "compiler_derived_materials",
         )
-        manifest = json.loads(derived, object_pairs_hook=materials.pairs)
-        require(manifest["schema"] == "pamolive.python-derived-wheels.v1"
-                and manifest["build_verified"] is False
-                and manifest["attestation_verified"] is False,
-                "compiler_derived_schema")
-        wheels = {row["name"]: row for row in manifest["materials"]}
-        require(len(manifest["materials"]) == 2 and set(wheels) == set(SDIST_OUTPUTS),
-                "compiler_derived_packages")
-        extensions = match_calls([row["record"] for row in traces], wheels)
-        for path, extension in extensions.items():
-            data = materials.regular(Path("/opt/installed") / path)
-            require(len(data) == extension["size"] and materials.sha(data) == extension["sha256"],
-                    "compiler_installed_extension")
-            observation = native_inventory.observe_elf_needed(data)
-            require(observation["status"] == "observed"
-                    and LIBRARIES[extension["package"]] <= set(observation["needed"])
-                    and not any(lib.startswith(("libstdc++", "libc++"))
-                                for lib in observation["needed"]), "compiler_dynamic_dependencies")
-            extension["needed"] = sorted(observation["needed"])
+        materials.digest(row["wheel_sha256"])
+    return wheels
+
+
+def replay(raw, wheels):
+    require(0 < len(raw) <= MAX_OBSERVATIONS, "compiler_evidence_budget")
+    traces = json.loads(raw, object_pairs_hook=materials.pairs)
+    require(type(traces) is list and len(traces) == 15, "compiler_observation_count")
+    records = []
+    for item in traces:
+        require(set(item) == {"record", "detail"}, "compiler_observation_schema")
+        row = item["record"]
+        require(row["schema"] == SCHEMA and row["kind"] in {"compile", "link"},
+                "compiler_observation_schema")
+        field = "dependency_sha256" if row["kind"] == "compile" else "map_sha256"
+        detail = item["detail"].encode("ascii")
+        require(0 < len(detail) <= MAX_RECORD and materials.sha(detail) == row[field],
+                "compiler_detail_digest")
+        records.append(row)
+    return match_calls(records, wheels)
+
+
+def inspect_extensions(extensions, read_bytes):
+    observed = {}
+    for path, extension in extensions.items():
+        data = read_bytes(path)
+        require(len(data) == extension["size"] and materials.sha(data) == extension["sha256"],
+                "compiler_installed_extension")
+        linkage = native_inventory.observe_elf_needed(data)
+        require(linkage["status"] == "observed"
+                and set(linkage["needed"]) == LIBRARIES[extension["package"]],
+                "compiler_dynamic_dependencies")
+        observed[path] = {**extension, "needed": sorted(linkage["needed"])}
+    return observed
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--product-build", action="store_true")
+    args = parser.parse_args()
+    try:
+        output = Path("/opt/python-build/evidence" if args.product_build else "/evidence")
+        derived_root = output if args.product_build else Path("/opt/qualification-work/derived")
+        inputs = Path("/opt/python-build-inputs" if args.product_build else "/opt/qualification")
+        manifest, digest = materials.load_manifest(inputs / "python-materials.linux-amd64.json")
+        derived = materials.regular(derived_root / "derived-manifest.json", materials.MAX_JSON)
+        traces = collect_records(Path("/opt/trace"))
+        observations = (json.dumps(traces, sort_keys=True, separators=(",", ":")) + "\n").encode()
+        extensions = replay(observations, wheel_rows(derived, manifest, digest))
         versions = subprocess.check_output(
-            ["/usr/bin/dpkg-query", "-W", "-f=${binary:Package}=${Version}\n", "gcc", "binutils",
-             "libldap2-dev", "libsasl2-dev", "libpq-dev", "libpq5", "libc6-dev"],
+            ["/usr/bin/dpkg-query", "-W", "-f=${binary:Package}=${Version}\n", *SDK_PACKAGES],
             text=True, encoding="ascii", timeout=5, env={"LC_ALL": "C"},
         ).splitlines()
-        observations = (json.dumps(traces, sort_keys=True, separators=(",", ":")) + "\n").encode()
-        require(len(observations) <= 5 * 1024**2, "compiler_evidence_budget")
         report = {
-            "schema": "pamolive.python-native-provenance-lab/1",
             "compiler_calls": len(traces), "extensions": extensions,
             "derived_manifest_sha256": materials.sha(derived),
             "observations_sha256": materials.sha(observations),
             "sdk_versions": sorted(versions),
             "product_image_measured": False, "policy_disposition": None,
         }
+        files = {"compiler-observations.json": observations}
+        if args.product_build:
+            report["schema"] = BUILD_SCHEMA
+            report_name = "compiler-build.json"
+        else:
+            report["schema"] = "pamolive.python-native-provenance-lab/1"
+            report["extensions"] = inspect_extensions(
+                extensions, lambda path: materials.regular(Path("/opt/installed") / path),
+            )
+            files["derived-manifest.json"] = derived
+            report_name = "qualification.json"
+        files[report_name] = (json.dumps(report, sort_keys=True) + "\n").encode()
         os.umask(0o077)
-        for name, data in (
-            ("compiler-observations.json", observations), ("derived-manifest.json", derived),
-            ("qualification.json", (json.dumps(report, sort_keys=True) + "\n").encode()),
-        ):
-            with (Path("/evidence") / name).open("xb") as output:
-                output.write(data)
+        for name, data in files.items():
+            with (output / name).open("xb") as stream:
+                stream.write(data)
     except (KeyError, TypeError, OSError, subprocess.SubprocessError):
         raise SystemExit("Python native compiler evidence refused.") from None
     except ValueError as error:
