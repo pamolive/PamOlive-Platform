@@ -1,6 +1,7 @@
 """Qualify descriptor ACL imports and ordinary tar backup and restore."""
 
 import ctypes
+import hashlib
 import json
 import os
 import sys
@@ -99,7 +100,8 @@ def main():
         restore_acl(library, Path(directory), acl)
     packet = {
         "schema": "pamolive.tar-acl-descriptor-qualification/1",
-        **consumer_package_receipt(BINARY, "tar", VERSION),
+        **consumer_package_receipt("tar", VERSION),
+        "tar_sha256": hashlib.sha256(BINARY.read_bytes()).hexdigest(),
         "descriptor_imports": imports,
         "access_and_default_ACL_roundtrip": True,
         "explicit_dereference_roundtrip": True,

@@ -1,8 +1,8 @@
-name: Sed and tar descriptor ACL qualification on Trixie
+name: Coreutils sed and tar descriptor ACL qualification on Trixie
 
 on:
   push:
-    branches: [agent/acl-sed-descriptor-qualification]
+    branches: [agent/acl-coreutils-descriptor-qualification]
 
 permissions:
   contents: read
@@ -11,12 +11,12 @@ jobs:
   acl-trixie-amd64:
     if: github.repository == 'pamolive/PamOlive-Platform'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           persist-credentials: false
-      - name: Qualify sed and tar against the reviewed libacl
+      - name: Qualify coreutils sed and tar against the reviewed libacl
         shell: bash
         run: |
           set -euo pipefail
@@ -30,11 +30,15 @@ jobs:
           mkdir -m 700 "$context"
           tar --extract --file "$archive" --directory "$context" --no-same-owner
           docker build --platform=linux/amd64 --no-cache --progress=plain \
-            --target sed-acl-qualification --output "type=local,dest=$evidence" "$context"
+            --target coreutils-acl-qualification --output "type=local,dest=$evidence" "$context"
           cmp <(find "$evidence" -mindepth 1 -printf '%f\n' | LC_ALL=C sort) - <<'EXPECTED'
           baseline.json
           buildinfo
           candidate.json
+          coreutils-stock.json
+          coreutils.buildinfo
+          coreutils.deb
+          coreutils.json
           libacl1.deb
           qualification.json
           sed.buildinfo
@@ -53,6 +57,13 @@ jobs:
           for name in sed tar; do
             expected=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2] + "_sha256"])' "$evidence/$name.json" "$name")
             actual=$(dpkg-deb --fsys-tarfile "$evidence/$name.deb" \
+              | tar --extract --to-stdout --file - "./usr/bin/$name" \
+              | sha256sum)
+            test "$actual" = "$expected  -"
+          done
+          for name in cp install mv; do
+            expected=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["binaries"][sys.argv[2]]["sha256"])' "$evidence/coreutils.json" "$name")
+            actual=$(dpkg-deb --fsys-tarfile "$evidence/coreutils.deb" \
               | tar --extract --to-stdout --file - "./usr/bin/$name" \
               | sha256sum)
             test "$actual" = "$expected  -"

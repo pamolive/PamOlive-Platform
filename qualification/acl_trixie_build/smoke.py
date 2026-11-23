@@ -25,13 +25,14 @@ def require(condition):
         raise ValueError("acl_qualification_mismatch")
 
 
-def run(*arguments):
+def run(*arguments, cwd=None):
     return subprocess.check_output(
         arguments,
         text=True,
         encoding="ascii",
         stderr=subprocess.DEVNULL,
         env={**os.environ, "LC_ALL": "C"},
+        cwd=cwd,
         timeout=10,
     )
 
@@ -66,7 +67,7 @@ def require_consumer_imports(binary, required, legacy):
     return sorted(required)
 
 
-def consumer_package_receipt(binary, name, version):
+def consumer_package_receipt(name, version):
     evidence = Path("/evidence")
     package = (evidence / f"{name}.deb").read_bytes()
     buildinfo = (evidence / f"{name}.buildinfo").read_bytes()
@@ -77,7 +78,6 @@ def consumer_package_receipt(binary, name, version):
     return {
         "version": version,
         "architecture": "amd64",
-        f"{name}_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
         "package_sha256": digest,
         "package_bytes": len(package),
         "buildinfo_sha256": hashlib.sha256(buildinfo).hexdigest(),

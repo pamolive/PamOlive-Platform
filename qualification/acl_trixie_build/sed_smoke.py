@@ -2,6 +2,7 @@
 
 import ctypes
 import errno
+import hashlib
 import json
 import os
 import stat
@@ -110,7 +111,8 @@ def main():
 
     packet = {
         "schema": "pamolive.sed-acl-descriptor-qualification/1",
-        **consumer_package_receipt(BINARY, "sed", VERSION),
+        **consumer_package_receipt("sed", VERSION),
+        "sed_sha256": hashlib.sha256(BINARY.read_bytes()).hexdigest(),
         "descriptor_imports": imports,
         "in_place_named_ACL_and_backup": True,
         "ordinary_follow_symlinks": True,
