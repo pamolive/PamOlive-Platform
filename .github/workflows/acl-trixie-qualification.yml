@@ -1,8 +1,8 @@
-name: Tar descriptor ACL qualification on Trixie
+name: Sed and tar descriptor ACL qualification on Trixie
 
 on:
   push:
-    branches: [agent/acl-tar-descriptor-qualification]
+    branches: [agent/acl-sed-descriptor-qualification]
 
 permissions:
   contents: read
@@ -11,12 +11,12 @@ jobs:
   acl-trixie-amd64:
     if: github.repository == 'pamolive/PamOlive-Platform'
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           persist-credentials: false
-      - name: Qualify the tar descriptor migration against the reviewed libacl
+      - name: Qualify sed and tar against the reviewed libacl
         shell: bash
         run: |
           set -euo pipefail
@@ -30,13 +30,16 @@ jobs:
           mkdir -m 700 "$context"
           tar --extract --file "$archive" --directory "$context" --no-same-owner
           docker build --platform=linux/amd64 --no-cache --progress=plain \
-            --target tar-acl-qualification --output "type=local,dest=$evidence" "$context"
+            --target sed-acl-qualification --output "type=local,dest=$evidence" "$context"
           cmp <(find "$evidence" -mindepth 1 -printf '%f\n' | LC_ALL=C sort) - <<'EXPECTED'
           baseline.json
           buildinfo
           candidate.json
           libacl1.deb
           qualification.json
+          sed.buildinfo
+          sed.deb
+          sed.json
           tar.buildinfo
           tar.deb
           tar.json
@@ -47,11 +50,13 @@ jobs:
             | tar --extract --to-stdout --file - ./usr/lib/x86_64-linux-gnu/libacl.so.1.2.2400 \
             | sha256sum)
           test "$actual" = "$expected  -"
-          expected=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["tar_sha256"])' "$evidence/tar.json")
-          actual=$(dpkg-deb --fsys-tarfile "$evidence/tar.deb" \
-            | tar --extract --to-stdout --file - ./usr/bin/tar \
-            | sha256sum)
-          test "$actual" = "$expected  -"
+          for name in sed tar; do
+            expected=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2] + "_sha256"])' "$evidence/$name.json" "$name")
+            actual=$(dpkg-deb --fsys-tarfile "$evidence/$name.deb" \
+              | tar --extract --to-stdout --file - "./usr/bin/$name" \
+              | sha256sum)
+            test "$actual" = "$expected  -"
+          done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: acl-trixie-qualification-${{ github.run_id }}-${{ github.run_attempt }}

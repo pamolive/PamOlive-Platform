@@ -55,6 +55,35 @@ def exported_functions(path):
     return sorted(exports)
 
 
+def require_consumer_imports(binary, required, legacy):
+    output = run("/usr/bin/readelf", "--wide", "--dyn-syms", str(binary))
+    imports = {
+        fields[7] for line in output.splitlines()
+        if len(fields := line.split()) >= 8 and fields[6] == "UND"
+    }
+    require(required <= imports)
+    require(not legacy.intersection(name.split("@", 1)[0] for name in imports))
+    return sorted(required)
+
+
+def consumer_package_receipt(binary, name, version):
+    evidence = Path("/evidence")
+    package = (evidence / f"{name}.deb").read_bytes()
+    buildinfo = (evidence / f"{name}.buildinfo").read_bytes()
+    digest = hashlib.sha256(package).hexdigest()
+    declared = f"{digest} {len(package)} {name}_{version}_amd64.deb".encode().split()
+    sums = buildinfo.split(b"\nChecksums-Sha256:\n", 1)[1].split(b"\n\n", 1)[0]
+    require(sum(row.split() == declared for row in sums.splitlines()) == 1)
+    return {
+        "version": version,
+        "architecture": "amd64",
+        f"{name}_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+        "package_sha256": digest,
+        "package_bytes": len(package),
+        "buildinfo_sha256": hashlib.sha256(buildinfo).hexdigest(),
+    }
+
+
 def require_loaded_file(path, identity):
     maps = Path("/proc/self/maps").read_text(encoding="utf-8", errors="surrogateescape")
     found = False

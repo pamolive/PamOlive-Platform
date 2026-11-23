@@ -57,5 +57,21 @@ prévus par tar. La CI exige les quatre variantes `*_at` et vérifie l'absence
 des imports historiques ciblés. Ce contrôle porte sur les appels POSIX ACL de
 tar sous `--acls`. Le traitement général des attributs étendus reste séparé.
 
-Une décision pour l'image de livraison exige encore la qualification de
-`cp`, `install`, `mv` et `sed` et le contrôle des binaires dans l'image exacte.
+## Migration de l'édition en place GNU sed
+
+Sur Trixie `4.9-2+deb13u1`, `sed -i` dispose déjà des descripteurs ouverts de
+l'entrée régulière et du fichier temporaire. Le binaire Linux appelle les
+fonctions ACL par descripteur. Le classement des erreurs et la détection des
+ACL triviales restent partagés avec Gnulib. Le repli conserve les bits de mode
+et les diagnostics existants. Le correctif Debian de sélection du fichier
+d'entrée et les API génériques de Gnulib restent en place. [Source Debian](https://sources.debian.org/src/sed/4.9-2%2Bdeb13u1)
+
+La CI vérifie les imports de l'ELF, un remplacement avec ACL utilisateur et
+backup, le suivi explicite d'un lien ordinaire, la conservation du mode et la
+suppression des permissions héritées par le temporaire. Le laboratoire
+injecte `EOPNOTSUPP` à la lecture et `EPERM` à l'écriture dans deux processus
+synthétiques. Un système de fichiers sans ACL reste à qualifier séparément.
+La qualification native reprend les cas GNU tar avec le même paquet libacl.
+
+L'intégration à l'image de livraison requiert la qualification de `cp`,
+`install` et `mv`, puis la vérification des ELF et du scan de l'image exacte.

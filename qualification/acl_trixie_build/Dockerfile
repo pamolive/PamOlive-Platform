@@ -81,7 +81,7 @@ RUN sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.s
  && apt-get build-dep -y --no-install-recommends --arch-only 'tar=1.35+dfsg-3.1' \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=tar-source /opt/tar-source/ /opt/tar-build/
-COPY --chmod=0444 tar-source.sha256 tar-preimage.sha256 tar-postimage.sha256 tar-patch.sha256 tar-descriptor.patch prepare_tar.py /opt/tar-inputs/
+COPY --chmod=0444 tar-source.sha256 tar-preimage.sha256 tar-postimage.sha256 tar-patch.sha256 tar-descriptor.patch prepare_consumer.py /opt/tar-inputs/
 WORKDIR /opt/tar-build
 RUN --network=none --mount=from=builder,source=/opt/acl-build,target=/acl-packages,ro \
     dpkg --install /acl-packages/libacl1_2.4.0-1~pamolive13u1_amd64.deb \
@@ -89,7 +89,7 @@ RUN --network=none --mount=from=builder,source=/opt/acl-build,target=/acl-packag
  && test -z "$(dpkg --audit)" \
  && sha256sum --check --strict /opt/tar-inputs/tar-source.sha256 \
  && dpkg-source -x tar_1.35+dfsg-3.1.dsc tree \
- && python -I -B -S /opt/tar-inputs/prepare_tar.py tree /opt/tar-inputs \
+ && python -I -B -S /opt/tar-inputs/prepare_consumer.py tar tree /opt/tar-inputs \
  && chown -R 65534:65534 /opt/tar-build
 USER 65534:65534
 WORKDIR /opt/tar-build/tree
@@ -115,3 +115,60 @@ RUN --network=none python -I -B /opt/acl-checks/tar_smoke.py > /evidence/tar.jso
 
 FROM scratch AS tar-acl-qualification
 COPY --from=tar-candidate /evidence/ /
+
+FROM trixie AS sed-source
+COPY sed-source.sha256 /opt/sed-inputs/
+WORKDIR /opt/sed-source
+RUN sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
+ && grep -Fxq 'Types: deb deb-src' /etc/apt/sources.list.d/debian.sources \
+ && chown _apt:root . \
+ && apt-get -o APT::Update::Error-Mode=any update \
+ && apt-get -o APT::Get::AllowUnauthenticated=false --download-only source 'sed=4.9-2+deb13u1' \
+ && sha256sum --check --strict /opt/sed-inputs/sed-source.sha256 \
+ && test "$(find . -maxdepth 1 -type f | wc -l)" = 3
+
+FROM trixie AS sed-builder
+RUN sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
+ && apt-get -o APT::Update::Error-Mode=any update \
+ && apt-get install -y --no-install-recommends --no-remove acl build-essential fakeroot quilt \
+ && apt-get build-dep -y --no-install-recommends --arch-only 'sed=4.9-2+deb13u1' \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=sed-source /opt/sed-source/ /opt/sed-build/
+COPY --chmod=0444 sed-source.sha256 sed-preimage.sha256 sed-postimage.sha256 sed-patch.sha256 sed-descriptor.patch prepare_consumer.py /opt/sed-inputs/
+WORKDIR /opt/sed-build
+RUN --network=none --mount=from=builder,source=/opt/acl-build,target=/acl-packages,ro \
+    dpkg --install /acl-packages/libacl1_2.4.0-1~pamolive13u1_amd64.deb \
+        /acl-packages/libacl1-dev_2.4.0-1~pamolive13u1_amd64.deb \
+ && test -z "$(dpkg --audit)" \
+ && sha256sum --check --strict /opt/sed-inputs/sed-source.sha256 \
+ && dpkg-source -x sed_4.9-2+deb13u1.dsc tree \
+ && python -I -B -S /opt/sed-inputs/prepare_consumer.py sed tree /opt/sed-inputs \
+ && chown -R 65534:65534 /opt/sed-build
+USER 65534:65534
+WORKDIR /opt/sed-build/tree
+ENV HOME=/opt/sed-build LC_ALL=C.UTF-8 DEB_BUILD_OPTIONS=parallel=2
+RUN --network=none dpkg-checkbuilddeps && dpkg-buildpackage -B -us -uc -j2 \
+ && sha256sum --check --strict /opt/sed-inputs/sed-postimage.sha256
+COPY --chmod=0444 sed_acl_faults.c /opt/sed-inputs/
+RUN --network=none cc -std=c11 -Wall -Wextra -Werror -shared -fPIC -Wl,-z,relro,-z,now \
+    -o /opt/sed-build/sed-acl-faults.so /opt/sed-inputs/sed_acl_faults.c -ldl
+
+FROM tar-candidate AS sed-candidate
+USER root
+COPY --chmod=0444 sed_smoke.py /opt/acl-checks/
+COPY --from=sed-builder --chmod=0444 /opt/sed-build/sed-acl-faults.so /opt/acl-checks/
+RUN --network=none --mount=from=sed-builder,source=/opt/sed-build,target=/packages,ro \
+    set -eu; \
+    package='/packages/sed_4.9-2+deb13u1+pamolive1_amd64.deb'; \
+    test "$(dpkg-deb -f "$package" Package)" = sed; \
+    test "$(dpkg-deb -f "$package" Version)" = '4.9-2+deb13u1+pamolive1'; \
+    test "$(dpkg-deb -f "$package" Architecture)" = amd64; \
+    dpkg --install "$package"; \
+    test -z "$(dpkg --audit)"; \
+    install -m 0444 "$package" /evidence/sed.deb; \
+    install -m 0444 /packages/sed_4.9-2+deb13u1+pamolive1_amd64.buildinfo /evidence/sed.buildinfo
+USER 65534:65534
+RUN --network=none python -I -B /opt/acl-checks/sed_smoke.py > /evidence/sed.json
+
+FROM scratch AS sed-acl-qualification
+COPY --from=sed-candidate /evidence/ /
