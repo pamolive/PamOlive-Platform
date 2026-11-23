@@ -24,7 +24,9 @@ dpkg, les dépendances, les symboles versionnés et le chargeur,
 puis exécute les contrôles fonctionnels avec des données de
 locale et des noms réservés à la boucle locale.
 Le résumé conserve les cas ignorés et les échecs que l'emballage
-Debian tolère. Chaque résultat doit être examiné avant admission.
+Debian tolère. Un `FAIL`, un `UNRESOLVED` ou un `XPASS` produit
+`reported_failures`. Les détails `XFAIL` et `UNSUPPORTED` restent
+visibles pour évaluer la couverture avant admission.
 
 Cette qualification couvre le paquet Debian amd64 et sa
 compatibilité observée dans le laboratoire. La chaîne de livraison
