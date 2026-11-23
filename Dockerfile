@@ -72,6 +72,22 @@ WORKDIR /opt/acl-build/tree
 ENV HOME=/opt/acl-build LC_ALL=C.UTF-8
 RUN --network=none dpkg-checkbuilddeps && dpkg-buildpackage -b -us -uc -j2
 
+FROM debian-rebuild-base AS sasl-trixie-source
+COPY deploy/sasl-rebuild/forky.sources deploy/sasl-rebuild/source-apt.conf deploy/sasl-rebuild/source.sha256 deploy/sasl-rebuild/materials.sh /opt/sasl-inputs/
+WORKDIR /opt/sasl-source
+RUN sh /opt/sasl-inputs/materials.sh acquire
+
+FROM debian-rebuild-base AS sasl-trixie-package
+COPY --chmod=0444 deploy/sasl-rebuild/materials.sh deploy/sasl-rebuild/source.sha256 /opt/sasl-inputs/
+RUN sh /opt/sasl-inputs/materials.sh toolchain
+WORKDIR /opt/sasl-build
+COPY --from=sasl-trixie-source /opt/sasl-source/ ./
+RUN --network=none sh /opt/sasl-inputs/materials.sh prepare
+USER 65534:65534
+WORKDIR /opt/sasl-build/tree
+ENV HOME=/opt/sasl-build LC_ALL=C.UTF-8 DEB_BUILD_OPTIONS=parallel=2
+RUN --network=none sh /opt/sasl-inputs/materials.sh build
+
 FROM debian-runtime AS expat-prepared
 RUN --mount=from=debian-refresh-inputs,source=/opt/pamolive-apt-cache,target=/tmp/debian-refresh-archives,ro \
   archives=/tmp/debian-refresh-archives && apt-get update \
@@ -149,6 +165,9 @@ RUN sh /build-guacd.sh
 FROM expat-sdk AS directory-builder
 ARG LIBPQ_DEBIAN_VERSION
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends build-essential libldap2-dev libsasl2-dev libpq-dev=${LIBPQ_DEBIAN_VERSION} libpq5=${LIBPQ_DEBIAN_VERSION} && rm -rf /var/lib/apt/lists/*
+COPY --chmod=0444 deploy/sasl-rebuild/materials.sh deploy/sasl-rebuild/package.sha256 /opt/sasl-inputs/
+RUN --network=none --mount=from=sasl-trixie-package,source=/opt/sasl-build,target=/tmp/pamolive-sasl-build,ro \
+  sh /opt/sasl-inputs/materials.sh install-sdk /tmp/pamolive-sasl-build
 RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --root / --sdk --output /tmp/debian-refresh-sdk.json && rm /tmp/debian-refresh-sdk.json
 RUN --network=none test "$(dpkg-query --show --showformat='${Version}' libexpat1)" = '2.10.0-1+pamolive2' && test "$(dpkg-query --show --showformat='${Version}' libexpat1-dev)" = '2.10.0-1+pamolive2'
 COPY requirements-bootstrap.lock requirements-python-runtime-linux.lock requirements-python-build-tools-linux.lock requirements-python-native-sources-linux.lock requirements-python-native-test-linux.lock /tmp/
@@ -198,6 +217,8 @@ RUN --network=none --mount=from=acl-trixie-package,source=/opt/acl-build,target=
   && sha256sum --check --strict /app/deploy/acl-rebuild/package.sha256 \
   && dpkg --install libacl1_2.4.0-1~pamolive13u1_amd64.deb \
   && test -z "$(dpkg --audit)"
+RUN --network=none --mount=from=sasl-trixie-package,source=/opt/sasl-build,target=/tmp/pamolive-sasl-build,ro \
+  sh deploy/sasl-rebuild/materials.sh install-runtime /tmp/pamolive-sasl-build
 RUN python deploy/native_inventory.py --capture --output /opt/pamolive-native-manifest.json
 RUN --network=none python -B -m deploy.debian_refresh_inventory --root / --output /tmp/debian-refresh-runtime.json && rm /tmp/debian-refresh-runtime.json
 RUN python manage.py collectstatic --noinput

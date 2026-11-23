@@ -2,7 +2,7 @@ name: Cyrus SASL Trixie source qualification
 
 on:
   push:
-    branches: [agent/sasl-trixie-qualification]
+    branches: [agent/sasl-trixie-qualification, agent/sasl-product-runtime]
 
 permissions:
   contents: read
@@ -28,7 +28,7 @@ jobs:
           test ! -e "$evidence"
           (
             set -o noclobber
-            git archive "$GITHUB_SHA" deploy/acl-rebuild/forky.sources qualification/sasl_trixie_build > "$archive"
+            git archive "$GITHUB_SHA" deploy/sasl-rebuild qualification/sasl_trixie_build > "$archive"
           )
           mkdir -m 700 "$context"
           tar --extract --file "$archive" --directory "$context" --no-same-owner

@@ -1,5 +1,24 @@
 # État réel de l’implémentation
 
+## Dépendances natives du candidat de livraison — 23 novembre 2026
+
+Les reconstructions isolées SQLite 3.54.1 et ACL 2.4.0 reproduisent les
+empreintes des paquets et des bibliothèques. La qualification SQLite retrouve
+les 88 imports de `_sqlite3` et les 14 de `liblastlog2`. La qualification ACL
+conserve les 41 exports historiques et valide la restauration d'une ACL
+avec GNU tar. Le verdict produit dépend toujours de la CI de l'image exacte.
+[SQLite](https://github.com/pamolive/PamOlive-Platform/actions/runs/45118546166) ·
+[ACL](https://github.com/pamolive/PamOlive-Platform/actions/runs/45118622898)
+
+La reconstruction Trixie de Cyrus SASL `2.1.28+dfsg1-12~pamolive13u1`
+préserve les 69 exports du cœur et les 33 du module de base. Les deux paquets
+et leurs ELF ont été vérifiés dans l'artefact CI. Le candidat produit utilise
+la même recette et vérifie aussi le paquet SDK avant de compiler les wheels.
+Les essais de connexion LDAP StartTLS et PostgreSQL TLS/SCRAM ainsi que
+Grype doivent être validés sur ce candidat.
+[Qualification SASL](https://github.com/pamolive/PamOlive-Platform/actions/runs/45119726353) ·
+[ADR-038](adr-038-cyrus-sasl-trixie-qualification.md)
+
 ## Archive du témoin et candidat de livraison — 23 novembre 2026
 
 La PR nº 43 valide sur `c39bfec` les 96 tests de la wheel installée et la
