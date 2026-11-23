@@ -359,11 +359,18 @@ class ImageScanPolicyTests(TestCase):
         return entry
 
     def test_pruned_runtime_is_bound_to_package_and_physical_archive(self):
+        forbidden_examples = {
+            "CVE-2026-82560": (("Text.pm", "Text.pmc"), "libpod-lators-perl"),
+            "CVE-2026-9538": (("Tar.pm", "Tar.pmc"), "libarchive-tar-perl"),
+            "CVE-2026-54370": (("getfacl", "libacl.a"), "acl"),
+            "CVE-2026-107161": (("libdigestmd5.so.2", "libsasl2.a"), "libsasl2-dev"),
+        }
         for cve, original_rule in gate.PRUNED_RUNTIME.items():
             with self.subTest(cve=cve):
                 rule = copy.deepcopy(original_rule)
                 entry = self.pruned_runtime_entry(cve, rule)
-                files, providers = {}, []
+                files = {"/bin/sh": expat_test.elf(b"runtime shell")}
+                providers = []
                 for target, aliases, _ in rule["providers"]:
                     binary = expat_test.elf(target.encode())
                     files[target] = binary
@@ -392,24 +399,25 @@ class ImageScanPolicyTests(TestCase):
 
                 with patch.dict(gate.PRUNED_RUNTIME, {cve: rule}):
                     self.assertTrue(self.evaluate(archive_facts([files]))["passed"])
-                    basenames = (("getfacl", "libacl.a") if source == "acl" else
-                                 ("libdigestmd5.so.2", "libsasl2.a"))
+                    basenames, excluded_package = forbidden_examples[cve]
                     for basename in basenames:
+                        path = "/opt/" + basename
                         facts = archive_facts([
-                            {"/opt/" + basename: b"synthetic fixture"},
+                            {path: b"synthetic fixture"},
                             {**files, "/opt/.wh." + basename: b""},
                         ])
                         self.assertFalse(self.evaluate(facts)["passed"])
-                    target, aliases, _ = providers[0]
-                    alias_path = str(PurePosixPath(target).with_name(aliases[0]))
-                    facts = archive_facts([{**files, alias_path: ("symlink", "other.so")}])
-                    self.assertFalse(self.evaluate(facts)["passed"])
-                    changed = {
-                        **files,
-                        "/opt/" + Path(providers[0][0]).name: expat_test.elf(b"alternate"),
-                    }
-                    self.assertFalse(self.evaluate(archive_facts([changed]))["passed"])
-                    excluded_package = "acl" if source == "acl" else "libsasl2-dev"
+                        facts = archive_facts([{**files, path: ("symlink", "other")}])
+                        self.assertFalse(self.evaluate(facts)["passed"])
+                    for target, aliases, _ in providers:
+                        alias_path = str(PurePosixPath(target).with_name(aliases[0]))
+                        facts = archive_facts([{**files, alias_path: ("symlink", "other.so")}])
+                        self.assertFalse(self.evaluate(facts)["passed"])
+                        changed = {
+                            **files,
+                            "/opt/" + PurePosixPath(target).name: expat_test.elf(b"alternate"),
+                        }
+                        self.assertFalse(self.evaluate(archive_facts([changed]))["passed"])
                     installed = status + (f"\nPackage: {excluded_package}\n"
                                           "Status: install ok installed\n").encode()
                     with self.assertRaisesRegex(gate.ScanPolicyError, "pruned_runtime_dpkg"):

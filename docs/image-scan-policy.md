@@ -119,6 +119,20 @@ reste bloquant pour ces builds, dans l'attente d'une preuve couvrant les
 consommateurs ELF de cette image.
 [Preuve GCC](../.github/qualification/evidence/gcc-95619-trixie.v1.json)
 
+### Modules Perl exclus de l’image
+
+Les constats OS CVE-2026-82560 et CVE-2026-9538 concernent respectivement
+`Pod::Text` et `Archive::Tar`. Les paquets Debian vérifiés placent ces
+modules dans `perl-modules-5.40`. L'image conserve le paquet essentiel
+`perl-base` en version `5.40.1-6+deb13u1`. Pour chaque constat, le gate
+exige ce groupe Debian 13.8 amd64 exact et lit le statut dpkg du TAR.
+Il refuse aussi les noms Perl correspondants dans toutes les couches,
+y compris les liens et les chemins masqués ensuite par un whiteout.
+Grype conserve les deux constats High. La vérification porte sur les
+couches de l'image qualifiée. Tout ajout de modules Perl par montage
+ou par une autre distribution de logiciels exige sa propre revue.
+[Preuve de répartition des modules](../.github/qualification/evidence/perl-base-trixie-module-split.v1.json)
+
 ### Sentinelle finale d'ELF et d'alias
 
 La condition `elf_set` contient exactement `kind`, `schema=pamolive.elf-set.v1`, `sha256`, `count`, `elf_count` et `alias_count`. Les compteurs sont des entiers stricts, leur somme est cohérente et le total est compris entre1 et5000. Aucun choix de racine, exclusion, wildcard ou option CLI ne réduit le périmètre.
