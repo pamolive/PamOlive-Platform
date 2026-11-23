@@ -117,6 +117,31 @@ RUN --mount=from=openssl-trixie-package,source=/work,target=/tmp/openssl-package
   rm -rf /var/lib/apt/lists/*
 RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport --root / --output /tmp/debian-refresh-base.json && rm /tmp/debian-refresh-base.json
 
+FROM debian-rebuild-base AS util-linux-trixie-package
+COPY --chmod=0444 deploy/util-linux-trixie-backport/materials.sh deploy/util-linux-trixie-backport/source.sha256 deploy/util-linux-trixie-backport/patches.sha256 deploy/util-linux-trixie-backport/preimage.sha256 deploy/util-linux-trixie-backport/postimage.sha256 deploy/util-linux-trixie-backport/setarch-buildkit-test.patch /opt/util-linux-inputs/
+RUN test -s /usr/share/keyrings/debian-archive-keyring.pgp \
+ && chmod 0755 /opt/util-linux-inputs \
+ && sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
+ && grep -Fxq 'Types: deb deb-src' /etc/apt/sources.list.d/debian.sources \
+ && apt-get -o APT::Update::Error-Mode=any update \
+ && apt-get install -y --no-install-recommends --no-remove build-essential fakeroot quilt curl ca-certificates \
+ && apt-get build-dep -y --arch-only --no-install-recommends 'util-linux=2.41.5-0+deb13u1' \
+ && install -d -m 0755 -o _apt /work
+WORKDIR /work
+RUN sh /opt/util-linux-inputs/materials.sh acquire \
+ && chown -R 65534:65534 /work \
+ && rm -rf /var/lib/apt/lists/*
+ENV HOME=/work
+USER 65534:65534
+RUN --network=none sh /opt/util-linux-inputs/materials.sh build
+
+FROM debian-rebuild-base AS util-linux-trixie-export
+COPY --chmod=0444 deploy/util-linux-trixie-backport/materials.sh /opt/util-linux-inputs/materials.sh
+RUN install -d -m 0755 -o 65534 -g 65534 /evidence && chmod 0755 /opt/util-linux-inputs
+USER 65534:65534
+RUN --network=none --mount=from=util-linux-trixie-package,source=/work,target=/packages,ro \
+  sh /opt/util-linux-inputs/materials.sh export
+
 FROM debian-rebuild-base AS sqlite-trixie-source
 COPY deploy/sqlite-rebuild/source-apt.conf deploy/sqlite-rebuild/forky.sources deploy/sqlite-rebuild/materials.sh /opt/sqlite-inputs/
 WORKDIR /opt/sqlite-source
@@ -337,10 +362,21 @@ RUN --network=none --mount=from=acl-trixie-package,source=/opt/acl-build,target=
   && test -z "$(dpkg --audit)"
 RUN --network=none --mount=from=sasl-trixie-package,source=/opt/sasl-build,target=/tmp/pamolive-sasl-build,ro \
   sh deploy/sasl-rebuild/materials.sh install-runtime /tmp/pamolive-sasl-build
+RUN --network=none --mount=from=util-linux-trixie-export,source=/evidence,target=/packages,ro \
+  set -eu; \
+  python -B -m deploy.util_linux_trixie_materials --directory /packages; \
+  python -B -m deploy.util_linux_trixie_materials --privilege-profile >/tmp/privileged-before.json; \
+  sh /app/deploy/util-linux-trixie-backport/materials.sh install; \
+  apt-get check; \
+  python -B -m deploy.util_linux_trixie_materials --privilege-profile >/tmp/privileged-after.json; \
+  cmp /tmp/privileged-before.json /tmp/privileged-after.json; \
+  rm /tmp/privileged-before.json /tmp/privileged-after.json; \
+  install -d -m 0755 /usr/share/pamolive/util-linux-trixie; \
+  install -m 0444 deploy/util-linux-trixie-backport/qualification.json /usr/share/pamolive/util-linux-trixie/qualification.json
 RUN python deploy/native_inventory.py --capture --output /opt/pamolive-native-manifest.json
 RUN python manage.py collectstatic --noinput
 USER 65534:65534
-RUN --network=none python -B -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport --root / --output /tmp/debian-refresh-runtime.json && rm /tmp/debian-refresh-runtime.json
+RUN --network=none python -B -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport --util-linux-backport --root / --output /tmp/debian-refresh-runtime.json && rm /tmp/debian-refresh-runtime.json
 USER root
 EXPOSE 8000
 HEALTHCHECK --interval=20s --timeout=5s --start-period=20s CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/', timeout=4)"

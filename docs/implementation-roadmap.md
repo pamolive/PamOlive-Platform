@@ -1,5 +1,18 @@
 # Roadmap d’implémentation et qualification
 
+## Image intégrée — qualification des dépendances Trixie
+
+La PR #67 a confirmé l'installation des backports Kerberos et OpenSSL
+dans l'image complète. La PR #68 est en cours de validation sur le vrai
+TAR pour seize empreintes Grype. Le lot `util-linux` a passé l'installation
+et l'ABI en laboratoire. Son intégration au runtime, le comportement de
+ses consommateurs et le scan après remplacement des paquets restent à
+qualifier. La publication requiert le scan de l'image de livraison et
+les preuves de restauration P2.
+[Image intégrée](https://github.com/pamolive/PamOlive-Platform/pull/67) ·
+[Décisions Grype](https://github.com/pamolive/PamOlive-Platform/pull/68) ·
+[ADR-043](adr-043-util-linux-trixie-backport.md)
+
 ## P2 — Checkpoint signé et candidat de livraison intégré
 
 Les PR nº 47 à 49 ajoutent la signature externe du checkpoint, sa conservation

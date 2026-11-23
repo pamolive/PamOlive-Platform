@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      BUILD_CONTEXT_SHA256: 92faa30cce47d1702f5a8e0b7fbea5fca7db7f221a3e6beffa371b1efe34a1e6
+      BUILD_CONTEXT_SHA256: ba2697553e8f9deacd2fc953bc079d1b82874db3383a4cb9442e95afae7f6a09
     steps:
       - name: Receive the exact source revision
         timeout-minutes: 1

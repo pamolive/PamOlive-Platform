@@ -129,13 +129,14 @@ class ArchiveFacts(tuple):
     """Preserve the existing (names, files) interface, with an optional sentinel."""
 
     def __new__(cls, names, files, elf_set=None, *, entries=None, contents=None, captured=None,
-                layer_digests=None):
+                layer_digests=None, attributes=None):
         value = super().__new__(cls, (names, files))
         value.elf_set = elf_set
         value.entries = entries
         value.contents = contents
         value.captured = captured
         value.layer_digests = layer_digests
+        value.attributes = attributes
         return value
 
     def __getnewargs__(self):
@@ -368,7 +369,8 @@ class LayerReader:
 
 
 def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
-                  archive_stream=None, forbidden_elf_sha256=(), reject_cjson_elf=False):
+                  archive_stream=None, forbidden_elf_sha256=(), reject_cjson_elf=False,
+                  attribute_paths=()):
     """Stream final file/ELF/link identities, without extraction or following links."""
     require(type(reject_cjson_elf) is bool, "archive_cjson_option")
     requested = {checked_path(item["path"]) for item in conditions
@@ -376,7 +378,10 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
     require(isinstance(read_paths, (list, tuple, set)) and len(read_paths) <= 32,
             "archive_read_paths")
     read_paths = {checked_path(name) for name in read_paths}
-    requested |= read_paths
+    require(isinstance(attribute_paths, (list, tuple, set)) and len(attribute_paths) <= 32,
+            "archive_attribute_paths")
+    attribute_paths = {checked_path(name) for name in attribute_paths}
+    requested |= read_paths | attribute_paths
     require(isinstance(forbidden_elf_sha256, (tuple, list, set, frozenset))
             and len(forbidden_elf_sha256) <= 16
             and all(isinstance(value, str) and SHA.fullmatch(value)
@@ -384,7 +389,7 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
     capture_set = reject_cjson_elf or bool(forbidden_elf_sha256) or bool(read_paths) or any(
         item.get("kind") == "elf_set" for item in conditions)
     names, elves, entries = set(), {}, {}
-    captured = {}
+    captured, attributes = {}, {}
     # Hardlinks retain bytes even after their original path is removed. Track
     # immutable content snapshots and link groups, never filesystem links.
     contents, link_groups, next_group = {}, {}, 0
@@ -398,7 +403,7 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                    for dependency in dependencies)
 
     def invalidate(path, *, preserve=()):
-        for mapping in (elves, entries, captured):
+        for mapping in (elves, entries, captured, attributes):
             for existing in list(mapping):
                 if existing not in preserve and (existing == path or existing.startswith(
                         path.rstrip("/") + "/")):
@@ -472,6 +477,7 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                             elves.pop(name, None)
                             entries.pop(name, None)
                             captured.pop(name, None)
+                            attributes.pop(name, None)
                             if name in contents:
                                 require(not masks_current_dependency(name),
                                         "elf_set_hardlink_replacement")
@@ -512,6 +518,13 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                                 entries[name].update({key: record[key]
                                                       for key in ("sha256", "class", "machine")})
                         elif member.isfile() and (capture_set or name in requested):
+                            if name in attribute_paths:
+                                attributes[name] = {
+                                    "mode": member.mode & 0o7777, "uid": member.uid,
+                                    "gid": member.gid, "has_capability": any(
+                                        key.endswith(".security.capability")
+                                        for key in member.pax_headers),
+                                }
                             data = inner.extractfile(member)
                             header = data.read(64)
                             is_elf = header[:4] == b"\x7fELF"
@@ -574,7 +587,7 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
                         entries=entries if capture_set else None,
                         contents={name: {key: item[key] for key in ("sha256", "class", "machine")}
                                   for name, item in contents.items()} if capture_set else None,
-                        captured=captured, layer_digests=layer_digests)
+                        captured=captured, layer_digests=layer_digests, attributes=attributes)
 
 
 
