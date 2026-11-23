@@ -114,9 +114,15 @@ case "${1-}" in
     ;;
   install)
     cd /packages
-    sha256sum --check --strict checksums.sha256
-    apt-get install -y --no-download --no-install-recommends --no-remove /packages/*.deb
-    test -z "$(dpkg --audit)"
+    set --
+    for package in $packages; do
+      set -- "$@" "./$package.deb"
+    done
+    actual_checksums=$(sha256sum ./buildinfo ./test-summary.txt "$@")
+    printf '%s\n' "$actual_checksums" | cmp - checksums.sha256
+    dpkg --install "$@"
+    audit=$(dpkg --audit)
+    test -z "$audit"
     ;;
   *) exit 42 ;;
 esac

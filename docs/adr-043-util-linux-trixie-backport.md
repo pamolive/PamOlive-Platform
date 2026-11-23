@@ -46,7 +46,15 @@ changent pas.
 [Journal Debian](https://github.com/pamolive/PamOlive-Platform/actions/runs/45139725581)
 
 La qualification installe les neuf paquets Debian de référence puis les
-neuf candidats dans un environnement jetable. Elle compare les exports
+neuf candidats dans un environnement jetable. La compilation et la
+suite Debian ont ensuite franchi le contrôle du harnais. L'installation
+hors ligne s'est arrêtée lorsque APT a transmis un nom d'archive relatif
+à dpkg. Le laboratoire vérifie désormais l'inventaire exact des neuf
+archives et les installe directement avec dpkg dans le même conteneur
+sans réseau. Le contrôle `dpkg --audit` reste obligatoire.
+[Journal de qualification](https://github.com/pamolive/PamOlive-Platform/actions/runs/45141236850)
+
+La qualification compare les exports
 versionnés de cinq bibliothèques et vérifie leurs chemins chargés par
 le processus. Les programmes sont examinés en lecture seule, dont
 `findmnt` sur la table de montage du conteneur. L'admission exige
