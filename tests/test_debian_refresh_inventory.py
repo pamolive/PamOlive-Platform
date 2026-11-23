@@ -12,8 +12,8 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import patch
 
+from deploy import build_context, qualified_image
 from deploy import debian_refresh_inventory as inventory
-from deploy import qualified_image
 from qualification.debian_138_refresh import verify_refresh as refresh
 
 REVISION = "a" * 40
@@ -81,6 +81,13 @@ class DebianRuntimeInventoryTests(TestCase):
         self.root = Path(tmp.name)
         self.files = native_files()
         self.receipt = make_receipt(self.files)
+        receipt = json.loads(self.receipt)
+        expected = {"installed_elf_sha256": receipt["installed_elf_sha256"],
+                    "packages": receipt["selection"]["packages"]}
+        raw = (json.dumps(expected, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
+        pin = patch.object(refresh, "REVIEWED_MATERIALS_SHA256", refresh.sha(raw))
+        pin.start()
+        self.addCleanup(pin.stop)
         self.aliases = {path: PurePosixPath(target).name
                         for path, target in inventory.KRB5_ALIASES.items()}
         self.payload = {
@@ -157,6 +164,12 @@ class DebianRuntimeInventoryTests(TestCase):
             [item["package"] for item in report["packages"]], sorted(inventory.RUNTIME_PACKAGES)
         )
         self.assertEqual(set(report["installed_elf_sha256"]), inventory.ELF_PATHS)
+
+    def test_committed_context_pins_match_the_debian_qualification_sources(self):
+        root = Path(__file__).resolve().parents[1]
+        actual = {name: refresh.sha((root / name).read_bytes())
+                  for name in build_context.DEBIAN_REFRESH_INPUTS}
+        self.assertEqual(actual, build_context.DEBIAN_REFRESH_INPUTS)
 
     def test_root_entry_point_imports_in_the_two_file_builder_context(self):
         for module, target in (
@@ -243,4 +256,22 @@ class DebianRuntimeInventoryTests(TestCase):
         path = next(iter(self.files))
         self.bundle({**self.payload, path: self.files[path] + b"changed"})
         with self.assertRaisesRegex(inventory.InventoryError, "installed_elf_changed"):
+            inventory.inspect_bundle(self.root, REVISION)
+
+    def test_image_rejects_agreeing_fabricated_receipt_and_elf(self):
+        path = next(iter(self.files))
+        changed = {**self.files, path: self.files[path] + b"replacement"}
+        payload = {**self.payload, **changed, inventory.RECEIPT: make_receipt(changed)}
+        self.bundle(payload)
+        with self.assertRaisesRegex(inventory.InventoryError, "unreviewed_debian_materials"):
+            inventory.inspect_bundle(self.root, REVISION)
+
+    def test_image_rejects_repacked_deb_and_allows_new_signed_index_digest(self):
+        receipt = json.loads(self.receipt)
+        receipt["selection"]["releases"]["trixie"] = "c" * 64
+        self.bundle({**self.payload, inventory.RECEIPT: json.dumps(receipt).encode("ascii")})
+        self.assertEqual(inventory.inspect_bundle(self.root, REVISION)["revision"], REVISION)
+        receipt["selection"]["packages"][0]["archive_sha256"] = "e" * 64
+        self.bundle({**self.payload, inventory.RECEIPT: json.dumps(receipt).encode("ascii")})
+        with self.assertRaisesRegex(inventory.InventoryError, "unreviewed_debian_materials"):
             inventory.inspect_bundle(self.root, REVISION)
