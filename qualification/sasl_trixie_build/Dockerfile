@@ -3,44 +3,20 @@ RUN test "$(dpkg --print-architecture)" = amd64 \
  && test -s /usr/share/keyrings/debian-archive-keyring.gpg
 
 FROM trixie AS source
-COPY deploy/acl-rebuild/forky.sources qualification/sasl_trixie_build/source-apt.conf qualification/sasl_trixie_build/source.sha256 /opt/sasl-inputs/
+COPY deploy/sasl-rebuild/forky.sources deploy/sasl-rebuild/source-apt.conf deploy/sasl-rebuild/source.sha256 deploy/sasl-rebuild/materials.sh /opt/sasl-inputs/
 WORKDIR /opt/sasl-source
-RUN set -eu; \
-    install -d -m 0755 /var/lib/apt/sasl-source-lists; \
-    chown _apt:root /opt/sasl-source; \
-    apt-get -c /opt/sasl-inputs/source-apt.conf update; \
-    apt-get -c /opt/sasl-inputs/source-apt.conf --download-only source cyrus-sasl2=2.1.28+dfsg1-12; \
-    sha256sum --check --strict /opt/sasl-inputs/source.sha256; \
-    test "$(find . -maxdepth 1 -type f | wc -l)" -eq 3
+RUN sh /opt/sasl-inputs/materials.sh acquire
 
 FROM trixie AS builder
-RUN set -eu; \
-    sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends --no-remove build-essential dpkg-dev fakeroot; \
-    apt-get -P nodoc build-dep -y --arch-only --no-install-recommends cyrus-sasl2; \
-    rm -rf /var/lib/apt/lists/*
+COPY --chmod=0444 deploy/sasl-rebuild/materials.sh deploy/sasl-rebuild/source.sha256 /opt/sasl-inputs/
+RUN sh /opt/sasl-inputs/materials.sh toolchain
 WORKDIR /opt/sasl-build
 COPY --from=source /opt/sasl-source/ ./
-RUN --network=none set -eu; \
-    dpkg-source -x cyrus-sasl2_2.1.28+dfsg1-12.dsc tree; \
-    cd tree; \
-    test "$(dpkg-parsechangelog -SVersion)" = '2.1.28+dfsg1-12'; \
-    test -s debian/patches/0043-CVE-2026-107161.patch; \
-    grep -Fxq '0043-CVE-2026-107161.patch' .pc/applied-patches; \
-    printf '%s\n' \
-      'cyrus-sasl2 (2.1.28+dfsg1-12~pamolive13u1) trixie; urgency=medium' '' \
-      '  * Rebuild the Debian source on Trixie.' '' \
-      ' -- PamOlive Build <pamolive-automation@users.noreply.github.com>  Mon, 23 Nov 2026 00:00:00 +0000' '' \
-      > debian/pamolive-changelog; \
-    cat debian/changelog >> debian/pamolive-changelog; \
-    mv debian/pamolive-changelog debian/changelog; \
-    chown -R 65534:65534 /opt/sasl-build
+RUN --network=none sh /opt/sasl-inputs/materials.sh prepare
 USER 65534:65534
 WORKDIR /opt/sasl-build/tree
 ENV HOME=/opt/sasl-build LC_ALL=C.UTF-8 DEB_BUILD_OPTIONS=parallel=2
-RUN --network=none dpkg-checkbuilddeps -B -P nodoc \
- && dpkg-buildpackage -B --build-profiles=nodoc -us -uc -j2
+RUN --network=none sh /opt/sasl-inputs/materials.sh build
 
 FROM trixie AS runtime
 RUN apt-get update \
@@ -58,9 +34,11 @@ RUN --network=none python -I -B -S /opt/sasl-checks/check.py runtime 2.1.28+dfsg
 
 FROM runtime AS candidate
 COPY --from=baseline /evidence/baseline.json /evidence/baseline.json
+COPY --chmod=0444 deploy/sasl-rebuild/materials.sh deploy/sasl-rebuild/package.sha256 /opt/sasl-inputs/
 RUN --network=none --mount=from=builder,source=/opt/sasl-build,target=/packages,ro \
     set -eu; \
     version='2.1.28+dfsg1-12~pamolive13u1'; \
+    sh /opt/sasl-inputs/materials.sh install-runtime /packages; \
     for package in libsasl2-2 libsasl2-modules-db; do \
       path="/packages/${package}_${version}_amd64.deb"; \
       test "$(dpkg-deb -f "$path" Package)" = "$package"; \
@@ -69,8 +47,6 @@ RUN --network=none --mount=from=builder,source=/opt/sasl-build,target=/packages,
       test "$(dpkg-deb -f "$path" Architecture)" = amd64; \
       install -m 0444 "$path" "/evidence/$package.deb"; \
     done; \
-    dpkg --install /evidence/libsasl2-modules-db.deb /evidence/libsasl2-2.deb; \
-    test -z "$(dpkg --audit)"; \
     install -m 0444 "/packages/cyrus-sasl2_${version}_amd64.buildinfo" /evidence/buildinfo
 USER 65534:65534
 RUN --network=none python -I -B -S /opt/sasl-checks/check.py runtime 2.1.28+dfsg1-12~pamolive13u1 > /evidence/candidate.json \

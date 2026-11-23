@@ -32,3 +32,19 @@ Le laboratoire conserve les deux paquets, le buildinfo et les empreintes
 des bibliothèques. Une qualification produit devra ensuite vérifier la
 liaison depuis `_ldap` et Psycopg, des connexions LDAP StartTLS et PostgreSQL
 TLS/SCRAM synthétiques, ainsi que le scan strict de l'image exacte.
+
+Le candidat produit partage la recette de reconstruction avec le laboratoire.
+Il contrôle les empreintes des trois paquets issues du buildinfo qualifié.
+Il installe le SDK reconstruit dans le builder des wheels et les deux paquets
+d'exécution après le dernier APT de l'image. Chaque installation s'effectue
+hors réseau avec un montage des paquets en lecture seule. L'image finale
+conserve le cœur SASL et `libsasldb`.
+
+La CI prend l'identifiant Docker Engine après vérification de l'archive.
+Elle vérifie les paquets et les bibliothèques chargées par `_ldap` et Psycopg C.
+Un annuaire loopback éphémère et un PostgreSQL dédié en réseau interne servent
+à valider les connexions LDAP StartTLS et PostgreSQL TLS avec SCRAM et liaison
+de canal. Les rapports séparent le chargement des bibliothèques et les essais
+de connexion. La décision de publication reste attachée au scan complet de
+cette image.
+[Qualification des paquets](https://github.com/pamolive/PamOlive-Platform/actions/runs/45119726353)

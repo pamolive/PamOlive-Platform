@@ -363,6 +363,13 @@ jobs:
           docker run --rm --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --entrypoint python "$image_ref" -c 'from pathlib import Path; import sys; sys.stdout.buffer.write(Path("/opt/pamolive-native-manifest.json").read_bytes())' > "$proof/native-manifest.json"
           docker run --rm --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -m deploy.native_inventory --output /proof/native-report.json --gcc-provider-output /proof/gcc-provider.json
           docker run --rm --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -m deploy.check_database_driver --output /proof/database-driver.json
+          timeout --signal=TERM --kill-after=2s 25s docker run --rm --pull never --no-healthcheck \
+            --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges \
+            --read-only --cpus 1 --memory 256m --memory-swap 256m --pids-limit 32 \
+            --entrypoint python "$image_ref" -I -B /app/deploy/sasl-rebuild/check_loaded.py \
+            > "$proof/sasl-runtime.json"
+          python -m deploy.check_sasl_ldap_ci --image-id "$image_ref" > "$proof/sasl-ldap.json"
+          python -m deploy.check_sasl_postgres_ci --image-id "$image_ref" > "$proof/sasl-postgres.json"
           docker run --rm --pull never --no-healthcheck --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -m deploy.debian_refresh_inventory --root / --output /proof/debian-runtime-live.json
           timeout --signal=TERM --kill-after=2s 25s docker run --rm --pull never --no-healthcheck \
             --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges \
