@@ -44,7 +44,7 @@ def tar_bytes(files):
     return out.getvalue()
 
 
-def fixture(extra_layers=(), mutate=None):
+def fixture(extra_layers=(), mutate=None, *, dpkg_status=None):
     active, before, files = {}, {}, {}
     for key in expat.KEYS:
         alias = expat.MODULES.get(key, "/usr/lib/x86_64-linux-gnu/" + key)
@@ -93,7 +93,7 @@ def fixture(extra_layers=(), mutate=None):
         mutate(proof, files)
     for name, value in proof.items():
         files[name] = json.dumps(value).encode()
-    files[expat.PATHS[-1]] = (
+    files[expat.PATHS[-1]] = dpkg_status if dpkg_status is not None else (
         b"Package: libexpat1\nStatus: install ok installed\n"
         b"Architecture: amd64\nVersion: 2.10.0-1+pamolive2\n\n"
     )

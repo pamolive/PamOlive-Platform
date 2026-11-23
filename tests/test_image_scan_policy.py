@@ -16,12 +16,14 @@ from urllib.parse import quote
 
 from deploy import (
     debian_refresh_inventory,
+    expat_image,
     native_sbom,
     openssl_trixie_materials,
     qualified_image,
     util_linux_trixie_materials,
 )
 from deploy import qualify_image_scan as gate
+from tests import test_expat_product as expat_test
 from tests import test_krb5_inventory as krbtest
 
 
@@ -100,6 +102,139 @@ class ImageScanPolicyTests(TestCase):
             "conditions": [{"kind": "absent_basename_glob", "pattern": "synthetic-absent.so*"}]}
         self.policy["findings"] = [entry]
         return entry
+
+    def expat_scan_entries(self):
+        template = self.add_exception()
+        self.os["distro"]["version"] = "13.8"
+        package = "libexpat1"
+        version = expat_image.REBUILD_VERSION
+        self.os["matches"] = [
+            self.match(cve, state=state, name=package, version=version, source="expat")
+            for cve, state in gate.EXPAT_FIX_STATES.items()
+        ]
+        for row in self.os["matches"]:
+            row["artifact"]["purl"] = (
+                f"pkg:deb/debian/{package}@{quote(version, safe='')}"
+                "?arch=amd64&distro=debian-13.8&upstream=expat"
+            )
+        source_root = Path(__file__).resolve().parents[1]
+        evidence = []
+        for path, digest in gate.EXPAT_PROOFS.items():
+            target = self.repo / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((source_root / path).read_bytes())
+            evidence.append({"path": path, "sha256": digest})
+        self.policy["findings"] = [{
+            **template, "fingerprint": key, "finding": finding,
+            "disposition": "fixed_by_backport", "conditions": [gate.EXPAT_CONDITION],
+            "local_evidence": evidence,
+            "vendor_evidence": [finding["data_source"], gate.EXPAT_RELEASE_NOTES],
+        } for key, finding in gate.high_groups(self.os, "os").items()]
+
+    def expat_archive_for_scan(self, audit=b"synthetic source evidence", dpkg_status=None):
+        def mutate(proof, files):
+            if audit is not None:
+                files[expat_image.SOURCE_AUDIT] = audit
+
+        if dpkg_status is None:
+            dpkg_status = (f"Package: libexpat1\nStatus: install ok installed\n"
+                           f"Source: expat\nArchitecture: amd64\n"
+                           f"Version: {expat_image.REBUILD_VERSION}\n").encode()
+        raw, image_id = expat_test.fixture(mutate=mutate, dpkg_status=dpkg_status)
+        archive = self.repo / qualified_image.ARCHIVE
+        archive.write_bytes(raw)
+        with tarfile.open(archive) as tar:
+            config = tar.extractfile("config.json").read()
+        return archive, image_id, config
+
+    def test_expat_rebuild_checks_all_four_findings_against_archive_and_sbom(self):
+        self.expat_scan_entries()
+        archive, self.config_id, self.config = self.expat_archive_for_scan()
+        target = self.os["source"]["target"]
+        target.update(imageID=self.config_id, config=base64.b64encode(self.config).decode())
+        report = expat_image.examine(archive, self.config_id)
+        components, edges, roots = native_sbom.expat_components(
+            report, self.config_id, "image_config",
+        )
+        image_ref = native_sbom.PREFIX + "image:image_config:" + self.config_id
+        self.sbom["components"].extend([*components, {
+            "type": "container", "name": "pamolive-platform", "bom-ref": image_ref,
+        }])
+        self.sbom["dependencies"] = [*edges, {"ref": image_ref, "dependsOn": roots}]
+        properties = self.sbom["metadata"]["properties"]
+        properties[1]["value"] = self.config_id
+        properties.append({"name": "pamolive:sbom:expat-input-sha256",
+                           "value": hashlib.sha256(expat_image.report_bytes(report)).hexdigest()})
+        pins = {
+            "SOURCE_AUDIT_SHA256": hashlib.sha256(b"synthetic source evidence").hexdigest(),
+            "SOURCE_REBUILD_SHA256": gate.fingerprint(report["source_rebuild"])[7:],
+            "REVIEWED_ELF": {k: row["sha256"] for k, row in report["active"].items()},
+            "REVIEWED_OLD_ELF": set(report["old_ELF_hashes_absent_all_layers"]),
+        }
+        with patch.multiple(expat_image, **pins):
+            result = self.evaluate(archive=archive, archive_sha256=report["archive_sha256"])
+            self.assertTrue(result["passed"])
+            self.assertFalse(result["all_findings_clear"])
+            self.assertEqual(len(result["decisions"]), 4)
+            with self.assertRaisesRegex(gate.ScanPolicyError, "expat_rebuild_archive"):
+                self.evaluate(archive=archive, archive_sha256="0" * 64)
+            with self.assertRaisesRegex(gate.ScanPolicyError, "expat_rebuild_bundle"):
+                self.evaluate()
+
+            self.sbom["components"].append({"name": "synthetic", "components": [components[0]]})
+            with self.assertRaisesRegex(gate.ScanPolicyError, "expat_sbom_components"):
+                self.evaluate(archive=archive, archive_sha256=report["archive_sha256"])
+            duplicate_path = {
+                "name": "synthetic-duplicate", "bom-ref": "synthetic-ref", "type": "file",
+                "properties": [components[1]["properties"][0]],
+            }
+            self.sbom["components"][-1] = duplicate_path
+            with self.assertRaisesRegex(gate.ScanPolicyError, "expat_sbom_components"):
+                self.evaluate(archive=archive, archive_sha256=report["archive_sha256"])
+            self.sbom["components"].pop()
+            missing_root = roots.pop()
+            with self.assertRaisesRegex(gate.ScanPolicyError, "expat_sbom_components"):
+                self.evaluate(archive=archive, archive_sha256=report["archive_sha256"])
+            roots.append(missing_root)
+            properties[-1]["value"] = "b" * 64
+            with self.assertRaisesRegex(gate.ScanPolicyError, "expat_sbom_binding"):
+                self.evaluate(archive=archive, archive_sha256=report["archive_sha256"])
+            with patch.object(expat_image, "REVIEWED_ELF", {}), self.assertRaisesRegex(
+                gate.ScanPolicyError, "expat_reviewed_ELF",
+            ):
+                expat_image.examine(archive, self.config_id, reviewed_rebuild=True)
+            with (
+                patch.object(expat_image, "SOURCE_REBUILD_SHA256", "f" * 64),
+                self.assertRaisesRegex(gate.ScanPolicyError, "expat_reviewed_rebuild"),
+            ):
+                expat_image.examine(archive, self.config_id, reviewed_rebuild=True)
+            for audit, code in ((None, "missing"), (b"changed", "changed")):
+                changed, image_id, _ = self.expat_archive_for_scan(audit=audit)
+                with self.assertRaisesRegex(gate.ScanPolicyError, "expat_source_audit_" + code):
+                    expat_image.examine(changed, image_id, reviewed_rebuild=True)
+            status = (f"Package: libexpat1\nStatus: install ok installed\nArchitecture: amd64\n"
+                      f"Version: {expat_image.REBUILD_VERSION}\n").encode()
+            second_package = (status + b"Source: expat\n\n"
+                              b"Package: expat\nStatus: install ok installed\n")
+            for raw_status in (status, second_package):
+                changed, image_id, _ = self.expat_archive_for_scan(dpkg_status=raw_status)
+                with self.assertRaisesRegex(gate.ScanPolicyError, "expat_reviewed_dpkg_source"):
+                    expat_image.examine(changed, image_id, reviewed_rebuild=True)
+
+    def test_expat_rebuild_is_scoped_to_the_reviewed_os_groups(self):
+        self.expat_scan_entries()
+        entry = self.policy["findings"][0]
+        finding = entry["finding"]
+        proofs = entry["local_evidence"]
+        for fields in ({"scope": "compiled"}, {"vulnerability_id": "CVE-2026-124317"},
+                       {"distro": {"name": "debian", "version": "13.7"}},
+                       {"packages": [{**finding["packages"][0], "version": "2.9.0"}]}):
+            with self.subTest(fields=fields), self.assertRaisesRegex(
+                gate.ScanPolicyError, "expat_rebuild_scope",
+            ):
+                gate.expat_rebuild_holds(entry, {**finding, **fields}, proofs=proofs, report=None)
+        with self.assertRaisesRegex(gate.ScanPolicyError, "expat_rebuild_recipe"):
+            gate.expat_rebuild_holds(entry, finding, proofs=proofs[:-1], report=None)
 
     def sqlite_scan_entries(self, condition):
         self.os["distro"]["version"] = "13.8"

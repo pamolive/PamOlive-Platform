@@ -110,6 +110,22 @@ SQLITE_PROOFS = {
         "89e0885c7de0cdeb2ff226285d7cc3e96d034515c747f6ab9877311100f862d5",
 }
 SQLITE_CONDITION = {"kind": "sqlite_rebuild", "sha256": SQLITE_ELF_SHA256}
+EXPAT_FIX_STATES = {
+    "CVE-2026-113351": "wont-fix",
+    "CVE-2026-115506": "wont-fix",
+    "CVE-2026-117610": "not-fixed",
+    "CVE-2026-118370": "not-fixed",
+}
+EXPAT_RELEASE_NOTES = "https://github.com/libexpat/libexpat/blob/R_2_10_0/expat/Changes"
+EXPAT_MATERIALS = "deploy/expat-remediation/materials.json"
+EXPAT_PROOFS = {
+    EXPAT_MATERIALS: "f24eef7b48bb8f5c52139b5affd941df9505765aa8c07289d55df97a48d68084",
+    "deploy/expat-remediation/authenticate.py":
+        "ee2fa56b745671af2e2349f663220ed16d1b6389f79c376801eed9bedbd1c803",
+    "deploy/expat-remediation/source_audit.py":
+        "7a0f98e4c36ce3c7a9d3c21493986236a3db72e6aa7a9d281e781ee025e2e3a1",
+}
+EXPAT_CONDITION = {"kind": "expat_rebuild", "sha256": EXPAT_PROOFS[EXPAT_MATERIALS]}
 ELF_SET_SCHEMA = "pamolive.elf-set.v1"
 GCC_VERSION = "14.2.0-19"
 GCC_PACKAGES = {"gcc-14-base", "libatomic1", "libgcc-s1", "libstdc++6"}
@@ -990,8 +1006,32 @@ def sqlite_rebuild_holds(entry, finding, *, facts, proofs):
     }
 
 
+def expat_rebuild_holds(entry, finding, *, proofs, report):
+    from deploy.expat_image import REBUILD_VERSION
+
+    cve = finding["vulnerability_id"]
+    state = EXPAT_FIX_STATES.get(cve)
+    purl = f"pkg:deb/debian/libexpat1@{quote(REBUILD_VERSION, safe='')}"
+    purl += "?arch=amd64&distro=debian-13.8&upstream=expat"
+    package = {"name": "libexpat1", "type": "deb", "version": REBUILD_VERSION, "purl": purl}
+    require(state and EXPAT_RELEASE_NOTES in entry["vendor_evidence"] and finding == {
+        "vulnerability_id": cve, "source_package": "expat", "scope": "os",
+        "severity": "High", "distro": {"name": "debian", "version": "13.8"},
+        "fix_state": state, "namespace": "debian:distro:debian:13",
+        "data_source": "https://security-tracker.debian.org/tracker/" + cve,
+        "packages": [package],
+    }, "expat_rebuild_scope")
+    require(entry["disposition"] == "fixed_by_backport"
+            and entry["conditions"] == [EXPAT_CONDITION]
+            and not {"trixie_backport_receipt", "backport_inventory", "build_recipe"} & entry.keys()
+            and all({"path": path, "sha256": digest} in proofs
+                    for path, digest in EXPAT_PROOFS.items()), "expat_rebuild_recipe")
+    require(report is not None, "expat_rebuild_image")
+    return True
+
+
 def reviewed_exception(entry, finding, *, facts, repo, now, archive=None, artifact_cache=None,
-                       trixie_report=None):
+                       trixie_report=None, expat_report=None):
     require(entry.get("fingerprint") == fingerprint(entry.get("finding")), "policy_fingerprint")
     require(entry["finding"] == finding, "policy_finding_changed")
     if entry.get("disposition") == "untriaged":
@@ -1028,6 +1068,8 @@ def reviewed_exception(entry, finding, *, facts, repo, now, archive=None, artifa
                 proof.get("sha256"), "proof_changed")
     if any(item.get("kind") == "sqlite_rebuild" for item in entry.get("conditions", ())):
         return sqlite_rebuild_holds(entry, finding, facts=facts, proofs=proofs)
+    if any(item.get("kind") == "expat_rebuild" for item in entry.get("conditions", ())):
+        return expat_rebuild_holds(entry, finding, proofs=proofs, report=expat_report)
     if "trixie_backport_receipt" in entry:
         return trixie_backport_holds(entry, finding, proofs=proofs, report=trixie_report)
     if entry["disposition"] == "fixed_by_backport":
@@ -1114,8 +1156,55 @@ def verify_trixie_sbom(sca_sbom, report, config_id, properties):
                 report["util_linux_receipt_sha256"], "trixie_util_linux_sbom_binding")
 
 
+def verify_expat_sbom(sca_sbom, report, config_id, properties):
+    from deploy import expat_image, native_sbom
+
+    expected, dependencies, roots = native_sbom.expat_components(report, config_id, "image_config")
+    prefixes = (native_sbom.PREFIX + "expat:", native_sbom.PREFIX + "expat-file:")
+    names = {item["name"] for item in expected} | {"libexpat1", "libexpat1-dev"}
+    purl_prefixes = ("pkg:generic/expat@", "pkg:deb/debian/libexpat1@")
+    path_keys = {"pamolive:native:path", "pamolive:native:alias"}
+    paths = {prop["value"] for item in expected for prop in item.get("properties", [])
+             if prop["name"] in path_keys}
+    image_ref = native_sbom.PREFIX + "image:image_config:" + config_id
+    image_count = 0
+    observed = []
+    pending = list(sca_sbom["components"])
+    metadata_component = sca_sbom["metadata"].get("component")
+    if metadata_component is not None:
+        pending.append(metadata_component)
+    count = 0
+    while pending:
+        item = pending.pop()
+        count += 1
+        require(count <= 5000, "expat_sbom_component_budget")
+        pending.extend(item.get("components", []))
+        ref = item.get("bom-ref", "")
+        if ref == image_ref:
+            require(item.get("type") == "container", "expat_sbom_image_component")
+            image_count += 1
+        if (ref.startswith(prefixes) or item.get("name") in names
+                or item.get("purl", "").startswith(purl_prefixes)
+                or any(prop.get("name") in path_keys and prop.get("value") in paths
+                       for prop in item.get("properties", []))):
+            observed.append(item)
+
+    observed_edges = [row for row in sca_sbom["dependencies"] if row["ref"].startswith(prefixes)]
+    image_edges = [row for row in sca_sbom["dependencies"] if row["ref"] == image_ref]
+    require(sorted(observed, key=canonical) == sorted(expected, key=canonical)
+            and sorted(observed_edges, key=canonical) == sorted(dependencies, key=canonical)
+            and image_count == len(image_edges) == 1
+            and isinstance(image_edges[0].get("dependsOn"), list)
+            and all(image_edges[0]["dependsOn"].count(ref) == 1 for ref in roots),
+            "expat_sbom_components")
+    expected_hash = hashlib.sha256(expat_image.report_bytes(report)).hexdigest()
+    require(properties.get("pamolive:sbom:expat-input-sha256") == expected_hash,
+            "expat_sbom_binding")
+
+
 def qualify(os_report, compiled_report, positive_report, compiled_sbom, policy, *,
-            config_id, config_bytes, facts, repo, now=None, archive=None, revision=None):
+            config_id, config_bytes, facts, repo, now=None, archive=None, revision=None,
+            archive_sha256=None):
     """Pure policy evaluation after files/archive identities have been checked."""
     now = now or datetime.now(UTC)
     require(policy.get("schema") == SCHEMA and policy.get("version") == 1, "policy_version")
@@ -1190,12 +1279,24 @@ def qualify(os_report, compiled_report, positive_report, compiled_sbom, policy, 
                                                                 **modes)
         require(trixie_report["image_config_id"] == config_id, "trixie_backport_config")
         verify_trixie_sbom(compiled_sbom, trixie_report, config_id, props)
+    expat_report = None
+    if any(indexed.get(key, {}).get("conditions") == [EXPAT_CONDITION]
+           and indexed[key]["disposition"] != "untriaged" for key in groups):
+        from deploy import expat_image
+
+        require(archive is not None and Path(archive).name == qualified_image.ARCHIVE
+                and isinstance(archive_sha256, str) and SHA.fullmatch(archive_sha256),
+                "expat_rebuild_bundle")
+        expat_report = expat_image.examine(archive, config_id, reviewed_rebuild=True)
+        require(expat_report["archive_sha256"] == archive_sha256, "expat_rebuild_archive")
+        verify_expat_sbom(compiled_sbom, expat_report, config_id, props)
     artifact_cache = {}
     for key, finding in groups.items():
         entry = indexed.get(key)
         if entry is None or not reviewed_exception(entry, finding, facts=facts, repo=repo, now=now,
                                                    archive=archive, artifact_cache=artifact_cache,
-                                                   trixie_report=trixie_report):
+                                                   trixie_report=trixie_report,
+                                                   expat_report=expat_report):
             blockers.append({"code": "untriaged_high", "fingerprint": key, "finding": finding})
     require(all(item[2]["image_config_id"] == config_id for item in artifact_cache.values()),
             "recipe_image_config_changed")
@@ -1268,7 +1369,8 @@ def main(argv=None):
                 control_path.resolve(), "positive_control_source")
         result = qualify(os_report, compiled, positive, sbom, policy,
                          config_id=metadata["image_id"], config_bytes=config, facts=facts,
-                         repo=repo, archive=archive, revision=args.revision)
+                         repo=repo, archive=archive, revision=args.revision,
+                         archive_sha256=metadata["archive_sha256"])
         require(hash_file(archive) == metadata["archive_sha256"], "archive_changed_during_scan")
         result["input_sha256"] = {name: hash_file(path) for name, path in (
             ("qualified_image", bundle / qualified_image.METADATA), ("archive", archive),

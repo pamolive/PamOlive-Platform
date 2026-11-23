@@ -2,16 +2,20 @@
 
 ## Image intégrée — qualification des dépendances Trixie
 
-La PR #67 a confirmé l'installation des backports Kerberos et OpenSSL
-dans l'image complète. La PR #68 est en cours de validation sur le vrai
-TAR pour seize empreintes Grype. Le lot `util-linux` a passé l'installation
-et l'ABI en laboratoire. Son intégration au runtime, le comportement de
-ses consommateurs et le scan après remplacement des paquets restent à
-qualifier. La publication requiert le scan de l'image de livraison et
-les preuves de restauration P2.
-[Image intégrée](https://github.com/pamolive/PamOlive-Platform/pull/67) ·
-[Décisions Grype](https://github.com/pamolive/PamOlive-Platform/pull/68) ·
-[ADR-043](adr-043-util-linux-trixie-backport.md)
+Les deux scans de la PR #68 ont observé 39 groupes High. Seize sont
+couverts par des décisions vérifiées sur l'image. Les 23 autres ont
+bloqué ce candidat. La PR #69 installe les paquets `util-linux` et
+a terminé la qualification fonctionnelle de l'image. Le scan PR
+retient 27 groupes bloquants, dont huit observations `util-linux`
+sur les deux périmètres. La PR #70 ajoute trois décisions SQLite
+liées aux binaires reconstruits. Le candidat suivant soumet quatre
+décisions Expat et huit décisions util-linux à la vérification
+dans l'image exacte. Une publication doit passer le scan et les
+contrôles de restauration de sa propre CI.
+[Scan #68](https://github.com/pamolive/PamOlive-Platform/actions/runs/45147243883/artifacts/14808542038) ·
+[Runtime util-linux](https://github.com/pamolive/PamOlive-Platform/pull/69) ·
+[Décisions SQLite](https://github.com/pamolive/PamOlive-Platform/pull/70) ·
+[Politique image](image-scan-policy.md)
 
 ## P2 — Checkpoint signé et candidat de livraison intégré
 

@@ -90,10 +90,13 @@ paquets ont leurs versions binaires exactes, dont deux avec epoch.
 Les PURL OS portent la version source quand elle diffère de la
 version binaire. Le contrôle autorise `fixed_by_backport` pour
 CVE-2026-76642, CVE-2026-78408 et CVE-2026-78410.
-`code_not_present` est réservé à CVE-2026-78409 dans ce lot. La CI
-doit produire les empreintes exactes des signalements avant de les
-enregistrer dans la politique.
-[Preuves par avis](adr-043-util-linux-trixie-backport.md)
+`code_not_present` est réservé à CVE-2026-78409 dans ce lot. Les
+huit entrées couvrent les empreintes OS et SBOM reproduites par les
+deux scans de la PR #69. La nouvelle CI doit relire le vrai TAR et
+contrôler les empreintes ELF, les alias et l'unicité de libmount.
+[Preuves par avis](adr-043-util-linux-trixie-backport.md) ·
+[Scan PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/45149881862/artifacts/14810610408) ·
+[Scan push](https://github.com/pamolive/PamOlive-Platform/actions/runs/45149835034/artifacts/14809623147)
 
 ### Deux justifications GCC bornées
 
@@ -215,3 +218,28 @@ decisions. Its checks cover named SQLite shared libraries on the final
 filesystem and the identified Debian package. Static SQLite code in
 unrelated binaries, other platforms and other CVEs need their own
 evidence and decisions.
+
+### Expat 2.10.0 rebuilt for Trixie
+
+Expat 2.10.0 and its Debian source package 2.10.0-1 contain the fixes
+for CVE-2026-113351, CVE-2026-115506, CVE-2026-117610 and
+CVE-2026-118370. The reviewed Trixie rebuild is libexpat1
+2.10.0-1+pamolive2 on amd64.
+[Upstream release](https://github.com/libexpat/libexpat/releases/tag/R_2_10_0) |
+[Debian tracking](https://security-tracker.debian.org/tracker/source-package/expat)
+
+The policy reads the installed package, the source audit and the
+rebuild receipt from the exact archive. It checks the four reviewed
+ELF identities and the absence of the four previous ELF hashes across
+all layers. It reconstructs the Expat report and checks the combined
+SBOM for the same archive, report digest, five Expat components, five
+dependency records and three image roots. These checks apply only to
+the four matching OS package groups on Debian 13.8.
+[Source audit evidence](https://github.com/pamolive/PamOlive-Platform/actions/runs/43918797136/artifacts/14252167998) |
+[Example image evidence](https://github.com/pamolive/PamOlive-Platform/actions/runs/45147243883/artifacts/14808542038)
+
+The four findings remain visible in the scan output. The archive
+checks are repeated when a matching Expat decision applies. The report
+retains its existing limits on build attestation and operational
+authority. The two local Expat patches and findings from other
+versions, builds or scan scopes require separate decisions.
