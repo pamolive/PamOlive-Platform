@@ -209,11 +209,23 @@ class SealedContextTests(TestCase):
             double = patch.object(gate, name, hashlib.sha256(data).hexdigest())
             double.start()
             self.addCleanup(double.stop)
+        debian_files = [
+            (name, f"reviewed fixture: {name}\n".encode(), 0o644)
+            for name in gate.DEBIAN_REFRESH_INPUTS
+        ]
+        inputs = patch.object(
+            gate,
+            "DEBIAN_REFRESH_INPUTS",
+            {name: hashlib.sha256(data).hexdigest() for name, data, _ in debian_files},
+        )
+        inputs.start()
+        self.addCleanup(inputs.stop)
         self.files = [
             ("Dockerfile", dockerfile, 0o644),
             (".dockerignore", dockerignore, 0o644),
             ("config/public.py", b"PUBLIC=1\n", 0o644),
             ("tests/public.py", b"PASS=1\n", 0o644),
+            *debian_files,
         ]
         self.fs = MemoryFS(self.files)
         self.probe_recipe_reads = []
@@ -255,7 +267,7 @@ class SealedContextTests(TestCase):
         for path, node in list(self.fs.nodes.items()):
             if path.startswith(source + "/") and node["data"] is None:
                 name = path[len(source) + 1 :]
-                if PurePosixPath(name).parts[0] in gate.ROOT_DIRS and gate.copy_selected(name):
+                if gate.copy_directory_selected(name):
                     target = PurePosixPath(exported) / destination / name
                     for parent in reversed(target.parents):
                         if str(parent) not in self.fs.nodes:
@@ -618,8 +630,10 @@ class SealedContextTests(TestCase):
         self.assertEqual(first.getvalue(), second.getvalue())
         with tarfile.open(fileobj=io.BytesIO(first.getvalue()), mode="r:") as archive:
             members = archive.getmembers()
-            self.assertEqual(len(members), 6)
-            self.assertEqual(len({row.name.casefold() for row in members}), 6)
+            expected = {name for name, _, _ in self.files}
+            expected.update({"config", "tests", *gate.DEBIAN_REFRESH_DIRS})
+            self.assertEqual({member.name for member in members}, expected)
+            self.assertEqual(len({row.name.casefold() for row in members}), len(expected))
             for member in members:
                 self.assertEqual((member.uid, member.gid, member.mtime), (0, 0, 0))
                 self.assertTrue(member.isfile() or member.isdir())
@@ -819,6 +833,57 @@ class SealedContextTests(TestCase):
                 gate.selection(changed)
         for name, expected in gate.PROBE_COUNTERS:
             self.assertIs(gate.copy_selected(name), expected)
+
+    def test_debian_qualification_selection_admits_only_exact_inputs(self):
+        ignored = (
+            "qualification/unreviewed.txt",
+            "qualification/other-qualification/verify_refresh.py",
+            f"{gate.DEBIAN_REFRESH_DIR}/unreviewed-package.tar",
+            f"{gate.DEBIAN_REFRESH_DIR}/unreviewed/public.txt",
+        )
+        files = self.files + [(name, b"UNREVIEWED\n", 0o644) for name in ignored]
+        selected, _ = gate.selection(files)
+        self.assertEqual(
+            {name for name, _, _ in selected if name.startswith("qualification/")},
+            set(gate.DEBIAN_REFRESH_INPUTS),
+        )
+        _, directories = gate.directory_selection({name for name, _, _ in files})
+        self.assertEqual(
+            {name for name in directories if name.split("/")[0] == "qualification"},
+            gate.DEBIAN_REFRESH_DIRS,
+        )
+        nested = f"{gate.DEBIAN_REFRESH_DIR}/verify_refresh.py/x"
+        with self.assertRaisesRegex(ValueError, "context_directory_role"):
+            gate.directory_selection({"Dockerfile", nested})
+
+    def test_changed_or_missing_debian_qualification_source_is_refused(self):
+        target = f"{gate.DEBIAN_REFRESH_DIR}/debian.list"
+        for files in (
+            [(name, data, mode) for name, data, mode in self.files if name != target],
+            [
+                (name, b"changed" if name == target else data, mode)
+                for name, data, mode in self.files
+            ],
+        ):
+            with self.subTest(file_count=len(files)):
+                with self.assertRaisesRegex(ValueError, "context_debian_refresh_inputs"):
+                    gate.selection(files)
+
+    def test_rehashed_source_manifest_cannot_approve_changed_debian_qualification(self):
+        with self.fs.install():
+            receipt = self.seal()
+            manifest = json.loads(self.fs.nodes["/sealed/manifest.json"]["data"])
+            manifest["files"][f"{gate.DEBIAN_REFRESH_DIR}/debian.list"] = "f" * 64
+            manifest_sha = hashlib.sha256(gate.canonical(manifest)).hexdigest()
+            receipt["committed_manifest_sha256"] = manifest_sha
+            self.replace_json("/sealed/manifest.json", manifest)
+            self.replace_json("/sealed/receipt.json", receipt)
+            with (
+                patch.object(gate.subprocess, "run") as run,
+                self.assertRaisesRegex(ValueError, "context_debian_refresh_inputs"),
+            ):
+                self.consume("/sealed/context.tar", "/sealed/receipt.json", "a" * 40, "production")
+            run.assert_not_called()
 
     def test_v1_changed_duplicate_or_nonregular_refuses_before_docker(self):
         for kind in ("raw", "duplicate", "link", "large", "mode", "owner", "nlink"):

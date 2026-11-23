@@ -189,3 +189,45 @@ and600s+60s/browser. Every negative lane shares the frontend deadline and keeps
 UNKNOWN sticky. Only fixed typed metadata/H1 JSON and the six public TEST files
 are uploaded; homes, UID, stderr and raw status stay private. Real GPG/agent,
 installation, browser/UI/native SSH/RDP and product qualification remain PENDING.
+
+## Hosted runner sandbox comparison
+
+The hosted runner matrix checks the same authenticated Chrome 158 package,
+staged tree, driver pin and non-root network isolation on Ubuntu 22.04,
+24.04 and 26.04. Each receipt identifies its runner and kernel. It records
+the public user-namespace settings and a temporary user-namespace creation
+check with the same dropped privileges as the browser.
+
+The control records whether the worker can create one user namespace. The
+Chrome verdict still requires the genuine namespace sandbox and renderer
+checks. Differences between runners establish evidence about those runner
+environments. Attribution to AppArmor would require matching effective policy
+or audit evidence. The Ubuntu 22.04 job is a temporary diagnostic.
+[GitHub runner lifecycle](https://github.com/actions/runner-images/issues/14254)
+
+Each job publishes only its typed receipt. The application and its synthetic
+user journeys are outside this comparison. A result applies to the exact
+browser package and environment named by the receipt.
+
+Run 45234729103 authenticated the same package and staged tree on all
+three runners. Ubuntu 24.04 created a test user namespace, then refused
+Chromium's sandbox at launch. Ubuntu 22.04 returned exit 1 from the
+isolated launcher. Ubuntu 26.04 stopped at the canonical sudo role check.
+The follow-up measures the launcher failure class and resolves only a
+known sudo provider on Ubuntu 26.04. The original canonical role, mode,
+ownership and digest checks apply to the executable before it runs.
+[First comparison](https://github.com/pamolive/PamOlive-Platform/actions/runs/45234729103)
+
+## Chromium and PostgreSQL on the same private loopback
+
+The adjacent Ubuntu 22.04 qualification starts one digest-pinned PostgreSQL
+17.12 fixture with an ephemeral database and generated credentials. Docker
+gives that fixture a private IP namespace and the supervisor validates its
+identity and unpublished network profile. The non-root browser worker enters
+that namespace, confirms its privilege drop and queries the fixture over
+loopback. It then observes Chromium's namespace and renderer sandbox on the
+same worker. Container deletion and workspace cleanup are part of the receipt.
+
+The database listener belongs to the synthetic lab. The later combined portal
+job will also use the exact native-test guacd image in this namespace and retain
+the browser test's launch, stop and capture checks.

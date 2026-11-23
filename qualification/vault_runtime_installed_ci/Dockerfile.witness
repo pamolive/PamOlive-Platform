@@ -1,0 +1,35 @@
+# Optional stages appended to the byte-verified Vault consumer recipe.
+FROM vault-driver-builder AS witness-wheel-builder
+COPY witness/source/ /witness/source/
+COPY witness/witness_wheel.py witness/witness-source.sha256 /witness/
+RUN --network=none python -I -B -S /witness/witness_wheel.py source \
+    && /opt/build/bin/python -I -B -m pip --isolated --disable-pip-version-check wheel \
+      --no-cache-dir --no-index --no-deps --no-build-isolation --check-build-dependencies \
+      --wheel-dir /witness/wheels /witness/source \
+    && python -I -B -S /witness/witness_wheel.py wheel
+
+FROM vault-consumer AS witness-consumer
+USER 0:0
+COPY --from=witness-wheel-builder /witness/wheels/ /witness/wheels/
+COPY --from=witness-wheel-builder /witness/wheel.lock /witness/witness_wheel.py /witness/witness-source.sha256 /witness/
+COPY witness/fixtures/ /witness/fixtures/
+COPY witness/witness_reception.py /witness/
+COPY witness/lab/ /witness/lab/
+RUN --network=none /opt/vault/bin/python -I -B -m pip --isolated --disable-pip-version-check install \
+      --no-compile --no-cache-dir --no-index --only-binary=:all: --no-deps --require-hashes \
+      -r /witness/wheel.lock \
+    && python -I -B -S /witness/witness_wheel.py installed \
+    && /opt/vault/bin/python -I -B -m pip --isolated --disable-pip-version-check check
+# Existing structural tests read their adjacent package and SQL as data.
+RUN --network=none ln -s /opt/vault/lib/python3.12/site-packages/pamolive_usage_anchor /witness/fixtures/pamolive_usage_anchor \
+    && ln -s /opt/vault/share/pamolive/usage-anchor/schema.sql /witness/fixtures/sql/schema.sql \
+    && install -d -m 0700 -o 1000 -g 1000 /witness/result
+USER 1000:1000
+RUN --network=none /opt/vault/bin/python -I -B /witness/witness_reception.py > /witness/result/public.json \
+    || (cat /witness/result/public.json && exit 42)
+USER 0:0
+RUN --network=none install -m 0444 -o 0 -g 0 /witness/result/public.json /witness/public.json
+USER 1000:1000
+
+FROM scratch AS witness-public-receipt
+COPY --from=witness-consumer /witness/public.json /witness-public.json

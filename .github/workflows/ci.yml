@@ -22,7 +22,7 @@ jobs:
           python -m pip install -r requirements-security.lock
           python -m pip check
       - name: Verify native inventory and SBOM qualification tools
-        run: python -m unittest tests.test_native_inventory tests.test_native_sbom tests.test_native_dns tests.test_image_scan_policy tests.test_database_driver tests.test_ldap_fixture_permissions tests.test_krb5_inventory tests.test_krb5_acquisition tests.test_krb5_sbom tests.test_scan_scratch tests.test_build_recipe tests.test_build_context tests.test_sealed_build_context tests.test_runtime_environment tests.test_secret_baseline_metadata tests.test_python_materials tests.test_python_materials_resilience tests.test_ensurepip_bundle tests.test_expat_product tests.test_jansson_image_absence tests.test_jansson_input_binding tests.test_jansson_sbom tests.test_jansson_ci_evidence tests.test_jansson_oracle_identity tests.test_native_migration_composition
+        run: python -m unittest tests.test_native_inventory tests.test_native_sbom tests.test_native_dns tests.test_image_scan_policy tests.test_database_driver tests.test_ldap_fixture_permissions tests.test_krb5_inventory tests.test_krb5_acquisition tests.test_krb5_sbom tests.test_debian_refresh_inventory tests.test_scan_scratch tests.test_build_recipe tests.test_build_context tests.test_sealed_build_context tests.test_runtime_environment tests.test_secret_baseline_metadata tests.test_python_materials tests.test_python_materials_resilience tests.test_ensurepip_bundle tests.test_expat_product tests.test_jansson_image_absence tests.test_jansson_input_binding tests.test_jansson_sbom tests.test_jansson_ci_evidence tests.test_jansson_oracle_identity tests.test_native_migration_composition
       - name: Verify closed public restore report projection
         run: python -m unittest tests.test_restore_public_report
       - name: Verify public metadata projections without Engine or network
@@ -55,10 +55,10 @@ jobs:
         run: python -m bandit -r config platform_core platform_modules components/vault/src components/vault/runtime/pamolive_vault_runtime components/vault-registry/src components/pam-trust-verifier/src components/usage-anchor/pamolive_usage_anchor -ll -f json -o "$RUNNER_TEMP/pamolive-bandit-application.json"
       - name: Retain all deployment and browser bootstrap findings for review
         if: always()
-        run: python -m bandit -r deploy qualification/p1g_headless/chrome_bootstrap.py qualification/p1g_headless/chrome_gpg.py qualification/p1g_headless/chrome_key_scope.py qualification/p1g_headless/chrome_key_scope_native.py qualification/p1g_headless/gpg_fixture --exit-zero -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-all.json"
+        run: python -m bandit -r deploy qualification/p1g_headless/chrome_bootstrap.py qualification/p1g_headless/chrome_bundle.py qualification/p1g_headless/chrome_phase_a.py qualification/p1g_headless/chrome_gpg.py qualification/p1g_headless/chrome_key_scope.py qualification/p1g_headless/chrome_key_scope_native.py qualification/p1g_headless/gpg_fixture --exit-zero -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-all.json"
       - name: Reject high severity deployment and browser bootstrap findings
         if: always()
-        run: python -m bandit -r deploy qualification/p1g_headless/chrome_bootstrap.py qualification/p1g_headless/chrome_gpg.py qualification/p1g_headless/chrome_key_scope.py qualification/p1g_headless/chrome_key_scope_native.py qualification/p1g_headless/gpg_fixture -lll -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-high.json"
+        run: python -m bandit -r deploy qualification/p1g_headless/chrome_bootstrap.py qualification/p1g_headless/chrome_bundle.py qualification/p1g_headless/chrome_phase_a.py qualification/p1g_headless/chrome_gpg.py qualification/p1g_headless/chrome_key_scope.py qualification/p1g_headless/chrome_key_scope_native.py qualification/p1g_headless/gpg_fixture -lll -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-high.json"
       - name: Reject new secrets against the reviewed baseline without network verification
         if: always()
         shell: bash
@@ -95,6 +95,8 @@ jobs:
   postgres-and-container:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    outputs:
+      release-evidence-id: ${{ steps.release_evidence.outputs.artifact-id }}
     services:
       postgres:
         image: docker.io/library/postgres@sha256:6f7593c161689b6b02c78668b314af7da8811b592c5519108c57a49d0b6ad788 # 17.12, linux/amd64
@@ -309,7 +311,7 @@ jobs:
       - name: Verify synthetic NLA behavior under negative and silent loopback DNS
         run: docker run --rm --user 1000:1000 --network none --dns 127.0.0.1 --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 --entrypoint python pamolive-platform:native-test -m deploy.check_native_dns
       - name: Verify real WebSocket SSH transport and recording on PostgreSQL
-        run: docker run --rm --user 1000:1000 --network host --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 -e DATABASE_URL -e SECRET_KEY -e PAM_REQUIRE_NATIVE=1 --entrypoint python pamolive-platform:ci manage.py test tests.test_pam_relay_e2e --noinput
+        run: docker run --rm --user 1000:1000 --network host --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 -e DATABASE_URL -e SECRET_KEY -e PAM_REQUIRE_NATIVE=1 --entrypoint python pamolive-platform:ci manage.py test tests.test_pam_tls_asgi_fixture tests.test_pam_ssh_fixture tests.test_pam_relay_e2e --noinput
       - name: Verify real WebSocket RDP NLA, revocation, capture and redirection defense
         run: docker run --rm --user 1000:1000 --network host --dns 127.0.0.1 --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=64m,mode=1777 -e DATABASE_URL -e SECRET_KEY -e PAM_REQUIRE_NATIVE=1 -e PAM_REQUIRE_RDP=1 --entrypoint python pamolive-platform:native-test manage.py test tests.test_pam_rdp_e2e --noinput
       - name: Verify single-container runtime privilege separation
@@ -356,39 +358,63 @@ jobs:
           set -euo pipefail
           proof="$RUNNER_TEMP/pamolive-image-security"
           mkdir -m 700 "$proof"
-          image_ref=$(docker image inspect pamolive-platform:ci --format '{{.Id}}')
+          image_ref=$(docker image inspect pamolive-platform:ci --format '{{.Id}}') # Engine ID for the verified reload.
           config_id=$(python -c 'import json,os; from pathlib import Path; print(json.loads((Path(os.environ["RUNNER_TEMP"])/"pamolive-qualified-image/qualified-image.json").read_text())["image_id"])')
           docker run --rm --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --entrypoint python "$image_ref" -c 'from pathlib import Path; import sys; sys.stdout.buffer.write(Path("/opt/pamolive-native-manifest.json").read_bytes())' > "$proof/native-manifest.json"
           docker run --rm --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -m deploy.native_inventory --output /proof/native-report.json --gcc-provider-output /proof/gcc-provider.json
           docker run --rm --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -m deploy.check_database_driver --output /proof/database-driver.json
-          docker run --rm --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -m deploy.krb5_inventory --verify --output /proof/krb5-report.json
-          docker run --rm -i --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" - <<'PY'
-          import os
+          timeout --signal=TERM --kill-after=2s 25s docker run --rm --pull never --no-healthcheck \
+            --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges \
+            --read-only --cpus 1 --memory 256m --memory-swap 256m --pids-limit 32 \
+            --entrypoint python "$image_ref" -I -B /app/deploy/sasl-rebuild/check_loaded.py \
+            > "$proof/sasl-runtime.json"
+          python -m deploy.check_sasl_ldap_ci --image-id "$image_ref" > "$proof/sasl-ldap.json"
+          python -m deploy.check_sasl_postgres_ci --image-id "$image_ref" > "$proof/sasl-postgres.json"
+          docker run --rm --pull never --no-healthcheck --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport --util-linux-backport --root / --output /proof/debian-runtime-live.json
+          timeout --signal=TERM --kill-after=2s 25s docker run --rm --pull never --no-healthcheck \
+            --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges \
+            --read-only --cpus 1 --memory 256m --memory-swap 256m --pids-limit 32 \
+            --entrypoint python "$image_ref" -I -B -S /app/deploy/sqlite-rebuild/check_runtime.py \
+            > "$proof/sqlite-runtime.json"
+          acl_snapshot="$RUNNER_TEMP/pamolive-acl-root-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.tar"
+          test ! -e "$acl_snapshot"
+          acl_container=$(docker create --pull never --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --entrypoint /bin/false "$image_ref")
+          [[ "$acl_container" =~ ^[a-f0-9]{64}$ ]]
+          trap 'docker container rm "$acl_container" >/dev/null; rm -f -- "$acl_snapshot"' EXIT
+          test "$(docker container inspect --format '{{.Image}} {{.State.Status}} {{len .Mounts}}' "$acl_container")" = "$image_ref created 0"
+          (umask 077; timeout --signal=TERM --kill-after=5s 90s docker export --output "$acl_snapshot" "$acl_container")
+          test "$(docker container inspect --format '{{.Image}} {{.State.Status}} {{len .Mounts}}' "$acl_container")" = "$image_ref created 0"
+          timeout --signal=TERM --kill-after=5s 90s python -B -m deploy.acl_runtime_inventory \
+            --archive "$acl_snapshot" --image-config-id "$config_id" > "$proof/acl-runtime.json"
+          timeout --signal=TERM --kill-after=5s 120s python -B -m deploy.cairo_runtime_inventory \
+            --archive "$acl_snapshot" --image-config-id "$config_id" \
+            --elf-sha256 "$(cat deploy/cairo-headless/elf.sha256)" > "$proof/cairo-runtime.json"
+          docker container rm "$acl_container" >/dev/null
+          rm -- "$acl_snapshot"
+          trap - EXIT
+          python -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport --util-linux-backport \
+            --bundle "$RUNNER_TEMP/pamolive-qualified-image" --revision "$GITHUB_SHA" \
+            --output "$proof/debian-runtime-image.json"
+          PAMOLIVE_IMAGE_PROOF="$proof" python - <<'PY'
+          import json, os
           from pathlib import Path
-          from deploy import krb5_inventory as gate
-
-          os.umask(0o077)
-          manifest = gate.inventory()
-          root = Path("/")
-          raw = gate.read_file(root, gate.MANIFEST_PATH, 2 * 1024**2)
-          assert gate.read_json(Path(gate.MANIFEST_PATH)) == manifest
-          target = Path("/proof/krb5-evidence")
-          target.mkdir(mode=0o700)
-          with Path("/proof/krb5-manifest.json").open("xb") as output:
-              output.write(raw)
-          names = {"inventory.json", "provenance.json", *manifest["provenance"]["evidence"]}
-          for name in sorted(names):
-              gate.evidence_name(name)
-              data = gate.read_file(root, gate.PREFIX + "/" + name, 32 * 1024**2)
-              with (target / name).open("xb") as output:
-                  output.write(data)
+          root = Path(os.environ["PAMOLIVE_IMAGE_PROOF"])
+          live = json.loads((root / "debian-runtime-live.json").read_text())
+          archive = json.loads((root / "debian-runtime-image.json").read_text())
+          bindings = {"image_config_id", "archive_sha256", "revision"}
+          assert archive.keys() == live.keys() | bindings
+          assert live == {key: archive[key] for key in live}
+          acl = json.loads((root / "acl-runtime.json").read_text())
+          cairo = json.loads((root / "cairo-runtime.json").read_text())
+          assert acl["image_config_id"] == cairo["image_config_id"] == archive["image_config_id"]
+          assert acl["export_sha256"] == cairo["export_sha256"]
           PY
-          python -m deploy.krb5_sbom --manifest "$proof/krb5-manifest.json" --report "$proof/krb5-report.json" --image-digest-kind image_config --image-digest "$config_id" --output "$proof/krb5-backport.cdx.json"
           python -m pip_audit --strict --no-deps --disable-pip -r requirements.lock -f cyclonedx-json -o "$proof/application.cdx.json"
           # Same qualified archive/image; Expat evidence never suppresses the existing scans.
           python -m deploy.expat_image --archive "$RUNNER_TEMP/pamolive-qualified-image/pamolive-linux-amd64.tar" --image-id "$config_id" --output "$proof/expat-image.json"
           timeout --signal=TERM --kill-after=15s 120s docker run --rm --pull never --no-healthcheck --user "$(id -u):$(id -g)" --network none --cpus 1 --memory 512m --memory-swap 512m --pids-limit 64 --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -I -B -S /usr/local/libexec/pamolive-expat4/verify_runtime.py /proof/expat-runtime
-          python -m deploy.native_sbom --app-sbom "$proof/application.cdx.json" --native-manifest "$proof/native-manifest.json" --native-report "$proof/native-report.json" --expat-report "$proof/expat-image.json" --image-digest-kind image_config --image-digest "$config_id" --output "$proof/combined.cdx.json"
+          python -m deploy.native_sbom --app-sbom "$proof/application.cdx.json" --native-manifest "$proof/native-manifest.json" --native-report "$proof/native-report.json" --expat-report "$proof/expat-image.json" --debian-report "$proof/debian-runtime-image.json" --image-digest-kind image_config --image-digest "$config_id" --output "$proof/combined.cdx.json"
       - name: Exercise Jansson differential and receive exact-image absence DATA
         timeout-minutes: 15
         shell: bash
@@ -489,12 +515,33 @@ jobs:
           retention-days: 7
       - name: Retain the qualified image for main publication
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'pamolive/PamOlive-Platform'
+        id: qualified_archive
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: pamolive-linux-amd64-${{ github.sha }}
+          name: pamolive-linux-amd64-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pamolive-qualified-image/
           if-no-files-found: error
           compression-level: 0
+          retention-days: 7
+      - name: Bind the passing image-policy receipt to the retained archive
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'pamolive/PamOlive-Platform'
+        env:
+          ARCHIVE_ID: ${{ steps.qualified_archive.outputs.artifact-id }}
+          ARCHIVE_DIGEST: ${{ steps.qualified_archive.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          python -B -m qualification.release_evidence --revision "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" create \
+            --attempt "$GITHUB_RUN_ATTEMPT" --artifact-id "$ARCHIVE_ID" --artifact-digest "$ARCHIVE_DIGEST" \
+            --bundle "$RUNNER_TEMP/pamolive-qualified-image" --report "$RUNNER_TEMP/pamolive-image-security/policy-result.json" \
+            --directory "$RUNNER_TEMP/pamolive-release-evidence"
+      - name: Retain the detached release evidence
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'pamolive/PamOlive-Platform'
+        id: release_evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: pamolive-release-evidence-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pamolive-release-evidence/
+          if-no-files-found: error
           retention-days: 7
       - name: Remove the empty private LDAP fixture and restore its parent ACL
         if: always() && steps.ldap_fixture.outputs.acl_saved == 'true'
@@ -763,8 +810,8 @@ jobs:
   p1g-headless:
     if: >-
       github.repository == 'pamolive/PamOlive-Platform' &&
-      ((github.event_name == 'push' && github.ref == 'refs/heads/agent/p1-g-headless') ||
-       (github.event_name == 'pull_request' && github.head_ref == 'agent/p1-g-headless' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/agent/p1g-chrome158-private-stage') ||
+       (github.event_name == 'pull_request' && github.head_ref == 'agent/p1g-chrome158-private-stage' &&
         github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -815,7 +862,7 @@ jobs:
           PAMOLIVE_TEST_DATABASE_NAME: test_pamolive_p1g_browser
           PAMOLIVE_P1G_DISPOSABLE: '1'
           P1G_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          P1G_CHROME_PINS_SHA: 697e5e6275f110c3bbc635559ff02ae546a187acb64e4f2ec3ddc21b609375e7
+          P1G_CHROME_PINS_SHA: 0a91700472eb12ede416d01e7d62f050fbf005885217f0f34f80e4b85e8629e2
         shell: bash
         run: |
           set -euo pipefail
@@ -881,7 +928,7 @@ jobs:
               captured["qualification/p1g_headless/lab_support.py"],
               root / "qualification/p1g_headless/lab_support.py",
           )
-          support.guard(os.environ, uid=int(os.environ["SUDO_UID"]))
+          support.guard(os.environ, uid=int(os.environ["SUDO_UID"]), stage_only=True)
           io = support.bounded(root)
           before_python = boot.root_interpreter_runtime(
               support,
@@ -1090,7 +1137,7 @@ jobs:
                   if not primary_failure:
                       raise
           PY
-      - name: Authenticate scoped certificate, require native negatives, reinstall reviewed Chrome
+      - name: Authenticate scoped certificate, require native negatives, private stage and cleanup only
         timeout-minutes: 15
         env:
           DATABASE_URL: postgresql://p1g:p1g-synthetic-disposable-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/pamolive_p1g
@@ -1114,7 +1161,7 @@ jobs:
               assert len(raw) == row.st_size and len(raw) <= cap
               return raw
           name = "qualification/p1g_headless/chrome-bootstrap-pins.json"
-          expected = "697e5e6275f110c3bbc635559ff02ae546a187acb64e4f2ec3ddc21b609375e7"
+          expected = "0a91700472eb12ede416d01e7d62f050fbf005885217f0f34f80e4b85e8629e2"
           raw = read(root / name, 131072)
           assert len(raw) <= 131072 and hashlib.sha256(raw).hexdigest() == expected
           receipt = json.loads(read(receipt_path, 4 * 1024**2))
@@ -1130,10 +1177,14 @@ jobs:
               assert hashlib.sha256(raw).hexdigest() == expected == receipt["files"][name]
           PY
           python -I -B -S "$source/qualification/p1g_headless/run_chrome_pure.py"
-          "$RUNNER_TEMP/p1g-venv/bin/python" -I -B -S "$source/qualification/p1g_headless/chrome_bootstrap.py" --pins-sha 697e5e6275f110c3bbc635559ff02ae546a187acb64e4f2ec3ddc21b609375e7 --native-scope-preflight-required
+          "$RUNNER_TEMP/p1g-venv/bin/python" -I -B -S "$source/qualification/p1g_headless/chrome_bootstrap.py" --pins-sha 0a91700472eb12ede416d01e7d62f050fbf005885217f0f34f80e4b85e8629e2 --native-scope-preflight-required --stage-cleanup-only
+      - name: HOLD phase A - full UI qualification awaits separate Phase B review
+        shell: bash
+        run: exit 42
       - name: Exercise the synthetic P1-G JavaScript increment
         timeout-minutes: 12
         env:
+          P1G_CHROME_MODE: test-bundle-v3
           DATABASE_URL: postgresql://p1g:p1g-synthetic-disposable-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/pamolive_p1g
           PAMOLIVE_TEST_DATABASE_NAME: test_pamolive_p1g_browser
           PAMOLIVE_P1G_DISPOSABLE: '1'
@@ -1167,6 +1218,8 @@ jobs:
           persist-credentials: false
       - name: Test read-only qualification contracts without native tools or network
         run: python3 -I -S -B qualification/build_origin/run_readonly_pure.py "$RUNNER_TEMP/origin-readonly-pure.json"
+      - name: Test signed release bindings against local fixtures
+        run: python3 -B -m unittest qualification.test_release_evidence
       - name: Retain only the pure contract test result
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -1175,3 +1228,38 @@ jobs:
           path: ${{ runner.temp }}/origin-readonly-pure.json
           if-no-files-found: warn
           retention-days: 7
+  attest-release-evidence:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'pamolive/PamOlive-Platform'
+    needs: [security, postgres-and-container, p2-installed-libraries, readonly-source-contracts]
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    permissions:
+      contents: read
+      actions: read
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Require the retained artifact before downloading
+        env:
+          EVIDENCE_ID: ${{ needs.postgres-and-container.outputs.release-evidence-id }}
+        run: '[[ "$EVIDENCE_ID" =~ ^[1-9][0-9]{0,18}$ ]]'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.postgres-and-container.outputs.release-evidence-id }}
+          path: ${{ runner.temp }}/pamolive-release-evidence
+          digest-mismatch: error
+      - name: Validate and hash the detached index
+        id: subject
+        run: |
+          set -euo pipefail
+          digest=$(python3 -B -m qualification.release_evidence --revision "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" subject \
+            --attempt "$GITHUB_RUN_ATTEMPT" --directory "$RUNNER_TEMP/pamolive-release-evidence")
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-name: release-evidence.json
+          subject-digest: ${{ steps.subject.outputs.digest }}
+          show-summary: false

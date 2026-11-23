@@ -93,6 +93,74 @@ Le bac à sable refuse KEYRING via seccomp : le patch de compatibilité affecte 
 
 Les classifications individuelles doivent décrire leur garantie exacte. Pour les deux avis GCC étudiés, un build POSIX non affecté (`not_affected_build`) diffère du template GNU PBDS non employé par les consommateurs examinés (`code_not_present`). Le gate borne ces deux dispositions aux CVE/versions/preuves concernées, conserve les mêmes exigences de revue et d'expiration, et impose une sentinelle de l'ensemble ELF et de ses alias pour détecter les changements de périmètre. Une sentinelle détecte un changement ; elle ne prouve pas l'absence de tout chemin vulnérable. Les anciens constats de source et les signatures non vérifiées restent déclarés comme tels. Aucun de ces ajouts ne classe automatiquement l'un des35groupes High ni n'abaisse Critical, High corrigible, finding nouveau ou preuve invalide.
 
+## Transition vers les paquets Debian 13.8
+
+Debian publie Kerberos `1.21.3-5+deb13u2` et glibc `2.41-12+deb13u5`.
+Les avis couvrent six groupes Kerberos et deux groupes glibc du scan de
+`12c705b`. L'avis Kerberos CVE-2026-107778, le groupe glibc
+CVE-2026-84243 et les six groupes OpenSSL restent ouverts dans Trixie.
+[DSA-6650-1](https://security-tracker.debian.org/tracker/DSA-6650-1)
+[Debian 13.8](https://www.debian.org/News/2026/20261121)
+[Kerberos](https://security-tracker.debian.org/tracker/source-package/krb5)
+[glibc](https://security-tracker.debian.org/tracker/source-package/glibc)
+[OpenSSL](https://security-tracker.debian.org/tracker/source-package/openssl)
+
+La transition retient les versions officielles de Trixie, avec les
+bibliothèques runtime et leurs SDK alignés sur la même révision. Le
+laboratoire d'acquisition utilise la même base Python Debian épinglée que
+le produit. Il vérifie les paquets installés et exécute les tests de
+chargement sans réseau. Les preuves de la construction locale historique
+`+deb13u1+pamolive1` restent associées à cette version.
+
+La CI de `31d52f0` valide les 14 paquets amd64, l'installation hors réseau,
+les six ELF installés, la compilation avec les SDK et le chargement natif
+Kerberos, GSS et glibc. Le reçu publié est le seul membre de l'archive
+`14780245532`. Son SHA-256 est
+`fb957dca0b0e985279adb71fdadaaa8c4b662a4fdaf284d851b86780597a6946`.
+Les six tests purs et la revue indépendante passent.
+[CI Debian 13.8](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087805069)
+
+La composition produit doit adopter les paquets officiels dans tous les
+stages concernés et enregistrer leurs propres preuves d'inventaire. Les
+essais SSH, RDP/NLA, LDAP, PostgreSQL/TLS et le scan de l'image exacte
+restent des portes de livraison. Le nombre de groupes High de la nouvelle
+image sera établi par le nouveau scan.
+
+Le Dockerfile de transition acquiert les 14 paquets avec la recette qualifiée.
+Les stages consommateurs montent leurs archives vérifiées en lecture seule.
+La famille Kerberos et glibc reste alignée entre le SDK et le runtime. La
+recette finale conserve les six paquets nécessaires au runtime et son reçu.
+La CI compare les rapports du conteneur chargé et de l'archive du même digest
+de configuration. Le SBOM relie les paquets et les fichiers ELF vérifiés et
+le scan OS porte toujours sur l'archive complète. Les preuves du précédent
+backport restent consultables dans l'historique du dépôt.
+
+Avant l'installation dans le stage de qualification, puis lors des lectures
+du runtime et de l'archive, les 14 identités d'archives de paquets et les six
+empreintes ELF sont comparées au lot Debian authentifié par APT et installé
+dans le laboratoire indépendant.
+La projection associe `selection.packages` sous la clé `packages` et
+`installed_elf_sha256`. Son JSON compact ASCII a des clés triées et
+se termine par un saut de ligne. Son empreinte SHA-256 est
+`60fddfe334dea69f2982980360ad5899418b5dedf16b8586c1e67311296e8b66`.
+Une actualisation des index signés peut conserver ces mêmes octets.
+Une nouvelle version ou un nouveau contenu de paquet exige une nouvelle
+qualification d'acquisition et une revue de la projection.
+[Reçu de référence](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087805069)
+
+Le rapport de l'image de la PR nº 42 confirme les mêmes six paquets
+runtime et les mêmes ELF que ce reçu. Les scans OS et SBOM rapportent
+encore six CVE de DSA-6650-1 sur les quatre mêmes bibliothèques Kerberos,
+soit douze groupes et 48 correspondances. CVE-2026-107778 reste ouverte
+pour les mêmes paquets et représente deux autres groupes. La décision
+du scanner conserve ces groupes comme bloquants.
+[Scan du candidat](https://github.com/pamolive/PamOlive-Platform/actions/runs/45089228559) ·
+[Avis Debian](https://security-tracker.debian.org/tracker/DSA-6650-1)
+
+Le test de fusion de la PR nº 44 reproduit cette projection des binaires,
+les 12 groupes couverts par l'avis et les 45 groupes bloquants au total.
+[Scan du candidat intégré](https://github.com/pamolive/PamOlive-Platform/actions/runs/45104576157)
+
 ## Inventaire et scanner
 
 Retirer un paquet Debian vulnérable peut supprimer un match du scanner tout en le rendant aveugle à son remplacement compilé. Produire donc un inventaire explicite de version, archive/signature/hash, options et fichiers compilés. Vérifier les dépendances réellement chargées par guacd, son plugin RDP et le pair de test ; un fichier de version isolé ne suffit pas. Le SBOM et le rapport de livraison doivent distinguer composants PyPI, Debian et compilés.

@@ -1,0 +1,45 @@
+{
+  "archives": {
+    "buildinfo": "bd2b9734be0328fb4c5836d83b9e23055b1dc985e65c5dbd2048f95e0a4eb1f5",
+    "checksums.sha256": "0fb83c43cb0499b95b70036ed1281d6b6727a5cf11aab511d4c5e8f5f2e8ae2a",
+    "ncurses-bin.deb": "df204e72a0a15b0262a2396443f24e82c33f2365b1509522bcb94b70eace8d6d",
+    "stock-ncurses-bin.deb": "40a525f4761e9ed4b8adcd1783cb9a6467ff8008215ae99b3597825bdefc61e4",
+    "test-summary.txt": "c11e335c2452afe1e7d1fd2a6238bd927dfe15bd8341999703a386cc387bdb18"
+  },
+  "buildinfo_sha256": "bd2b9734be0328fb4c5836d83b9e23055b1dc985e65c5dbd2048f95e0a4eb1f5",
+  "candidate_sha256": "8c92e07a86caf8c0a0cc41edb186556f685d07a374877fb65d734cc7a9add562",
+  "infocmp_sha256": "06a15e9ba1dfbe0f1223e10292f0220a9d98d3c3577cd27b025e7c15ab275b39",
+  "native_abi_preserved": true,
+  "packages": {
+    "libncursesw6": {
+      "architecture": "amd64",
+      "depends": "libtinfo6 (= 6.5+20250216-2), libc6 (>= 2.34)",
+      "pre_depends": "",
+      "version": "6.5+20250216-2"
+    },
+    "libtinfo6": {
+      "architecture": "amd64",
+      "depends": "libc6 (>= 2.34)",
+      "pre_depends": "",
+      "version": "6.5+20250216-2"
+    },
+    "ncurses-base": {
+      "architecture": "all",
+      "depends": "",
+      "pre_depends": "",
+      "version": "6.5+20250216-2"
+    },
+    "ncurses-bin": {
+      "architecture": "amd64",
+      "depends": "",
+      "pre_depends": "libc6 (>= 2.34), libtinfo6 (>= 6.4+20230603)",
+      "version": "6.5+20250216-2+pamolive1"
+    }
+  },
+  "product_image_verified": false,
+  "release_admitted": false,
+  "schema": "pamolive.ncurses-trixie-runtime/1",
+  "stock_sha256": "93d46b551092f132c0deeae9beb74fac71791989cd33ea3682714c5f2a12ecb1",
+  "synthetic_terminfo_verified": true,
+  "test_summary_sha256": "c11e335c2452afe1e7d1fd2a6238bd927dfe15bd8341999703a386cc387bdb18"
+}

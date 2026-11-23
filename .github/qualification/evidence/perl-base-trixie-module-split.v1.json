@@ -1,0 +1,41 @@
+{
+  "schema": "pamolive.debian-perl-module-split.v1",
+  "packages": [
+    {
+      "package": "perl-base",
+      "architecture": "amd64",
+      "version": "5.40.1-6+deb13u1",
+      "size": 1666320,
+      "sha256": "b795464137a0f4d443fc9284f4b93e883fb83883cb533adf300ac660807a352a",
+      "entries": 744,
+      "module_name_matches": [],
+      "url": "https://deb.debian.org/debian/pool/main/p/perl/perl-base_5.40.1-6+deb13u1_amd64.deb"
+    },
+    {
+      "package": "perl-modules-5.40",
+      "architecture": "all",
+      "version": "5.40.1-6+deb13u1",
+      "size": 3013728,
+      "sha256": "4c46cdd8f3135aa1c95f07e817f8e5d9be590687441ac1c27e3a8c49400f35ce",
+      "entries": 1568,
+      "module_name_matches": [
+        "/usr/share/perl/5.40.1/Archive/Tar.pm",
+        "/usr/share/perl/5.40.1/Pod/Simple/Text.pm",
+        "/usr/share/perl/5.40.1/Pod/Text.pm"
+      ],
+      "url": "https://deb.debian.org/debian/pool/main/p/perl/perl-modules-5.40_5.40.1-6+deb13u1_all.deb"
+    }
+  ],
+  "references": [
+    "https://packages.debian.org/trixie/amd64/perl-base/download",
+    "https://packages.debian.org/trixie/all/perl-modules-5.40/download",
+    "https://security-tracker.debian.org/tracker/CVE-2026-82560",
+    "https://security-tracker.debian.org/tracker/CVE-2026-9538"
+  ],
+  "observed_revision": "bdfacd7df686997c0d88f298ed8f1e74c80d88cb",
+  "os_scanner_artifact_ids": [
+    14818645061,
+    14816997645
+  ],
+  "scope": "Debian archive package membership. Each candidate must also pass the independent layered image and dpkg checks."
+}

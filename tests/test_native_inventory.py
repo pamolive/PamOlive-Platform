@@ -265,6 +265,35 @@ class NativeInventoryTests(TestCase):
             with self.subTest(size=len(value)), self.assertRaises(native.InventoryError):
                 native.elf_dynamic(value)
 
+    def test_needed_observation_preserves_order_without_using_search_paths(self):
+        first = "libstdc++.so.6"
+        binary = bytearray(elf(search="libc.so.6", needed=first))
+        struct.pack_into("<qQ", binary, 176 + 3 * 16, 1, len(first) + 2)
+        self.assertEqual(native.observe_elf_needed(binary), {
+            "status": "observed", "needed": [first, "libc.so.6"],
+        })
+        self.assertEqual(native.observe_elf_needed(elf(search="$ORIGIN")), {
+            "status": "observed", "needed": ["libc.so.6"],
+        })
+
+    def test_needed_observation_distinguishes_absent_unsupported_and_unparsed(self):
+        binary = bytearray(elf())
+        struct.pack_into("<H", binary, 56, 1)
+        self.assertEqual(native.observe_elf_needed(binary), {"status": "no_dynamic_segment"})
+        struct.pack_into("<H", binary, 16, 1)
+        self.assertEqual(native.observe_elf_needed(binary), {"status": "unsupported"})
+        binary = bytearray(elf())
+        struct.pack_into("<qQ", binary, 176 + 2 * 16, 15, 1)
+        self.assertEqual(native.observe_elf_needed(binary), {"status": "observed", "needed": []})
+        for offset, value in ((32, 2**64 - 1), (120 + 16, 0x4000B1), (176 + 2 * 16 + 8, 1000),
+                              (176 + 4 * 16, 1)):
+            changed = bytearray(elf())
+            struct.pack_into("<Q", changed, offset, value)
+            with self.subTest(offset=offset):
+                self.assertEqual(native.observe_elf_needed(changed), {"status": "unparsed"})
+        for needed in ("/opt/private/lib.so", "lib\nexample.so", "x" * 257):
+            self.assertEqual(native.observe_elf_needed(elf(needed=needed)), {"status": "unparsed"})
+
     def test_ldd_parser_refuses_missing_duplicate_and_unexpected_output(self):
         for value in ("libc.so.6 => not found", "statically linked", "malicious output",
                       "libc.so.6 => /lib/libc.so.6 (0xabc)\n" * 2):

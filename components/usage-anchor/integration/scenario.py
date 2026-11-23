@@ -155,7 +155,12 @@ def activate_over_mtls(client, fixture):
 
 
 def vertical_round_trip(
-    *, fixture, witness_client, vault_runtime_connect, witness_observer_connect
+    *,
+    fixture,
+    witness_client,
+    vault_runtime_connect,
+    witness_observer_connect,
+    advance=lambda _phase: None,
 ):
     """V0 real ledger -> W mTLS -> real W SQL/proofs -> commit -> real V SQL mirror."""
     vslot = vault_slot(fixture)
@@ -178,7 +183,9 @@ def vertical_round_trip(
             },
             separators=(",", ":"),
         ).encode()
+        advance("vertical_vault_reservation")
         pending = reservations.prepare(request, broker_der)  # real V SQL commit
+        advance("vertical_witness_binding")
         bound_raw = mirror.prepare_reserved(
             pending.reservation_id
         )  # real mTLS W bind, then real V mirror commit
@@ -187,12 +194,15 @@ def vertical_round_trip(
         proofs = fixture.final_bundle(
             transcript, bound["operation_id"], negative=negative, spaced=True
         )
+        advance("vertical_witness_consume")
         first = mirror.consume(pending.reservation_id, proofs)
+        advance("vertical_exact_retry")
         retry = mirror.consume(pending.reservation_id, proofs)
         assert first == retry
         terminal = parse(first, 4096, special=True)
         assert terminal["state"] == ("refused_no_release" if negative else "consumed_no_release")
         assert terminal["authorized"] is False
+        advance("vertical_committed_evidence")
         with witness_observer_connect() as conn, conn.cursor(row_factory=dict_row) as c:
             c.execute(
                 (

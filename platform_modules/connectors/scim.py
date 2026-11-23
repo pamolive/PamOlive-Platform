@@ -86,10 +86,13 @@ class PinnedHTTPSConnection(http.client.HTTPSConnection):
         super().__init__(hostname, port, timeout=8, context=context)
         self.address = address
 
-    def connect(self):
+    def connect(self, *, remaining_timeout=None):
         # Resolve once in the policy layer, connect to that address, preserve hostname/SNI.
-        raw = socket.create_connection((self.address, self.port), self.timeout)
+        timeout = self.timeout if remaining_timeout is None else remaining_timeout()
+        raw = socket.create_connection((self.address, self.port), timeout)
         try:
+            if remaining_timeout is not None:
+                raw.settimeout(remaining_timeout())
             self.sock = self._context.wrap_socket(raw, server_hostname=self.host)
         except BaseException:
             raw.close()

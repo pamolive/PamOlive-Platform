@@ -1,0 +1,120 @@
+name: P1-G isolated native portal
+on:
+  push:
+    branches: [agent/p1g-native-portal-isolated-ci, agent/p1g-native-rdp-portal]
+permissions:
+  contents: read
+jobs:
+  portal:
+    if: github.repository == 'pamolive/PamOlive-Platform'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12.16'
+      - name: Check source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -I -B -S qualification/p1g_headless/run_pure.py
+          python -B -m unittest qualification.p1g_headless.test_native_lab qualification.p1g_headless.test_postgres_namespace
+      - name: Prepare the sealed product context and capture the committed lab source
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Context directories must have canonical 0755 mode inside the private root.
+          umask 022
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          mkdir -m 700 "$RUNNER_TEMP/p1g-context"
+          python -m deploy.build_context --revision "$GITHUB_SHA" \
+            --destination "$RUNNER_TEMP/p1g-source" --output "$RUNNER_TEMP/p1g-source.json" \
+            --sealed-archive "$RUNNER_TEMP/p1g-context/context.tar" \
+            --sealed-receipt "$RUNNER_TEMP/p1g-context/receipt.json"
+          timeout --signal=TERM --kill-after=15s 60s python -m deploy.build_context \
+            --revision "$GITHUB_SHA" --probe \
+            --sealed-archive "$RUNNER_TEMP/p1g-context/context.tar" \
+            --sealed-receipt "$RUNNER_TEMP/p1g-context/receipt.json" \
+            --source-manifest "$RUNNER_TEMP/p1g-source.json" \
+            --probe-receipt "$RUNNER_TEMP/p1g-context/probe.json"
+      - name: Install the synthetic portal test prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          timeout 120s sudo -n /usr/bin/apt-get update -qq
+          timeout 240s sudo -n /usr/bin/apt-get install -y --no-install-recommends \
+            libnss3-tools postgresql-client build-essential libldap2-dev libsasl2-dev libssl-dev libpq-dev
+          python -m venv "$RUNNER_TEMP/p1g-native-venv"
+          source="$RUNNER_TEMP/p1g-source"
+          python="$RUNNER_TEMP/p1g-native-venv/bin/python"
+          "$python" -m pip --isolated --disable-pip-version-check install -r "$source/requirements-dev.lock"
+          "$python" -m pip --isolated --disable-pip-version-check install --only-binary=:all: --no-deps --require-hashes \
+            -r "$source/qualification/p1g_headless/requirements-headless-linux-cp312.lock"
+          "$python" -m pip check
+      - name: Build the native test image from the verified context
+        id: native_build
+        timeout-minutes: 90
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m deploy.build_context --revision "$GITHUB_SHA" \
+            --sealed-archive "$RUNNER_TEMP/p1g-context/context.tar" \
+            --sealed-receipt "$RUNNER_TEMP/p1g-context/receipt.json" \
+            --source-manifest "$RUNNER_TEMP/p1g-source.json" \
+            --probe-receipt "$RUNNER_TEMP/p1g-context/probe.json" \
+            --build-target native-test
+          umask 077
+          docker image inspect --format '{{.Id}}' pamolive-platform:native-test > "$RUNNER_TEMP/p1g-context/image-id"
+      - name: Exercise the confined native SSH portal
+        timeout-minutes: 21
+        shell: bash
+        env:
+          P1G_SANDBOX_RUNNER: ubuntu-22.04
+        run: |
+          set -euo pipefail
+          image=$(cat "$RUNNER_TEMP/p1g-context/image-id")
+          [[ "$image" =~ ^sha256:[0-9a-f]{64}$ ]]
+          "$RUNNER_TEMP/p1g-native-venv/bin/python" -I -B \
+            "$RUNNER_TEMP/p1g-source/qualification/p1g_headless/native_lab.py" --image "$image"
+      - name: Exercise the confined native RDP portal
+        if: ${{ !cancelled() && steps.native_build.outcome == 'success' && github.ref == 'refs/heads/agent/p1g-native-rdp-portal' }}
+        timeout-minutes: 21
+        shell: bash
+        env:
+          P1G_SANDBOX_RUNNER: ubuntu-22.04
+        run: |
+          set -euo pipefail
+          image=$(cat "$RUNNER_TEMP/p1g-context/image-id")
+          [[ "$image" =~ ^sha256:[0-9a-f]{64}$ ]]
+          "$RUNNER_TEMP/p1g-native-venv/bin/python" -I -B \
+            "$RUNNER_TEMP/p1g-source/qualification/p1g_headless/native_lab.py" --image "$image" --protocol rdp
+      - name: Confirm the owned services were removed
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner="$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          [[ "$owner" =~ ^[0-9a-f]{40}-[1-9][0-9]*-[1-9][0-9]*$ ]]
+          residue=0
+          for service in rdp guacd postgres; do
+            cid=$(timeout 8s /usr/bin/docker --host unix:///var/run/docker.sock ps --all --quiet --no-trunc --filter "label=io.pamolive.p1g-${service}=$owner")
+            if test -n "$cid"; then
+              [[ "$cid" =~ ^[0-9a-f]{64}$ ]]
+              timeout 15s /usr/bin/docker --host unix:///var/run/docker.sock rm --force "$cid"
+              residue=42
+            fi
+          done
+          exit "$residue"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: p1g-native-portal-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/pamolive-native-ssh-${{ github.run_id }}-${{ github.run_attempt }}.json
+            ${{ runner.temp }}/pamolive-native-rdp-${{ github.run_id }}-${{ github.run_attempt }}.json
+          if-no-files-found: ignore
+          retention-days: 7
