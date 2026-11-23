@@ -38,16 +38,16 @@ RUN --mount=from=debian-refresh-inputs,source=/opt/pamolive-apt-cache,target=/tm
   && rm -rf /var/lib/apt/lists/*
 RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --root / --output /tmp/debian-refresh-base.json && rm /tmp/debian-refresh-base.json
 
-FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS sqlite-trixie-base
+FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS debian-rebuild-base
 RUN test "$(dpkg --print-architecture)" = amd64 \
  && test -s /usr/share/keyrings/debian-archive-keyring.gpg
 
-FROM sqlite-trixie-base AS sqlite-trixie-source
+FROM debian-rebuild-base AS sqlite-trixie-source
 COPY deploy/sqlite-rebuild/source-apt.conf deploy/sqlite-rebuild/forky.sources deploy/sqlite-rebuild/materials.sh /opt/sqlite-inputs/
 WORKDIR /opt/sqlite-source
 RUN sh /opt/sqlite-inputs/materials.sh acquire
 
-FROM sqlite-trixie-base AS sqlite-trixie-package
+FROM debian-rebuild-base AS sqlite-trixie-package
 COPY deploy/sqlite-rebuild/materials.sh deploy/sqlite-rebuild/source.sha256 deploy/sqlite-rebuild/prepare.py /opt/sqlite-inputs/
 RUN sh /opt/sqlite-inputs/materials.sh toolchain
 COPY --from=sqlite-trixie-source /opt/sqlite-source/ /opt/sqlite-build/
@@ -55,6 +55,21 @@ RUN --network=none sh /opt/sqlite-inputs/materials.sh prepare
 USER 65534:65534
 WORKDIR /opt/sqlite-build/tree
 ENV HOME=/opt/sqlite-build LC_ALL=C.UTF-8
+RUN --network=none dpkg-checkbuilddeps && dpkg-buildpackage -b -us -uc -j2
+
+FROM debian-rebuild-base AS acl-trixie-source
+COPY deploy/acl-rebuild/source-apt.conf deploy/acl-rebuild/forky.sources deploy/acl-rebuild/materials.sh /opt/acl-inputs/
+WORKDIR /opt/acl-source
+RUN sh /opt/acl-inputs/materials.sh acquire
+
+FROM debian-rebuild-base AS acl-trixie-package
+COPY deploy/acl-rebuild/materials.sh deploy/acl-rebuild/source.sha256 deploy/acl-rebuild/prepare.py /opt/acl-inputs/
+RUN sh /opt/acl-inputs/materials.sh toolchain
+COPY --from=acl-trixie-source /opt/acl-source/ /opt/acl-build/
+RUN --network=none sh /opt/acl-inputs/materials.sh prepare
+USER 65534:65534
+WORKDIR /opt/acl-build/tree
+ENV HOME=/opt/acl-build LC_ALL=C.UTF-8
 RUN --network=none dpkg-checkbuilddeps && dpkg-buildpackage -b -us -uc -j2
 
 FROM debian-runtime AS expat-prepared
@@ -178,6 +193,11 @@ RUN --network=none --mount=from=sqlite-trixie-package,source=/opt/sqlite-build,t
   dpkg --install "$package"; \
   test -z "$(dpkg --audit)"; \
   python -I -B -S deploy/sqlite-rebuild/check_runtime.py
+RUN --network=none --mount=from=acl-trixie-package,source=/opt/acl-build,target=/tmp/pamolive-acl-build,ro \
+  cd /tmp/pamolive-acl-build \
+  && sha256sum --check --strict /app/deploy/acl-rebuild/package.sha256 \
+  && dpkg --install libacl1_2.4.0-1~pamolive13u1_amd64.deb \
+  && test -z "$(dpkg --audit)"
 RUN python deploy/native_inventory.py --capture --output /opt/pamolive-native-manifest.json
 RUN --network=none python -B -m deploy.debian_refresh_inventory --root / --output /tmp/debian-refresh-runtime.json && rm /tmp/debian-refresh-runtime.json
 RUN python manage.py collectstatic --noinput

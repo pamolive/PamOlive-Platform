@@ -369,6 +369,20 @@ jobs:
             --read-only --cpus 1 --memory 256m --memory-swap 256m --pids-limit 32 \
             --entrypoint python "$config_id" -I -B -S /app/deploy/sqlite-rebuild/check_runtime.py \
             > "$proof/sqlite-runtime.json"
+          acl_snapshot="$RUNNER_TEMP/pamolive-acl-root-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.tar"
+          test ! -e "$acl_snapshot"
+          acl_container=$(docker create --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --entrypoint /bin/false "$config_id")
+          [[ "$acl_container" =~ ^[a-f0-9]{64}$ ]]
+          trap 'docker container rm "$acl_container" >/dev/null; rm -f -- "$acl_snapshot"' EXIT
+          test "$(docker container inspect --format '{{.Image}} {{.State.Status}} {{len .Mounts}}' "$acl_container")" = "$config_id created 0"
+          (umask 077; timeout --signal=TERM --kill-after=5s 90s docker export --output "$acl_snapshot" "$acl_container")
+          test "$(docker container inspect --format '{{.Image}} {{.State.Status}} {{len .Mounts}}' "$acl_container")" = "$config_id created 0"
+          timeout --signal=TERM --kill-after=5s 90s python -B -m deploy.acl_runtime_inventory \
+            --archive "$acl_snapshot" --image-config-id "$config_id" > "$proof/acl-runtime.json"
+          docker container rm "$acl_container" >/dev/null
+          rm -- "$acl_snapshot"
+          trap - EXIT
           python -m deploy.debian_refresh_inventory \
             --bundle "$RUNNER_TEMP/pamolive-qualified-image" --revision "$GITHUB_SHA" \
             --output "$proof/debian-runtime-image.json"
