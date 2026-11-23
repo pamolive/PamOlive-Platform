@@ -95,6 +95,70 @@ class GraphHttpsTests(SimpleTestCase):
             provider="entra", destination=self.destination, secret={"token": self.token}, **kwargs
         )
 
+    def enable_group_collection(self):
+        self.destination = normalize_destination(
+            "entra", self.peer.url, self.peer.pin,
+            {"tenant_id": self.tenant, "collect_direct_groups": True},
+        )
+
+    def test_optional_direct_groups_are_paginated_for_the_exact_user(self):
+        self.enable_group_collection()
+        user = self.user()
+        self.peer.pages = [{"value": [user]}]
+        path = f"/v1.0/users/{user['id']}/memberOf"
+        base = self.peer.url.removesuffix("/v1.0/users")
+        first, second = str(uuid4()), str(uuid4())
+        self.peer.membership_pages[path] = [
+            {
+                "value": [
+                    {"@odata.type": "#microsoft.graph.group", "id": first},
+                    {"@odata.type": "#microsoft.graph.directoryRole", "id": str(uuid4())},
+                ],
+                "@odata.nextLink": base + path + "?$select=id&$top=100&$skiptoken=second",
+            },
+            {"value": [{"@odata.type": "#microsoft.graph.group", "id": second}]},
+        ]
+        check = Mock()
+        result = self.read(before_auth=check)
+        self.assertEqual(result.records[0]["groups"], sorted((first, second)))
+        self.assertEqual(result.limitations, ("graph_direct_groups_only",))
+        self.assertFalse(result.complete)
+        self.assertEqual(check.call_count, 4)
+        self.assertEqual(result.transport_identity["scope"], self.destination["scope"])
+        self.assertNotIn("second", repr(asdict(result)))
+
+    def test_group_budget_never_confirms_absence_for_an_unread_user(self):
+        self.enable_group_collection()
+        first, second = self.user(), self.user()
+        self.peer.pages = [{"value": [first, second]}]
+        path = f"/v1.0/users/{first['id']}/memberOf"
+        self.peer.membership_pages[path] = [{"value": []}]
+        with patch("platform_modules.connectors.directory_adapters.GRAPH_GROUP_REQUEST_LIMIT", 1):
+            result = self.read()
+        self.assertEqual(len(result.records), 2)
+        self.assertIn("graph_group_request_budget", result.limitations)
+        self.assertFalse(result.complete)
+        self.assertEqual(len(self.peer.requests), 3)
+
+    def test_group_pagination_stays_with_the_original_user(self):
+        self.enable_group_collection()
+        user = self.user()
+        path = f"/v1.0/users/{user['id']}/memberOf"
+        different = self.peer.url + f"/{uuid4()}/memberOf?$select=id&$top=100&$skiptoken=next"
+        self.peer.pages = [{"value": [user]}]
+        self.peer.membership_pages[path] = [{"value": [], "@odata.nextLink": different}]
+        with self.assertRaisesMessage(DirectoryFailure, "directory_next_link_invalid"):
+            self.read()
+        self.assertEqual(len(self.peer.requests), 3)
+
+    def test_membership_read_revalidates_authority_before_credentials(self):
+        self.enable_group_collection()
+        self.peer.pages = [{"value": [self.user()]}]
+        check = Mock(side_effect=(None, None, DirectoryFailure("source_revoked")))
+        with self.assertRaisesMessage(DirectoryFailure, "source_revoked"):
+            self.read(before_auth=check)
+        self.assertEqual(len(self.peer.requests), 2)
+
     def test_real_tls_pagination_verifies_realm_but_does_not_claim_groups_complete(self):
         cursor = (
             self.peer.url

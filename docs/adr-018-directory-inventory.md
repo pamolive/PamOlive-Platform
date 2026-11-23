@@ -26,7 +26,19 @@ Graph : HTTPS et adresse épinglée, GET seulement, origine/tenant/périmètre f
 
 Pages (20), objets (1000), groupes (32 par objet), octets conservés (4Mio) et temps (45s) sont bornés. La résolution DNS conserve au maximum quatre slots, y compris lorsque le resolver système continue après le timeout de son appelant ; une cinquième résolution est refusée. Le plafond LDAP est contrôlé après le décodage OpenLDAP : il ne constitue pas une garantie de mémoire avant allocation, qui exige isolation et limites de processus/conteneur. Erreur, boucle de cookie, troncature AD/range ou budget épuisé donnent un résultat incomplet explicite ; cookies et URLs de continuation restent côté serveur. L’absence d’un objet ne prouve jamais sa suppression, même dans un run complet. Aucun retrait automatique n’est dérivé de cet inventaire.
 
-Pour LDAP générique, le schéma standard ne garantit aucun attribut d’activation : une valeur absente reste `null`, exposée avec une assurance `unknown`, et ne désactive aucun compte IAM. AD utilise les bits UAC ; Graph utilise son attribut explicite. La préparation Graph lit les utilisateurs, sans qualifier l’exhaustivité des groupes : le run reste incomplet et porte cette limite. Les collisions de login restent des avertissements et ne décident jamais une identité.
+Pour LDAP générique, un attribut d’activation absent reste `null` avec
+l’assurance `unknown`. AD utilise les bits UAC et Graph son attribut explicite.
+Les collisions de login restent des avertissements soumis à revue humaine.
+
+La lecture Graph historique conserve les seuls utilisateurs. Une nouvelle
+source peut inclure les groupes directs dans son périmètre. La lecture par
+utilisateur conserve le lien avec l'UUID déjà accepté dans le tenant vérifié
+et permet de valider chaque continuation. L'expansion des appartenances dans
+la liste d'utilisateurs fournirait une collection imbriquée à traiter avec
+ses propres limites. L'inventaire global des groupes nécessiterait un
+périmètre de lecture plus large. Le lecteur direct conserve les UUID des
+groupes visibles et marque le résultat partiel même après la dernière page.
+[Documentation Graph](https://learn.microsoft.com/graph/api/user-list-memberof?view=graph-rest-1.0)
 
 Les lectures réseau restent limitées au laboratoire qualifié et aux destinations autorisées côté déploiement. Les écritures LDAP/Graph ne font pas partie de ce lecteur. Les opérations réelles de provisioning ne sont pas activées par cette livraison.
 

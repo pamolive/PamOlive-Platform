@@ -4,13 +4,25 @@ Le reader est un adaptateur de lecture, distinct du service de persistance et de
 
 ## Contrat et identités
 
-`normalize_destination(provider, endpoint, certificate_sha256, scope)` construit hors réseau `pamolive.directory-destination/1`. Le scope LDAP/AD contient `base_dn` et `bind_dn`, celui d'Entra `tenant_id` UUID. URL canonique, port, scope et empreinte SHA256 du certificat feuille font partie de l'identité. Un changement de principal LDAP ou de destination impose une nouvelle configuration, sans réutilisation silencieuse du justificatif.
+`normalize_destination(provider, endpoint, certificate_sha256, scope)` construit
+hors réseau `pamolive.directory-destination/1`. Le scope LDAP/AD contient
+`base_dn` et `bind_dn`. Celui d'Entra contient `tenant_id` et admet l'option
+`collect_direct_groups: true` à la création. L'URL canonique, le port, le scope
+et l'empreinte SHA256 du certificat feuille forment l'identité de la source.
+Un changement de périmètre exige une nouvelle configuration explicite.
 
 `read_directory(..., secret, synthetic=True, before_auth=...)` retourne `ReadResult(records, complete, page_count, synthetic, transport_identity, limitations)`. Les justificatifs sont des dictionnaires stricts : `bind_dn/password` pour LDAP, `token` pour Entra. Le hook interne `before_auth` revalide la source après TLS et avant transmission ; LDAP le rappelle avant chaque page, Graph avant chaque requête. L'I/O ne doit pas garder une transaction PostgreSQL ouverte. Le service revalide encore au moment d'accepter le résultat.
 
 `normalize_directory_records` fournit le contrat de faits v2. `enabled=None` signifie état inconnu ; il n'est jamais converti en désactivation. Le prévisualiseur P1 précédent conserve son contrat strictement booléen. Le LDAP générique lit `entryUUID/uid/memberOf` sans inventer un attribut universel enabled. AD lit `objectGUID` binaire, converti avec l'ordre `bytes_le`, `sAMAccountName/userAccountControl/memberOf`. Aucun DN, login ou e-mail ne remplace l'identifiant stable. Un identifiant dupliqué invalide la lecture.
 
-`complete=True` indique seulement la fin de la pagination demandée sous le principal lecteur. Cela ne prouve pas que ses ACL donnent une vision exhaustive de l'annuaire. Attributs cachés, appartenance transitive, groupes dynamiques et permissions effectives ne sont pas attestés. Une absence ne prouve pas suppression ou révocation et ne déclenche aucune écriture. LDAP sans état de compte connu, membership inconnue ou range AD incomplet conserve les limitations explicites. La préparation Graph collecte les utilisateurs, pas leurs groupes : elle reste donc incomplète.
+`complete=True` indique la fin de la pagination demandée sous le principal
+lecteur. LDAP sans état de compte connu, appartenance inconnue ou plage AD
+incomplète conserve les limitations explicites. Graph reste partiel avec
+ou sans les appartenances directes. Les exports des groupes contiennent
+uniquement les UUID visibles avec le jeton de lecture, avec les limites
+`graph_direct_groups_only` et, le cas échéant, `graph_group_request_budget`
+ou `directory_group_limit`. Les indices d'absence restent soumis à revue.
+[Microsoft Graph — appartenances directes](https://learn.microsoft.com/graph/api/user-list-memberof?view=graph-rest-1.0)
 
 ## Réseau et TLS
 

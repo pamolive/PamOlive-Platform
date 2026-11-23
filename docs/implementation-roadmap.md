@@ -24,6 +24,16 @@ qualifications couvrent un parcours de gouvernance lié à une seule
 intention, l'effet fournisseur synthétique et la compatibilité Windows.
 [Reçus SSH et RDP](https://github.com/pamolive/PamOlive-Platform/actions/runs/45247882731/artifacts/14856749904)
 
+La PR #103 ajoute l'observation signée et le retrait du mandat dans le même
+parcours. Le build natif doit exercer les deux transports sur cette révision.
+La PR #104 rétablit le journal privé utilisé par le contrôle RDP de livraison.
+[Parcours du mandat](https://github.com/pamolive/PamOlive-Platform/pull/103) · [Journal du banc RDP](https://github.com/pamolive/PamOlive-Platform/pull/104)
+
+P1-F ajoute une option scellée de lecture des appartenances directes dans
+les nouvelles sources Graph de laboratoire. La collecte conserve le budget
+de pagination et le caractère partiel de l'inventaire. L'export ne déclenche
+aucune écriture chez le fournisseur. [Contrat du lecteur](p1-f-directory-protocols.md)
+
 ## Image intégrée — qualification des dépendances Trixie
 
 Les deux scans de la PR #68 ont observé 39 groupes High. Seize sont

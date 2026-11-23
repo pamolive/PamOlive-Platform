@@ -10,9 +10,29 @@ L’interface native, les API et les exports partagent les mêmes services prot�
 
 Une fixture humaine conserve `synthetic_fixture`. Une collecte serveur authentifiée de laboratoire est distincte. Une acceptation signée atteste l’enregistrement par PamOlive, jamais la vérité des faits distants ou l’indépendance d’une personne PAM. Même clé/même contenu retourne le même run ; un contenu divergent provoque un conflit409 audité, sans réécrire l’original.
 
-Le lecteur natif Linux prend en charge LDAP/AD avec StartTLS obligatoire et contrôle CA/nom/pin sur la connexion effectivement utilisée. LDAPS est explicitement refusé avant réseau ou secret : l’API publique utilisée ne permet pas de le qualifier sur le descripteur déjà épinglé. Graph reste une préparation read-only avec vérification du tenant par une requête authentifiée ; l’inventaire des groupes n’est pas qualifié.
+Le lecteur natif Linux prend en charge LDAP/AD avec StartTLS obligatoire et
+contrôle CA, nom et empreinte sur la connexion utilisée. Une configuration
+LDAPS est refusée avant connexion. Le lecteur Graph vérifie le tenant par une
+requête authentifiée et utilise exclusivement des opérations de lecture.
 
-L’état LDAP absent reste inconnu. Une absence, un groupe déclaré ou une correspondance administrative ne crée aucun Grant, vote, mandat ou ordre SCIM. Le lecteur est limité aux destinations synthétiques loopback/`.invalid` autorisées, sans annuaire ou identité réelle. Voir [ADR-018](adr-018-directory-inventory.md) et [protocoles](p1-f-directory-protocols.md).
+Une nouvelle source Graph peut activer la collecte des appartenances directes.
+Le choix fait partie du périmètre scellé. Les sources existantes conservent la
+collecte des utilisateurs. Après validation du tenant, le lecteur demande
+`memberOf` pour l'UUID exact de chaque utilisateur et conserve uniquement
+les UUID des objets de type groupe. Chaque requête vérifie à nouveau le
+certificat, l'empreinte et l'autorité de collecte. La pagination reste sur
+le même utilisateur et la même origine. Les pages de groupes partagent
+une limite de 32 requêtes par collecte et le délai global de 45 secondes.
+Le compteur historique continue de décrire les pages d'utilisateurs.
+L'inventaire Graph reste partiel car il couvre les appartenances directes
+visibles avec les permissions de lecture du jeton.
+[Microsoft Graph — appartenances directes](https://learn.microsoft.com/graph/api/user-list-memberof?view=graph-rest-1.0)
+
+L’état LDAP absent reste inconnu. Les appartenances déclarées et
+correspondances administratives sont des observations. L’absence d’un
+objet reste soumise à revue. Le lecteur est limité aux destinations
+synthétiques loopback/`.invalid` autorisées.
+Voir [ADR-018](adr-018-directory-inventory.md) et [protocoles](p1-f-directory-protocols.md).
 
 ## Schéma et récupération
 
