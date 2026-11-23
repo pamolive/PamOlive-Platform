@@ -1,5 +1,21 @@
 # État réel de l’implémentation
 
+## Reproductibilité Kerberos et candidat util-linux — 23 novembre 2026
+
+Sur `86f959f`, une seconde construction Kerberos reproduit à l'octet près
+les dix paquets de la première qualification. Le pipeline produit vérifie
+ces mêmes empreintes avant installation. La campagne PostgreSQL et
+l'examen de l'image complète continuent.
+[Reconstruction Kerberos](https://github.com/pamolive/PamOlive-Platform/actions/runs/45134426528) ·
+[CI produit](https://github.com/pamolive/PamOlive-Platform/actions/runs/45134477903)
+
+L'ADR-043 fixe la recette de reconstruction de `util-linux` sur le
+source Trixie. L'application des six changements a été vérifiée sur
+les sources Debian, avec dix fichiers contrôlés avant et après. La
+compilation du paquet, les tests Linux et la comparaison de l'ABI
+restent à confirmer.
+[ADR-043](adr-043-util-linux-trixie-backport.md)
+
 ## Kerberos Trixie et chantier OpenSSL — 23 novembre 2026
 
 Sur `0b0d524`, le correctif ciblé Kerberos produit dix paquets Trixie

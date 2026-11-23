@@ -1,0 +1,59 @@
+name: util-linux Trixie backport build
+
+on:
+  push:
+    branches: [agent/util-linux-trixie-qualification]
+
+permissions:
+  contents: read
+
+jobs:
+  util-linux-trixie-backport:
+    if: github.repository == 'pamolive/PamOlive-Platform'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Rebuild signed Debian source with the reviewed upstream changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          context=$(mktemp -d "$RUNNER_TEMP/util-linux-trixie-context.XXXXXX")
+          evidence="$RUNNER_TEMP/util-linux-trixie-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test ! -e "$evidence"
+          git archive "$GITHUB_SHA" qualification/util_linux_trixie_backport \
+            deploy/krb5-remediation/abi_data.py deploy/krb5-remediation/common.py \
+            deploy/krb5-remediation/bounded_io.py deploy/krb5-remediation/legacy_inventory.py \
+            deploy/krb5-remediation/source_model.py \
+            | tar -x -C "$context" --no-same-owner
+          docker build --platform linux/amd64 --no-cache --progress plain \
+            --target util-linux-trixie-backport-evidence --output "type=local,dest=$evidence" \
+            --file "$context/qualification/util_linux_trixie_backport/Dockerfile" "$context"
+          cmp <(find "$evidence" -mindepth 1 -printf '%y %P\n' | LC_ALL=C sort) - <<'EXPECTED'
+          f bsdutils.deb
+          f buildinfo
+          f candidate.json
+          f checksums.sha256
+          f libblkid1.deb
+          f liblastlog2-2.deb
+          f libmount1.deb
+          f libsmartcols1.deb
+          f libuuid1.deb
+          f login.deb
+          f mount.deb
+          f qualification.json
+          f stock.json
+          f test-summary.txt
+          f util-linux.deb
+          EXPECTED
+          (cd "$evidence" && LC_ALL=C sha256sum ./buildinfo ./test-summary.txt ./*.deb | cmp - checksums.sha256)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: util-linux-trixie-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/util-linux-trixie-${{ github.run_id }}-${{ github.run_attempt }}/
+          retention-days: 7
+          if-no-files-found: error
