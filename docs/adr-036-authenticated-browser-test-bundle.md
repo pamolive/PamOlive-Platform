@@ -277,3 +277,19 @@ signé du 15 novembre a dépassé la fenêtre de sept jours. Une nouvelle
 campagne exige des métadonnées fournisseur fraîches et une identité
 de paquet confirmée.
 [Reçu de staging et nettoyage](https://github.com/pamolive/PamOlive-Platform/actions/runs/44268892672/artifacts/14411418231)
+
+## Mesure des métadonnées publiées par Google
+
+La branche de mesure réserve un runner Linux à la lecture des trois
+fichiers publics Release, Release.gpg et Packages. Elle réutilise le
+certificat épinglé, le même contrôle GPG du signataire, la fenêtre de
+fraîcheur existante et la liaison SHA-256 entre le Release et l'index.
+Le reçu lie les octets aux identifiants GitHub du run. Il indique si
+la stanza authentifiée correspond à celle du paquet déjà épinglé.
+[Clé Google pour les paquets Linux](https://www.google.com/linuxrepositories/)
+
+La mesure peut identifier une nouvelle version avant son admission.
+Une nouvelle version exige sa propre preuve de paquet, son inventaire
+et son profil de staging. L'essai du navigateur reste soumis au
+contrôle du bac à sable et à la phase B. Le job de mesure publie
+seulement les métadonnées publiques et le reçu.
