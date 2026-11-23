@@ -361,6 +361,16 @@ def worker_command(work, scratch, identity, inherited_net, namespace, expected_n
     ]
 
 
+def read_namespace_inode(commands, namespace, runner):
+    support.need(postgres_namespace.SANDBOX_PATH.fullmatch(namespace), "postgres_namespace_path")
+    raw = commands.run(
+        [sudo_executable(runner), "-n", "--", "/usr/bin/stat", "-L", "-c", "%i", namespace],
+        seconds=5, cap=64, sudo=True,
+    )
+    support.need(re.fullmatch(rb"[1-9][0-9]{0,19}\n", raw), "postgres_namespace_inode")
+    return int(raw)
+
+
 def prepare(commands, private, receipt):
     materials = private / "metadata"
     materials.mkdir(mode=0o700)
@@ -507,11 +517,12 @@ def supervisor(scratch, identity):
             names = prepare(commands, private, report)
             phase = "postgres_service"
             with postgres_namespace.service(private, identity, report) as namespace:
-                phase = "isolated_worker"
+                phase = "postgres_namespace_identity"
                 inherited = os.stat("/proc/self/ns/net").st_ino
-                expected = os.stat(namespace).st_ino
+                expected = read_namespace_inode(commands, namespace, identity["runner"])
                 support.need(expected > 0 and expected != inherited,
                              "sandbox_probe_wrong_postgres_namespace")
+                phase = "isolated_worker"
                 command = worker_command(private, scratch, identity, inherited, namespace, expected)
                 launcher = LauncherObservation(commands.io)
                 commands.io = launcher

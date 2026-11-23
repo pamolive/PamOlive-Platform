@@ -45,6 +45,19 @@ SUCCESS = {
 
 
 class SandboxProbeTests(unittest.TestCase):
+    def test_namespace_inode_uses_only_the_admitted_root_owned_handle(self):
+        commands = Mock()
+        commands.run.return_value = b"456\n"
+        path = "/var/run/docker/netns/123456789abc"
+        self.assertEqual(probe.read_namespace_inode(commands, path, "ubuntu-22.04"), 456)
+        commands.run.assert_called_once_with(
+            ["/usr/bin/sudo", "-n", "--", "/usr/bin/stat", "-L", "-c", "%i", path],
+            seconds=5, cap=64, sudo=True,
+        )
+        with self.assertRaisesRegex(ValueError, "postgres_namespace_path"):
+            probe.read_namespace_inode(commands, "/proc/1/ns/net", "ubuntu-22.04")
+        self.assertEqual(commands.run.call_count, 1)
+
     def test_successful_launch_rechecks_both_tools_and_returns_renderer_evidence(self):
         browser = Mock(version=probe.BROWSER_VERSION)
         playwright = Mock()
