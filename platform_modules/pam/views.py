@@ -217,7 +217,7 @@ def launch(request, intent_id):
 @require_POST
 def withdraw_mandate(request, intent_id):
     organization = current_organization()
-    authorize(request.user, organization)
+    authorize(request.user, organization, roles=("admin", "operator", "reviewer", "auditor"))
     require_module(organization, "pam")
     intent = get_object_or_404(AccessIntent.objects, pk=intent_id, fulfillment="pam")
     assurance = nullcontext()

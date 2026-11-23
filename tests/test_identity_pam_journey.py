@@ -83,6 +83,7 @@ def ingest_collector_observation(test, intent, external_id):
         evaluation = event.evaluations.get()
         test.assertTrue(verify_evaluation(evaluation))
         test.assertEqual(evaluation.intent_id, intent.pk)
+        test.assertEqual(evaluation.verdict, "expected")
         return event.pk
 
 
@@ -603,9 +604,19 @@ class IdentityPamJourneyTests(TestCase):
         session = self.browser.session
         session.pop("mfa_verified_at", None)
         session.save()
-        self.assertRedirects(
-            self._post(self.browser, path, {}), contract, fetch_redirect_response=False
+        membership = OrganizationMembership.objects.get(
+            organization=self.org, account=self.operator
         )
+        membership.role = "auditor"
+        membership.save(update_fields=["role"])
+        try:
+            self.assertIn(path, _Page(self._get(self.browser, contract)).forms)
+            self.assertRedirects(
+                self._post(self.browser, path, {}), contract, fetch_redirect_response=False
+            )
+        finally:
+            membership.role = "operator"
+            membership.save(update_fields=["role"])
         intent.refresh_from_db()
         relay.refresh_from_db()
         self.assertEqual(intent.status, "revoked")

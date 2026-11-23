@@ -768,7 +768,9 @@ def _request_stop(item, *, actor, at):
 def revoke_mandate(intent_id, *, actor, organization):
     """Withdraw one mandate, its live leases and the authority of its relays."""
     with organization_context(organization):
-        actor, organization = lock_authorized_actor(actor, organization)
+        actor, organization = lock_authorized_actor(
+            actor, organization, roles=("admin", "operator", "reviewer", "auditor")
+        )
         require_module(organization, "pam")
         intent = AccessIntent.objects.select_for_update().get(pk=intent_id, fulfillment="pam")
         if intent.requested_by_id != actor.pk:
