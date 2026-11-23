@@ -270,6 +270,32 @@ lors d'une rotation. Cette signature atteste la référence acceptée par son
 détenteur. Le choix de la référence, son authenticité avant capture et la
 durabilité du registre reposent sur sa gouvernance et son hébergement.
 
+Le dépositaire peut conserver les documents dans `anchor_store.AnchorStore`.
+Le dossier Linux doit être précréé en mode `0700` sous un UID dédié non root.
+Ses ancêtres appartiennent à root ou au dépositaire, sans droit d'écriture
+pour le groupe ou les autres utilisateurs. Le mode impose un système de fichiers
+local avec liens durs et synchronisation de répertoires. Le dépositaire garde
+la clef publique attendue et les empreintes de référence hors de ce stockage.
+Un répertoire reconstruit ne détermine jamais quel point doit être relu.
+
+En écriture, le stockage vérifie la signature et l'empreinte, puis synchronise
+le fichier `0600` avant sa publication sans écrasement. Un réessai identique
+synchronise le fichier existant et le répertoire avant de confirmer l'écriture.
+Les exports et restaurations relisent et importent chaque document sous la même
+empreinte attendue, avec la clef publique correspondant à sa génération. Une
+lecture concurrente peut voir le document avant la confirmation d'écriture.
+
+Configurer un espace dédié et un quota côté hébergement. Après une interruption,
+les fichiers temporaires peuvent subsister. Le dépositaire peut les inventorier
+et les retirer pendant une fenêtre sans écrivain, après avoir vérifié les
+références attendues. Le registre ne remplace ni la garde des références ni la
+protection du stockage contre son administrateur. La campagne `run_witness_anchor_store`
+exerce des écritures concurrentes, la relecture après le PITR de PostgreSQL,
+l'import dans un second répertoire et la réouverture par un nouveau processus.
+Les deux dossiers du laboratoire résident sur le même système de fichiers
+temporaire. Une panne électrique, un transfert multi-hôte et une séparation
+opérationnelle des dépositaires demandent une qualification dédiée.
+
 Un V compromis disposant d'un unwrap KMS générique peut ignorer W. Avant remise,
 une garde indépendante devra imposer chaque usage W avec claim d'émission unique,
 tenant/destination/broker/version/certificat exacts et aucun chemin générique
