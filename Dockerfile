@@ -88,6 +88,22 @@ WORKDIR /opt/sasl-build/tree
 ENV HOME=/opt/sasl-build LC_ALL=C.UTF-8 DEB_BUILD_OPTIONS=parallel=2
 RUN --network=none sh /opt/sasl-inputs/materials.sh build
 
+FROM debian-rebuild-base AS cairo-trixie-source
+COPY deploy/cairo-headless/trixie.sources deploy/cairo-headless/source-apt.conf deploy/cairo-headless/source.sha256 deploy/cairo-headless/materials.sh /opt/cairo-inputs/
+WORKDIR /opt/cairo-source
+RUN sh /opt/cairo-inputs/materials.sh acquire
+
+FROM debian-rebuild-base AS cairo-trixie-package
+COPY --chmod=0444 deploy/cairo-headless/source.sha256 deploy/cairo-headless/prepare.py deploy/cairo-headless/disabled-exports.txt deploy/cairo-headless/materials.sh /opt/cairo-inputs/
+RUN sh /opt/cairo-inputs/materials.sh toolchain
+WORKDIR /opt/cairo-build
+COPY --from=cairo-trixie-source /opt/cairo-source/ ./
+RUN --network=none sh /opt/cairo-inputs/materials.sh prepare
+USER 65534:65534
+WORKDIR /opt/cairo-build/tree
+ENV HOME=/opt/cairo-build LC_ALL=C.UTF-8 DEB_BUILD_OPTIONS=parallel=2
+RUN --network=none sh /opt/cairo-inputs/materials.sh build
+
 FROM debian-runtime AS expat-prepared
 RUN --mount=from=debian-refresh-inputs,source=/opt/pamolive-apt-cache,target=/tmp/debian-refresh-archives,ro \
   archives=/tmp/debian-refresh-archives && apt-get update \
@@ -145,7 +161,16 @@ RUN --network=none dpkg --install /tmp/expat-sdk/*.deb && rm -r /tmp/expat-sdk
 
 FROM expat-sdk AS freerdp-builder
 ARG JANSSON_DEBIAN_VERSION
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends build-essential cmake pkg-config curl ca-certificates gnupg patchelf libssl-dev zlib1g-dev libjpeg62-turbo-dev libjansson-dev=${JANSSON_DEBIAN_VERSION} patch libicu-dev liburiparser-dev libcairo2-dev && rm -rf /var/lib/apt/lists/*
+COPY --chmod=0444 deploy/cairo-headless/materials.sh deploy/cairo-headless/package.sha256 /opt/cairo-inputs/
+RUN --mount=from=cairo-trixie-package,source=/opt/cairo-build,target=/packages,ro \
+  cairo='1.18.4-1+pamolive13u1' \
+  && sh /opt/cairo-inputs/materials.sh verify-packages /packages \
+  && apt-get update && apt-get upgrade -y \
+  && apt-get install -y --no-install-recommends --no-remove build-essential cmake pkg-config curl ca-certificates gnupg patchelf libssl-dev zlib1g-dev libjpeg62-turbo-dev libjansson-dev=${JANSSON_DEBIAN_VERSION} patch libicu-dev liburiparser-dev \
+    "/packages/libcairo2_${cairo}_amd64.deb" "/packages/libcairo2-dev_${cairo}_amd64.deb" \
+    "/packages/libcairo-gobject2_${cairo}_amd64.deb" "/packages/libcairo-script-interpreter2_${cairo}_amd64.deb" \
+  && test "$(dpkg-query -W -f='${Version}' libcairo2-dev)" = "$cairo" \
+  && rm -rf /var/lib/apt/lists/*
 RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --root / --sdk --output /tmp/debian-refresh-sdk.json && rm /tmp/debian-refresh-sdk.json
 COPY deploy/build-freerdp.sh /build-freerdp.sh
 RUN --network=none test "$(dpkg-query --show --showformat='${Version}' libexpat1)" = '2.10.0-1+pamolive2' && test "$(dpkg-query --show --showformat='${Version}' libexpat1-dev)" = '2.10.0-1+pamolive2'
@@ -154,7 +179,10 @@ RUN sh /build-freerdp.sh
 
 FROM freerdp-builder AS guacd-builder
 ENV PKG_CONFIG_PATH=/opt/pamolive-freerdp/lib/pkgconfig LD_LIBRARY_PATH=/opt/pamolive-freerdp/lib
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends libtool-bin libcairo2-dev libpng-dev libpango1.0-dev libssh2-1-dev uuid-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get upgrade -y \
+  && apt-get install -y --no-install-recommends --no-remove libtool-bin libcairo2-dev=1.18.4-1+pamolive13u1 libpng-dev libpango1.0-dev libssh2-1-dev uuid-dev \
+  && test "$(dpkg-query -W -f='${Version}' libcairo2)" = '1.18.4-1+pamolive13u1' \
+  && rm -rf /var/lib/apt/lists/*
 RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --root / --sdk --output /tmp/debian-refresh-sdk.json && rm /tmp/debian-refresh-sdk.json
 COPY deploy/build-guacd.sh /build-guacd.sh
 COPY deploy/guacd-deny-rdp-redirection.patch /guacd-deny-rdp-redirection.patch
@@ -178,7 +206,14 @@ RUN --network=none export PIP_CONFIG_FILE=/dev/null PIP_DISABLE_PIP_VERSION_CHEC
 FROM expat-runtime AS runtime-build
 ARG JANSSON_DEBIAN_VERSION
 ARG LIBPQ_DEBIAN_VERSION
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends libcairo2 libpng16-16t64 libjpeg62-turbo libpango-1.0-0 libpangocairo-1.0-0 libssh2-1t64 libssl3t64 libjansson4=${JANSSON_DEBIAN_VERSION} libkrb5-3 libgssapi-krb5-2 libicu76 liburiparser1 zlib1g fonts-dejavu-core libldap2 libsasl2-2 libpq5=${LIBPQ_DEBIAN_VERSION} && rm -rf /var/lib/apt/lists/*
+COPY --chmod=0444 deploy/cairo-headless/materials.sh deploy/cairo-headless/package.sha256 /opt/cairo-inputs/
+RUN --mount=from=cairo-trixie-package,source=/opt/cairo-build,target=/packages,ro \
+  cairo='1.18.4-1+pamolive13u1' \
+  && sh /opt/cairo-inputs/materials.sh verify-packages /packages \
+  && apt-get update && apt-get upgrade -y \
+  && apt-get install -y --no-install-recommends --no-remove "/packages/libcairo2_${cairo}_amd64.deb" libpng16-16t64 libjpeg62-turbo libpango-1.0-0 libpangocairo-1.0-0 libssh2-1t64 libssl3t64 libjansson4=${JANSSON_DEBIAN_VERSION} libkrb5-3 libgssapi-krb5-2 libicu76 liburiparser1 zlib1g fonts-dejavu-core libldap2 libsasl2-2 libpq5=${LIBPQ_DEBIAN_VERSION} \
+  && test "$(dpkg-query -W -f='${Version}' libcairo2)" = "$cairo" \
+  && rm -rf /opt/cairo-inputs /var/lib/apt/lists/*
 COPY --from=freerdp-builder /opt/pamolive-freerdp/lib /opt/pamolive-freerdp/lib
 COPY --from=freerdp-builder /opt/pamolive-freerdp/share/pamolive-freerdp /opt/pamolive-freerdp/share/pamolive-freerdp
 COPY --from=guacd-builder /opt/pamolive-guac /opt/pamolive-guac
