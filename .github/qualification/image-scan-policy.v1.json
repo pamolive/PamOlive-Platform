@@ -9,6 +9,177 @@
   "coverage": "OS archive plus declared FreeRDP/Guacamole and application SBOM; bundled wheel libraries are not automatically covered",
   "findings": [
     {
+      "analysis": "CVE-2026-119373 is corrected in SQLite 3.54.0 and in Debian source 3.54.1-2. Trixie installs the reviewed rebuild of that authenticated source. This decision requires the exact amd64 DPKG entry, the matching ELF and SONAME alias from the scanned archive, and the source and build evidence.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "sqlite_rebuild",
+          "sha256": "f3efdeb6d18f5168d14511e0aec614f7b84e8daf1c319a77089d58e50d4ff317"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T10:35:03+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-119373",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libsqlite3-0",
+            "purl": "pkg:deb/debian/libsqlite3-0@3.54.1-2~pamolive13u1?arch=amd64&distro=debian-13.8&upstream=sqlite3",
+            "type": "deb",
+            "version": "3.54.1-2~pamolive13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "sqlite3",
+        "vulnerability_id": "CVE-2026-119373"
+      },
+      "fingerprint": "sha256:9aa897974da25444865aaf9e2c2f2bc868488c901853396751dd2b5793b95e87",
+      "local_evidence": [
+        {
+          "path": "deploy/sqlite-rebuild/check_runtime.py",
+          "sha256": "89e0885c7de0cdeb2ff226285d7cc3e96d034515c747f6ab9877311100f862d5"
+        },
+        {
+          "path": "deploy/sqlite-rebuild/prepare.py",
+          "sha256": "4b18de2e74206bae527908b2e4a50ef36adef238bcd82a5999ab505fa355813d"
+        },
+        {
+          "path": "deploy/sqlite-rebuild/source.sha256",
+          "sha256": "9b50ee9aa60431e26d82a81363efa3b58c28d9186907be235c8d3fe0a2c9b108"
+        }
+      ],
+      "reviewed_at": "2026-11-23T10:35:03+00:00",
+      "reviewers": [
+        "codex:/root/expat_release_review",
+        "codex:/root/openssl_next_release"
+      ],
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-119373",
+        "https://sqlite.org/src/info/a7f8c92f62"
+      ]
+    },
+    {
+      "analysis": "CVE-2026-119374 is corrected in SQLite 3.54.0 and in Debian source 3.54.1-2. Trixie installs the reviewed rebuild of that authenticated source. This decision requires the exact amd64 DPKG entry, the matching ELF and SONAME alias from the scanned archive, and the source and build evidence.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "sqlite_rebuild",
+          "sha256": "f3efdeb6d18f5168d14511e0aec614f7b84e8daf1c319a77089d58e50d4ff317"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T10:35:03+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-119374",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libsqlite3-0",
+            "purl": "pkg:deb/debian/libsqlite3-0@3.54.1-2~pamolive13u1?arch=amd64&distro=debian-13.8&upstream=sqlite3",
+            "type": "deb",
+            "version": "3.54.1-2~pamolive13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "sqlite3",
+        "vulnerability_id": "CVE-2026-119374"
+      },
+      "fingerprint": "sha256:254de0c83237a51524f3a868b983bfad80e133f297882d665ea23635e957f4bd",
+      "local_evidence": [
+        {
+          "path": "deploy/sqlite-rebuild/check_runtime.py",
+          "sha256": "89e0885c7de0cdeb2ff226285d7cc3e96d034515c747f6ab9877311100f862d5"
+        },
+        {
+          "path": "deploy/sqlite-rebuild/prepare.py",
+          "sha256": "4b18de2e74206bae527908b2e4a50ef36adef238bcd82a5999ab505fa355813d"
+        },
+        {
+          "path": "deploy/sqlite-rebuild/source.sha256",
+          "sha256": "9b50ee9aa60431e26d82a81363efa3b58c28d9186907be235c8d3fe0a2c9b108"
+        }
+      ],
+      "reviewed_at": "2026-11-23T10:35:03+00:00",
+      "reviewers": [
+        "codex:/root/expat_release_review",
+        "codex:/root/openssl_next_release"
+      ],
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-119374",
+        "https://sqlite.org/src/info/9cd4f9e920"
+      ]
+    },
+    {
+      "analysis": "CVE-2026-119379 is corrected in SQLite 3.54.0 and in Debian source 3.54.1-2. Trixie installs the reviewed rebuild of that authenticated source. This decision requires the exact amd64 DPKG entry, the matching ELF and SONAME alias from the scanned archive, and the source and build evidence.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "sqlite_rebuild",
+          "sha256": "f3efdeb6d18f5168d14511e0aec614f7b84e8daf1c319a77089d58e50d4ff317"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T10:35:03+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-119379",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libsqlite3-0",
+            "purl": "pkg:deb/debian/libsqlite3-0@3.54.1-2~pamolive13u1?arch=amd64&distro=debian-13.8&upstream=sqlite3",
+            "type": "deb",
+            "version": "3.54.1-2~pamolive13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "sqlite3",
+        "vulnerability_id": "CVE-2026-119379"
+      },
+      "fingerprint": "sha256:e45d7a8c5da08f3451e2f288a6f5e754b2e18593ace6500b73d75f684ad995d8",
+      "local_evidence": [
+        {
+          "path": "deploy/sqlite-rebuild/check_runtime.py",
+          "sha256": "89e0885c7de0cdeb2ff226285d7cc3e96d034515c747f6ab9877311100f862d5"
+        },
+        {
+          "path": "deploy/sqlite-rebuild/prepare.py",
+          "sha256": "4b18de2e74206bae527908b2e4a50ef36adef238bcd82a5999ab505fa355813d"
+        },
+        {
+          "path": "deploy/sqlite-rebuild/source.sha256",
+          "sha256": "9b50ee9aa60431e26d82a81363efa3b58c28d9186907be235c8d3fe0a2c9b108"
+        }
+      ],
+      "reviewed_at": "2026-11-23T10:35:03+00:00",
+      "reviewers": [
+        "codex:/root/expat_release_review",
+        "codex:/root/openssl_next_release"
+      ],
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-119379",
+        "https://sqlite.org/src/info/3f57024aecea0f3b"
+      ]
+    },
+    {
       "analysis": "",
       "analyst": "",
       "conditions": [],

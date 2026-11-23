@@ -101,6 +101,100 @@ class ImageScanPolicyTests(TestCase):
         self.policy["findings"] = [entry]
         return entry
 
+    def sqlite_scan_entries(self, condition):
+        self.os["distro"]["version"] = "13.8"
+        self.os["matches"] = []
+        template = self.add_exception()
+        self.os["matches"] = [
+            self.match(cve, state="wont-fix", name="libsqlite3-0",
+                       version=gate.SQLITE_VERSION, source="sqlite3")
+            for cve in gate.SQLITE_FIXES
+        ]
+        for row in self.os["matches"]:
+            row["artifact"]["purl"] += "?arch=amd64&distro=debian-13.8&upstream=sqlite3"
+        source_root = Path(__file__).resolve().parents[1]
+        local_evidence = []
+        for path, digest in gate.SQLITE_PROOFS.items():
+            target = self.repo / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((source_root / path).read_bytes())
+            local_evidence.append({"path": path, "sha256": digest})
+        self.policy["findings"] = [{
+            **template, "fingerprint": key, "finding": finding,
+            "disposition": "fixed_by_backport", "conditions": [condition],
+            "local_evidence": local_evidence, "vendor_evidence": [
+                finding["data_source"], gate.SQLITE_FIXES[finding["vulnerability_id"]]],
+        } for key, finding in gate.high_groups(self.os, "os").items()]
+
+    def sqlite_archive(self, binary, condition, *, status=None, alias=None, extra=False):
+        if status is None:
+            status = (f"Package: libsqlite3-0\nStatus: install ok installed\n"
+                      f"Source: sqlite3\nArchitecture: amd64\nVersion: {gate.SQLITE_VERSION}\n"
+                      ).encode()
+        layer = io.BytesIO()
+        with tarfile.open(fileobj=layer, mode="w") as inner:
+            files = [(gate.SQLITE_STATUS, status), (gate.SQLITE_LIBRARY, binary)]
+            if extra:
+                files.append(("/opt/alt/libsqlite3.so.0", binary))
+            for name, body in files:
+                member = tarfile.TarInfo(name.lstrip("/"))
+                member.size = len(body)
+                inner.addfile(member, io.BytesIO(body))
+            link = tarfile.TarInfo(gate.SQLITE_ALIAS.lstrip("/"))
+            link.type = tarfile.SYMTYPE
+            link.linkname = alias or Path(gate.SQLITE_LIBRARY).name
+            inner.addfile(link)
+        archive = self.repo / "sqlite-test.tar"
+        with tarfile.open(archive, mode="w") as outer:
+            for name, data in (("manifest.json", b'[{"Layers":["layer.tar"]}]'),
+                               ("layer.tar", layer.getvalue())):
+                member = tarfile.TarInfo(name)
+                member.size = len(data)
+                outer.addfile(member, io.BytesIO(data))
+        return gate.archive_facts(archive, [condition])
+
+    def test_sqlite_scope_and_library_are_verified_from_the_same_archive(self):
+        binary = b"\x7fELF\x02\x01" + b"\0" * 12 + b"\x3e\0" + b"synthetic"
+        digest = hashlib.sha256(binary).hexdigest()
+        condition = {"kind": "sqlite_rebuild", "sha256": digest}
+        self.sqlite_scan_entries(condition)
+        with patch.multiple(gate, SQLITE_ELF_SHA256=digest, SQLITE_CONDITION=condition):
+            result = self.evaluate(self.sqlite_archive(binary, condition))
+            self.assertTrue(result["passed"])
+            self.assertFalse(result["all_findings_clear"])
+            self.assertEqual(result["high_finding_groups"], 3)
+            self.assertEqual(len(result["decisions"]), 3)
+            for change in (
+                {"binary": binary + b"x"}, {"alias": "other.so"}, {"extra": True},
+            ):
+                with self.subTest(change=change):
+                    options = {"binary": binary, "condition": condition, **change}
+                    result = self.evaluate(self.sqlite_archive(**options))
+                    self.assertFalse(result["passed"])
+                    self.assertEqual(len(result["blockers"]), 3)
+            installed = self.sqlite_archive(binary, condition).captured[gate.SQLITE_STATUS]
+            for status in (b"Package: sqlite3\n", installed + b"\n" + installed,
+                           installed + b"\nPackage: sqlite3\nStatus: install ok installed\n"):
+                with self.subTest(status=status), self.assertRaisesRegex(
+                    gate.ScanPolicyError, "sqlite_rebuild_status",
+                ):
+                    self.evaluate(self.sqlite_archive(binary, condition, status=status))
+
+    def test_sqlite_proof_cannot_authorize_a_different_package_cve_or_recipe(self):
+        self.sqlite_scan_entries(gate.SQLITE_CONDITION)
+        entry = self.policy["findings"][0]
+        finding = entry["finding"]
+        proofs = entry["local_evidence"]
+        for fields in ({"scope": "compiled"}, {"vulnerability_id": "CVE-2026-123456"},
+                       {"distro": {"name": "debian", "version": "13.7"}},
+                       {"packages": [{**finding["packages"][0], "version": "3.46.1"}]}):
+            with self.subTest(fields=fields), self.assertRaisesRegex(
+                gate.ScanPolicyError, "sqlite_rebuild_scope",
+            ):
+                gate.sqlite_rebuild_holds(entry, {**finding, **fields}, facts=None, proofs=proofs)
+        with self.assertRaisesRegex(gate.ScanPolicyError, "sqlite_rebuild_recipe"):
+            gate.sqlite_rebuild_holds(entry, finding, facts=None, proofs=proofs[:-1])
+
     def trixie_exception(self, scope, cve="CVE-2026-124709", *, source="openssl"):
         entry = self.add_exception()
         self.os["matches"] = []

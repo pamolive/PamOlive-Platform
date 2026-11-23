@@ -91,6 +91,25 @@ TRIXIE_BACKPORT_PINS = {
         ),
     },
 }
+SQLITE_FIXES = {
+    "CVE-2026-119373": "https://sqlite.org/src/info/a7f8c92f62",
+    "CVE-2026-119374": "https://sqlite.org/src/info/9cd4f9e920",
+    "CVE-2026-119379": "https://sqlite.org/src/info/3f57024aecea0f3b",
+}
+SQLITE_VERSION = "3.54.1-2~pamolive13u1"
+SQLITE_STATUS = "/var/lib/dpkg/status"
+SQLITE_LIBRARY = "/usr/lib/x86_64-linux-gnu/libsqlite3.so.3.54.1"
+SQLITE_ALIAS = "/usr/lib/x86_64-linux-gnu/libsqlite3.so.0"
+SQLITE_ELF_SHA256 = "f3efdeb6d18f5168d14511e0aec614f7b84e8daf1c319a77089d58e50d4ff317"
+SQLITE_PROOFS = {
+    "deploy/sqlite-rebuild/source.sha256":
+        "9b50ee9aa60431e26d82a81363efa3b58c28d9186907be235c8d3fe0a2c9b108",
+    "deploy/sqlite-rebuild/prepare.py":
+        "4b18de2e74206bae527908b2e4a50ef36adef238bcd82a5999ab505fa355813d",
+    "deploy/sqlite-rebuild/check_runtime.py":
+        "89e0885c7de0cdeb2ff226285d7cc3e96d034515c747f6ab9877311100f862d5",
+}
+SQLITE_CONDITION = {"kind": "sqlite_rebuild", "sha256": SQLITE_ELF_SHA256}
 ELF_SET_SCHEMA = "pamolive.elf-set.v1"
 GCC_VERSION = "14.2.0-19"
 GCC_PACKAGES = {"gcc-14-base", "libatomic1", "libgcc-s1", "libstdc++6"}
@@ -400,6 +419,9 @@ def archive_facts(archive, conditions, *, read_paths=(), expected_diff_ids=None,
     require(isinstance(read_paths, (list, tuple, set)) and len(read_paths) <= 32,
             "archive_read_paths")
     read_paths = {checked_path(name) for name in read_paths}
+    if any(item.get("kind") == "sqlite_rebuild" for item in conditions):
+        read_paths.add(SQLITE_STATUS)
+        require(len(read_paths) <= 32, "archive_read_paths")
     require(isinstance(attribute_paths, (list, tuple, set)) and len(attribute_paths) <= 32,
             "archive_attribute_paths")
     attribute_paths = {checked_path(name) for name in attribute_paths}
@@ -928,6 +950,46 @@ def trixie_backport_holds(entry, finding, *, proofs, report):
     return True
 
 
+def sqlite_rebuild_holds(entry, finding, *, facts, proofs):
+    from qualification.debian_138_refresh.verify_refresh import controls
+
+    cve = finding["vulnerability_id"]
+    fix = SQLITE_FIXES.get(cve)
+    package = {"name": "libsqlite3-0", "type": "deb", "version": SQLITE_VERSION,
+               "purl": f"pkg:deb/debian/libsqlite3-0@{SQLITE_VERSION}"
+                       "?arch=amd64&distro=debian-13.8&upstream=sqlite3"}
+    require(fix and fix in entry["vendor_evidence"] and finding == {
+        "vulnerability_id": cve, "source_package": "sqlite3", "scope": "os",
+        "severity": "High", "distro": {"name": "debian", "version": "13.8"},
+        "fix_state": "wont-fix", "namespace": "debian:distro:debian:13",
+        "data_source": "https://security-tracker.debian.org/tracker/" + cve, "packages": [package],
+    }, "sqlite_rebuild_scope")
+    require(entry["disposition"] == "fixed_by_backport"
+            and entry["conditions"] == [SQLITE_CONDITION]
+            and not {"trixie_backport_receipt", "backport_inventory", "build_recipe"} & entry.keys()
+            and all({"path": path, "sha256": digest} in proofs
+                    for path, digest in SQLITE_PROOFS.items()),
+            "sqlite_rebuild_recipe")
+    raw_status = (getattr(facts, "captured", None) or {}).get(SQLITE_STATUS, b"")
+    require(0 < len(raw_status) <= 8 * 1024**2, "sqlite_rebuild_status")
+    rows = [row for row in controls(raw_status)
+            if row.get("Package") == "libsqlite3-0"
+            or row.get("Source", row.get("Package", "")).partition(" ")[0] == "sqlite3"]
+    require(len(rows) == 1 and rows[0].get("Package") == "libsqlite3-0"
+            and rows[0].get("Status") == "install ok installed"
+            and rows[0].get("Source") in ("sqlite3", f"sqlite3 ({SQLITE_VERSION})")
+            and rows[0].get("Architecture") == "amd64"
+            and rows[0].get("Version") == SQLITE_VERSION, "sqlite_rebuild_status")
+    libraries = {path: row for path, row in (facts.entries or {}).items() if re.fullmatch(
+        r"libsqlite3(?:-[^/]+)?\.so(?:\..+)?", PurePosixPath(path).name)}
+    return libraries == {
+        SQLITE_LIBRARY: {"path": SQLITE_LIBRARY, "type": "elf",
+                         "class": 64, "machine": 62, "sha256": SQLITE_ELF_SHA256},
+        SQLITE_ALIAS: {"path": SQLITE_ALIAS, "type": "symlink",
+                       "target": PurePosixPath(SQLITE_LIBRARY).name},
+    }
+
+
 def reviewed_exception(entry, finding, *, facts, repo, now, archive=None, artifact_cache=None,
                        trixie_report=None):
     require(entry.get("fingerprint") == fingerprint(entry.get("finding")), "policy_fingerprint")
@@ -964,6 +1026,8 @@ def reviewed_exception(entry, finding, *, facts, repo, now, archive=None, artifa
         path = candidate.resolve(strict=True)
         require(path.is_relative_to(repo) and hash_file(path, 2 * 1024 * 1024) ==
                 proof.get("sha256"), "proof_changed")
+    if any(item.get("kind") == "sqlite_rebuild" for item in entry.get("conditions", ())):
+        return sqlite_rebuild_holds(entry, finding, facts=facts, proofs=proofs)
     if "trixie_backport_receipt" in entry:
         return trixie_backport_holds(entry, finding, proofs=proofs, report=trixie_report)
     if entry["disposition"] == "fixed_by_backport":
