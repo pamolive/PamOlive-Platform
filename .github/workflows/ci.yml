@@ -358,7 +358,7 @@ jobs:
           set -euo pipefail
           proof="$RUNNER_TEMP/pamolive-image-security"
           mkdir -m 700 "$proof"
-          image_ref=$(docker image inspect pamolive-platform:ci --format '{{.Id}}')
+          image_ref=$(docker image inspect pamolive-platform:ci --format '{{.Id}}') # Engine ID for the verified reload.
           config_id=$(python -c 'import json,os; from pathlib import Path; print(json.loads((Path(os.environ["RUNNER_TEMP"])/"pamolive-qualified-image/qualified-image.json").read_text())["image_id"])')
           docker run --rm --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --entrypoint python "$image_ref" -c 'from pathlib import Path; import sys; sys.stdout.buffer.write(Path("/opt/pamolive-native-manifest.json").read_bytes())' > "$proof/native-manifest.json"
           docker run --rm --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -m deploy.native_inventory --output /proof/native-report.json --gcc-provider-output /proof/gcc-provider.json
@@ -367,7 +367,7 @@ jobs:
           timeout --signal=TERM --kill-after=2s 25s docker run --rm --pull never --no-healthcheck \
             --user 1000:1000 --network none --cap-drop ALL --security-opt no-new-privileges \
             --read-only --cpus 1 --memory 256m --memory-swap 256m --pids-limit 32 \
-            --entrypoint python "$config_id" -I -B -S /app/deploy/sqlite-rebuild/check_runtime.py \
+            --entrypoint python "$image_ref" -I -B -S /app/deploy/sqlite-rebuild/check_runtime.py \
             > "$proof/sqlite-runtime.json"
           python -m deploy.debian_refresh_inventory \
             --bundle "$RUNNER_TEMP/pamolive-qualified-image" --revision "$GITHUB_SHA" \
