@@ -6,6 +6,22 @@ x11_version='2:1.8.14-1'
 xrender_version='1:0.9.13-1'
 suffix='~pamolive13u1'
 
+restore_trixie_symbols() {
+  symbols=debian/libx11-6.symbols
+  test "$(head -n 2 "$symbols")" = 'libX11.so.6 libx11-6 #MINVER#
+| libx11-private'
+  if grep -Eq '^ (\(optional\))?_XimXTransSocket(INET6|INET|Local|TCP|UNIX)Funcs@Base ' "$symbols"; then
+    exit 42
+  fi
+  # xtrans 1.4 on Trixie exports these objects. Forky xtrans 1.6 makes them static.
+  printf '%s\n' \
+    ' _XimXTransSocketINET6Funcs@Base 0 1' \
+    ' _XimXTransSocketINETFuncs@Base 0 1' \
+    ' _XimXTransSocketLocalFuncs@Base 0 1' \
+    ' _XimXTransSocketTCPFuncs@Base 0 1' \
+    ' _XimXTransSocketUNIXFuncs@Base 0 1' >> "$symbols"
+}
+
 prepare() (
   package=$1
   version=$2
@@ -13,6 +29,9 @@ prepare() (
   cd "$package-tree"
   test "$(dpkg-parsechangelog -SSource)" = "$package"
   test "$(dpkg-parsechangelog -SVersion)" = "$version"
+  if test "$package" = libx11; then
+    restore_trixie_symbols
+  fi
   printf '%s\n' \
     "$package ($version$suffix) trixie; urgency=medium" '' \
     '  * Rebuild the Debian source on Trixie.' '' \
@@ -25,7 +44,14 @@ prepare() (
 build() (
   cd "/opt/x11-build/$1-tree"
   dpkg-checkbuilddeps
-  dpkg-buildpackage -b -us -uc -j2
+  log="/opt/x11-build/$1-build.log"
+  if dpkg-buildpackage -b -us -uc -j2 > "$log" 2>&1; then
+    tail -n 16 "$log"
+  else
+    code=$?
+    tail -n 120 "$log" >&2
+    exit "$code"
+  fi
 )
 
 retain() {

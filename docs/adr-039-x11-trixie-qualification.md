@@ -16,7 +16,11 @@ une voie de remédiation qui conserve la configuration de Cairo et Pango.
 
 Le laboratoire les reconstruit sur Trixie amd64 depuis l'index source
 Forky authentifié et les six SHA-256 épinglés. Il ajoute une entrée de
-changelog et compile hors réseau sous UID non privilégié. Il compare
+changelog et rétablit les cinq entrées de la table de symboles Debian
+Trixie pour les objets xtrans globaux. Forky utilise une version de xtrans
+qui garde ces objets internes. Le niveau strict de vérification des
+symboles Debian est conservé. Le laboratoire compile hors réseau sous
+UID non privilégié. Il compare
 l'identité des paquets, les SONAME, les exports dynamiques, les fichiers
 chargés par Cairo et le rendu PNG d'un texte synthétique. Le résultat
 conserve les deux buildinfo, les paquets et les empreintes.
