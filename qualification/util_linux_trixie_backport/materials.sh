@@ -68,7 +68,8 @@ case "${1-}" in
       tail -n 45 /work/debian-build.log >&2
       exit 1
     fi
-    grep -Ei '(All [0-9]+ tests PASSED|skipped|[[:space:]]SKIP)' /work/debian-build.log > /work/test-summary.txt
+    grep -Ei '(All [0-9]+ tests PASSED|skipped|[[:space:]]SKIP|KNOWN FAILED)' \
+      /work/debian-build.log > /work/test-summary.txt
     ;;
   export)
     for package in $packages; do

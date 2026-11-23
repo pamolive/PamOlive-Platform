@@ -29,8 +29,9 @@ du patch réduit qui ferme les descripteurs.
 La campagne compile les paquets avec les dépendances Trixie après
 authentification APT, sous un UID non privilégié et sans réseau.
 Les empreintes du source Debian, des correctifs et des fichiers avant
-et après application sont requises. La recette conserve le verdict de
-la suite amont ainsi que ses cas ignorés. Elle publie neuf paquets
+et après application sont requises. La recette conserve le verdict du
+harnais, les cas ignorés et les échecs déclarés connus par Debian.
+Elle publie neuf paquets
 identifiés comme entrées de qualification, avec leur buildinfo et
 leurs empreintes.
 

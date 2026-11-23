@@ -43,7 +43,7 @@ jobs:
           f test-summary.txt
           f util-linux.deb
           EXPECTED
-          (cd "$evidence" && sha256sum --check --strict checksums.sha256)
+          (cd "$evidence" && LC_ALL=C sha256sum ./buildinfo ./test-summary.txt ./*.deb | cmp - checksums.sha256)
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: util-linux-trixie-${{ github.run_id }}-${{ github.run_attempt }}
