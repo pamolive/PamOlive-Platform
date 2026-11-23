@@ -1,5 +1,5 @@
 FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS trixie
-COPY --chmod=0444 qualification/util_linux_trixie_backport/materials.sh qualification/util_linux_trixie_backport/source.sha256 qualification/util_linux_trixie_backport/patches.sha256 qualification/util_linux_trixie_backport/preimage.sha256 qualification/util_linux_trixie_backport/postimage.sha256 /opt/util-linux-inputs/
+COPY --chmod=0444 qualification/util_linux_trixie_backport/materials.sh qualification/util_linux_trixie_backport/source.sha256 qualification/util_linux_trixie_backport/patches.sha256 qualification/util_linux_trixie_backport/preimage.sha256 qualification/util_linux_trixie_backport/postimage.sha256 qualification/util_linux_trixie_backport/setarch-buildkit-test.patch /opt/util-linux-inputs/
 RUN test "$(dpkg --print-architecture)" = amd64 \
  && test -s /usr/share/keyrings/debian-archive-keyring.pgp \
  && chmod 0755 /opt/util-linux-inputs

@@ -49,6 +49,16 @@ case "${1-}" in
     done < "$inputs/patches.sha256"
     sha256sum --check --strict "$inputs/postimage.sha256"
 
+    # The upstream suite already excludes this test in Docker. BuildKit lacks its sentinel.
+    test_path=tests/ts/misc/setarch
+    test_patch=setarch-buildkit-test.patch
+    printf '%s  %s\n' d275b98f01b9a5ad91f11c98486e70360317bb32be37b53308079f61875508d0 "$test_path" \
+      9bc64fd1d470776a2b10c78ecf72afee255c3c7e96e97e423e8b79d90263e649 "$inputs/$test_patch" | sha256sum --check --strict
+    install -m 0444 "$inputs/$test_patch" "debian/patches/$test_patch"
+    printf '%s\n' "$test_patch" >> debian/patches/series
+    QUILT_PATCHES=debian/patches QUILT_PATCH_OPTS='--fuzz=0' quilt push
+    printf '%s  %s\n' db46cba2c4cd0eaa82d6f6cd21a1640d6888ed8db40ead98982d6d1aefbc2a16 "$test_path" | sha256sum --check --strict
+
     printf '%s\n' \
       "util-linux ($candidate) trixie; urgency=medium" '' \
       '  * Backport the reviewed stable libmount and nsenter security changes.' '' \

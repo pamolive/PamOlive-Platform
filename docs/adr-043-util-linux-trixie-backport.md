@@ -37,6 +37,14 @@ Elle publie neuf paquets
 identifiés comme entrées de qualification, avec leur buildinfo et
 leurs empreintes.
 
+La compilation complète a passé, puis `misc/setarch` a échoué sous
+BuildKit sur un refus noyau `EPERM`. La suite amont exclut déjà ce test
+dans Docker. Le port test-only ne l'exclut sous BuildKit qu'après avoir
+observé le même refus sur les options utilisées par la suite. Ce cas
+reste déclaré ignoré. Les tests et correctifs du code distribué ne
+changent pas.
+[Journal Debian](https://github.com/pamolive/PamOlive-Platform/actions/runs/45139725581)
+
 La qualification installe les neuf paquets Debian de référence puis les
 neuf candidats dans un environnement jetable. Elle compare les exports
 versionnés de cinq bibliothèques et vérifie leurs chemins chargés par
