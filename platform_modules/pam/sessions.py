@@ -24,14 +24,21 @@ from platform_core.audit import record
 from platform_core.authorization import require_recent_authentication
 from platform_core.models import Organization
 from platform_core.security import cipher
-from platform_core.services import authorize, require_module
+from platform_core.services import authorize, lock_authorized_actor, require_module
 from platform_core.tenancy import organization_context
+from platform_modules.access.models import AccessIntent
 from platform_modules.governance.policy import approval_requirements, enforce_authorization
 
 from .context import network_context
 from .destination import TransportFailure, host_port
 from .mandates import account_can_use_pam, mandate_endpoint, scope_hash, validate_request
-from .models import LIVE_CONNECTION_STATES, RecordingChunk, RelayConnection, SessionEndpoint
+from .models import (
+    LIVE_CONNECTION_STATES,
+    RecordingChunk,
+    RelayConnection,
+    SessionEndpoint,
+    SessionLease,
+)
 from .probe import certificate_pin, probe_rdp, probe_ssh, ssh_host_key
 from .services import open_lease
 from .target_binding import credential_seal, credential_verified, target_scope
@@ -740,17 +747,61 @@ def stop_session(connection_id, *, actor, organization):
             _operator(actor, organization)
         if item.status not in LIVE_CONNECTION_STATES:
             return
-        item.stop_requested_at = timezone.now()
-        item.save(update_fields=["stop_requested_at"])
-        if item.status == "pending":
-            _end(item, reason="stop_requested", complete=False)
+        _request_stop(item, actor=actor, at=timezone.now())
+
+
+def _request_stop(item, *, actor, at):
+    item.stop_requested_at = at
+    item.save(update_fields=["stop_requested_at"])
+    if item.status == "pending":
+        _end(item, reason="stop_requested", complete=False)
+    record(
+        action="pam.relay.stop_requested.v1",
+        summary="Fermeture du relais demandée",
+        organization=item.organization,
+        actor=actor,
+        target=item,
+    )
+
+
+@transaction.atomic
+def revoke_mandate(intent_id, *, actor, organization):
+    """Withdraw one mandate, its live leases and the authority of its relays."""
+    with organization_context(organization):
+        actor, organization = lock_authorized_actor(
+            actor, organization, roles=("admin", "operator", "reviewer", "auditor")
+        )
+        require_module(organization, "pam")
+        intent = AccessIntent.objects.select_for_update().get(pk=intent_id, fulfillment="pam")
+        if intent.requested_by_id != actor.pk:
+            authorize(actor, organization, roles=("admin",))
+            require_recent_authentication(actor, organization)
+        if intent.status == "revoked":
+            return intent
+        if intent.status not in ("pending", "approved"):
+            raise ValidationError("Ce mandat PAM ne peut plus être révoqué.")
+        now = timezone.now()
+        intent.status, intent.revoked_at = "revoked", now
+        intent.save(update_fields=["status", "revoked_at"])
+        leases = SessionLease.objects.filter(intent=intent, status="active").update(
+            status="revoked", ended_at=now,
+        )
+        relays = RelayConnection.objects.select_for_update(of=("self",)).filter(
+            lease__intent=intent, status__in=LIVE_CONNECTION_STATES, stop_requested_at__isnull=True,
+        ).order_by("pk")
+        stopped = 0
+        for item in relays:
+            _request_stop(item, actor=actor, at=now)
+            stopped += 1
         record(
-            action="pam.relay.stop_requested.v1",
-            summary="Fermeture du relais demandée",
+            action="pam.mandate.revoked.v1",
+            summary="Mandat PAM révoqué",
             organization=organization,
             actor=actor,
-            target=item,
+            target=intent,
+            metadata={"leases_revoked": leases, "relay_stop_requests": stopped},
         )
+        return intent
 
 
 @transaction.atomic

@@ -235,6 +235,7 @@ def worker(private, *, native_protocol=None, isolated=False):
             need(
                 value["native_PAM_transport_observed"] is True
                 and phase in value["observed_UI_phases"]
+                and support.NATIVE_MANDATE_PHASE in value["observed_UI_phases"]
                 and (
                     native_protocol != "rdp" or value["native_RDP_display_and_NLA_observed"] is True
                 )

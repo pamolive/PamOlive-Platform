@@ -11,14 +11,17 @@ from django.core.exceptions import PermissionDenied
 from django.db import close_old_connections, connection, connections, transaction
 from django.test import TransactionTestCase, override_settings
 
+from platform_core.models import AuditEvent
 from platform_core.tenancy import organization_context
 from platform_modules.pam import trust_auth
+from platform_modules.pam.destination import TransportFailure
 from platform_modules.pam.recordings import issue_recording_grant, recording_page
 from platform_modules.pam.sessions import (
     append_recording,
     check_startup_session,
     endpoint_credentials,
     finish_session,
+    revoke_mandate,
 )
 from platform_modules.pam.trust import launch_payload, verify_launch
 from platform_modules.pam.trust_auth_models import PAMTrustAuthorization, PAMTrustChallenge
@@ -80,6 +83,39 @@ class PAMTrustConcurrencyTests(PamSessionFixtureMixin, TransactionTestCase):
         ):
             endpoint_credentials(stale, session_key=self.session_key, client_ip="127.0.0.1")
         encryption.assert_not_called()
+
+    def test_mandate_withdrawal_fences_waiting_credential_access(self):
+        stale = self.loaded_relay()
+        waiting, pid = Event(), []
+
+        def release():
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_backend_pid()")
+                pid.append(cursor.fetchone()[0])
+            waiting.set()
+            return endpoint_credentials(stale, session_key=self.session_key, client_ip="127.0.0.1")
+
+        with (
+            ThreadPoolExecutor(max_workers=1) as pool,
+            patch("platform_modules.pam.sessions.cipher") as encryption,
+        ):
+            with transaction.atomic():
+                withdrawn = revoke_mandate(
+                    self.intent.pk, actor=self.operator, organization=self.org
+                )
+                release_result = pool.submit(self.independent_connection, release)
+                self.assertTrue(waiting.wait(timeout=5))
+                self.wait_for_database_lock(pid[0])
+            with self.assertRaisesRegex(TransportFailure, "session_credentials_unavailable"):
+                release_result.result(timeout=10)
+            encryption.assert_not_called()
+        stale.refresh_from_db()
+        self.assertEqual(stale.status, "connecting")
+        self.assertEqual(stale.stop_requested_at, withdrawn.revoked_at)
+        self.assertEqual(stale.lease.status, "revoked")
+        self.assertTrue(AuditEvent.objects.filter(
+            organization=self.org, action="pam.mandate.revoked.v1", object_id=str(self.intent.pk),
+        ).exists())
 
     def test_revocation_waits_for_a_credential_release_already_under_the_common_lock(self):
         from platform_core.security import cipher

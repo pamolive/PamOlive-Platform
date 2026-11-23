@@ -1,7 +1,10 @@
 name: P1-G isolated native portal
 on:
   push:
-    branches: [agent/p1g-native-portal-isolated-ci, agent/p1g-native-rdp-portal]
+    branches:
+      - agent/p1g-native-portal-isolated-ci
+      - agent/p1g-native-rdp-portal
+      - agent/p1g-portal-mandate-revocation
 permissions:
   contents: read
 jobs:
@@ -81,7 +84,7 @@ jobs:
           "$RUNNER_TEMP/p1g-native-venv/bin/python" -I -B \
             "$RUNNER_TEMP/p1g-source/qualification/p1g_headless/native_lab.py" --image "$image"
       - name: Exercise the confined native RDP portal
-        if: ${{ !cancelled() && steps.native_build.outcome == 'success' && github.ref == 'refs/heads/agent/p1g-native-rdp-portal' }}
+        if: ${{ !cancelled() && steps.native_build.outcome == 'success' && github.ref != 'refs/heads/agent/p1g-native-portal-isolated-ci' }}
         timeout-minutes: 21
         shell: bash
         env:

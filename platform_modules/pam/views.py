@@ -1,4 +1,5 @@
 import time
+from contextlib import nullcontext
 
 from django import forms
 from django.contrib import messages
@@ -13,7 +14,10 @@ from django.views.decorators.http import require_POST
 from platform_core.audit import record
 from platform_core.authorization import recent_authentication
 from platform_core.security import ensure_recent
+from platform_core.services import authorize, require_module
+from platform_core.tenancy import current_organization
 from platform_core.view_access import scoped
+from platform_modules.access.models import AccessIntent
 from platform_modules.identity.models import ExternalAccount, Resource
 
 from .context import client_address
@@ -24,6 +28,7 @@ from .sessions import (
     configure_endpoint,
     launch_session,
     probe_endpoint,
+    revoke_mandate,
     set_endpoint_enabled,
     stop_session,
 )
@@ -178,8 +183,6 @@ def endpoint_action(request, endpoint_id, action):
 @scoped("pam", roles=("admin", "operator"))
 @require_POST
 def launch(request, intent_id):
-    from platform_modules.access.models import AccessIntent
-
     get_object_or_404(AccessIntent.objects, pk=intent_id)
     try:
         ip = client_address(
@@ -208,6 +211,34 @@ def launch(request, intent_id):
             "player": {"mode": "live", "ticket": ticket, "websocket_path": f"/ws/pam/{item.pk}/"},
         },
     )
+
+
+@login_required
+@require_POST
+def withdraw_mandate(request, intent_id):
+    organization = current_organization()
+    authorize(request.user, organization, roles=("admin", "operator", "reviewer", "auditor"))
+    require_module(organization, "pam")
+    intent = get_object_or_404(AccessIntent.objects, pk=intent_id, fulfillment="pam")
+    assurance = nullcontext()
+    if intent.requested_by_id != request.user.pk:
+        authorize(request.user, organization, roles=("admin",))
+        challenge = ensure_recent(request)
+        if challenge is not None:
+            return challenge
+        assurance = recent_authentication(
+            request.user, organization, request.session.get("mfa_verified_at", 0)
+        )
+    try:
+        with assurance:
+            revoke_mandate(intent_id, actor=request.user, organization=organization)
+    except AccessIntent.DoesNotExist as error:
+        raise Http404 from error
+    except ValidationError as error:
+        messages.error(request, " ".join(error.messages))
+    else:
+        messages.success(request, "Mandat révoqué. La fermeture des relais liés a été demandée.")
+    return redirect("access-contract-detail", intent_id=intent_id)
 
 
 @scoped()

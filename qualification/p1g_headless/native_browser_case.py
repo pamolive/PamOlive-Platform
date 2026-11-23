@@ -20,6 +20,7 @@ from qualification.p1g_headless.browser_case import FACTS, TLS, P1GBrowser
 from tests.fixtures.asgi import TLSASGIServer
 from tests.fixtures.guacd import guacd_fixture
 from tests.fixtures.ssh import INPUT, ThreadedSSHFixture
+from tests.test_identity_pam_journey import ingest_collector_observation
 
 CAPTURE_LIMIT = 2 * 1024**2
 
@@ -130,11 +131,16 @@ class NativePAMBrowser(P1GBrowser):
             f"approved_intent_to_same_{transport}_connection_and_keyboard"
         )
 
-        self.phase(f"native_{transport}_stop_and_capture")
+        self.phase(f"native_{transport}_observe_and_revoke_mandate")
         details = page.context.new_page()
         details.on("pageerror", lambda error: self.errors.append("pageerror"))
-        self.goto(details, "pam-connection", relay.pk)
-        stop = reverse("pam-stop", args=[relay.pk])
+        event_id = self.database.run(
+            ingest_collector_observation, self, intent, f"native-fixture-{relay.pk}"
+        )
+        self.goto(details, "access-contract-detail", intent.pk)
+        observation = details.get_by_role("link", name=f"observation {event_id}", exact=True)
+        expect(observation).to_be_visible()
+        stop = reverse("pam-mandate-revoke", args=[intent.pk])
         with socket.expect_event("close", timeout=15000):
             with details.expect_navigation(wait_until="domcontentloaded", timeout=12000):
                 self.check_before_stop()
@@ -145,6 +151,13 @@ class NativePAMBrowser(P1GBrowser):
         )
         self.assertTrue(page.locator("#pam-close").is_disabled())
         self.database.run(relay.refresh_from_db)
+        self.database.run(intent.refresh_from_db)
+        self.assertEqual(intent.status, "revoked")
+        self.assertIsNotNone(intent.revoked_at)
+        self.assertTrue(self.database.run(lambda: relay.lease.status == "revoked"))
+        self.assertEqual(details.locator(f'form[action="{stop}"]').count(), 0)
+        self.goto(details, "pam-home")
+        self.assertEqual(details.locator(f'form[action="{action}"]').count(), 0)
         self.assertEqual((relay.status, relay.end_reason), ("ended", "stop_requested"))
         self.assertIsNotNone(relay.stop_requested_at)
         self.assertLessEqual(relay.stop_requested_at, relay.ended_at)
@@ -153,6 +166,10 @@ class NativePAMBrowser(P1GBrowser):
             organization=self.org, actor=self.operator, object_id=str(relay.pk),
             action="pam.relay.stop_requested.v1",
         ).exists()))
+        self.assertTrue(self.database.run(lambda: AuditEvent.objects.filter(
+            organization=self.org, actor=self.operator, object_id=str(intent.pk),
+            action="pam.mandate.revoked.v1",
+        ).exists()))
         self.assertTrue(0 < relay.recording_bytes <= CAPTURE_LIMIT)
         self.assertEqual(self.database.run(self._business_counts), (1, 2, 1, 1))
         self.verify_capture(details, relay)
@@ -160,6 +177,7 @@ class NativePAMBrowser(P1GBrowser):
         FACTS["observed_UI_phases"].append(
             f"same_relay_stop_WSS_{transport}_and_verified_partial_capture"
         )
+        FACTS["observed_UI_phases"].append(support.NATIVE_MANDATE_PHASE)
 
     def check_before_stop(self):
         """Protocol-specific proof that the same remote session is still open."""
