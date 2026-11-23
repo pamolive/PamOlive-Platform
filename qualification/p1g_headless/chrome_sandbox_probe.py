@@ -23,13 +23,14 @@ from qualification.p1g_headless import (  # noqa: E402
     chrome_key_scope,
     chrome_metadata,
     chrome_probe_stage,
+    postgres_namespace,
 )
 from qualification.p1g_headless import (  # noqa: E402
     lab_support as support,
 )
 
-BRANCH = "refs/heads/agent/p1g-chrome-sandbox-runner-comparison"
-PURPOSE = "RELOCATED_SANDBOX_RUNNER_COMPARISON_ONLY"
+BRANCH = "refs/heads/agent/p1g-browser-postgres-namespace"
+PURPOSE = "CHROMIUM_POSTGRES_LOOPBACK_ADMISSION_ONLY"
 RUNNERS = {"ubuntu-22.04": "22.04", "ubuntu-24.04": "24.04", "ubuntu-26.04": "26.04"}
 PACKAGE_VERSION = "158.0.8127.36-1"
 BROWSER_VERSION = PACKAGE_VERSION.removesuffix("-1")
@@ -169,17 +170,25 @@ def isolated_worker_status(inherited_net):
     )
 
 
-def worker(work, inherited_net):
+def worker(work, inherited_net, expected_net):
     try:
         isolated_worker_status(inherited_net)
+        support.need(os.stat("/proc/self/ns/net").st_ino == expected_net,
+                     "sandbox_probe_wrong_postgres_namespace")
+        support.need(not os.access("/var/run/docker.sock", os.W_OK),
+                     "sandbox_probe_docker_socket_access")
     except (OSError, ValueError) as exc:
         return refused_worker("isolation", exc)
     control = namespace_control()
     try:
+        database = postgres_namespace.read_loopback(work)
+    except (OSError, ValueError) as exc:
+        return {**refused_worker("postgres", exc), "namespace_control": control}
+    try:
         result = browser_probe(work)
     except (ImportError, OSError, ValueError) as exc:
         result = refused_worker("prerequisites", exc)
-    return {**result, "namespace_control": control}
+    return {**result, "namespace_control": control, "postgres": database}
 
 
 def browser_probe(work):
@@ -243,7 +252,12 @@ MEASUREMENT_REFUSALS = {
         "sandbox_probe_network_namespace",
         "sandbox_probe_inherited_socket",
         "sandbox_probe_worker_path",
+        "sandbox_probe_docker_socket_access",
+        "sandbox_probe_wrong_postgres_namespace",
     },
+    "postgres": {"postgres_fixture_password", "postgres_fixture_authentication",
+                 "postgres_loopback_identity",
+                 "postgres_loopback_unavailable"},
     "prerequisites": {
         "sandbox_probe_executable_pin",
         "sandbox_probe_playwright_version",
@@ -297,7 +311,8 @@ def sudo_executable(runner):
     return path.as_posix()
 
 
-def worker_command(work, scratch, identity, inherited_net):
+def worker_command(work, scratch, identity, inherited_net, namespace, expected_net):
+    support.need(postgres_namespace.SANDBOX_PATH.fullmatch(namespace), "postgres_namespace_path")
     env = {
         "PATH": "/usr/bin:/bin",
         "LANG": "C.UTF-8",
@@ -316,8 +331,8 @@ def worker_command(work, scratch, identity, inherited_net):
         sudo_executable(identity["runner"]),
         "-n",
         "--",
-        "/usr/bin/unshare",
-        "--net",
+        "/usr/bin/nsenter",
+        "--net=" + namespace,
         "--",
         "/usr/bin/setpriv",
         "--reuid",
@@ -341,6 +356,8 @@ def worker_command(work, scratch, identity, inherited_net):
         str(work),
         "--host-net",
         str(inherited_net),
+        "--expected-net",
+        str(expected_net),
     ]
 
 
@@ -392,6 +409,14 @@ def valid_worker_result(result):
                        for value in packet["sysctls"].values())):
             return False
         result = {key: value for key, value in result.items() if key != "namespace_control"}
+    if result.get("phase") not in ("isolation", "postgres"):
+        database = result.get("postgres")
+        if (type(database) is not dict or set(database) != {"server_version_num",
+                                                            "verified_loopback_SQL"}
+                or database["server_version_num"] != postgres_namespace.VERSION
+                or database["verified_loopback_SQL"] is not True):
+            return False
+        result = {key: value for key, value in result.items() if key != "postgres"}
     if result.get("state") == "REFUSED":
         phase, code = result.get("phase"), result.get("code")
         return (
@@ -480,35 +505,35 @@ def supervisor(scratch, identity):
             )
             phase = "authenticated_stage"
             names = prepare(commands, private, report)
-            phase = "isolated_worker"
-            inherited = os.stat("/proc/self/ns/net").st_ino
-            command = worker_command(private, scratch, identity, inherited)
-            launcher = LauncherObservation(commands.io)
-            commands.io = launcher
-            previous_number = commands.number
-            try:
-                response = commands.run(
-                    command,
-                    seconds=75,
-                    cap=8192,
-                    sudo=True,
-                )
-            except (OSError, ValueError):
-                if launcher.failure is not None:
-                    report["launcher_failure"] = launcher.failure
-                if launcher.worker_exception is not None:
-                    report["worker_exception"] = launcher.worker_exception
-                if commands.number > previous_number:
-                    status = launcher_status(journals, commands.number)
-                    if status is not None:
-                        report["launcher_exit_status"] = status
-                raise
+            phase = "postgres_service"
+            with postgres_namespace.service(private, identity, report) as namespace:
+                phase = "isolated_worker"
+                inherited = os.stat("/proc/self/ns/net").st_ino
+                expected = os.stat(namespace).st_ino
+                support.need(expected > 0 and expected != inherited,
+                             "sandbox_probe_wrong_postgres_namespace")
+                command = worker_command(private, scratch, identity, inherited, namespace, expected)
+                launcher = LauncherObservation(commands.io)
+                commands.io = launcher
+                previous_number = commands.number
+                try:
+                    response = commands.run(command, seconds=75, cap=8192, sudo=True)
+                except (OSError, ValueError):
+                    if launcher.failure is not None:
+                        report["launcher_failure"] = launcher.failure
+                    if launcher.worker_exception is not None:
+                        report["worker_exception"] = launcher.worker_exception
+                    if commands.number > previous_number:
+                        status = launcher_status(journals, commands.number)
+                        if status is not None:
+                            report["launcher_exit_status"] = status
+                    raise
             result = chrome_bundle.json_bytes(response)
             support.need(valid_worker_result(result), "sandbox_probe_worker_receipt")
             phase = "tree_recheck"
             chrome_probe_stage.verify_tree(names, private / "chrome", until=commands.until - 10)
         report.update(result, workspace_cleaned=True)
-    except (OSError, ValueError, KeyError, TypeError) as exc:
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
         code = str(exc) if type(exc) is ValueError else ""
         report.update(
             phase=phase,
@@ -522,6 +547,7 @@ def main():
     parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--worker", type=Path)
     parser.add_argument("--host-net", type=int)
+    parser.add_argument("--expected-net", type=int)
     args = parser.parse_args()
     support.need(
         sys.platform == "linux" and os.getuid() == os.geteuid() > 0, "sandbox_probe_nonroot"
@@ -529,12 +555,13 @@ def main():
     identity = run_identity(os.environ)
     scratch = Path(os.environ["RUNNER_TEMP"]).resolve(strict=True)
     if args.worker is None:
-        support.need(args.host_net is None, "sandbox_probe_args")
+        support.need(args.host_net is None and args.expected_net is None, "sandbox_probe_args")
         return supervisor(scratch, identity)
     work = args.worker
     try:
         support.need(
             args.host_net is not None
+            and args.expected_net is not None and args.expected_net > 0
             and work.parent == scratch
             and work.name.startswith(WORK_PREFIX)
             and work.resolve(strict=True) == work
@@ -542,7 +569,7 @@ def main():
             and stat.S_IMODE(work.stat().st_mode) == 0o700,
             "sandbox_probe_worker_path",
         )
-        result = worker(work, args.host_net)
+        result = worker(work, args.host_net, args.expected_net)
     except (OSError, ValueError) as exc:
         result = refused_worker("isolation", exc)
     print(chrome_bundle.canonical(result).decode(), end="")

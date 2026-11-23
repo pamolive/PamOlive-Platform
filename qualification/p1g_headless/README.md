@@ -217,3 +217,17 @@ The follow-up measures the launcher failure class and resolves only a
 known sudo provider on Ubuntu 26.04. The original canonical role, mode,
 ownership and digest checks apply to the executable before it runs.
 [First comparison](https://github.com/pamolive/PamOlive-Platform/actions/runs/45234729103)
+
+## Chromium and PostgreSQL on the same private loopback
+
+The adjacent Ubuntu 22.04 qualification starts one digest-pinned PostgreSQL
+17.12 fixture with an ephemeral database and generated credentials. Docker
+gives that fixture a private IP namespace and the supervisor validates its
+identity and unpublished network profile. The non-root browser worker enters
+that namespace, confirms its privilege drop and queries the fixture over
+loopback. It then observes Chromium's namespace and renderer sandbox on the
+same worker. Container deletion and workspace cleanup are part of the receipt.
+
+The database listener belongs to the synthetic lab. The later combined portal
+job will also use the exact native-test guacd image in this namespace and retain
+the browser test's launch, stop and capture checks.
