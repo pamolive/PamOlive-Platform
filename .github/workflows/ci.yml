@@ -95,6 +95,8 @@ jobs:
   postgres-and-container:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    outputs:
+      release-evidence-id: ${{ steps.release_evidence.outputs.artifact-id }}
     services:
       postgres:
         image: docker.io/library/postgres@sha256:6f7593c161689b6b02c78668b314af7da8811b592c5519108c57a49d0b6ad788 # 17.12, linux/amd64
@@ -480,12 +482,33 @@ jobs:
           retention-days: 7
       - name: Retain the qualified image for main publication
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'pamolive/PamOlive-Platform'
+        id: qualified_archive
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: pamolive-linux-amd64-${{ github.sha }}
+          name: pamolive-linux-amd64-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pamolive-qualified-image/
           if-no-files-found: error
           compression-level: 0
+          retention-days: 7
+      - name: Bind the passing image-policy receipt to the retained archive
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'pamolive/PamOlive-Platform'
+        env:
+          ARCHIVE_ID: ${{ steps.qualified_archive.outputs.artifact-id }}
+          ARCHIVE_DIGEST: ${{ steps.qualified_archive.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          python -B -m qualification.release_evidence --revision "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" create \
+            --attempt "$GITHUB_RUN_ATTEMPT" --artifact-id "$ARCHIVE_ID" --artifact-digest "$ARCHIVE_DIGEST" \
+            --bundle "$RUNNER_TEMP/pamolive-qualified-image" --report "$RUNNER_TEMP/pamolive-image-security/policy-result.json" \
+            --directory "$RUNNER_TEMP/pamolive-release-evidence"
+      - name: Retain the detached release evidence
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'pamolive/PamOlive-Platform'
+        id: release_evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: pamolive-release-evidence-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pamolive-release-evidence/
+          if-no-files-found: error
           retention-days: 7
       - name: Remove the empty private LDAP fixture and restore its parent ACL
         if: always() && steps.ldap_fixture.outputs.acl_saved == 'true'
@@ -1158,6 +1181,8 @@ jobs:
           persist-credentials: false
       - name: Test read-only qualification contracts without native tools or network
         run: python3 -I -S -B qualification/build_origin/run_readonly_pure.py "$RUNNER_TEMP/origin-readonly-pure.json"
+      - name: Test signed release bindings against local fixtures
+        run: python3 -B -m unittest qualification.test_release_evidence
       - name: Retain only the pure contract test result
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -1166,3 +1191,38 @@ jobs:
           path: ${{ runner.temp }}/origin-readonly-pure.json
           if-no-files-found: warn
           retention-days: 7
+  attest-release-evidence:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'pamolive/PamOlive-Platform'
+    needs: [security, postgres-and-container, p2-installed-libraries, readonly-source-contracts]
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    permissions:
+      contents: read
+      actions: read
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Require the retained artifact before downloading
+        env:
+          EVIDENCE_ID: ${{ needs.postgres-and-container.outputs.release-evidence-id }}
+        run: '[[ "$EVIDENCE_ID" =~ ^[1-9][0-9]{0,18}$ ]]'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.postgres-and-container.outputs.release-evidence-id }}
+          path: ${{ runner.temp }}/pamolive-release-evidence
+          digest-mismatch: error
+      - name: Validate and hash the detached index
+        id: subject
+        run: |
+          set -euo pipefail
+          digest=$(python3 -B -m qualification.release_evidence --revision "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" subject \
+            --attempt "$GITHUB_RUN_ATTEMPT" --directory "$RUNNER_TEMP/pamolive-release-evidence")
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-name: release-evidence.json
+          subject-digest: ${{ steps.subject.outputs.digest }}
+          show-summary: false
