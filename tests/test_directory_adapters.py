@@ -2,23 +2,26 @@
 
 import hashlib
 import secrets
+import ssl
 import sys
 import tempfile
 import threading
 import types
 from dataclasses import asdict
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 from uuid import uuid4
 
 from django.test import SimpleTestCase, override_settings
 
 from platform_modules.connectors.directory_adapters import (
     DirectoryFailure,
+    _graph_response,
     _ldap_rows,
     normalize_destination,
     normalize_directory_records,
     read_directory,
 )
+from platform_modules.connectors.scim import PinnedHTTPSConnection
 from tests.fixtures.directory import GraphPeer
 
 
@@ -161,8 +164,38 @@ class GraphHttpsTests(SimpleTestCase):
             self.read()
         self.assertEqual(len(self.peer.requests), 1)
 
+    def test_error_status_retains_retry_policy_without_reading_error_body(self):
+        for status, retryable in ((403, False), (429, True), (503, True)):
+            self.peer.error_status = status
+            self.peer.requests.clear()
+            with (
+                self.subTest(status=status),
+                patch("http.client.HTTPResponse.read1") as read,
+                self.assertRaisesMessage(DirectoryFailure, "directory_http_failed") as caught,
+            ):
+                self.read()
+            read.assert_not_called()
+            self.assertIs(caught.exception.retryable, retryable)
+            self.assertEqual(len(self.peer.requests), 1)
+
+    def test_interrupted_https_body_remains_retryable(self):
+        self.peer.interrupt_response = True
+        with self.assertRaisesMessage(DirectoryFailure, "directory_network_failed") as caught:
+            self.read()
+        self.assertTrue(caught.exception.retryable)
+        self.assertEqual(len(self.peer.requests), 1)
+
     def test_raw_body_size_is_bounded_before_parsing(self):
         self.peer.pages = [{"value": [self.user()], "padding": "x" * 1_048_576}]
+        with self.assertRaisesMessage(DirectoryFailure, "directory_response_too_large"):
+            self.read()
+
+    def test_chunked_responses_keep_the_same_streaming_budget(self):
+        self.peer.chunked_response = True
+        row = self.user()
+        self.peer.pages = [{"value": [row]}]
+        self.assertEqual(self.read().records[0]["id"], row["id"])
+        self.peer.pages = [{"value": [row], "padding": "x" * 1_048_576}]
         with self.assertRaisesMessage(DirectoryFailure, "directory_response_too_large"):
             self.read()
 
@@ -205,6 +238,79 @@ class GraphHttpsTests(SimpleTestCase):
             with self.assertRaisesMessage(DirectoryFailure, "directory_synthetic_address_required"):
                 self.read()
         self.assertEqual(self.peer.requests, [])
+
+
+class GraphDeadlineTests(SimpleTestCase):
+    def response_socket(self, *parts):
+        socket = Mock()
+        stream = socket.makefile.return_value
+        pieces = iter(parts)
+
+        def readinto(buffer):
+            data = next(pieces)
+            buffer[: len(data)] = data
+            return len(data)
+
+        stream.readinto.side_effect = readinto
+        return socket, stream
+
+    def test_header_parser_rechecks_the_budget_between_underlying_reads(self):
+        socket, stream = self.response_socket(
+            b"HTTP/1.1 200 OK\r\n", b"Content-Type: application/json\r\n"
+        )
+        with (
+            patch(
+                "platform_modules.connectors.directory_adapters.time.monotonic",
+                side_effect=[10, 10.5, 11],
+            ),
+            _graph_response(socket, method="GET", deadline=11) as response,
+            self.assertRaisesMessage(DirectoryFailure, "directory_deadline_exceeded") as caught,
+        ):
+            response.begin()
+
+        self.assertTrue(caught.exception.retryable)
+        socket.makefile.assert_called_once_with("rb", buffering=0)
+        self.assertEqual(socket.settimeout.call_args_list, [call(1), call(0.5)])
+        self.assertEqual(stream.readinto.call_count, 2)
+        stream.close.assert_called_once()
+
+    def test_chunked_trailer_read_uses_the_original_deadline(self):
+        socket, stream = self.response_socket(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nnull\r\n0\r\n"
+        )
+        with (
+            patch(
+                "platform_modules.connectors.directory_adapters.time.monotonic",
+                side_effect=[10, 11],
+            ),
+            _graph_response(socket, method="GET", deadline=11) as response,
+        ):
+            response.begin()
+            self.assertEqual(response.read1(4), b"null")
+            with self.assertRaisesMessage(DirectoryFailure, "directory_deadline_exceeded"):
+                response.read1(4)
+
+        socket.settimeout.assert_called_once_with(1)
+        self.assertEqual(stream.readinto.call_count, 1)
+        stream.close.assert_called_once()
+
+    def test_tls_handshake_receives_the_remaining_budget_after_tcp_connect(self):
+        connection = PinnedHTTPSConnection(
+            "graph.invalid", 443, "127.0.0.1", ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        )
+        raw = Mock()
+        remaining = Mock(side_effect=[3, 1.5])
+        with (
+            patch(
+                "platform_modules.connectors.scim.socket.create_connection", return_value=raw
+            ) as dial,
+            patch.object(connection, "_context") as context,
+        ):
+            connection.connect(remaining_timeout=remaining)
+        self.addCleanup(connection.close)
+        dial.assert_called_once_with(("127.0.0.1", 443), 3)
+        raw.settimeout.assert_called_once_with(1.5)
+        context.wrap_socket.assert_called_once_with(raw, server_hostname="graph.invalid")
 
 
 class LdapProtocolTests(SimpleTestCase):
