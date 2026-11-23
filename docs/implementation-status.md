@@ -1,5 +1,22 @@
 # État réel de l’implémentation
 
+## Kerberos Trixie et chantier OpenSSL — 23 novembre 2026
+
+Sur `0b0d524`, le correctif ciblé Kerberos produit dix paquets Trixie
+`1.21.3-5+deb13u2+pamolive1`. Les exports versionnés et SONAME des quatre
+bibliothèques runtime correspondent au stock. Le SDK compile et exécute
+le consommateur hors réseau. L'archive et les dix paquets ont été vérifiés.
+La suite Debian signale quatre cas ignorés liés au keyring, à LDAP KDB et
+au DNS externe. L'installation dans l'image produit reste à qualifier.
+[Campagne Kerberos](https://github.com/pamolive/PamOlive-Platform/actions/runs/45131107539)
+
+L'ADR-042 lance un candidat OpenSSL 3.5.9 avec sept correctifs de la branche
+amont. Les changements de production correspondent exactement au source
+Debian avant et après application. CVE-2026-84786 reste ouverte dans ce
+périmètre. Le produit conserve sa configuration actuelle pendant la
+qualification native.
+[ADR-042](adr-042-openssl-trixie-seven-fixes.md)
+
 ## Scan intégré et qualification du CLI du témoin — 23 novembre 2026
 
 Les deux CI de `b588ae0` franchissent le build et les validations qui
