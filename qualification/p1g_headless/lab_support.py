@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 
 HOST = "pam.example.test"
 BRANCH = "agent/p1-g-headless"
+STAGE_BRANCH = "agent/p1g-chrome158-private-stage"
 BOUNDED_SHA = "72b778ad6e441744e8bd9ac84ba7f47b1f6b577b7885a2e0daf3b4584cc0150a"
 SDK_VERSION = "1.65.2"
 BUNDLE_BROWSER_VERSION = "157.0.8103.78"
@@ -25,7 +26,9 @@ def need(value, code):
         raise ValueError(code)
 
 
-def guard(env, *, platform=sys.platform, uid=None):
+def guard(env, *, platform=sys.platform, uid=None, stage_only=False):
+    need(type(stage_only) is bool, "closed_operation_required")
+    branch = STAGE_BRANCH if stage_only else BRANCH
     uid = os.getuid() if uid is None and platform == "linux" else uid
     need(platform == "linux" and type(uid) is int and uid > 0, "linux_nonroot_required")
     need(
@@ -35,10 +38,10 @@ def guard(env, *, platform=sys.platform, uid=None):
         "disposable_repository_required",
     )
     event = env.get("GITHUB_EVENT_NAME")
-    allowed = event == "push" and env.get("GITHUB_REF") == "refs/heads/" + BRANCH
+    allowed = event == "push" and env.get("GITHUB_REF") == "refs/heads/" + branch
     allowed |= (
         event == "pull_request"
-        and env.get("GITHUB_HEAD_REF") == BRANCH
+        and env.get("GITHUB_HEAD_REF") == branch
         and env.get("P1G_HEAD_REPOSITORY") == "pamolive/PamOlive-Platform"
     )
     need(

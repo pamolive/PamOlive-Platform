@@ -19,7 +19,7 @@ def environment():
         "PAMOLIVE_P1G_DISPOSABLE": "1",
         "GITHUB_REPOSITORY": "pamolive/PamOlive-Platform",
         "GITHUB_EVENT_NAME": "push",
-        "GITHUB_REF": "refs/heads/agent/p1-g-headless",
+        "GITHUB_REF": "refs/heads/" + lab.BRANCH,
         "GITHUB_SHA": "a" * 40,
         "GITHUB_RUN_ID": "123",
         "GITHUB_RUN_ATTEMPT": "1",
@@ -386,13 +386,29 @@ class Contracts(unittest.TestCase):
         lab.guard(env, platform="linux", uid=1001)
         env.update(
             GITHUB_EVENT_NAME="pull_request",
-            GITHUB_HEAD_REF="agent/p1-g-headless",
+            GITHUB_HEAD_REF=lab.BRANCH,
             P1G_HEAD_REPOSITORY="pamolive/PamOlive-Platform",
         )
         lab.guard(env, platform="linux", uid=1001)
         env["P1G_HEAD_REPOSITORY"] = "foreign/fork"
         with self.assertRaises(ValueError):
             lab.guard(env, platform="linux", uid=1001)
+
+    def test_stage_branch_is_not_authorized_to_run_the_portal(self):
+        stage = {**environment(), "GITHUB_REF": "refs/heads/" + lab.STAGE_BRANCH}
+        lab.guard(stage, platform="linux", uid=1001, stage_only=True)
+        with self.assertRaisesRegex(ValueError, "closed_event_ref_required"):
+            lab.guard(stage, platform="linux", uid=1001)
+        with self.assertRaisesRegex(ValueError, "closed_event_ref_required"):
+            lab.guard(environment(), platform="linux", uid=1001, stage_only=True)
+        stage.update(
+            GITHUB_EVENT_NAME="pull_request",
+            GITHUB_HEAD_REF=lab.STAGE_BRANCH,
+            P1G_HEAD_REPOSITORY="pamolive/PamOlive-Platform",
+        )
+        lab.guard(stage, platform="linux", uid=1001, stage_only=True)
+        with self.assertRaisesRegex(ValueError, "closed_event_ref_required"):
+            lab.guard(stage, platform="linux", uid=1001)
 
     def test_PC_root_unknown_event_repo_branch_refused(self):
         for platform, uid in (("win32", 1001), ("linux", 0)):

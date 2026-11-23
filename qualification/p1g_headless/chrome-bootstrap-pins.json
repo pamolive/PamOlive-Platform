@@ -3,16 +3,16 @@
   "Release_max_age_seconds": 604800,
   "files": {
     "Packages": {
-      "bytes": 6205,
-      "sha256": "95b8d7f908a83ecf7b682ce11e943985f2dad24fa890db761061055b44289ef0"
+      "bytes": 6207,
+      "sha256": "3b933a4fd67aba8f46a3ab36d9fe6cfc5365d6f7d7131af816278016940dd426"
     },
     "Release": {
       "bytes": 1666,
-      "sha256": "15dacc930f3ce9ad155f182ac13811ab59e1c5e5e15077153da27e3ac14bdd74"
+      "sha256": "21e4779a66a4efc46e83228382a0d3dcb52ef6c5fa581af19f7741858452dcb9"
     },
     "Release.gpg": {
       "bytes": 833,
-      "sha256": "529bcf8378d170c952da2bb0113d1f20c3b0b5e9fff39e0bde87bfa8456e9584"
+      "sha256": "509e2265dcc7c246900f9bc5edb40d8898faca8a68fd9262eb1f646cb57f9238"
     },
     "google-key.asc": {
       "bytes": 19640,
@@ -23,11 +23,11 @@
   "package": {
     "Architecture": "amd64",
     "Depends": "ca-certificates, fonts-liberation, libasound2 (>= 1.0.17), libatk-bridge2.0-0 (>= 2.5.3), libatk1.0-0 (>= 2.11.90), libatspi2.0-0 (>= 2.9.90), libc6 (>= 2.25), libcairo2 (>= 1.14.0), libcups2 (>= 1.7.0), libcurl3-gnutls | libcurl3-nss | libcurl4 | libcurl3, libdbus-1-3 (>= 1.9.14), libexpat1 (>= 2.1~beta3), libgbm1 (>= 17.1.0~rc2), libglib2.0-0 (>= 2.49.3), libgtk-3-0 (>= 3.9.10) | libgtk-4-1, libnspr4 (>= 2:4.9-2~), libnss3 (>= 2:3.35), libpango-1.0-0 (>= 1.14.0), libudev1 (>= 183), libvulkan1, libx11-6 (>= 2:1.4.99.1), libxcb1 (>= 1.9.2), libxcomposite1 (>= 1:0.4.4-1), libxdamage1 (>= 1:1.1), libxext6, libxfixes3, libxkbcommon0 (>= 0.5.0), libxrandr2, wget, xdg-utils (>= 1.0.2)",
-    "Filename": "pool/main/g/google-chrome-stable/google-chrome-stable_157.0.8103.78-1_amd64.deb",
+    "Filename": "pool/main/g/google-chrome-stable/google-chrome-stable_158.0.8127.36-1_amd64.deb",
     "Package": "google-chrome-stable",
-    "SHA256": "4d740636b5c96f687798602c5aad6a5a270f44dd02e48db0638ae77aa4867b1b",
-    "Size": "147497676",
-    "Version": "157.0.8103.78-1"
+    "SHA256": "4696bce00b128f385a870ba2eb6eede61698f22374ea0d8e09af8a1c6543d397",
+    "Size": "152702276",
+    "Version": "158.0.8127.36-1"
   },
   "primary": "EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796",
   "purpose": "google-release-selected-signer-certificate-v1",
@@ -36,22 +36,24 @@
   "source_files": {
     "deploy/expat-remediation/bounded_io.py": "72b778ad6e441744e8bd9ac84ba7f47b1f6b577b7885a2e0daf3b4584cc0150a",
     "qualification/p1g_headless/chrome-bundle-profile.json": "0c910d6ec74090281c1275e64b70fd498049cfc16d5547a0daa01263771eb6ee",
+    "qualification/p1g_headless/chrome-stage-only-profile-158.json": "3e247d6c8f96b58ce3d05954b3dc07ba5f16f82a025c2fa4bf6c88069e144d5b",
     "qualification/p1g_headless/chrome-stage-only-profile.json": "14f1f02f2f987c7a07f62079f534fa0c48282b4efba0f04d595d8976625a0841",
-    "qualification/p1g_headless/chrome_bootstrap.py": "e960dc2e6f309ebb6558fa656fe73bbd32aa4cbddb4ecd3c993cd2c34c0b2f8e",
+    "qualification/p1g_headless/chrome_bootstrap.py": "cac12f68faf9731535f2204a517da4db37a430d7001b1d850d99162ba849c6ca",
     "qualification/p1g_headless/chrome_bundle.py": "46ab045267bf6d8a71d5730426a9ce89b64b23d8e7a42235f5917e7fed4b44e0",
     "qualification/p1g_headless/chrome_gpg.py": "001d178e5876df97156bf2061df19a51fc56bbf5b9bfa102098999bc10357512",
     "qualification/p1g_headless/chrome_key_scope.py": "1ee01826ddd241e5bde35a98363b1c1d36f59946e44cf552b370f82b80bbad1c",
     "qualification/p1g_headless/chrome_key_scope_native.py": "9541a7c6ed9ec068fe86bae1e50c299f740dea30bd984eff0b7385688b47afff",
-    "qualification/p1g_headless/chrome_phase_a.py": "c5cde134c6dc9653623d2566daa0b2ef7b9bac16c5bec22071791588b9aa8b94",
+    "qualification/p1g_headless/chrome_phase_a.py": "b3456a62c5b2f5e481b3fb6d9ab071ed9c505b3d43e9361522a47bfee05a4464",
     "qualification/p1g_headless/gpg_fixture/agent_exec.py": "276798947ee7f7b9502eb3e999e4d137b93c4352804190400245d85895c2ae26",
     "qualification/p1g_headless/gpg_fixture/bounded_io.py": "72b778ad6e441744e8bd9ac84ba7f47b1f6b577b7885a2e0daf3b4584cc0150a",
     "qualification/p1g_headless/gpg_fixture/crypto_guard.py": "001d178e5876df97156bf2061df19a51fc56bbf5b9bfa102098999bc10357512",
     "qualification/p1g_headless/gpg_fixture/fixture_contract.py": "9f1492162d9d8c2357f095b4f2d74360b14f329e1286c1f13fcaf0025b740c17",
     "qualification/p1g_headless/gpg_fixture/fixture_owner.py": "99e198d2c452513e73e2cc3dd3f57ccb952f6306757892a009ca1636a335a4ae",
     "qualification/p1g_headless/gpg_fixture/public_packets.py": "1ee01826ddd241e5bde35a98363b1c1d36f59946e44cf552b370f82b80bbad1c",
-    "qualification/p1g_headless/lab_support.py": "71cf56f2f1c6c0331c370849e28fc1743d8e2adea39cb98b76ca37101a4d6319"
+    "qualification/p1g_headless/lab_support.py": "47a0169aa1e28002dc0e2f5be09f355aa31fac566f569872c8acb546096115f9"
   },
   "test_files": {
+    "qualification/p1g_headless/chrome-stage-inventory-158.DATA.json": "328dc76543cb40c0d9fd50e6f3870c8f8f90f8f61428b32acb33e024920759af",
     "qualification/p1g_headless/chrome-stage-inventory.DATA.json": "c132e7c97c82f326019632044c35e916336f482a9dae6d8765b7997ab3eea738",
     "qualification/p1g_headless/chrome_scope_fixtures/primary-expired.asc": "6f609a78bb44446a781b1ee6c51119af2425168a88beb69acd03ef7295281d65",
     "qualification/p1g_headless/chrome_scope_fixtures/primary-revoked.pgp": "e332cfcd0f62174f9f07ed1910251050addc445ca45090e87dc528fb7fe02cdf",
@@ -59,9 +61,9 @@
     "qualification/p1g_headless/gpg_fixture/source-pins.json": "90d74d4bfdf2ffb76b4bb93157339906cc07d2594de2715972b88a3f9b75ef04",
     "qualification/p1g_headless/gpg_fixture/test_fixture.py": "7f0800d1c9f9b74eb9b043c727fb7455223c704fe7bd9df75e45811ab8df986c",
     "qualification/p1g_headless/run_chrome_pure.py": "206d6978e673efa5c8ae859d2955a0f85c2e5604b273a70d4989e27056957cde",
-    "qualification/p1g_headless/test_chrome_bootstrap.py": "b3798e4dc204db3446d232c3042acb381242d94994fbcfa1ecb30b3b8a8e56ae",
+    "qualification/p1g_headless/test_chrome_bootstrap.py": "d2efb63b93e308c8efc76b371e7d93d31f39a591374267dabc9380f7a28b9392",
     "qualification/p1g_headless/test_chrome_bundle.py": "2e69ca41737a6993926acdc830cc2c8d5d1df33bf65c365238f35f3b872688cf",
     "qualification/p1g_headless/test_chrome_key_scope.py": "322a7683e0e5434aa16bfaa2ae64e450c0c13d93336755ae62c57b822ecc289e",
-    "qualification/p1g_headless/test_chrome_phase_a.py": "56a717319f9ec57ae11aabae7a6f7b19952b9e9026da404cd1b57c556fc3be57"
+    "qualification/p1g_headless/test_chrome_phase_a.py": "6ceb20d91171d569807fe911b59dede4212e8b56dd9cff27a91d0aea2543af92"
   }
 }
