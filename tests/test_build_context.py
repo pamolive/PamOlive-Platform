@@ -103,6 +103,11 @@ class BuildContextTests(TestCase):
         recipe = (root / "Dockerfile").read_text(encoding="utf-8")
         inputs, _ = recipe.split("FROM acl-consumer-inputs AS acl-coreutils-source", 1)
         inputs = inputs.split("FROM debian-rebuild-base AS acl-consumer-inputs", 1)[1]
+        copy_inputs, directory_mode = inputs.split("  /opt/acl-consumer-inputs/\n", 1)
+        self.assertTrue(copy_inputs.lstrip().startswith("COPY --chmod=0444 "))
+        self.assertEqual(
+            directory_mode.strip(), "RUN --network=none chmod 0755 /opt/acl-consumer-inputs"
+        )
         self.assertEqual(
             {word.removeprefix(prefix) for word in inputs.split() if word.startswith(prefix)},
             build_inputs,

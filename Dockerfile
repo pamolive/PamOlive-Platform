@@ -244,6 +244,7 @@ COPY --chmod=0444 \
   deploy/acl-rebuild/consumers/tar-patch.sha256 \
   deploy/acl-rebuild/consumers/tar-descriptor.patch \
   /opt/acl-consumer-inputs/
+RUN --network=none chmod 0755 /opt/acl-consumer-inputs
 
 FROM acl-consumer-inputs AS acl-coreutils-source
 RUN sh /opt/acl-consumer-inputs/materials.sh acquire coreutils
