@@ -126,6 +126,15 @@ essais SSH, RDP/NLA, LDAP, PostgreSQL/TLS et le scan de l'image exacte
 restent des portes de livraison. Le nombre de groupes High de la nouvelle
 image sera établi par le nouveau scan.
 
+Le Dockerfile de transition acquiert les 14 paquets avec la recette qualifiée.
+Les stages consommateurs montent leurs archives vérifiées en lecture seule.
+La famille Kerberos et glibc reste alignée entre le SDK et le runtime. La
+recette finale conserve les six paquets nécessaires au runtime et son reçu.
+La CI compare les rapports du conteneur chargé et de l'archive du même digest
+de configuration. Le SBOM relie les paquets et les fichiers ELF vérifiés et
+le scan OS porte toujours sur l'archive complète. Les preuves du précédent
+backport restent consultables dans l'historique du dépôt.
+
 ## Inventaire et scanner
 
 Retirer un paquet Debian vulnérable peut supprimer un match du scanner tout en le rendant aveugle à son remplacement compilé. Produire donc un inventaire explicite de version, archive/signature/hash, options et fichiers compilés. Vérifier les dépendances réellement chargées par guacd, son plugin RDP et le pair de test ; un fichier de version isolé ne suffit pas. Le SBOM et le rapport de livraison doivent distinguer composants PyPI, Debian et compilés.

@@ -2,14 +2,14 @@ name: Debian 13.8 library refresh
 
 on:
   push:
-    branches: [agent/release-debian-138-security]
+    branches: [agent/release-debian-138-security, agent/release-debian-138-product]
 
 permissions:
   contents: read
 
 jobs:
   native-debian-refresh:
-    if: github.repository == 'pamolive/PamOlive-Platform'
+    if: github.repository == 'pamolive/PamOlive-Platform' && github.ref == 'refs/heads/agent/release-debian-138-security'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -46,3 +46,36 @@ jobs:
           path: ${{ runner.temp }}/pamolive-debian-refresh-${{ github.run_id }}-${{ github.run_attempt }}/debian-138-refresh.json
           if-no-files-found: error
           retention-days: 7
+  product-debian-base:
+    if: github.repository == 'pamolive/PamOlive-Platform' && github.ref == 'refs/heads/agent/release-debian-138-product'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Build the actual Debian product runtime stage
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          iid="$RUNNER_TEMP/pamolive-debian-base.iid"
+          test ! -e "$iid"
+          docker build --platform=linux/amd64 --no-cache --progress=plain \
+            --target debian-runtime --iidfile "$iid" "$GITHUB_WORKSPACE"
+          image="$(cat "$iid")"
+          [[ "$image" =~ ^sha256:[a-f0-9]{64}$ ]]
+          docker run --rm --pull never --no-healthcheck --user 1000:1000 --network none \
+            --cap-drop ALL --security-opt no-new-privileges --read-only \
+            --entrypoint /usr/bin/dpkg-query "$image" --show \
+            --showformat='${Package} ${Version} ${Architecture}\n' \
+            libc-bin libc6 libgssapi-krb5-2 libk5crypto3 libkrb5-3 libkrb5support0 \
+            > "$RUNNER_TEMP/pamolive-debian-base-installed.txt"
+          cmp "$RUNNER_TEMP/pamolive-debian-base-installed.txt" - <<'EXPECTED'
+          libc-bin 2.41-12+deb13u5 amd64
+          libc6 2.41-12+deb13u5 amd64
+          libgssapi-krb5-2 1.21.3-5+deb13u2 amd64
+          libk5crypto3 1.21.3-5+deb13u2 amd64
+          libkrb5-3 1.21.3-5+deb13u2 amd64
+          libkrb5support0 1.21.3-5+deb13u2 amd64
+          EXPECTED
