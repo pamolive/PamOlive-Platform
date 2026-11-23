@@ -421,7 +421,7 @@ class P1GBrowser(StaticLiveServerTestCase):
         node = Path(
             importlib.metadata.distribution("playwright").locate_file("playwright/driver/node")
         )
-        node_before = support.tool_pin(node, root_owner=False, cap=128 * 1024**2)
+        node_before = support.playwright_node_pin(node)
         FACTS["SDK_Node_tool"] = node_before
         binary, before = support.chrome_target(
             Path(__file__).resolve().parents[2], mode=TLS["browser_mode"]
@@ -489,7 +489,7 @@ class P1GBrowser(StaticLiveServerTestCase):
             try:
                 playwright.stop()
                 self.assertEqual(
-                    support.tool_pin(node, root_owner=False, cap=128 * 1024**2), node_before
+                    support.playwright_node_pin(node), node_before
                 )
             except Exception:
                 cleanup_errors.append("driver_stop_unknown")

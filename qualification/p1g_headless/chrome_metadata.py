@@ -8,6 +8,7 @@ import re
 import sys
 import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -135,6 +136,13 @@ def acquire(commands, staged, private, original, previous):
 
 
 def inspect_package(commands, private, expected, receipt):
+    with authenticated_payload(commands, private, expected, receipt) as stream:
+        return chrome_bundle.inventory(stream, expected["SHA256"], until=commands.until - 10)
+
+
+@contextmanager
+def authenticated_payload(commands, private, expected, receipt):
+    """Recheck the pinned public package bytes before exposing its bounded TAR."""
     encoded = json.dumps(expected, sort_keys=True, separators=(",", ":")).encode()
     bootstrap.need(bootstrap.sha(encoded) == INVENTORY_PACKAGE_RECORD, "inventory_package_pin")
     package = private / "browser-candidate.deb"
@@ -190,9 +198,8 @@ def inspect_package(commands, private, expected, receipt):
             cap=1024**3,
             sink=stream,
         )
-        until = commands.until - 10
-        bootstrap.payload_target(stream, until=until)
-        return chrome_bundle.inventory(stream, expected["SHA256"], until=until)
+        bootstrap.payload_target(stream, until=commands.until - 10)
+        yield stream
 
 
 def main(argv=None):

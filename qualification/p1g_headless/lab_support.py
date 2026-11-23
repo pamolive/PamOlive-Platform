@@ -16,6 +16,8 @@ BRANCH = "agent/p1-g-headless"
 STAGE_BRANCH = "agent/p1g-chrome158-private-stage"
 BOUNDED_SHA = "72b778ad6e441744e8bd9ac84ba7f47b1f6b577b7885a2e0daf3b4584cc0150a"
 SDK_VERSION = "1.65.2"
+SDK_NODE_BYTES = 150348872
+SDK_NODE_SHA = "d931c649850ffa7155b8ceffb400dc916ef325866e509cc52ae36e33e8fbb9a9"
 BUNDLE_BROWSER_VERSION = "157.0.8103.78"
 SANDBOX_URL = "chrome://sandbox/"
 APPARMOR_MODES = {"enforce", "complain", "unconfined"}
@@ -110,6 +112,7 @@ def sandbox_diagnostic(rows, evaluation):
         and all(flags.get(name) == "Yes" for name in required),
         "chromium_sandbox_not_active",
     )
+    return flags["Layer 1 Sandbox"]
 
 
 def process_ids(packet):
@@ -225,7 +228,7 @@ def sandbox_receipt(value):
     )
 
 
-def observe_browser_sandbox(browser, executable):
+def observe_browser_sandbox(browser, executable, *, namespace_only=False):
     """Check the running browser before navigations to the synthetic application."""
     uid = os.getuid()
     context = browser.new_context(ignore_https_errors=False, service_workers="block")
@@ -248,7 +251,8 @@ def observe_browser_sandbox(browser, executable):
                     .map(cell => cell.textContent.trim().slice(0, 81)))"""
         )
         evaluation = diagnostic.locator("#evaluation").text_content(timeout=5000)
-        sandbox_diagnostic(rows, evaluation)
+        layer_one = sandbox_diagnostic(rows, evaluation)
+        need(not namespace_only or layer_one == "Namespace", "sandbox_namespace_required")
         inert = context.new_page()
         inert.set_content("<title>PamOlive sandbox probe</title>", timeout=5000)
         session = browser.new_browser_cdp_session()
@@ -397,6 +401,15 @@ def tool_pin(path, *, root_owner=True, cap=512 * 1024**2):
         "uid": before.st_uid,
         "mode": stat.S_IMODE(before.st_mode),
     }
+
+
+def playwright_node_pin(path):
+    facts = tool_pin(path, root_owner=False, cap=SDK_NODE_BYTES)
+    need(
+        facts["bytes"] == SDK_NODE_BYTES and facts["sha256"] == SDK_NODE_SHA,
+        "playwright_driver_identity",
+    )
+    return facts
 
 
 def chrome_tool_diagnostic(error, *, phase):
