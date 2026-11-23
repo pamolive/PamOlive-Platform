@@ -171,6 +171,28 @@ USER 65534:65534
 RUN --network=none --mount=from=ncurses-trixie-package,source=/work,target=/packages,ro \
   sh /opt/ncurses-inputs/materials.sh export
 
+FROM debian-rebuild-base AS glibc-trixie-package
+COPY --chmod=0444 deploy/glibc-trixie-backport/ /opt/glibc-inputs/
+RUN test -s /usr/share/keyrings/debian-archive-keyring.pgp \
+ && chmod 0755 /opt/glibc-inputs \
+ && sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g; s/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
+ && grep -Fxq 'Types: deb deb-src' /etc/apt/sources.list.d/debian.sources \
+ && printf '%s\n' 'Acquire::Check-Valid-Until "true";' \
+    'Acquire::AllowInsecureRepositories "false";' \
+    'APT::Get::AllowUnauthenticated "false";' \
+    'APT::Update::Error-Mode "any";' > /etc/apt/apt.conf.d/99pamolive-glibc \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends --no-remove build-essential fakeroot quilt curl ca-certificates \
+ && apt-get build-dep -y --arch-only --no-install-recommends 'glibc=2.41-12+deb13u5' \
+ && install -d -m 0755 -o _apt /work
+WORKDIR /work
+RUN sh /opt/glibc-inputs/materials.sh acquire \
+ && chown -R 65534:65534 /work \
+ && rm -rf /var/lib/apt/lists/*
+ENV HOME=/work
+USER 65534:65534
+RUN --network=none sh /opt/glibc-inputs/materials.sh build
+
 FROM debian-rebuild-base AS sqlite-trixie-source
 COPY deploy/sqlite-rebuild/source-apt.conf deploy/sqlite-rebuild/forky.sources deploy/sqlite-rebuild/materials.sh /opt/sqlite-inputs/
 WORKDIR /opt/sqlite-source
@@ -411,10 +433,19 @@ RUN --network=none --mount=from=ncurses-trixie-export,source=/evidence,target=/p
   && sha256sum --check --strict deploy/ncurses-trixie-backport/installed.sha256 \
   && install -d -m 0755 /usr/share/pamolive/ncurses-trixie \
   && install -m 0444 deploy/ncurses-trixie-backport/qualification.json /usr/share/pamolive/ncurses-trixie/qualification.json
+RUN --network=none --mount=from=glibc-trixie-package,source=/work,target=/packages,ro \
+  set -eu; \
+  python -B -m deploy.glibc_trixie_materials --directory /packages; \
+  version='2.41-12+deb13u5+pamolive1'; \
+  dpkg --install "/packages/libc6_${version}_amd64.deb" "/packages/libc-bin_${version}_amd64.deb"; \
+  audit=$(dpkg --audit); test -z "$audit"; \
+  apt-get check; \
+  install -d -m 0755 /usr/share/pamolive/glibc-trixie; \
+  install -m 0444 deploy/glibc-trixie-backport/qualification.json /usr/share/pamolive/glibc-trixie/qualification.json
 RUN python deploy/native_inventory.py --capture --output /opt/pamolive-native-manifest.json
 RUN python manage.py collectstatic --noinput
 USER 65534:65534
-RUN --network=none python -B -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport --util-linux-backport --root / --output /tmp/debian-refresh-runtime.json && rm /tmp/debian-refresh-runtime.json
+RUN --network=none python -B -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport --util-linux-backport --glibc-backport --root / --output /tmp/debian-refresh-runtime.json && rm /tmp/debian-refresh-runtime.json
 RUN --network=none sha256sum --check --strict deploy/ncurses-trixie-backport/installed.sha256
 USER root
 EXPOSE 8000

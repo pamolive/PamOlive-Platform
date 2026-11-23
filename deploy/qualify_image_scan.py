@@ -1335,6 +1335,9 @@ def verify_trixie_sbom(sca_sbom, report, config_id, properties):
     if "util_linux_receipt_sha256" in report:
         require(properties.get("pamolive:sbom:util-linux-receipt-sha256") ==
                 report["util_linux_receipt_sha256"], "trixie_util_linux_sbom_binding")
+    if "glibc_receipt_sha256" in report:
+        require(properties.get("pamolive:sbom:glibc-receipt-sha256") ==
+                report["glibc_receipt_sha256"], "trixie_glibc_sbom_binding")
 
 
 def verify_expat_sbom(sca_sbom, report, config_id, properties):
@@ -1456,6 +1459,8 @@ def qualify(os_report, compiled_report, positive_report, compiled_sbom, policy, 
         modes = {"kerberos_backport": True, "openssl_backport": True}
         if any(finding["source_package"] == "util-linux" for finding in trixie_findings):
             modes["util_linux_backport"] = True
+        if "pamolive:sbom:glibc-receipt-sha256" in props:
+            modes.update(util_linux_backport=True, glibc_backport=True)
         trixie_report = debian_refresh_inventory.inspect_bundle(Path(archive).parent, revision,
                                                                 **modes)
         require(trixie_report["image_config_id"] == config_id, "trixie_backport_config")
