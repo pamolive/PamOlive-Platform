@@ -53,6 +53,10 @@ on:
         description: Verify the restored audit chain against the original witness checkpoint
         type: boolean
         default: false
+      run_release_attestation_lab:
+        description: Verify an actual GitHub attestation for a synthetic release subject
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -60,6 +64,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   installed-vault-runtime:
+    if: github.ref != 'refs/heads/agent/release-provenance-lab' || github.event_name != 'workflow_dispatch' || inputs.run_release_attestation_lab != true
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     env:
@@ -314,5 +319,69 @@ jobs:
             ${{ env.VAULT_WORK }}/witness-lab-public.json
             qualification/vault_runtime_installed_ci/checkout-capture.json
             ${{ env.VAULT_MATERIALS }}/acquisition.json
+          if-no-files-found: error
+          retention-days: 7
+  sign-synthetic-release-subject:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_release_attestation_lab == true && github.ref == 'refs/heads/agent/release-provenance-lab' && github.repository == 'pamolive/PamOlive-Platform'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
+    outputs:
+      fixture-id: ${{ steps.retain.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Hash the synthetic fixture
+        id: subject
+        run: |
+          set -euo pipefail
+          digest=$(python3 -B -m qualification.release_attestation_lab create)
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-name: pamolive-release-attestation-lab.json
+          subject-digest: ${{ steps.subject.outputs.digest }}
+          show-summary: false
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        id: retain
+        with:
+          name: synthetic-release-subject-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pamolive-release-attestation-lab/pamolive-release-attestation-lab.json
+          if-no-files-found: error
+          retention-days: 7
+  verify-synthetic-release-subject:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_release_attestation_lab == true && github.ref == 'refs/heads/agent/release-provenance-lab' && github.repository == 'pamolive/PamOlive-Platform'
+    needs: sign-synthetic-release-subject
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Require the precise retained fixture
+        env:
+          FIXTURE_ID: ${{ needs.sign-synthetic-release-subject.outputs.fixture-id }}
+        run: '[[ "$FIXTURE_ID" =~ ^[1-9][0-9]{0,18}$ ]]'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          artifact-ids: ${{ needs.sign-synthetic-release-subject.outputs.fixture-id }}
+          path: ${{ runner.temp }}/pamolive-release-attestation-lab
+          digest-mismatch: error
+      - name: Verify the native signature and refuse other invocations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -B -m qualification.release_attestation_lab verify
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: synthetic-release-attestation-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pamolive-release-attestation-lab/public-results.json
           if-no-files-found: error
           retention-days: 7
