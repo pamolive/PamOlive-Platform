@@ -52,7 +52,12 @@ jobs:
         run: python -m pip_audit --strict --no-deps --disable-pip -r requirements.lock -f cyclonedx-json -o "$RUNNER_TEMP/pamolive-sbom.cdx.json"
       - name: Reject medium and high severity application findings
         if: always()
-        run: python -m bandit -r config platform_core platform_modules components/vault/src components/vault/runtime/pamolive_vault_runtime components/vault-registry/src components/pam-trust-verifier/src components/usage-anchor/pamolive_usage_anchor -ll -f json -o "$RUNNER_TEMP/pamolive-bandit-application.json"
+        run: >-
+          python -m bandit -r config platform_core platform_modules
+          components/vault/src components/vault/runtime/pamolive_vault_runtime
+          components/vault-kms-openbao/src components/vault-registry/src
+          components/pam-trust-verifier/src components/usage-anchor/pamolive_usage_anchor
+          -ll -f json -o "$RUNNER_TEMP/pamolive-bandit-application.json"
       - name: Retain all deployment and browser bootstrap findings for review
         if: always()
         run: python -m bandit -r deploy qualification/p1g_headless/chrome_bootstrap.py qualification/p1g_headless/chrome_gpg.py qualification/p1g_headless/chrome_key_scope.py qualification/p1g_headless/chrome_key_scope_native.py qualification/p1g_headless/gpg_fixture --exit-zero -f json -o "$RUNNER_TEMP/pamolive-bandit-deploy-all.json"
@@ -192,6 +197,8 @@ jobs:
         run: python -I -B qualification/vault_reservation/test_wheel.py
       - name: Verify the 62 source-only usage-anchor tests without network or SQL
         run: timeout --signal=TERM --kill-after=2s 60s python -I -B components/usage-anchor/tests/run_pure.py
+      - name: Verify the OpenBao key adapter and synthetic transport
+        run: timeout --signal=TERM --kill-after=2s 60s python -I -B components/vault-kms-openbao/tests/run.py
       - run: ruff check .
       - run: python manage.py check
       - run: python manage.py makemigrations --check --dry-run

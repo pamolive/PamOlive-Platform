@@ -1,5 +1,22 @@
 # Roadmap d’implémentation et qualification
 
+## Restauration Vault sur PostgreSQL 17.12 — 18 novembre 2026
+
+La branche de la [PR nº 32](https://github.com/pamolive/PamOlive-Platform/pull/32)
+reçoit deux campagnes CI isolées. `58e9ec7` exécute les six tests PostgreSQL et
+quatre tests mTLS du Vault installé. `2078263` valide séparément la restauration
+logique vers une deuxième base du même cluster. Les observations confirment
+l'historique conservé, le refus de l'ancien contexte, les ACL SQL et le nettoyage.
+[Tests PostgreSQL et mTLS](https://github.com/pamolive/PamOlive-Platform/actions/runs/44289749907) ·
+[Restauration logique](https://github.com/pamolive/PamOlive-Platform/actions/runs/44293387418)
+
+La gestion séparée des KEK avance avec l'[ADR-030](adr-030-openbao-transit-key-provider.md).
+Le commit `123856a` valide cinq tests OpenBao 2.7.2 en CI sur une instance mTLS
+et un stockage PebbleDB jetables. Le témoin W1, la restauration des sauvegardes
+KMS, PITR, la reprise multi-hôte et la publication de la plateforme gardent des
+portes distinctes. [PR nº 33](https://github.com/pamolive/PamOlive-Platform/pull/33) ·
+[Qualification OpenBao](https://github.com/pamolive/PamOlive-Platform/actions/runs/44297768561)
+
 ## Livraison du code de développement — 17 novembre 2026
 
 À la demande explicite du propriétaire, la capture Expat APT et ses diagnostics
