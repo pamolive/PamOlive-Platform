@@ -1,0 +1,38 @@
+{
+  "debian_package": {
+    "sha256": "ab1fa05837aa7a92aae748fd07a18a35f7d18bb4a71c4724fe2bbf0e32089de0",
+    "size": 713628,
+    "url": "https://packages.debian.org/trixie/amd64/libstdc%2B%2B6/download"
+  },
+  "function": {
+    "allocation_backend": "posix_memalign",
+    "name": "_ZnwmSt11align_val_t",
+    "size": 125
+  },
+  "justification": "posix_memalign_implementation",
+  "library": {
+    "class": 64,
+    "path": "/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.33",
+    "sha256": "972bb2a18b71140dab0240f8a1f68ab3fb1d56bcd4c4f824a91b70888faf5a00"
+  },
+  "observations": [
+    {
+      "artifact_id": 14818645061,
+      "artifact_sha256": "c8c81f30fe116a8f02f33e6e5212e67896f9cbddc6264d25cf02f7bcfe62532c",
+      "event": "pull_request",
+      "run_id": 45163015819
+    },
+    {
+      "artifact_id": 14816997645,
+      "artifact_sha256": "77c09b65fb083b15f364273742ed76444529f8fa839e93e60ca480cb27d50e9a",
+      "event": "push",
+      "run_id": 45162970215
+    }
+  ],
+  "observed_revision": "bdfacd7df686997c0d88f298ed8f1e74c80d88cb",
+  "platform": "linux/amd64",
+  "schema": "pamolive.gcc-finding-evidence.v1",
+  "source_version": "14.2.0-19",
+  "upstream_commit": "200183d4ab5d57575f3dfebc6af3baf649910b9e",
+  "vulnerability_id": "CVE-2026-95619"
+}

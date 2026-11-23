@@ -110,6 +110,15 @@ contrôler les empreintes ELF, les alias et l'unicité de libmount.
 
 Cette seconde décision exige exactement27 conditions ELF, l'absence du header `erase_fn_imps.hpp` et une condition `elf_set` sur l'archive entière. Aucun consommateur nouveau ne peut ainsi hériter silencieusement de l'ancienne analyse, même si le paquet libstdc++ lui-même ne change pas. Les deux dispositions sont limitées à leur CVE respective ; elles n'acceptent pas la famille gcc-14 en bloc. `all_findings_clear` demeure faux.
 
+La politique contient une décision de 14 jours pour le groupe OS CVE-2026-95619
+observé sur Debian 13.8 amd64 dans les deux builds de la PR #72. Les relectures
+ont vérifié le paquet Debian officiel et résolu l'appel de l'allocateur vers
+`posix_memalign`. La décision exige le même groupe de quatre PURL et le même
+ELF dans chaque nouveau sujet. Grype conserve le signalement High. CVE-2026-102010
+reste bloquant pour ces builds, dans l'attente d'une preuve couvrant les
+consommateurs ELF de cette image.
+[Preuve GCC](../.github/qualification/evidence/gcc-95619-trixie.v1.json)
+
 ### Sentinelle finale d'ELF et d'alias
 
 La condition `elf_set` contient exactement `kind`, `schema=pamolive.elf-set.v1`, `sha256`, `count`, `elf_count` et `alias_count`. Les compteurs sont des entiers stricts, leur somme est cohérente et le total est compris entre1 et5000. Aucun choix de racine, exclusion, wildcard ou option CLI ne réduit le périmètre.

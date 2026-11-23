@@ -4137,6 +4137,84 @@
         "https://security-tracker.debian.org/tracker/CVE-2026-95692",
         "https://github.com/openssl/openssl/commit/257a3427aa0ef8d9dd2ef5b3e2d1c021a221b116"
       ]
+    },
+    {
+      "analysis": "The GCC patch identifies the allocation size adjustment as specific to the fallback implementation. The exact Debian amd64 libstdc++ ELF implements the affected entry point with posix_memalign. Both CI archives and the independently checked Debian package contain this ELF. The decision covers the exact Debian 13.8 OS scanner group and expires independently of Debian's unchanged source-package status. Grype retains the original High finding.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "class": 64,
+          "kind": "elf",
+          "path": "/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.33",
+          "sha256": "972bb2a18b71140dab0240f8a1f68ab3fb1d56bcd4c4f824a91b70888faf5a00"
+        }
+      ],
+      "disposition": "not_affected_build",
+      "expires": "2026-12-07T14:55:28+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-95619",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "gcc-14-base",
+            "purl": "pkg:deb/debian/gcc-14-base@14.2.0-19?arch=amd64&distro=debian-13.8&upstream=gcc-14",
+            "type": "deb",
+            "version": "14.2.0-19"
+          },
+          {
+            "name": "libatomic1",
+            "purl": "pkg:deb/debian/libatomic1@14.2.0-19?arch=amd64&distro=debian-13.8&upstream=gcc-14",
+            "type": "deb",
+            "version": "14.2.0-19"
+          },
+          {
+            "name": "libgcc-s1",
+            "purl": "pkg:deb/debian/libgcc-s1@14.2.0-19?arch=amd64&distro=debian-13.8&upstream=gcc-14",
+            "type": "deb",
+            "version": "14.2.0-19"
+          },
+          {
+            "name": "libstdc++6",
+            "purl": "pkg:deb/debian/libstdc%2B%2B6@14.2.0-19?arch=amd64&distro=debian-13.8&upstream=gcc-14",
+            "type": "deb",
+            "version": "14.2.0-19"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "gcc-14",
+        "vulnerability_id": "CVE-2026-95619"
+      },
+      "fingerprint": "sha256:0f12881b9d48f6015e2ba8540712d6e7d3280936a04a0012365974c07fd83373",
+      "gcc_evidence": {
+        "path": ".github/qualification/evidence/gcc-95619-trixie.v1.json",
+        "sha256": "277ff45367fb6d2163686ff89c990756ba7ecc98db2ab1fafdb2089c01e466f0"
+      },
+      "local_evidence": [
+        {
+          "path": ".github/qualification/evidence/gcc-95619-trixie.v1.json",
+          "sha256": "277ff45367fb6d2163686ff89c990756ba7ecc98db2ab1fafdb2089c01e466f0"
+        },
+        {
+          "path": ".github/qualification/evidence/p1-f-reviewed-build-cxx-gdi.v1.json",
+          "sha256": "25425f387de90d3e6c57c5355695880d0d7eb24b35135344c6a4ebd620164e18"
+        }
+      ],
+      "reviewed_at": "2026-11-23T14:55:28+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/checkpoint_store_review"
+      ],
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-95619",
+        "https://github.com/gcc-mirror/gcc/commit/200183d4ab5d57575f3dfebc6af3baf649910b9e",
+        "https://packages.debian.org/trixie/amd64/libstdc%2B%2B6/download"
+      ]
     }
   ],
   "positive_control": {
