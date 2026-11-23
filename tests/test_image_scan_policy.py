@@ -589,6 +589,23 @@ class ImageScanPolicyTests(TestCase):
         self.assertFalse(result["passed"])
         self.assertEqual([row["code"] for row in result["blockers"]], ["high_fix_available"])
 
+    def test_existing_trixie_decisions_check_the_installed_glibc_profile(self):
+        from deploy import glibc_trixie_materials
+
+        self.trixie_exception("compiled")
+        bundle, inspector = self.trixie_fixture(util_linux=True)
+        inspector.return_value["glibc_receipt_sha256"] = glibc_trixie_materials.SHA256
+        properties = self.sbom["metadata"]["properties"]
+        properties.append({
+            "name": "pamolive:sbom:glibc-receipt-sha256",
+            "value": glibc_trixie_materials.SHA256,
+        })
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        inspector.assert_called_once_with(
+            self.repo, bundle["revision"], kerberos_backport=True, openssl_backport=True,
+            util_linux_backport=True, glibc_backport=True,
+        )
+
     def test_trixie_exception_refuses_missing_or_mismatched_image_proof(self):
         self.trixie_exception("os")
         bundle, inspector = self.trixie_fixture()
