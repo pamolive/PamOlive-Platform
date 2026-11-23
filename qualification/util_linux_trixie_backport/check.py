@@ -139,6 +139,8 @@ def main(args):
         "archives": {name: hash_file(PACKAGE_ARCHIVES / (name + ".deb")) for name in VERSIONS},
         "buildinfo_sha256": hash_file(PACKAGE_ARCHIVES / "buildinfo"),
         "test_summary_sha256": hash_file(PACKAGE_ARCHIVES / "test-summary.txt"),
+        "stock_sha256": hash_file(EVIDENCE / "stock.json"),
+        "candidate_sha256": hash_file(EVIDENCE / "candidate.json"),
         "native_exports_preserved": True,
         "read_only_runtime_verified": True,
     })

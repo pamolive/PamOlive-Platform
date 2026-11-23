@@ -17,14 +17,16 @@ dix fichiers C et en-têtes.
 [Paquet source Forky](https://packages.debian.org/source/forky/util-linux)
 
 Le candidat associe cinq changements de la branche stable 2.41.6 à la
-fermeture explicite des descripteurs reprise de 2.42.4. Trixie contient
+fermeture explicite des descripteurs et à l'inclusion de l'en-tête
+`fileutils.h` reprises de 2.42.4. Trixie contient
 déjà le correctif de canonicalisation de la série stable. Pour le
 changement 2.42.4, la première correction stable fournit déjà le hunk
 `O_CLOEXEC`. Le script vérifie cette présence et l'empreinte exacte
 du patch réduit qui ferme les descripteurs.
 [Notes 2.41.6](https://raw.githubusercontent.com/util-linux/util-linux/v2.41.6/Documentation/releases/v2.41.6-ReleaseNotes) ·
 [Notes 2.42.4](https://raw.githubusercontent.com/util-linux/util-linux/v2.42.4/Documentation/releases/v2.42.4-ReleaseNotes) ·
-[Correctif final de nsenter](https://github.com/util-linux/util-linux/commit/286dd3ff41526b582ef48830de239dffbaa61f90)
+[Correctif final de nsenter](https://github.com/util-linux/util-linux/commit/286dd3ff41526b582ef48830de239dffbaa61f90) ·
+[Inclusion de l'en-tête](https://github.com/util-linux/util-linux/commit/a323dddbcd1ed05a10e7e870b3e1a48b4ed44a43)
 
 La campagne compile les paquets avec les dépendances Trixie après
 authentification APT, sous un UID non privilégié et sans réseau.
