@@ -1,6 +1,7 @@
 """Synthetic metadata contracts without network, GPG or browser execution."""
 
 import email.utils
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -104,3 +105,44 @@ class MetadataTests(unittest.TestCase):
                     self.assertFalse(record["same_package_as_previous_pin"])
                     self.assertEqual(record["package"], previous)
                 authenticate.assert_called_once()
+
+    def test_package_inventory_refuses_altered_record_before_any_download(self):
+        package = metadata.package_record((SOURCE / "Packages").read_bytes())
+        commands = Mock()
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(ValueError, "inventory_package_pin"):
+                metadata.inspect_package(commands, Path(temporary), package, {})
+            self.assertEqual(list(Path(temporary).iterdir()), [])
+        commands.run.assert_not_called()
+
+    def test_package_inventory_authenticates_bytes_before_dpkg(self):
+        package = metadata.package_record((SOURCE / "Packages").read_bytes())
+        binary = b"synthetic package bytes"
+        package.update(Size=str(len(binary)), SHA256=metadata.bootstrap.sha(binary))
+        pin = metadata.bootstrap.sha(
+            json.dumps(
+                package,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        )
+        commands = Mock()
+        commands.until = 500
+
+        def run(argv, *, sink=None, **_kwargs):
+            if argv[0] == "/usr/bin/curl":
+                sink.write(binary.upper())
+                return b""
+            raise AssertionError("A bad package reached a native archive tool")
+
+        commands.run.side_effect = run
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            patch.object(metadata, "INVENTORY_PACKAGE_RECORD", pin),
+            self.assertRaisesRegex(ValueError, "inventory_package_bytes"),
+        ):
+            receipt = {}
+            metadata.inspect_package(commands, Path(temporary), package, receipt)
+        self.assertTrue(receipt["browser_package_download_attempted"])
+        self.assertTrue(receipt["browser_package_downloaded"])
+        self.assertEqual(commands.run.call_count, 1)

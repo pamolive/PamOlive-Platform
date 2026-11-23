@@ -289,7 +289,11 @@ la stanza authentifiée correspond à celle du paquet déjà épinglé.
 [Clé Google pour les paquets Linux](https://www.google.com/linuxrepositories/)
 
 La mesure peut identifier une nouvelle version avant son admission.
-Une nouvelle version exige sa propre preuve de paquet, son inventaire
-et son profil de staging. L'essai du navigateur reste soumis au
-contrôle du bac à sable et à la phase B. Le job de mesure publie
-seulement les métadonnées publiques et le reçu.
+Le premier run a authentifié la stanza de Chrome 158.0.8127.36-1
+avec le signataire déjà épinglé. Le mode d'inventaire demande une
+nouvelle authentification des métadonnées et vérifie l'empreinte
+de cette stanza avant l'acquisition du paquet. Il contrôle les octets
+du paquet et lit son arbre en flux avec le vérificateur d'archive
+existant, comme données. L'essai du navigateur et la phase B exigent
+toujours leur propre admission et une mesure du bac à sable.
+[Reçu de signature](https://github.com/pamolive/PamOlive-Platform/actions/runs/45163889050/artifacts/14814145767)
