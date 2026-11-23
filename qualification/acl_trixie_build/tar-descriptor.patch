@@ -1,0 +1,355 @@
+diff --git a/src/create.c b/src/create.c
+--- a/src/create.c
++++ b/src/create.c
+@@ -1751,7 +1751,7 @@
+       bool ok;
+       struct stat st2;
+ 
+-      xattrs_acls_get (parentfd, name, st, !is_dir);
++      xattrs_acls_get (parentfd, name, st, !is_dir, fd > 0 ? fd : -1);
+       xattrs_selinux_get (parentfd, name, st, fd);
+       xattrs_xattrs_get (parentfd, name, st, fd);
+ 
+@@ -1914,21 +1914,21 @@
+   else if (S_ISCHR (st->stat.st_mode))
+     {
+       type = CHRTYPE;
+-      xattrs_acls_get (parentfd, name, st, true);
++      xattrs_acls_get (parentfd, name, st, true, -1);
+       xattrs_selinux_get (parentfd, name, st, 0);
+       xattrs_xattrs_get (parentfd, name, st, 0);
+     }
+   else if (S_ISBLK (st->stat.st_mode))
+     {
+       type = BLKTYPE;
+-      xattrs_acls_get (parentfd, name, st, true);
++      xattrs_acls_get (parentfd, name, st, true, -1);
+       xattrs_selinux_get (parentfd, name, st, 0);
+       xattrs_xattrs_get (parentfd, name, st, 0);
+     }
+   else if (S_ISFIFO (st->stat.st_mode))
+     {
+       type = FIFOTYPE;
+-      xattrs_acls_get (parentfd, name, st, true);
++      xattrs_acls_get (parentfd, name, st, true, -1);
+       xattrs_selinux_get (parentfd, name, st, 0);
+       xattrs_xattrs_get (parentfd, name, st, 0);
+     }
+diff --git a/src/extract.c b/src/extract.c
+--- a/src/extract.c
++++ b/src/extract.c
+@@ -441,7 +441,7 @@
+   /* these three calls must be done *after* fd_chown() call because fd_chown
+      causes that linux capabilities becomes cleared. */
+   xattrs_xattrs_set (st, file_name, typeflag, 1);
+-  xattrs_acls_set (st, file_name, typeflag);
++  xattrs_acls_set (st, file_name, typeflag, fd);
+   xattrs_selinux_set (st, file_name, typeflag);
+ }
+ 
+diff --git a/src/xattrs.c b/src/xattrs.c
+--- a/src/xattrs.c
++++ b/src/xattrs.c
+@@ -139,59 +139,7 @@
+ 
+ #ifdef HAVE_POSIX_ACLS
+ 
+-/* acl-at wrappers, TODO: move to gnulib in future? */
+-static acl_t acl_get_file_at (int, const char *, acl_type_t);
+-static int acl_set_file_at (int, const char *, acl_type_t, acl_t);
+-static int file_has_acl_at (int, char const *, struct stat const *);
+-static int acl_delete_def_file_at (int, char const *);
+-
+-/* acl_get_file_at */
+-#define AT_FUNC_NAME acl_get_file_at
+-#define AT_FUNC_RESULT acl_t
+-#define AT_FUNC_FAIL (acl_t)NULL
+-#define AT_FUNC_F1 acl_get_file
+-#define AT_FUNC_POST_FILE_PARAM_DECLS   , acl_type_t type
+-#define AT_FUNC_POST_FILE_ARGS          , type
+-#include "at-func.c"
+-#undef AT_FUNC_NAME
+-#undef AT_FUNC_F1
+-#undef AT_FUNC_RESULT
+-#undef AT_FUNC_FAIL
+-#undef AT_FUNC_POST_FILE_PARAM_DECLS
+-#undef AT_FUNC_POST_FILE_ARGS
+-
+-/* acl_set_file_at */
+-#define AT_FUNC_NAME acl_set_file_at
+-#define AT_FUNC_F1 acl_set_file
+-#define AT_FUNC_POST_FILE_PARAM_DECLS   , acl_type_t type, acl_t acl
+-#define AT_FUNC_POST_FILE_ARGS          , type, acl
+-#include "at-func.c"
+-#undef AT_FUNC_NAME
+-#undef AT_FUNC_F1
+-#undef AT_FUNC_POST_FILE_PARAM_DECLS
+-#undef AT_FUNC_POST_FILE_ARGS
+-
+-/* acl_delete_def_file_at */
+-#define AT_FUNC_NAME acl_delete_def_file_at
+-#define AT_FUNC_F1 acl_delete_def_file
+-#define AT_FUNC_POST_FILE_PARAM_DECLS
+-#define AT_FUNC_POST_FILE_ARGS
+-#include "at-func.c"
+-#undef AT_FUNC_NAME
+-#undef AT_FUNC_F1
+-#undef AT_FUNC_POST_FILE_PARAM_DECLS
+-#undef AT_FUNC_POST_FILE_ARGS
+-
+-/* gnulib file_has_acl_at */
+-#define AT_FUNC_NAME file_has_acl_at
+-#define AT_FUNC_F1 file_has_acl
+-#define AT_FUNC_POST_FILE_PARAM_DECLS   , struct stat const *st
+-#define AT_FUNC_POST_FILE_ARGS          , st
+-#include "at-func.c"
+-#undef AT_FUNC_NAME
+-#undef AT_FUNC_F1
+-#undef AT_FUNC_POST_FILE_PARAM_DECLS
+-#undef AT_FUNC_POST_FILE_ARGS
++#include "tar-acl-descriptor.h"
+ 
+ /* convert unix permissions into an ACL ... needed due to "default" ACLs */
+ static acl_t
+@@ -285,7 +233,7 @@
+    attribute.  Called only when acls_option > 0. */
+ static void
+ xattrs__acls_set (struct tar_stat_info const *st,
+-                  char const *file_name, int type,
++                  char const *file_name, int fd, int type,
+ 		  char *ptr, bool def)
+ {
+   acl_t acl;
+@@ -300,7 +248,7 @@
+       /* No "default" IEEE 1003.1e ACL set for directory.  At this moment,
+          FILE_NAME may already have inherited default acls from parent
+          directory;  clean them up. */
+-      if (acl_delete_def_file_at (chdir_fd, file_name))
++      if (acl_delete_def_file_at (fd, "", AT_EMPTY_PATH))
+         WARNOPT (WARN_XATTR_WRITE,
+                 (0, errno,
+                  _("acl_delete_def_file_at: Cannot drop default POSIX ACLs "
+@@ -317,7 +265,7 @@
+       return;
+     }
+ 
+-  if (acl_set_file_at (chdir_fd, file_name, type, acl) == -1)
++  if (acl_set_file_at (fd, "", AT_EMPTY_PATH, type, acl) == -1)
+     /* warn even if filesystem does not support acls */
+     WARNOPT (WARN_XATTR_WRITE,
+ 	     (0, errno,
+@@ -358,7 +306,7 @@
+   char *val = NULL;
+   acl_t acl;
+ 
+-  if (!(acl = acl_get_file_at (parentfd, file_name, type)))
++  if (!(acl = acl_get_file_at (parentfd, "", AT_EMPTY_PATH, type)))
+     {
+       if (errno != ENOTSUP)
+         call_arg_warn ("acl_get_file_at", file_name);
+@@ -449,7 +397,7 @@
+ 
+ void
+ xattrs_acls_get (int parentfd, char const *file_name,
+-		 struct tar_stat_info *st, int xisfile)
++		 struct tar_stat_info *st, int xisfile, int fd)
+ {
+   if (acls_option > 0)
+     {
+@@ -459,27 +407,50 @@
+         WARN ((0, 0, _("POSIX ACL support is not available")));
+       done = 1;
+ #else
+-      int err = file_has_acl_at (parentfd, file_name, &st->stat);
+-      if (err == 0)
+-        return;
+-      if (err == -1)
+-        {
+-          call_arg_warn ("file_has_acl_at", file_name);
++      /* Explicit source dereference is admitted only for the inode already
++         selected by tar.  Writable extraction metadata never uses this path. */
++      int aclfd = (fd < 0 && dereference_option
++                   ? openat (parentfd, file_name, O_PATH | O_CLOEXEC)
++                   : tar_acl_descriptor (parentfd, file_name, fd));
++      struct stat selected;
++      if (aclfd < 0)
++        {
++          call_arg_warn ("open ACL descriptor", file_name);
+           return;
+         }
+-
+-      xattrs__acls_get_a (parentfd, file_name,
+-                          &st->acls_a_ptr, &st->acls_a_len);
+-      if (!xisfile)
+-	xattrs__acls_get_d (parentfd, file_name,
+-                            &st->acls_d_ptr, &st->acls_d_len);
++      if (fstat (aclfd, &selected) != 0)
++        {
++          call_arg_warn ("stat ACL descriptor", file_name);
++          tar_acl_close (aclfd);
++          return;
++        }
++      if (selected.st_dev != st->stat.st_dev || selected.st_ino != st->stat.st_ino)
++        {
++          errno = ESTALE;
++          call_arg_warn ("match ACL descriptor", file_name);
++          tar_acl_close (aclfd);
++          return;
++        }
++
++      int present = acl_extended_file_at (aclfd, "", AT_EMPTY_PATH);
++      if (present < 0 && errno != ENOTSUP && errno != EOPNOTSUPP)
++        call_arg_warn ("acl_extended_file_at", file_name);
++      if (present > 0)
++        {
++          xattrs__acls_get_a (aclfd, file_name,
++                             &st->acls_a_ptr, &st->acls_a_len);
++          if (!xisfile)
++            xattrs__acls_get_d (aclfd, file_name,
++                               &st->acls_d_ptr, &st->acls_d_len);
++        }
++      tar_acl_close (aclfd);
+ #endif
+     }
+ }
+ 
+ void
+ xattrs_acls_set (struct tar_stat_info const *st,
+-                 char const *file_name, char typeflag)
++                 char const *file_name, char typeflag, int fd)
+ {
+   if (acls_option > 0 && typeflag != SYMTYPE)
+     {
+@@ -489,11 +460,18 @@
+         WARN ((0, 0, _("POSIX ACL support is not available")));
+       done = 1;
+ #else
+-      xattrs__acls_set (st, file_name, ACL_TYPE_ACCESS,
+-			st->acls_a_ptr, false);
++      int aclfd = tar_acl_descriptor (chdir_fd, file_name, fd);
++      if (aclfd < 0)
++        {
++          call_arg_warn ("open ACL descriptor", file_name);
++          return;
++        }
++      xattrs__acls_set (st, file_name, aclfd, ACL_TYPE_ACCESS,
++                       st->acls_a_ptr, false);
+       if (typeflag == DIRTYPE || typeflag == GNUTYPE_DUMPDIR)
+-        xattrs__acls_set (st, file_name, ACL_TYPE_DEFAULT,
+-			  st->acls_d_ptr, true);
++        xattrs__acls_set (st, file_name, aclfd, ACL_TYPE_DEFAULT,
++                         st->acls_d_ptr, true);
++      tar_acl_close (aclfd);
+ #endif
+     }
+ }
+diff --git a/src/xattrs.h b/src/xattrs.h
+--- a/src/xattrs.h
++++ b/src/xattrs.h
+@@ -30,14 +30,14 @@
+ extern void xattrs_clear_setup (void);
+ 
+ extern void xattrs_acls_get (int parentfd, char const *file_name,
+-			     struct tar_stat_info *st, int xisfile);
++			     struct tar_stat_info *st, int xisfile, int fd);
+ extern void xattrs_selinux_get (int parentfd, char const *file_name,
+                                 struct tar_stat_info *st, int fd);
+ extern void xattrs_xattrs_get (int parentfd, char const *file_name,
+                                struct tar_stat_info *st, int fd);
+ 
+ extern void xattrs_acls_set (struct tar_stat_info const *st,
+-                             char const *file_name, char typeflag);
++                             char const *file_name, char typeflag, int fd);
+ extern void xattrs_selinux_set (struct tar_stat_info const *st,
+                                 char const *file_name, char typeflag);
+ extern void xattrs_xattrs_set (struct tar_stat_info const *st,
+diff --git a/src/tar-acl-descriptor.h b/src/tar-acl-descriptor.h
+new file mode 100644
+--- /dev/null
++++ b/src/tar-acl-descriptor.h
+@@ -0,0 +1,85 @@
++/* Internal helper for the Debian Linux descriptor-based tar ACL build. */
++#ifndef TAR_ACL_DESCRIPTOR_H
++#define TAR_ACL_DESCRIPTOR_H
++
++#include <errno.h>
++#include <fcntl.h>
++#include <limits.h>
++#include <string.h>
++#include <sys/stat.h>
++#include <unistd.h>
++
++static void
++tar_acl_close (int fd)
++{
++  int saved_errno = errno;
++  close (fd);
++  errno = saved_errno;
++}
++
++/* Use the content descriptor when available.  Deferred metadata calls
++   walk from tar's selected directory without following symbolic links. */
++static int
++tar_acl_descriptor (int dirfd, char const *name, int fd)
++{
++  struct stat st;
++  if (fd >= 0)
++    return fcntl (fd, F_DUPFD_CLOEXEC, 3);
++
++  size_t length = strnlen (name, PATH_MAX);
++  if (length == 0 || length == PATH_MAX)
++    {
++      errno = length == 0 ? ENOENT : ENAMETOOLONG;
++      return -1;
++    }
++
++  int flags = O_PATH | O_NOFOLLOW | O_CLOEXEC;
++  int current;
++  if (*name == '/' || dirfd == AT_FDCWD)
++    current = open (*name == '/' ? "/" : ".", flags | O_DIRECTORY);
++  else
++    current = fcntl (dirfd, F_DUPFD_CLOEXEC, 3);
++  if (current < 0)
++    return -1;
++
++  while (*name != '\0')
++    {
++      char component[NAME_MAX + 1];
++      size_t bytes = strcspn (name, "/");
++      if (bytes > NAME_MAX)
++        {
++          errno = ENAMETOOLONG;
++          tar_acl_close (current);
++          return -1;
++        }
++      if (bytes != 0)
++        {
++          memcpy (component, name, bytes);
++          component[bytes] = '\0';
++          int next = openat (current, component,
++                             flags | (name[bytes] ? O_DIRECTORY : 0));
++          tar_acl_close (current);
++          if (next < 0)
++            return -1;
++          current = next;
++          name += bytes;
++        }
++      if (*name == '/')
++        name++;
++    }
++
++  if (fstat (current, &st) == -1)
++    {
++      tar_acl_close (current);
++      return -1;
++    }
++  if (S_ISLNK (st.st_mode))
++    {
++      errno = ELOOP;
++      tar_acl_close (current);
++      return -1;
++    }
++  return current;
++}
++
++#endif
