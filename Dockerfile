@@ -223,6 +223,73 @@ WORKDIR /opt/acl-build/tree
 ENV HOME=/opt/acl-build LC_ALL=C.UTF-8
 RUN --network=none dpkg-checkbuilddeps && dpkg-buildpackage -b -us -uc -j2
 
+FROM debian-rebuild-base AS acl-consumer-inputs
+COPY --chmod=0444 \
+  deploy/acl-rebuild/consumers/materials.sh \
+  deploy/acl-rebuild/consumers/prepare_consumer.py \
+  deploy/acl-rebuild/consumers/libacl.sha256 \
+  deploy/acl-rebuild/consumers/coreutils-source.sha256 \
+  deploy/acl-rebuild/consumers/coreutils-preimage.sha256 \
+  deploy/acl-rebuild/consumers/coreutils-postimage.sha256 \
+  deploy/acl-rebuild/consumers/coreutils-patch.sha256 \
+  deploy/acl-rebuild/consumers/coreutils-descriptor.patch \
+  deploy/acl-rebuild/consumers/sed-source.sha256 \
+  deploy/acl-rebuild/consumers/sed-preimage.sha256 \
+  deploy/acl-rebuild/consumers/sed-postimage.sha256 \
+  deploy/acl-rebuild/consumers/sed-patch.sha256 \
+  deploy/acl-rebuild/consumers/sed-descriptor.patch \
+  deploy/acl-rebuild/consumers/tar-source.sha256 \
+  deploy/acl-rebuild/consumers/tar-preimage.sha256 \
+  deploy/acl-rebuild/consumers/tar-postimage.sha256 \
+  deploy/acl-rebuild/consumers/tar-patch.sha256 \
+  deploy/acl-rebuild/consumers/tar-descriptor.patch \
+  /opt/acl-consumer-inputs/
+RUN --network=none chmod 0755 /opt/acl-consumer-inputs
+
+FROM acl-consumer-inputs AS acl-coreutils-source
+RUN sh /opt/acl-consumer-inputs/materials.sh acquire coreutils
+
+FROM acl-consumer-inputs AS acl-coreutils-package
+RUN sh /opt/acl-consumer-inputs/materials.sh toolchain coreutils
+COPY --from=acl-coreutils-source /opt/coreutils-source/ /opt/coreutils-build/
+RUN --network=none --mount=from=acl-trixie-package,source=/opt/acl-build,target=/acl-packages,ro \
+  sh /opt/acl-consumer-inputs/materials.sh prepare coreutils
+USER 65534:65534
+WORKDIR /opt/coreutils-build/tree
+ENV HOME=/opt/coreutils-build LC_ALL=C.UTF-8 DEB_BUILD_OPTIONS=parallel=2
+RUN --network=none sh /opt/acl-consumer-inputs/materials.sh build coreutils
+
+FROM acl-consumer-inputs AS acl-sed-source
+RUN sh /opt/acl-consumer-inputs/materials.sh acquire sed
+
+FROM acl-consumer-inputs AS acl-sed-package
+RUN sh /opt/acl-consumer-inputs/materials.sh toolchain sed
+COPY --from=acl-sed-source /opt/sed-source/ /opt/sed-build/
+RUN --network=none --mount=from=acl-trixie-package,source=/opt/acl-build,target=/acl-packages,ro \
+  sh /opt/acl-consumer-inputs/materials.sh prepare sed
+USER 65534:65534
+WORKDIR /opt/sed-build/tree
+ENV HOME=/opt/sed-build LC_ALL=C.UTF-8 DEB_BUILD_OPTIONS=parallel=2
+RUN --network=none sh /opt/acl-consumer-inputs/materials.sh build sed
+
+FROM acl-consumer-inputs AS acl-tar-source
+RUN sh /opt/acl-consumer-inputs/materials.sh acquire tar
+
+FROM acl-consumer-inputs AS acl-tar-package
+RUN sh /opt/acl-consumer-inputs/materials.sh toolchain tar
+COPY --from=acl-tar-source /opt/tar-source/ /opt/tar-build/
+RUN --network=none --mount=from=acl-trixie-package,source=/opt/acl-build,target=/acl-packages,ro \
+  sh /opt/acl-consumer-inputs/materials.sh prepare tar
+USER 65534:65534
+WORKDIR /opt/tar-build/tree
+ENV HOME=/opt/tar-build LC_ALL=C.UTF-8 DEB_BUILD_OPTIONS=parallel=2
+RUN --network=none sh /opt/acl-consumer-inputs/materials.sh build tar
+
+FROM scratch AS acl-consumer-packages
+COPY --from=acl-coreutils-package /opt/coreutils-build/coreutils_9.7-3+pamolive1_amd64.deb /
+COPY --from=acl-sed-package /opt/sed-build/sed_4.9-2+deb13u1+pamolive1_amd64.deb /
+COPY --from=acl-tar-package /opt/tar-build/tar_1.35+dfsg-3.1+pamolive1_amd64.deb /
+
 FROM debian-rebuild-base AS sasl-trixie-source
 COPY deploy/sasl-rebuild/forky.sources deploy/sasl-rebuild/source-apt.conf deploy/sasl-rebuild/source.sha256 deploy/sasl-rebuild/materials.sh /opt/sasl-inputs/
 WORKDIR /opt/sasl-source
@@ -442,6 +509,14 @@ RUN --network=none --mount=from=glibc-trixie-package,source=/work,target=/packag
   apt-get check; \
   install -d -m 0755 /usr/share/pamolive/glibc-trixie; \
   install -m 0444 deploy/glibc-trixie-backport/qualification.json /usr/share/pamolive/glibc-trixie/qualification.json
+RUN --network=none --mount=from=acl-consumer-packages,source=/,target=/tmp/pamolive-acl-consumers,ro \
+  set -eu; \
+  python -B -m deploy.util_linux_trixie_materials --privilege-profile >/tmp/acl-privilege-before.json; \
+  sh deploy/acl-rebuild/consumers/materials.sh install /tmp/pamolive-acl-consumers; \
+  python -B -m deploy.util_linux_trixie_materials --privilege-profile >/tmp/acl-privilege-after.json; \
+  cmp /tmp/acl-privilege-before.json /tmp/acl-privilege-after.json; \
+  rm /tmp/acl-privilege-before.json /tmp/acl-privilege-after.json
+COPY --chown=0:0 --chmod=0444 deploy/acl-rebuild/consumer-qualification.json /usr/share/pamolive/acl-consumers/qualification.json
 RUN python deploy/native_inventory.py --capture --output /opt/pamolive-native-manifest.json
 RUN python manage.py collectstatic --noinput
 USER 65534:65534

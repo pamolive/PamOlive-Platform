@@ -2,6 +2,12 @@
 
 ## Prochaines qualifications P1-F et P1-G
 
+Les paquets des cinq consommateurs ACL ont passé la qualification native
+Trixie amd64. L'étape de livraison vérifie leur installation, les modes et
+imports ELF, puis la liaison de l'archive au SBOM. Le résultat de la CI de
+l'image et les constats du scan restent requis avant publication.
+[Paquets et preuves](https://github.com/pamolive/PamOlive-Platform/actions/runs/45259464754/artifacts/14860895292)
+
 Le scan de la branche de la PR #81 conserve 43 groupes High et
 en refuse sept. Les candidats suivants doivent vérifier sur leur propre
 TAR les paquets glibc, le backport `infocmp` et les dépendances directes
@@ -11,17 +17,12 @@ constitue une preuve propre à ce candidat.
 [ADR ncurses-bin](adr-044-ncurses-bin-trixie-backport.md) ·
 [Inventaire ELF](https://github.com/pamolive/PamOlive-Platform/pull/87)
 
-Pour P1-G, la PR #92 a validé le navigateur sous sandbox non-root
-avec PostgreSQL dans le même espace réseau. Le nouveau banc ajoute
-guacd à cet espace pour tester la demande, les votes, le transport SSH
-et l'arrêt administratif depuis le portail, lecteur ouvert. Le scénario
-RDP réutilise le même portail et ajoute un pair FreeRDP synthétique.
-Il attend la preuve NLA, le rendu du navigateur après une touche et
-la fermeture de la même connexion avant d'admettre le reçu. Les
-parcours de gouvernance restants et la compatibilité Windows ont
-leurs propres qualifications.
-[Admission Chromium et PostgreSQL](https://github.com/pamolive/PamOlive-Platform/pull/92) ·
-[Raccord SSH](../qualification/p1g_headless/NEXT-NATIVE.md)
+Pour P1-G, la PR #95 a vérifié les transports SSH et RDP, leur fermeture
+depuis le portail et les captures partielles dans le laboratoire GitHub.
+Le reçu RDP couvre NLA et le rendu du navigateur. Les prochaines
+qualifications couvrent un parcours de gouvernance lié à une seule
+intention, l'effet fournisseur synthétique et la compatibilité Windows.
+[Reçus SSH et RDP](https://github.com/pamolive/PamOlive-Platform/actions/runs/45247882731/artifacts/14856749904)
 
 ## Image intégrée — qualification des dépendances Trixie
 

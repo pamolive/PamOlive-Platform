@@ -432,8 +432,52 @@ def debian_components(report, image_digest, image_digest_kind):
     return components, deps, roots
 
 
-def merge(app, manifest, report, *, image_digest, input_hashes,
-          image_digest_kind="oci_manifest", expat_report=None, debian_report=None):
+def acl_components(report, image_digest, image_digest_kind):
+    from deploy import acl_consumer_runtime as acl
+
+    require(report["schema"] == acl.SCHEMA and report["architecture"] == "amd64"
+            and image_digest_kind == "image_config" and report["image_config_id"] == image_digest,
+            "acl_sbom_report_identity")
+    source = report["qualification"]
+    artifact = {
+        "type": "distribution",
+        "url": f"https://github.com/pamolive/PamOlive-Platform/actions/runs/{source['run_id']}"
+               f"/artifacts/{source['artifact_id']}",
+        "hashes": [{"alg": "SHA-256", "content": source["artifact_sha256"]}],
+        "comment": "GitHub Actions qualification artifact ZIP",
+    }
+    components, dependencies, roots = [], [], []
+    for name, package in sorted(report["packages"].items()):
+        version = package["version"]
+        ref = PREFIX + "acl-deb:" + name + ":" + version
+        roots.append(ref)
+        components.append({
+            "type": "application", "name": name, "version": version, "bom-ref": ref,
+            "purl": f"pkg:deb/debian/{name}@{quote(version, safe='')}"
+                    f"?arch=amd64&distro=debian-13&upstream={name}",
+            "hashes": [{"alg": "SHA-256", "content": package["deb_sha256"]}],
+            "externalReferences": [artifact],
+            "properties": [
+                {"name": "pamolive:acl:qualification-revision", "value": source["revision"]},
+                {"name": "pamolive:acl:deb-bytes", "value": str(package["deb_bytes"])},
+            ],
+        })
+        files = []
+        for path, binary in sorted(package["binaries"].items()):
+            file_ref = PREFIX + "acl-elf:" + digest({"path": path, "sha256": binary["sha256"]})
+            files.append(file_ref)
+            components.append({
+                "type": "file", "name": path.rsplit("/", 1)[-1], "bom-ref": file_ref,
+                "hashes": [{"alg": "SHA-256", "content": binary["sha256"]}],
+                "properties": [{"name": "pamolive:native:path", "value": path}],
+            })
+            dependencies.append({"ref": file_ref})
+        dependencies.append({"ref": ref, "dependsOn": sorted(files)})
+    return components, dependencies, roots
+
+
+def merge(app, manifest, report, *, image_digest, input_hashes, image_digest_kind="oci_manifest",
+          expat_report=None, debian_report=None, acl_report=None):
     for value in (app, manifest, report):
         bounded(value)
     require(isinstance(image_digest, str) and
@@ -444,6 +488,8 @@ def merge(app, manifest, report, *, image_digest, input_hashes,
         inputs.add("expat")
     if debian_report is not None:
         inputs.add("debian")
+    if acl_report is not None:
+        inputs.add("acl")
     require(isinstance(input_hashes, dict) and set(input_hashes) == inputs
             and all(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
                     for value in input_hashes.values()),
@@ -467,6 +513,13 @@ def merge(app, manifest, report, *, image_digest, input_hashes,
         deps.extend(edges)
         roots.extend(extra_roots)
         reserved_names.update(item["package"] for item in debian_report["packages"])
+    if acl_report is not None:
+        bounded(acl_report)
+        extra, edges, extra_roots = acl_components(acl_report, image_digest, image_digest_kind)
+        components.extend(extra)
+        deps.extend(edges)
+        roots.extend(extra_roots)
+        reserved_names.update(acl_report["packages"])
     result = copy.deepcopy(app)
     original = result.setdefault("components", [])
     require(len(original) <= 2000, "component_budget")
@@ -507,7 +560,7 @@ def merge(app, manifest, report, *, image_digest, input_hashes,
     require(not any(p["name"].startswith("pamolive:sbom:") for p in properties),
             "reserved_property")
     coverage = "application-and-compiled-native; OS archive scan required"
-    if debian_report is not None:
+    if debian_report is not None or acl_report is not None:
         coverage = "application, compiled native, and selected Debian packages; OS scan required"
     provenance = {"image-digest": image_digest, "image-digest-kind": image_digest_kind,
                   "manifest-canonical-sha256": digest(manifest),
@@ -520,6 +573,9 @@ def merge(app, manifest, report, *, image_digest, input_hashes,
         provenance["util-linux-receipt-sha256"] = debian_report["util_linux_receipt_sha256"]
     if debian_report is not None and "glibc_receipt_sha256" in debian_report:
         provenance["glibc-receipt-sha256"] = debian_report["glibc_receipt_sha256"]
+    if acl_report is not None:
+        provenance["acl-archive-sha256"] = acl_report["archive_sha256"]
+        provenance["acl-qualification-sha256"] = acl_report["qualification_sha256"]
     properties.extend({"name": "pamolive:sbom:" + key, "value": value}
                       for key, value in sorted(provenance.items()))
     result["serialNumber"] = "urn:uuid:" + str(uuid.uuid5(uuid.NAMESPACE_URL,
@@ -534,6 +590,7 @@ def main(argv=None):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--expat-report")
     parser.add_argument("--debian-report")
+    parser.add_argument("--acl-report")
     parser.add_argument("--image-digest-kind", choices=("oci_manifest", "image_config"),
                         default="oci_manifest")
     args = parser.parse_args(argv)
@@ -546,15 +603,19 @@ def main(argv=None):
         extra_hashes = {}
         expat_report = None
         debian_report = None
+        acl_report = None
         if args.expat_report:
             expat_report, expat_sha = load(args.expat_report)
             extra_hashes["expat"] = expat_sha
         if args.debian_report:
             debian_report, debian_sha = load(args.debian_report)
             extra_hashes["debian"] = debian_sha
+        if args.acl_report:
+            acl_report, acl_sha = load(args.acl_report)
+            extra_hashes["acl"] = acl_sha
         result = merge(app, manifest, report, image_digest=args.image_digest,
                        image_digest_kind=args.image_digest_kind, expat_report=expat_report,
-                       debian_report=debian_report,
+                       debian_report=debian_report, acl_report=acl_report,
                        input_hashes={"app": app_sha, "manifest": manifest_sha,
                                      "report": report_sha, **extra_hashes})
         with os.fdopen(fd, "w", encoding="utf-8") as stream:

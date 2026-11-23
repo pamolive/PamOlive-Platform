@@ -1,0 +1,73 @@
+{
+  "schema": "pamolive.acl-consumer-packages/1",
+  "architecture": "amd64",
+  "qualification": {
+    "revision": "49be2e35211a3572b2814d0e8f09705e40e66710",
+    "run_id": 45259464754,
+    "artifact_id": 14860895292,
+    "artifact_sha256": "17ee00dbb894c5bfcf54da906a784688b90ce487a8970c1f0da99c1cdf858846"
+  },
+  "packages": {
+    "coreutils": {
+      "version": "9.7-3+pamolive1",
+      "deb_sha256": "311ecdfe707a9e3a398193be9a77cfb8c0c995ede5fdcdc8368260a103649696",
+      "deb_bytes": 3025816,
+      "binaries": {
+        "/usr/bin/cp": {
+          "descriptor_imports": [
+            "acl_delete_def_file_at@ACL_1.3",
+            "acl_set_fd@ACL_1.0",
+            "acl_set_file_at@ACL_1.3"
+          ],
+          "sha256": "102dfa8113f65f87e653f3a5a4eeb2fdcf4f0cda325162c4e28c95c559b24d69"
+        },
+        "/usr/bin/install": {
+          "descriptor_imports": [
+            "acl_delete_def_file_at@ACL_1.3",
+            "acl_set_fd@ACL_1.0",
+            "acl_set_file_at@ACL_1.3"
+          ],
+          "sha256": "beca51227c0bb3fbc5ddba9f048e08c8033798dda0fffaf4e3f7574b6cee0ce7"
+        },
+        "/usr/bin/mv": {
+          "descriptor_imports": [
+            "acl_delete_def_file_at@ACL_1.3",
+            "acl_set_fd@ACL_1.0",
+            "acl_set_file_at@ACL_1.3"
+          ],
+          "sha256": "ece0eb0d9f149867c2a6c371539eeaa7ca439a25a0b4e62002b3886f32dae2b4"
+        }
+      }
+    },
+    "sed": {
+      "version": "4.9-2+deb13u1+pamolive1",
+      "deb_sha256": "62acd79259a180e90954ca8083b21edf252d1ead42286b6fa374794497012b03",
+      "deb_bytes": 330568,
+      "binaries": {
+        "/usr/bin/sed": {
+          "sha256": "f9f0b258e15a7528ef4ec5ed55ff888fb1ab8d422437d59fe3b9a162772d7010",
+          "descriptor_imports": [
+            "acl_get_fd@ACL_1.0",
+            "acl_set_fd@ACL_1.0"
+          ]
+        }
+      }
+    },
+    "tar": {
+      "version": "1.35+dfsg-3.1+pamolive1",
+      "deb_sha256": "44cc8571ec6968f91e0206fc568b44035020c359053c38d84dcf779b72f14502",
+      "deb_bytes": 814892,
+      "binaries": {
+        "/usr/bin/tar": {
+          "sha256": "69a889a10d9fdeba04c7060bc18671ad4f68c8eb75307fd7fa59fd50160baf0a",
+          "descriptor_imports": [
+            "acl_delete_def_file_at@ACL_1.3",
+            "acl_extended_file_at@ACL_1.3",
+            "acl_get_file_at@ACL_1.3",
+            "acl_set_file_at@ACL_1.3"
+          ]
+        }
+      }
+    }
+  }
+}

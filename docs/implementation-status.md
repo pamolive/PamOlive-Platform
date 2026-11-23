@@ -1,5 +1,32 @@
 # État réel de l’implémentation
 
+## Intégration des consommateurs ACL dans l'image P1
+
+Le laboratoire Trixie amd64 de la PR #99 a qualifié les trois DEB et les cinq
+ELF de `coreutils`, `sed` et `tar`. L'image candidate reconstruit les paquets
+hors réseau et vérifie les empreintes des DEB avant installation. La preuve
+ACL V2 lit la configuration, les couches et l'empreinte depuis un même
+descripteur de l'archive. Elle contrôle DPKG, les modes, les dépendances
+directes et les imports des consommateurs. Le SBOM rattache le résultat aux
+trois paquets et le scan le recalcule depuis l'archive. Les preuves V1 restent
+lisibles et les seuils de scans High et Critical sont conservés.
+[Laboratoire](https://github.com/pamolive/PamOlive-Platform/actions/runs/45259464754/artifacts/14860895292)
+
+Le périmètre des dépendances ACL inclut le contrôle du seul objet
+relogeable observé dans l'image de référence, `python.o`. La preuve exige
+son chemin et son empreinte exacts ainsi qu'un en-tête ELF sans programme
+chargeable. Tout autre résultat de lecture inconclusif bloque la preuve ACL.
+[Inventaire de référence](https://github.com/pamolive/PamOlive-Platform/actions/runs/45228222491/artifacts/14850657219)
+
+La validation de cette composition dépend de la CI de l'image intégrée. Le
+constat ACL et la qualification GCC du nouveau périmètre restent ouverts.
+
+Les parcours navigateur SSH et RDP de la PR #95 ont passé la CI sur cibles
+synthétiques au commit `8ed3f88`. Le reçu RDP confirme aussi NLA et
+l'affichage. La preuve d'une intention unique sur tout le parcours P1-G et
+la qualification d'un fournisseur réel restent à établir.
+[Reçus du portail](https://github.com/pamolive/PamOlive-Platform/actions/runs/45247882731/artifacts/14856749904)
+
 ## Candidat de livraison glibc et OpenSSL DANE
 
 Le scan du candidat glibc `dc46333` a reçu 43 groupes High. Deux des
@@ -24,8 +51,8 @@ ajoute le moteur guacd construit sur la révision du portail, puis exerce
 le parcours depuis la demande jusqu'à l'arrêt administratif de la session.
 Le reçu du banc exige la fermeture WSS et SSH, la vérification de la
 capture partielle et le nettoyage de la base et des conteneurs. La première
-exécution de ce banc reste à valider. Le contrôle de livraison de l'image
-est effectué par sa propre CI.
+exécution validée sur cette branche est conservée dans le reçu de la PR #95.
+Le contrôle de livraison de l'image est effectué par sa propre CI.
 [Mesure de la PR #92](https://github.com/pamolive/PamOlive-Platform/actions/runs/45239143671)
 
 La branche RDP utilise la même image native pour guacd et le pair
@@ -34,7 +61,7 @@ répertoire d'échange privé et le wrapper monté en lecture seule.
 Le test vérifie le certificat configuré, la trace NLA, le rendu
 du canvas avant et après une touche, puis la fermeture WSS et RDP
 pendant l'arrêt administratif. Les reçus SSH et RDP ont chacun
-leur propre verdict. Les essais natifs restent en cours.
+leur propre verdict.
 
 ## Vérifications de livraison — 23 novembre 2026
 

@@ -22,7 +22,7 @@ jobs:
           python -m pip install -r requirements-security.lock
           python -m pip check
       - name: Verify native inventory and SBOM qualification tools
-        run: python -m unittest tests.test_native_inventory tests.test_native_sbom tests.test_native_dns tests.test_image_scan_policy tests.test_database_driver tests.test_ldap_fixture_permissions tests.test_krb5_inventory tests.test_krb5_acquisition tests.test_krb5_sbom tests.test_debian_refresh_inventory tests.test_scan_scratch tests.test_build_recipe tests.test_build_context tests.test_sealed_build_context tests.test_runtime_environment tests.test_secret_baseline_metadata tests.test_python_materials tests.test_python_materials_resilience tests.test_ensurepip_bundle tests.test_expat_product tests.test_jansson_image_absence tests.test_jansson_input_binding tests.test_jansson_sbom tests.test_jansson_ci_evidence tests.test_jansson_oracle_identity tests.test_native_migration_composition
+        run: python -m unittest tests.test_acl_runtime_inventory tests.test_acl_consumer_runtime tests.test_native_inventory tests.test_native_sbom tests.test_native_dns tests.test_image_scan_policy tests.test_database_driver tests.test_ldap_fixture_permissions tests.test_krb5_inventory tests.test_krb5_acquisition tests.test_krb5_sbom tests.test_debian_refresh_inventory tests.test_scan_scratch tests.test_build_recipe tests.test_build_context tests.test_sealed_build_context tests.test_runtime_environment tests.test_secret_baseline_metadata tests.test_python_materials tests.test_python_materials_resilience tests.test_ensurepip_bundle tests.test_expat_product tests.test_jansson_image_absence tests.test_jansson_input_binding tests.test_jansson_sbom tests.test_jansson_ci_evidence tests.test_jansson_oracle_identity tests.test_native_migration_composition
       - name: Verify closed public restore report projection
         run: python -m unittest tests.test_restore_public_report
       - name: Verify public metadata projections without Engine or network
@@ -387,6 +387,9 @@ jobs:
           test "$(docker container inspect --format '{{.Image}} {{.State.Status}} {{len .Mounts}}' "$acl_container")" = "$image_ref created 0"
           timeout --signal=TERM --kill-after=5s 90s python -B -m deploy.acl_runtime_inventory \
             --archive "$acl_snapshot" --image-config-id "$config_id" > "$proof/acl-runtime.json"
+          timeout --signal=TERM --kill-after=5s 180s python -B -m deploy.acl_consumer_runtime \
+            --bundle "$RUNNER_TEMP/pamolive-qualified-image" --revision "$GITHUB_SHA" \
+            --output "$proof/acl-consumers-image.json"
           timeout --signal=TERM --kill-after=5s 120s python -B -m deploy.cairo_runtime_inventory \
             --archive "$acl_snapshot" --image-config-id "$config_id" \
             --elf-sha256 "$(cat deploy/cairo-headless/elf.sha256)" > "$proof/cairo-runtime.json"
@@ -414,7 +417,7 @@ jobs:
           # Same qualified archive/image; Expat evidence never suppresses the existing scans.
           python -m deploy.expat_image --archive "$RUNNER_TEMP/pamolive-qualified-image/pamolive-linux-amd64.tar" --image-id "$config_id" --output "$proof/expat-image.json"
           timeout --signal=TERM --kill-after=15s 120s docker run --rm --pull never --no-healthcheck --user "$(id -u):$(id -g)" --network none --cpus 1 --memory 512m --memory-swap 512m --pids-limit 64 --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -I -B -S /usr/local/libexec/pamolive-expat4/verify_runtime.py /proof/expat-runtime
-          python -m deploy.native_sbom --app-sbom "$proof/application.cdx.json" --native-manifest "$proof/native-manifest.json" --native-report "$proof/native-report.json" --expat-report "$proof/expat-image.json" --debian-report "$proof/debian-runtime-image.json" --image-digest-kind image_config --image-digest "$config_id" --output "$proof/combined.cdx.json"
+          python -m deploy.native_sbom --app-sbom "$proof/application.cdx.json" --native-manifest "$proof/native-manifest.json" --native-report "$proof/native-report.json" --expat-report "$proof/expat-image.json" --debian-report "$proof/debian-runtime-image.json" --acl-report "$proof/acl-consumers-image.json" --image-digest-kind image_config --image-digest "$config_id" --output "$proof/combined.cdx.json"
       - name: Exercise Jansson differential and receive exact-image absence DATA
         timeout-minutes: 15
         shell: bash
