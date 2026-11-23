@@ -44,7 +44,7 @@
     "test_phase2_orchestration.OrchestrationTests.test_report_persistence_failure_retains_real_observed_history_not_fake_preflight",
     "test_phase2_orchestration.OrchestrationTests.test_shared900deadline_refuses_before_first_command",
     "test_phase2_preflight.PreflightTests.test_bootstrap_fixed_path_bounded_same_buffer_and_no_runpy_reopen",
-    "test_phase2_preflight.PreflightTests.test_closed29_controller_assets_rehash_and_reject_extra_or_changed",
+    "test_phase2_preflight.PreflightTests.test_closed30_controller_assets_rehash_and_reject_extra_or_changed",
     "test_phase2_preflight.PreflightTests.test_entry_early_kernel_failure_exports_no_fake_child_and_no_raw_error",
     "test_phase2_preflight.PreflightTests.test_s0_identity_has_one_exact_profile_no_tag_or_unknown_fields",
     "test_phase2_records.RecordTests.test_changed_file_despite_RECORD_update_refuses_source_binding",

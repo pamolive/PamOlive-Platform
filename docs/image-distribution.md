@@ -31,6 +31,20 @@ Si le registre répond `denied`, vérifier [les droits et la visibilité du paqu
 
 La CI construit une fois l’image de production et l’utilise notamment pour le contrôle du runtime, le relais SSH et les essais de restauration. L’image de test RDP est distincte et n’est pas publiée. Une fois les contrôles terminés, la CI exporte l’image de production et son empreinte d’archive. Un envoi sur `main` conserve ce lot sept jours dans les artefacts GitHub.
 
-Dans **Actions → Publish qualified Docker image**, lancer le workflow sur `main` avec l’identifiant de la CI réussie du **même commit**. Le workflow refuse une autre branche, une pull request, un autre dépôt ou une archive modifiée. Il recharge l’image testée, la publie sans la reconstruire, puis vérifie son empreinte en la récupérant du registre. Le résumé donne la référence par digest ; l’attestation porte sur ce digest de publication.
+Dans **Actions → Publish qualified Docker image**, sélectionner `main` et saisir
+l’identifiant de la CI réussie du **même commit**. La CI de main conserve un
+index signé qui lie l’archive testée et le verdict du scanner à une tentative
+précise. La publication sélectionne les deux artefacts de cette tentative,
+vérifie leurs empreintes, puis vérifie l’identité GitHub et le certificat de
+l’index avant de charger l’image. Après une relance partielle qui réutilise
+des artefacts d’une tentative antérieure, relancer tous les jobs de
+qualification.
+
+Le workflow pousse l’image testée sans la reconstruire, la récupère par
+digest et vérifie sa correspondance avec l’archive. Il vérifie aussi
+l’attestation OCI du workflow de publication avant d’afficher la référence
+d’installation. L’index atteste le sujet et le verdict produits par la CI.
+L’inventaire des matériaux de compilation et la qualification de la recette
+relèvent des contrôles complémentaires de l’[ADR-021](adr-021-artifact-security-qualification.md).
 
 Pour permettre le téléchargement anonyme, un administrateur du paquet doit vérifier sa visibilité dans GHCR. Cette décision est séparée de l’exécution de la CI. Une référence privée peut servir à la qualification avec un compte autorisé.

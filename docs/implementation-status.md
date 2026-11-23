@@ -1,5 +1,157 @@
 # État réel de l’implémentation
 
+## Kerberos Trixie et chantier OpenSSL — 23 novembre 2026
+
+Sur `0b0d524`, le correctif ciblé Kerberos produit dix paquets Trixie
+`1.21.3-5+deb13u2+pamolive1`. Les exports versionnés et SONAME des quatre
+bibliothèques runtime correspondent au stock. Le SDK compile et exécute
+le consommateur hors réseau. L'archive et les dix paquets ont été vérifiés.
+La suite Debian signale quatre cas ignorés liés au keyring, à LDAP KDB et
+au DNS externe. L'installation dans l'image produit reste à qualifier.
+[Campagne Kerberos](https://github.com/pamolive/PamOlive-Platform/actions/runs/45131107539)
+
+L'ADR-042 lance un candidat OpenSSL 3.5.9 avec sept correctifs de la branche
+amont. Les changements de production correspondent exactement au source
+Debian avant et après application. CVE-2026-84786 reste ouverte dans ce
+périmètre. Le produit conserve sa configuration actuelle pendant la
+qualification native.
+[ADR-042](adr-042-openssl-trixie-seven-fixes.md)
+
+## Scan intégré et qualification du CLI du témoin — 23 novembre 2026
+
+Les deux CI de `b588ae0` franchissent le build et les validations qui
+précèdent le scan Grype. L'image compte 31 groupes bloquants, contre 43 sur
+`a26337c`. La comparaison des empreintes retire exactement six CVE Kerberos
+de DSA-6650-1, chacune signalée deux fois, et n'ajoute aucun groupe. Deux
+groupes Kerberos restent ouverts pour CVE-2026-107778. OpenSSL reste la plus
+grosse famille avec huit groupes. L'ADR-041 prépare un correctif Trixie pour
+Kerberos. L'image intégrée reste en attente d'un verdict vert.
+[CI du candidat intégré](https://github.com/pamolive/PamOlive-Platform/actions/runs/45126161877) ·
+[ADR-041](adr-041-kerberos-trixie-backport.md)
+
+Sur `e2b111f`, la campagne du CLI installé passe 143 tests sans test ignoré.
+Elle valide le commissionnement, deux propositions concurrentes, le réessai
+exact et la lecture de deux checkpoints distincts après la reprise PostgreSQL.
+Les trois archives GitHub correspondent au commit et au document transféré.
+[CI du CLI](https://github.com/pamolive/PamOlive-Platform/actions/runs/45129724274)
+
+## Garde atomique du témoin et image Cairo — 23 novembre 2026
+
+Sur `eda158e`, les 136 tests installés du témoin passent sans test ignoré.
+Le laboratoire Linux et PostgreSQL vérifie la rotation concurrente, le
+verrou entre processus, la réouverture du checkpoint historique et le rejet
+d'un objet conservé sans admission. Les trois archives de cette campagne
+correspondent au commit et à l'empreinte du transfert. La durabilité après
+coupure matérielle reste à démontrer.
+[CI de garde atomique](https://github.com/pamolive/PamOlive-Platform/actions/runs/45128677201)
+
+Sur `a26337c`, la preuve de l'image exacte confirme l'absence des binaires
+X11/Xrender. Le scan compare 43 groupes bloquants aux 45 de `36e35cd`. Les
+deux empreintes retirées concernent X11 et Xrender. Aucun groupe nouveau
+n'est apparu dans cette comparaison. Le candidat Cairo reste bloqué à la
+promotion.
+[CI du candidat Cairo](https://github.com/pamolive/PamOlive-Platform/actions/runs/45125072702)
+
+## Rotation du témoin après PITR — 23 novembre 2026
+
+Sur `96740d3`, les 131 tests de la wheel installée passent sans test ignoré.
+Le pilote de reprise relit les deux générations de checkpoints et rejette
+une ancienne signature portant sur un document jamais admis. Le transfert
+vers le second runner porte sur le checkpoint original. Les trois archives
+et le SHA-256 du checkpoint correspondent au reçu de cette exécution.
+[Qualification de la rotation](https://github.com/pamolive/PamOlive-Platform/actions/runs/45127628710)
+
+## Reprise installée du Vault et du témoin — 23 novembre 2026
+
+Sur `b588ae0`, les 122 tests de la wheel du témoin passent sans test ignoré.
+Le laboratoire PostgreSQL 17.12 vérifie le PITR, les rôles restreints,
+l'archive et le transfert du checkpoint signé vers un second runner. Les
+trois archives GitHub et le SHA-256 du checkpoint ont été vérifiés. La
+restauration de la base du témoin reste effectuée sur le premier runner.
+[CI du témoin](https://github.com/pamolive/PamOlive-Platform/actions/runs/45126170986)
+
+Sur ce même commit, les 52 tests de la wheel Vault et la restauration
+logique du Vault sur une destination distincte passent en laboratoire
+PostgreSQL et mTLS. Le reçu vérifié correspond à l'artefact `14795493333`.
+[CI de restauration du Vault](https://github.com/pamolive/PamOlive-Platform/actions/runs/45126680065)
+
+Le candidat SASL `36e35cd` passe le build et les parcours natifs, dont SSH,
+RDP et la bascule entre deux nœuds. La politique Grype refuse son image
+avec 45 groupes bloquants. La promotion exige le verdict de l'image du
+candidat intégré.
+[CI du candidat SASL](https://github.com/pamolive/PamOlive-Platform/actions/runs/45123373514)
+
+## Candidat intégré Cairo et reprise du témoin — 23 novembre 2026
+
+La qualification autonome sur `a26337c` reproduit les quatre paquets Cairo,
+préserve 394 symboles exportés, retire 26 symboles Xlib/XCB et reproduit le
+PNG de référence. Le contrôle de l'image produit vérifie séparément les
+bibliothèques réellement présentes et leurs dépendances ELF.
+[Qualification Cairo](https://github.com/pamolive/PamOlive-Platform/actions/runs/45125072638)
+
+Le candidat intègre aussi `dd28c74`. Le témoin restauré par PITR vérifie
+l'archive contre le checkpoint signé conservé séparément. Un second runner
+réimporte les octets exacts du checkpoint et vérifie leur signature sous une
+nouvelle instance. Ce transfert est une qualification GitHub sur données
+synthétiques. L'indépendance des autorités, des clés et du stockage reste à
+qualifier sur l'infrastructure cible.
+[Qualification du transfert](https://github.com/pamolive/PamOlive-Platform/actions/runs/45112995334)
+
+Les preuves précédentes portent sur leurs commits respectifs. La composition
+doit passer la CI PostgreSQL et les tests natifs de l'image, la campagne de
+reprise du témoin et le scan Grype sur l'image exacte avant promotion.
+
+## Dépendances natives du candidat de livraison — 23 novembre 2026
+
+Les reconstructions isolées SQLite 3.54.1 et ACL 2.4.0 reproduisent les
+empreintes des paquets et des bibliothèques. La qualification SQLite retrouve
+les 88 imports de `_sqlite3` et les 14 de `liblastlog2`. La qualification ACL
+conserve les 41 exports historiques et valide la restauration d'une ACL
+avec GNU tar. Le verdict produit dépend toujours de la CI de l'image exacte.
+[SQLite](https://github.com/pamolive/PamOlive-Platform/actions/runs/45118546166) ·
+[ACL](https://github.com/pamolive/PamOlive-Platform/actions/runs/45118622898)
+
+La reconstruction Trixie de Cyrus SASL `2.1.28+dfsg1-12~pamolive13u1`
+préserve les 69 exports du cœur et les 33 du module de base. Les deux paquets
+et leurs ELF ont été vérifiés dans l'artefact CI. Le candidat produit utilise
+la même recette et vérifie aussi le paquet SDK avant de compiler les wheels.
+Les essais de connexion LDAP StartTLS et PostgreSQL TLS/SCRAM ainsi que
+Grype doivent être validés sur ce candidat.
+[Qualification SASL](https://github.com/pamolive/PamOlive-Platform/actions/runs/45119726353) ·
+[ADR-038](adr-038-cyrus-sasl-trixie-qualification.md)
+
+## Archive du témoin et candidat de livraison — 23 novembre 2026
+
+La PR nº 43 valide sur `c39bfec` les 96 tests de la wheel installée et la
+restauration de l'archive avec PostgreSQL 17.12. Les cinq constats d'archive
+et les neuf contrôles physiques passent. Les deux jobs de sécurité réussissent
+après actualisation de la référence de ligne du fixture SSH. Le build Docker
+de cette branche échoue encore au téléchargement de la version Kerberos
+historique. [CI de l'archive](https://github.com/pamolive/PamOlive-Platform/actions/runs/45096782576) ·
+[CI Platform](https://github.com/pamolive/PamOlive-Platform/actions/runs/45096770175)
+
+La PR nº 42 construit l'image avec les versions Debian disponibles et atteint
+le scan de l'image exacte. Le rapport contient 45 groupes High en attente
+d'arbitrage, dont 14 pour Kerberos et 8 pour OpenSSL. L'attestation
+cryptographique du build reste à établir. La branche d'intégration réunit
+ces travaux pour une nouvelle mesure sur un seul candidat.
+[CI du candidat Debian](https://github.com/pamolive/PamOlive-Platform/actions/runs/45089228559)
+
+## Revue de livraison et mises à jour Debian — 23 novembre 2026
+
+Le correctif `b9d8044` de la PR nº 32 met à jour une position de test dans le
+catalogue des secrets. Les 1 487 fichiers Git ont été rescannés par la revue
+indépendante. Zéro nouveau signalement, retrait ou changement de décision.
+Les deux jobs de sécurité GitHub réussissent.
+[CI de la PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087533213)
+[CI de la branche](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087528395)
+
+Le laboratoire Debian de la [PR nº 41](https://github.com/pamolive/PamOlive-Platform/pull/41)
+valide Kerberos `1.21.3-5+deb13u2` et glibc `2.41-12+deb13u5` sur amd64.
+Les 14 paquets, les six ELF et l'essai natif hors réseau sont vérifiés.
+La composition et le scan du candidat suivant sont relevés ci-dessus.
+[CI du laboratoire](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087805069)
+
 ## Livraison du code de développement — 17 novembre 2026
 
 À la demande explicite du propriétaire, la capture Expat APT et ses diagnostics
@@ -733,6 +885,84 @@ hors publication de ce lot ; aucun test SQL/TLS ni service W n'est encore reçu.
 Cette décision ne qualifie pas
 la durabilité, l'indépendance humaine/OS, le KMS ou un chemin de production.
 
+Depuis, `de63044` reçoit la wheel W1 sur Linux et les 62 tests hors réseau
+depuis le paquet installé. L'installation vérifie les fichiers du paquet, le
+`RECORD` installé et la relocalisation du schéma SQL. Les 40 contrôles du profil
+W01 sous doublures valident la propriété des ressources et la double barrière
+avant écriture PostgreSQL. Sur `c8af05f`, le premier laboratoire natif passe
+les 62 tests sur wheel, les deux précontrôles de bases vierges, les deux
+provisionnements PostgreSQL et le contrôle de nettoyage. Le démarrage du
+pilote échoue avant la validation mTLS et les terminaux durables.
+[PR nº 34](https://github.com/pamolive/PamOlive-Platform/pull/34) ·
+[CI installée W1](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191) ·
+[Première exécution native](https://github.com/pamolive/PamOlive-Platform/actions/runs/45075125056)
+
+Le commit `1756244` qualifie W01 sur un seul hôte de CI. Les 62 tests de la
+wheel et les neuf scénarios natifs passent. Le reçu vérifie deux clusters
+PostgreSQL 17.12 neufs, la liaison de canal SCRAM, les rôles distincts, le refus
+de verrouiller une réservation append-only, trois opérations, cinq usages de
+preuve et le nettoyage de la réservation Docker. La revue indépendante
+confirme les empreintes et la portée du reçu. Le listener Vault séparé,
+la fermeture concurrente, les campagnes W04 à W08 et la qualification
+multi-hôte restent ouverts.
+[CI W01](https://github.com/pamolive/PamOlive-Platform/actions/runs/45078177751)
+
+La [PR nº 35](https://github.com/pamolive/PamOlive-Platform/pull/35) valide
+huit contrôles supplémentaires sur `0d8b7cc`. Vault refuse les réponses
+après fermeture et conserve les lignes historiques y compris lors d'une
+perte de réponse. Le témoin conserve deux opérations supplémentaires et
+compte un seul nouvel usage de preuve après deux consommations identiques.
+Le reçu vérifié confirme le nettoyage. Le listener Vault séparé, la lecture
+historique après fermeture et les campagnes de reprise W04 à W08 restent ouverts.
+[CI de fermeture](https://github.com/pamolive/PamOlive-Platform/actions/runs/45079293012)
+
+La [PR nº 36](https://github.com/pamolive/PamOlive-Platform/pull/36) valide
+sur `c1f8017` la consultation historique avec le témoin déjà démarré.
+Les sept contrôles natifs dédiés passent après les neuf scénarios W01 et
+les huit contrôles de fermeture. Les 70 tests installés sont verts et la
+revue indépendante confirme le reçu, les deux clusters et leur nettoyage.
+Les cas de redémarrage fermé, de rotation d'identité et de reprise multi-hôte
+restent ouverts.
+[CI de consultation](https://github.com/pamolive/PamOlive-Platform/actions/runs/45080374417/attempts/2)
+
+La [PR nº 37](https://github.com/pamolive/PamOlive-Platform/pull/37) qualifie
+le redémarrage fermé sur `7d37e0d`. Le démarrage ordinaire est refusé,
+puis le nouveau conteneur utilise le même certificat avec un montage et
+un compte SQL de lecture séparés. Les quatre tests de reprise s'ajoutent
+aux 24 scénarios antérieurs et les 77 tests installés passent. Le reçu
+confirme le nettoyage. La restauration logique prolonge ce scénario.
+La rotation de l'identité, le serveur Vault distinct et la reprise
+multi-hôte restent à qualifier.
+[CI de redémarrage](https://github.com/pamolive/PamOlive-Platform/actions/runs/45081802652)
+
+La [PR nº 38](https://github.com/pamolive/PamOlive-Platform/pull/38) qualifie
+sur `b4ff379` la restauration logique en lecture seule dans une base vierge du
+même cluster W. Le laboratoire SQL compare les neuf tables et leurs droits.
+Le témoin restauré sert le reçu exact sous la même identité TLS. Le contexte
+et le bail restent fermés. Les données d'origine sont conservées et le
+nettoyage est confirmé. Les 77 tests installés, 34 contrôles natifs et
+quatre constats de restauration SQL passent. La campagne suivante poursuit
+la qualification sur un cluster distinct.
+[CI de restauration](https://github.com/pamolive/PamOlive-Platform/actions/runs/45084090436)
+
+La [PR nº 39](https://github.com/pamolive/PamOlive-Platform/pull/39) valide
+sur `8da2d76` une restauration logique sur un cluster neuf. Le contrôleur
+prouve la différence d'identité PostgreSQL et l'arrêt du cluster initial.
+Le témoin utilise les nouveaux justificatifs SQL de l'observateur. Il sert
+le reçu exact sous le certificat d'origine du slot, avec le bail fermé.
+La CI confirme les 77 tests installés, 35 scénarios natifs, six constats SQL
+et le nettoyage. Le scénario PITR suivant ajoute la sauvegarde physique.
+[CI de reprise](https://github.com/pamolive/PamOlive-Platform/actions/runs/45085143496)
+
+La [PR nº 40](https://github.com/pamolive/PamOlive-Platform/pull/40) qualifie
+sur `eb1eba8` un `pg_basebackup` vérifié et le rejeu des WAL au point nommé
+après fermeture du bail. Le contrôleur vérifie la nouvelle timeline et
+l'absence d'une écriture pourtant archivée après le point. Le témoin
+restauré rend le reçu terminal exact et refuse les écritures. La CI confirme
+77 tests installés, 35 scénarios natifs, neuf contrôles de restauration et
+le nettoyage. Les archives sont éphémères sur un seul runner.
+[CI PITR](https://github.com/pamolive/PamOlive-Platform/actions/runs/45086358011)
+
 Le parent `6c17536` conserve ses résultats distincts : PR fonctionnelle puis
 scan High en échec, push arrêté au timeout TLS d'acquisition avant assertion
 post-build. Le correctif courant borne les seuls téléchargements publics
@@ -777,6 +1007,18 @@ Pas de Vault installé/image minimale reçus, crash serveur/PG power-loss,
 expiration attendue, backup/restore ou frontière OS Web hostile qualifiés.
 Le rollback clandestin sous même incarnation reste hors garantie. Aucun service
 Web/P0 ou migration Django n'est changé ; P2 n'est pas terminé.
+
+La campagne d'installation a ensuite reçu les 52 méthodes installées sur
+`27cf3b4`. Un chemin CI optionnel prépare le transfert privé des trois wheels
+vérifiées et du descripteur dans le même job. Le transfert conditionne l'écriture
+du reçu à l'exécution réussie, aux empreintes attendues et au nettoyage confirmé.
+La qualification du laboratoire installé avec PostgreSQL et mTLS reste à faire.
+
+Le contrôle qui suit consomme le reçu du même job pour installer les wheels dans
+une image de test distincte avec le pilote C psycopg 3.2.10 et libpq 17.12. Le
+build et la vérification Python sont hors réseau après l’acquisition vérifiée
+des dépendances. PostgreSQL et le service Vault seront démarrés lors de la
+qualification suivante sur ce profil.
 
 Un premier laboratoire de restauration déclaré a ensuite réellement exécuté
 `pg_dump`, la création d'une seconde base synthétique neuve, sa restauration sous

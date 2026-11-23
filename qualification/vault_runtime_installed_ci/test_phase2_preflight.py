@@ -31,7 +31,7 @@ class PreflightTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 workload_prepare.s0_pins(change)
 
-    def test_closed29_controller_assets_rehash_and_reject_extra_or_changed(self):
+    def test_closed30_controller_assets_rehash_and_reject_extra_or_changed(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
             destination = Path(directory)
             rows = {}
@@ -50,7 +50,7 @@ class PreflightTests(unittest.TestCase):
             raw = schema.encode(manifest)
             path.write_bytes(raw)
             self.assertEqual(
-                len(workload_prepare.assets(destination, sha(raw))["controller_files"]), 29
+                len(workload_prepare.assets(destination, sha(raw))["controller_files"]), 30
             )
             (destination / "schema.py").write_bytes(b"PUBLIC_CHANGED")
             with self.assertRaises(ValueError):
