@@ -31,9 +31,16 @@ def symbols(path):
         fields = line.split()
         if len(fields) < 8 or not fields[0][:-1].isdigit():
             continue
-        name = fields[7].split("@", 1)[0]
-        if name.startswith("sqlite3_"):
-            (imports if fields[6] == "UND" else exports).add(name)
+        name, separator, version = fields[7].partition("@")
+        if not name.startswith("sqlite3") or fields[4] not in {"GLOBAL", "WEAK"}:
+            continue
+        versioned = name + separator + version.lstrip("@")
+        if fields[6] == "UND":
+            imports.add(versioned)
+        elif fields[5] in {"DEFAULT", "PROTECTED"}:
+            exports.add(versioned)
+            if version.startswith("@"):
+                exports.add(name)
     return imports, exports
 
 
@@ -53,10 +60,13 @@ def inspect(*, candidate):
     require(mapped == {str(library_path)})
 
     _, exported = symbols(library_path)
-    by_consumer = {
-        "_sqlite3": symbols(Path(_sqlite3.__file__))[0],
-        "liblastlog2": symbols(LIB / "liblastlog2.so.2")[0],
+    consumers = {
+        "_sqlite3": Path(_sqlite3.__file__),
+        "liblastlog2": LIB / "liblastlog2.so.2",
     }
+    for path in consumers.values():
+        require("Shared library: [libsqlite3.so.0]" in elf(path, "-d"))
+    by_consumer = {name: symbols(path)[0] for name, path in consumers.items()}
     require(all(imports and imports <= exported for imports in by_consumer.values()))
     with library_path.open("rb") as stream:
         library_sha = hashlib.file_digest(stream, "sha256").hexdigest()
