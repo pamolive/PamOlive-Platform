@@ -1,0 +1,46 @@
+name: SQLite Trixie source qualification
+
+on:
+  push:
+    branches: [agent/sqlite-trixie-qualification]
+
+permissions:
+  contents: read
+
+jobs:
+  sqlite-trixie-amd64:
+    if: github.repository == 'pamolive/PamOlive-Platform'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 23
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Build and check the SQLite candidate in an isolated Trixie image
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          umask 077
+          archive="$RUNNER_TEMP/pamolive-sqlite-context-$GITHUB_RUN_ID.tar"
+          context="$RUNNER_TEMP/pamolive-sqlite-context-$GITHUB_RUN_ID"
+          evidence="$RUNNER_TEMP/pamolive-sqlite-evidence-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test ! -e "$evidence"
+          (set -o noclobber; git archive "$GITHUB_SHA:qualification/sqlite_trixie_build" > "$archive")
+          mkdir -m 700 "$context"
+          tar -x -f "$archive" --directory "$context" --no-same-owner
+          docker build --platform=linux/amd64 --no-cache --progress=plain \
+            --target sqlite-qualification --output "type=local,dest=$evidence" "$context"
+          cmp <(find "$evidence" -mindepth 1 -printf '%f\n' | LC_ALL=C sort) - <<'EXPECTED'
+          baseline-abi.json
+          baseline-smoke.json
+          candidate-abi.json
+          candidate-package.sha256
+          candidate-smoke.json
+          EXPECTED
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: sqlite-trixie-qualification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pamolive-sqlite-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 7
