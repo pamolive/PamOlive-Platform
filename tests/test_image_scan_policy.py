@@ -9,7 +9,7 @@ import json
 import tarfile
 import tempfile
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from unittest import TestCase
 from unittest.mock import patch
 from urllib.parse import quote
@@ -268,7 +268,7 @@ class ImageScanPolicyTests(TestCase):
                       ).encode()
         layer = io.BytesIO()
         with tarfile.open(fileobj=layer, mode="w") as inner:
-            files = [(gate.SQLITE_STATUS, status), (gate.SQLITE_LIBRARY, binary)]
+            files = [(gate.DPKG_STATUS, status), (gate.SQLITE_LIBRARY, binary)]
             if extra:
                 files.append(("/opt/alt/libsqlite3.so.0", binary))
             for name, body in files:
@@ -307,7 +307,7 @@ class ImageScanPolicyTests(TestCase):
                     result = self.evaluate(self.sqlite_archive(**options))
                     self.assertFalse(result["passed"])
                     self.assertEqual(len(result["blockers"]), 3)
-            installed = self.sqlite_archive(binary, condition).captured[gate.SQLITE_STATUS]
+            installed = self.sqlite_archive(binary, condition).captured[gate.DPKG_STATUS]
             for status in (b"Package: sqlite3\n", installed + b"\n" + installed,
                            installed + b"\nPackage: sqlite3\nStatus: install ok installed\n"):
                 with self.subTest(status=status), self.assertRaisesRegex(
@@ -329,6 +329,106 @@ class ImageScanPolicyTests(TestCase):
                 gate.sqlite_rebuild_holds(entry, {**finding, **fields}, facts=None, proofs=proofs)
         with self.assertRaisesRegex(gate.ScanPolicyError, "sqlite_rebuild_recipe"):
             gate.sqlite_rebuild_holds(entry, finding, facts=None, proofs=proofs[:-1])
+
+    def pruned_runtime_entry(self, cve, rule):
+        entry = self.add_exception()
+        self.os["distro"]["version"] = "13.8"
+        source, version = rule["source"], rule["version"]
+        self.os["matches"] = [
+            self.match(cve, state="wont-fix", name=name, version=version, source=source)
+            for name in rule["packages"]
+        ]
+        for artifact in (row["artifact"] for row in self.os["matches"]):
+            artifact["purl"] = (
+                f"pkg:deb/debian/{artifact['name']}@{quote(version, safe='')}"
+                f"?arch=amd64&distro=debian-13.8&upstream={source}"
+            )
+        root = Path(__file__).resolve().parents[1]
+        proofs = []
+        for path, digest in rule["proofs"].items():
+            target = self.repo / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((root / path).read_bytes())
+            proofs.append({"path": path, "sha256": digest})
+        key, finding = next(iter(gate.high_groups(self.os, "os").items()))
+        entry.update(
+            fingerprint=key, finding=finding, disposition=rule["disposition"],
+            conditions=[{"kind": "pruned_debian_runtime", "source": source}],
+            local_evidence=proofs, vendor_evidence=[finding["data_source"], rule["vendor"]],
+        )
+        return entry
+
+    def test_pruned_runtime_is_bound_to_package_and_physical_archive(self):
+        for cve, original_rule in gate.PRUNED_RUNTIME.items():
+            with self.subTest(cve=cve):
+                rule = copy.deepcopy(original_rule)
+                entry = self.pruned_runtime_entry(cve, rule)
+                files, providers = {}, []
+                for target, aliases, _ in rule["providers"]:
+                    binary = expat_test.elf(target.encode())
+                    files[target] = binary
+                    providers.append((target, aliases, hashlib.sha256(binary).hexdigest()))
+                    for alias in aliases:
+                        files[str(PurePosixPath(target).with_name(alias))] = (
+                            "symlink", PurePosixPath(target).name,
+                        )
+                rule["providers"] = providers
+                source, version = rule["source"], rule["version"]
+                status = "\n".join(
+                    f"Package: {name}\nSource: {source}\nVersion: {version}\n"
+                    "Status: install ok installed\nArchitecture: amd64\n"
+                    for name in rule["packages"]
+                ).encode()
+                files[gate.DPKG_STATUS] = status
+
+                def archive_facts(layers):
+                    archive = self.repo / "pruned-synthetic.tar"
+                    names = [f"{i}.tar" for i in range(len(layers))]
+                    archive.write_bytes(expat_test.tar_bytes({
+                        **dict(zip(names, map(expat_test.tar_bytes, layers), strict=True)),
+                        "manifest.json": json.dumps([{"Layers": names}]).encode(),
+                    }))
+                    return gate.archive_facts(archive, entry["conditions"])
+
+                with patch.dict(gate.PRUNED_RUNTIME, {cve: rule}):
+                    self.assertTrue(self.evaluate(archive_facts([files]))["passed"])
+                    basenames = (("getfacl", "libacl.a") if source == "acl" else
+                                 ("libdigestmd5.so.2", "libsasl2.a"))
+                    for basename in basenames:
+                        facts = archive_facts([
+                            {"/opt/" + basename: b"synthetic fixture"},
+                            {**files, "/opt/.wh." + basename: b""},
+                        ])
+                        self.assertFalse(self.evaluate(facts)["passed"])
+                    target, aliases, _ = providers[0]
+                    alias_path = str(PurePosixPath(target).with_name(aliases[0]))
+                    facts = archive_facts([{**files, alias_path: ("symlink", "other.so")}])
+                    self.assertFalse(self.evaluate(facts)["passed"])
+                    changed = {
+                        **files,
+                        "/opt/" + Path(providers[0][0]).name: expat_test.elf(b"alternate"),
+                    }
+                    self.assertFalse(self.evaluate(archive_facts([changed]))["passed"])
+                    excluded_package = "acl" if source == "acl" else "libsasl2-dev"
+                    installed = status + (f"\nPackage: {excluded_package}\n"
+                                          "Status: install ok installed\n").encode()
+                    with self.assertRaisesRegex(gate.ScanPolicyError, "pruned_runtime_dpkg"):
+                        self.evaluate(archive_facts([{**files, gate.DPKG_STATUS: installed}]))
+
+    def test_pruned_runtime_cannot_exempt_sibling_finding_or_change_disposition(self):
+        cve = "CVE-2026-54370"
+        entry = self.pruned_runtime_entry(cve, gate.PRUNED_RUNTIME[cve])
+        finding, proofs = entry["finding"], entry["local_evidence"]
+        for changed in ({"vulnerability_id": "CVE-2026-54369"}, {"scope": "compiled"},
+                        {"distro": {"name": "debian", "version": "13.7"}}):
+            with self.subTest(changed=changed), self.assertRaisesRegex(
+                gate.ScanPolicyError, "pruned_runtime_scope",
+            ):
+                gate.pruned_runtime_holds(entry, {**finding, **changed}, facts=None, proofs=proofs)
+        with self.assertRaisesRegex(gate.ScanPolicyError, "pruned_runtime_evidence"):
+            gate.pruned_runtime_holds(
+                {**entry, "disposition": "fixed_by_backport"}, finding, facts=None, proofs=proofs,
+            )
 
     def trixie_exception(self, scope, cve="CVE-2026-124709", *, source="openssl"):
         entry = self.add_exception()
