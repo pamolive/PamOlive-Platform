@@ -142,6 +142,35 @@ USER 65534:65534
 RUN --network=none --mount=from=util-linux-trixie-package,source=/work,target=/packages,ro \
   sh /opt/util-linux-inputs/materials.sh export
 
+FROM debian-rebuild-base AS ncurses-trixie-package
+COPY --chmod=0444 deploy/ncurses-trixie-backport/ /opt/ncurses-inputs/
+RUN chmod 0755 /opt/ncurses-inputs \
+ && sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g; s/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
+ && grep -Fxq 'Types: deb deb-src' /etc/apt/sources.list.d/debian.sources \
+ && printf '%s\n' 'Acquire::Check-Valid-Until "true";' \
+    'Acquire::AllowInsecureRepositories "false";' \
+    'APT::Get::AllowUnauthenticated "false";' \
+    'APT::Update::Error-Mode "any";' > /etc/apt/apt.conf.d/99pamolive-ncurses \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends --no-remove build-essential fakeroot quilt curl ca-certificates \
+    'libtinfo6=6.5+20250216-2' 'libncursesw6=6.5+20250216-2' 'ncurses-base=6.5+20250216-2' \
+ && apt-get build-dep -y --arch-only --no-install-recommends 'ncurses=6.5+20250216-2' \
+ && install -d -m 0755 -o _apt /work
+WORKDIR /work
+RUN sh /opt/ncurses-inputs/materials.sh acquire \
+ && chown -R 65534:65534 /work \
+ && rm -rf /var/lib/apt/lists/*
+ENV HOME=/work
+USER 65534:65534
+RUN --network=none sh /opt/ncurses-inputs/materials.sh build
+
+FROM debian-rebuild-base AS ncurses-trixie-export
+COPY --chmod=0444 deploy/ncurses-trixie-backport/ /opt/ncurses-inputs/
+RUN install -d -m 0755 -o 65534 -g 65534 /evidence && chmod 0755 /opt/ncurses-inputs
+USER 65534:65534
+RUN --network=none --mount=from=ncurses-trixie-package,source=/work,target=/packages,ro \
+  sh /opt/ncurses-inputs/materials.sh export
+
 FROM debian-rebuild-base AS sqlite-trixie-source
 COPY deploy/sqlite-rebuild/source-apt.conf deploy/sqlite-rebuild/forky.sources deploy/sqlite-rebuild/materials.sh /opt/sqlite-inputs/
 WORKDIR /opt/sqlite-source
@@ -373,10 +402,20 @@ RUN --network=none --mount=from=util-linux-trixie-export,source=/evidence,target
   rm /tmp/privileged-before.json /tmp/privileged-after.json; \
   install -d -m 0755 /usr/share/pamolive/util-linux-trixie; \
   install -m 0444 deploy/util-linux-trixie-backport/qualification.json /usr/share/pamolive/util-linux-trixie/qualification.json
+RUN --network=none --mount=from=ncurses-trixie-export,source=/evidence,target=/packages,ro \
+  --mount=from=ncurses-trixie-export,source=/opt/ncurses-inputs,target=/opt/ncurses-inputs,ro \
+  (cd /packages && sha256sum --check --strict /app/deploy/ncurses-trixie-backport/package.sha256) \
+  && sh /opt/ncurses-inputs/materials.sh install \
+  && apt-get check \
+  && test -f /usr/bin/infocmp && test -x /usr/bin/infocmp && test ! -L /usr/bin/infocmp \
+  && sha256sum --check --strict deploy/ncurses-trixie-backport/installed.sha256 \
+  && install -d -m 0755 /usr/share/pamolive/ncurses-trixie \
+  && install -m 0444 deploy/ncurses-trixie-backport/qualification.json /usr/share/pamolive/ncurses-trixie/qualification.json
 RUN python deploy/native_inventory.py --capture --output /opt/pamolive-native-manifest.json
 RUN python manage.py collectstatic --noinput
 USER 65534:65534
 RUN --network=none python -B -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport --util-linux-backport --root / --output /tmp/debian-refresh-runtime.json && rm /tmp/debian-refresh-runtime.json
+RUN --network=none sha256sum --check --strict deploy/ncurses-trixie-backport/installed.sha256
 USER root
 EXPOSE 8000
 HEALTHCHECK --interval=20s --timeout=5s --start-period=20s CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/', timeout=4)"

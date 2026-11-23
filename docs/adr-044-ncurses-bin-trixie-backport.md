@@ -44,6 +44,18 @@ alias, puis exerce `infocmp`, `tic` et `tput` sur des entrées
 terminfo ordinaires de test. Le reçu concerne Debian Trixie
 `linux/amd64` et le paquet vérifié.
 
+La campagne `f860faf` a construit le paquet et validé les
+deux autopkgtests Debian de terminal. Le test de références de
+pages man et les exemples interactifs restent hors de cette
+campagne. Le reçu compare aussi les outils, les alias et les
+bibliothèques Trixie et valide les essais terminfo.
+[Reçu de la campagne](https://github.com/pamolive/PamOlive-Platform/actions/runs/45206497423/artifacts/14834172560)
+
+L'image reconstruit le paquet avec la même recette. L'installation
+hors réseau exige l'empreinte du `.deb` qualifié. Le build
+vérifie ensuite le binaire corrigé et les deux bibliothèques
+Trixie par empreinte.
+
 L'intégration au produit exige de reproduire le paquet qualifié, de
 vérifier l'ELF installé dans le TAR final et d'exécuter les tests
 SSH et la CI complète. Le rapport d'image doit encore associer
