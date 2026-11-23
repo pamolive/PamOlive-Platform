@@ -18,7 +18,7 @@ ROOT = HERE.parents[1]
 TARGET = Path("/opt/google/chrome/chrome")
 PIN_PATH = "qualification/p1g_headless/chrome-bootstrap-pins.json"
 ROOT_INTERPRETER = "/usr/bin/python3.12"
-ROOT_CACHE_BASENAME = "google-chrome-stable_157.0.8103.78-1_amd64.deb"
+ROOT_CACHE_BASENAME = "google-chrome-stable_158.0.8127.36-1_amd64.deb"
 ROOT_INTERPRETER_SCHEMA = "pamolive.chrome-root-interpreter/1"
 INSTALLED_SCHEMA = "pamolive.chrome-bootstrap/2"
 TAR_HELPER_SHA = "46ab045267bf6d8a71d5730426a9ce89b64b23d8e7a42235f5917e7fed4b44e0"
@@ -37,6 +37,7 @@ SOURCE_PATHS = {
     "qualification/p1g_headless/chrome-bundle-profile.json",
     "qualification/p1g_headless/chrome_phase_a.py",
     "qualification/p1g_headless/chrome-stage-only-profile.json",
+    "qualification/p1g_headless/chrome-stage-only-profile-158.json",
     "qualification/p1g_headless/chrome_gpg.py",
     "qualification/p1g_headless/chrome_key_scope.py",
     "qualification/p1g_headless/chrome_key_scope_native.py",
@@ -57,6 +58,7 @@ SOURCE_PATHS = {
 TEST_PATHS = {
     "qualification/p1g_headless/test_chrome_phase_a.py",
     "qualification/p1g_headless/chrome-stage-inventory.DATA.json",
+    "qualification/p1g_headless/chrome-stage-inventory-158.DATA.json",
     "qualification/p1g_headless/test_chrome_bundle.py",
     "qualification/p1g_headless/test_chrome_bootstrap.py",
     "qualification/p1g_headless/test_chrome_key_scope.py",
@@ -73,6 +75,7 @@ ENV = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C", "LC_ALL": "C"}
 DIAGNOSTICS = {
     "bundle_FD_close_unknown",
     "phase_a_root_only",
+    "phase_a_stage_only_mode",
     "phase_a_profile_pin",
     "phase_a_profile_unadmitted",
     "phase_a_reserved_path",
@@ -421,12 +424,12 @@ def root_cache_copy(private, source, expected):
     need(
         os.getuid() == os.geteuid() == 0
         and expected["Package"] == "google-chrome-stable"
-        and expected["Version"] == "157.0.8103.78-1"
+        and expected["Version"] == "158.0.8127.36-1"
         and expected["Architecture"] == "amd64"
         and expected["Filename"] == "pool/main/g/google-chrome-stable/" + ROOT_CACHE_BASENAME
-        and expected["Size"] == "147497676"
+        and expected["Size"] == "152702276"
         and expected["SHA256"]
-        == "4d740636b5c96f687798602c5aad6a5a270f44dd02e48db0638ae77aa4867b1b",
+        == "4696bce00b128f385a870ba2eb6eede61698f22374ea0d8e09af8a1c6543d397",
         "apt_cache_package",
     )
     cache, package = root_cache_paths(private)
@@ -1452,6 +1455,10 @@ def main(argv=None):
     bundle_modes.add_argument("--bundle-inventory-only", action="store_true")
     bundle_modes.add_argument("--stage-cleanup-only", action="store_true")
     args = parser.parse_args(argv)
+    branch = "agent/p1g-chrome158-private-stage"
+    if (os.environ.get("GITHUB_REF") == "refs/heads/" + branch
+            or os.environ.get("GITHUB_HEAD_REF") == branch):
+        need(args.stage_cleanup_only, "phase_a_stage_only_mode")
     need(
         not (args.root_install and args.bundle_inventory_only)
         and not (
@@ -1487,7 +1494,11 @@ def main(argv=None):
     )
     need(pins["purpose"] == scope.PURPOSE, "scope_purpose")
     need(not (args.root_install and args.scope_native_only), "scope_mode")
-    support.guard(os.environ, uid=int(os.environ["SUDO_UID"]) if args.root_install else os.getuid())
+    support.guard(
+        os.environ,
+        uid=int(os.environ["SUDO_UID"]) if args.root_install else os.getuid(),
+        stage_only=True,
+    )
     support.source_binding(
         root, Path(os.environ["RUNNER_TEMP"]) / "p1g-source.json", os.environ["GITHUB_SHA"]
     )
@@ -1802,7 +1813,7 @@ def main(argv=None):
                         root / "qualification/p1g_headless/chrome_phase_a.py",
                     )
                     profile_raw = captured[
-                        "qualification/p1g_headless/chrome-stage-only-profile.json"
+                        "qualification/p1g_headless/chrome-stage-only-profile-158.json"
                     ]
                     stage_only.admit(bundle, tree, profile_raw, stage_only.PROFILE_SHA)
                 else:

@@ -109,6 +109,7 @@ class MetadataTests(unittest.TestCase):
     def test_package_inventory_refuses_altered_record_before_any_download(self):
         package = metadata.package_record((SOURCE / "Packages").read_bytes())
         commands = Mock()
+        package["Size"] = "1"
         with tempfile.TemporaryDirectory() as temporary:
             with self.assertRaisesRegex(ValueError, "inventory_package_pin"):
                 metadata.inspect_package(commands, Path(temporary), package, {})

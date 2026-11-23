@@ -465,7 +465,7 @@ class PrivatePhaseATests(unittest.TestCase):
         events = []
         if admitted:
             here = Path(__file__).parent
-            tree = b.json_bytes((here / "chrome-stage-inventory.DATA.json").read_bytes())
+            tree = b.json_bytes((here / "chrome-stage-inventory-158.DATA.json").read_bytes())
             raw, pin = (here / a.PROFILE_NAME).read_bytes(), a.PROFILE_SHA
         else:
             # Explicit negative policy actor; the actual source policy is now admitted.
@@ -475,7 +475,7 @@ class PrivatePhaseATests(unittest.TestCase):
             def context(*args):
                 pins, captured = existing_context(*args)
                 captured = dict(captured)
-                captured["qualification/p1g_headless/chrome-stage-only-profile.json"] = raw
+                captured["qualification/p1g_headless/" + a.PROFILE_NAME] = raw
                 return pins, captured
             def load(name, *args):
                 if name == "p1g_authenticated_bundle":
@@ -529,7 +529,7 @@ class PrivatePhaseATests(unittest.TestCase):
         ]
         self.assertEqual(
             b.digest(inventory),
-            "c132e7c97c82f326019632044c35e916336f482a9dae6d8765b7997ab3eea738",
+            "328dc76543cb40c0d9fd50e6f3870c8f8f90f8f61428b32acb33e024920759af",
         )
         self.assertEqual(len(b.json_bytes(inventory)["entries"]), 261)
         self.assertIn("/runner/p1g-headless-123-1-chrome/root-private-stage.json", writes)
@@ -617,8 +617,11 @@ class PrivatePhaseATests(unittest.TestCase):
             "bde1999adb166df18728a4de24ceef9799e5d23442c43ce8d1e37eb1d97a3e6c",
         )
         self.assertEqual(b.digest(b.canonical(tree["entries"])), tree["tree_sha256"])
-        profile_raw = (here / a.PROFILE_NAME).read_bytes()
-        names = a.admit(b, tree, profile_raw, a.PROFILE_SHA)
+        profile_raw = (here / "chrome-stage-only-profile.json").read_bytes()
+        historical_pin = "14f1f02f2f987c7a07f62079f534fa0c48282b4efba0f04d595d8976625a0841"
+        names = a.admit(b, tree, profile_raw, historical_pin)
+        with self.assertRaisesRegex(ValueError, "phase_a_profile_pin"):
+            a.admit(b, tree, profile_raw, a.PROFILE_SHA)
         self.assertEqual(len(names), 261)
         self.assertEqual(sum(row["type"] == "regular" for row in names.values()), 253)
         self.assertEqual(sum(row["type"] == "directory" for row in names.values()), 8)
@@ -644,12 +647,32 @@ class PrivatePhaseATests(unittest.TestCase):
             else:
                 changed["tree_sha256"] = "f" * 64
             with self.subTest(fault=fault), self.assertRaises(ValueError):
-                a.admit(b, changed, profile_raw, a.PROFILE_SHA)
+                a.admit(b, changed, profile_raw, historical_pin)
+
+    def test_25b_chrome158_has_its_own_profile_and_cannot_admit_the_157_tree(self):
+        here = Path(__file__).parent
+        profile_raw = (here / a.PROFILE_NAME).read_bytes()
+        profile = b.json_bytes(profile_raw)
+        self.assertEqual(b.digest(profile_raw), a.PROFILE_SHA)
+        pins = b.json_bytes((here / "chrome-bootstrap-pins.json").read_bytes())
+        self.assertEqual(profile["package_sha256"], pins["package"]["SHA256"])
+        self.assertEqual(profile["purpose"], a.PURPOSE)
+        self.assertEqual(set(profile["privileged_roles"]), {"chrome-sandbox"})
+        active_raw = (here / "chrome-stage-inventory-158.DATA.json").read_bytes()
+        names = a.admit(b, b.json_bytes(active_raw), profile_raw, a.PROFILE_SHA)
+        self.assertEqual(len(names), 261)
+        self.assertEqual(sum(row["bytes"] for row in names.values()), 480561176)
+        self.assertEqual(names["chrome-sandbox"]["bytes"], 15296)
+        self.assertEqual(names["chrome-sandbox"]["mode"], 0o4755)
+        tree = b.json_bytes((here / "chrome-stage-inventory.DATA.json").read_bytes())
+        with self.assertRaises(ValueError):
+            a.admit(b, tree, profile_raw, a.PROFILE_SHA)
+        self.assertFalse(b.json_bytes((here / b.PROFILE_NAME).read_bytes())["commissioned"])
 
     def test_26_real_DATA_never_admits_a_false_or_unpinned_profile_or_operational_v3(self):
         here = Path(__file__).parent
         tree = b.json_bytes((here / "chrome-stage-inventory.DATA.json").read_bytes())
-        profile_raw = (here / a.PROFILE_NAME).read_bytes()
+        profile_raw = (here / "chrome-stage-only-profile.json").read_bytes()
         negative = b.json_bytes(profile_raw)
         negative["admitted"] = False
         negative_raw = b.canonical(negative)
@@ -663,6 +686,18 @@ class PrivatePhaseATests(unittest.TestCase):
             b.admit(tree, (here / b.PROFILE_NAME).read_bytes(), b.PROFILE_SHA)
         self.assertEqual(ops.events, [])
         self.assertEqual(ops.fds, {})
+
+    def test_26b_stage_branch_refuses_legacy_install_and_browser_modes_before_setup(self):
+        branch = "agent/p1g-chrome158-private-stage"
+        for ref, head in (("refs/heads/" + branch, ""), ("refs/pull/1/merge", branch)):
+            for mode in ([], ["--test-bundle"], ["--root-install"]):
+                with (
+                    self.subTest(ref=ref, head=head, mode=mode),
+                    patch.dict(bootstrap.os.environ, GITHUB_REF=ref, GITHUB_HEAD_REF=head),
+                    self.assertRaisesRegex(ValueError, "phase_a_stage_only_mode"),
+                ):
+                    bootstrap.main(["--pins-sha", "f" * 64,
+                                    "--native-scope-preflight-required", *mode])
 
     def test_27_private_cycle_success_cannot_make_the_workflow_pass_without_UI(self):
         workflow = (Path(__file__).parents[2] / ".github/workflows/ci.yml").read_bytes()

@@ -297,3 +297,21 @@ du paquet et lit son arbre en flux avec le vérificateur d'archive
 existant, comme données. L'essai du navigateur et la phase B exigent
 toujours leur propre admission et une mesure du bac à sable.
 [Reçu de signature](https://github.com/pamolive/PamOlive-Platform/actions/runs/45163889050/artifacts/14814145767)
+
+## Staging et nettoyage pour Chrome 158
+
+Le candidat 158 dispose d'un profil distinct, limité à l'usage
+`STAGE_CLEANUP_ONLY`. L'inventaire est lié au reçu GitHub par son
+empreinte. Il compte 261 entrées et conserve le rôle unique de
+`chrome-sandbox`.
+Le fichier du helper a changé, donc le profil épingle son nouvel
+SHA-256 et l'arbre complet. La fixture de Chrome 157 et son profil
+historique sont conservés pour les tests. Le manifeste de la
+campagne précédente reste consultable dans le commit historique.
+[Inventaire 158](https://github.com/pamolive/PamOlive-Platform/actions/runs/45164550346/artifacts/14812698260) ·
+[Manifeste 157](https://github.com/pamolive/PamOlive-Platform/blob/0e0ad6bd8d002e408d197284c77118f8ad389140/qualification/p1g_headless/chrome-bootstrap-pins.json)
+
+Le laboratoire actif est limité à la branche Chrome 158. Le bootstrap
+y impose le mode de staging et de nettoyage, côté runner et processus
+Root. L'essai doit confirmer la libération du préfixe et des
+descripteurs. Le workflow conserve l'arrêt avant le parcours UI.

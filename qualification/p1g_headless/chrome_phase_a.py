@@ -11,8 +11,8 @@ import time
 from contextlib import contextmanager
 from pathlib import PurePosixPath
 
-PROFILE_NAME = "chrome-stage-only-profile.json"
-PROFILE_SHA = "14f1f02f2f987c7a07f62079f534fa0c48282b4efba0f04d595d8976625a0841"
+PROFILE_NAME = "chrome-stage-only-profile-158.json"
+PROFILE_SHA = "3e247d6c8f96b58ce3d05954b3dc07ba5f16f82a025c2fa4bf6c88069e144d5b"
 PROFILE_SCHEMA = "pamolive.chrome-private-stage-profile/1"
 STAGED_SCHEMA = "pamolive.chrome-private-stage-receipt/1"
 RESULT_SCHEMA = "pamolive.chrome-private-stage-cleanup/1"
