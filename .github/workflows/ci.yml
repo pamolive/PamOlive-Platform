@@ -22,7 +22,7 @@ jobs:
           python -m pip install -r requirements-security.lock
           python -m pip check
       - name: Verify native inventory and SBOM qualification tools
-        run: python -m unittest tests.test_native_inventory tests.test_native_sbom tests.test_native_dns tests.test_image_scan_policy tests.test_database_driver tests.test_ldap_fixture_permissions tests.test_krb5_inventory tests.test_krb5_acquisition tests.test_krb5_sbom tests.test_scan_scratch tests.test_build_recipe tests.test_build_context tests.test_sealed_build_context tests.test_runtime_environment tests.test_secret_baseline_metadata tests.test_python_materials tests.test_python_materials_resilience tests.test_ensurepip_bundle tests.test_expat_product tests.test_jansson_image_absence tests.test_jansson_input_binding tests.test_jansson_sbom tests.test_jansson_ci_evidence tests.test_jansson_oracle_identity tests.test_native_migration_composition
+        run: python -m unittest tests.test_native_inventory tests.test_native_sbom tests.test_native_dns tests.test_image_scan_policy tests.test_database_driver tests.test_ldap_fixture_permissions tests.test_krb5_inventory tests.test_krb5_acquisition tests.test_krb5_sbom tests.test_debian_refresh_inventory tests.test_scan_scratch tests.test_build_recipe tests.test_build_context tests.test_sealed_build_context tests.test_runtime_environment tests.test_secret_baseline_metadata tests.test_python_materials tests.test_python_materials_resilience tests.test_ensurepip_bundle tests.test_expat_product tests.test_jansson_image_absence tests.test_jansson_input_binding tests.test_jansson_sbom tests.test_jansson_ci_evidence tests.test_jansson_oracle_identity tests.test_native_migration_composition
       - name: Verify closed public restore report projection
         run: python -m unittest tests.test_restore_public_report
       - name: Verify public metadata projections without Engine or network
@@ -361,34 +361,25 @@ jobs:
           docker run --rm --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --entrypoint python "$image_ref" -c 'from pathlib import Path; import sys; sys.stdout.buffer.write(Path("/opt/pamolive-native-manifest.json").read_bytes())' > "$proof/native-manifest.json"
           docker run --rm --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -m deploy.native_inventory --output /proof/native-report.json --gcc-provider-output /proof/gcc-provider.json
           docker run --rm --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -m deploy.check_database_driver --output /proof/database-driver.json
-          docker run --rm --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -m deploy.krb5_inventory --verify --output /proof/krb5-report.json
-          docker run --rm -i --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" - <<'PY'
-          import os
+          docker run --rm --pull never --no-healthcheck --user "$(id -u):$(id -g)" --network none --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -m deploy.debian_refresh_inventory --root / --output /proof/debian-runtime-live.json
+          python -m deploy.debian_refresh_inventory \
+            --bundle "$RUNNER_TEMP/pamolive-qualified-image" --revision "$GITHUB_SHA" \
+            --output "$proof/debian-runtime-image.json"
+          PAMOLIVE_IMAGE_PROOF="$proof" python - <<'PY'
+          import json, os
           from pathlib import Path
-          from deploy import krb5_inventory as gate
-
-          os.umask(0o077)
-          manifest = gate.inventory()
-          root = Path("/")
-          raw = gate.read_file(root, gate.MANIFEST_PATH, 2 * 1024**2)
-          assert gate.read_json(Path(gate.MANIFEST_PATH)) == manifest
-          target = Path("/proof/krb5-evidence")
-          target.mkdir(mode=0o700)
-          with Path("/proof/krb5-manifest.json").open("xb") as output:
-              output.write(raw)
-          names = {"inventory.json", "provenance.json", *manifest["provenance"]["evidence"]}
-          for name in sorted(names):
-              gate.evidence_name(name)
-              data = gate.read_file(root, gate.PREFIX + "/" + name, 32 * 1024**2)
-              with (target / name).open("xb") as output:
-                  output.write(data)
+          root = Path(os.environ["PAMOLIVE_IMAGE_PROOF"])
+          live = json.loads((root / "debian-runtime-live.json").read_text())
+          archive = json.loads((root / "debian-runtime-image.json").read_text())
+          bindings = {"image_config_id", "archive_sha256", "revision"}
+          assert archive.keys() == live.keys() | bindings
+          assert live == {key: archive[key] for key in live}
           PY
-          python -m deploy.krb5_sbom --manifest "$proof/krb5-manifest.json" --report "$proof/krb5-report.json" --image-digest-kind image_config --image-digest "$config_id" --output "$proof/krb5-backport.cdx.json"
           python -m pip_audit --strict --no-deps --disable-pip -r requirements.lock -f cyclonedx-json -o "$proof/application.cdx.json"
           # Same qualified archive/image; Expat evidence never suppresses the existing scans.
           python -m deploy.expat_image --archive "$RUNNER_TEMP/pamolive-qualified-image/pamolive-linux-amd64.tar" --image-id "$config_id" --output "$proof/expat-image.json"
           timeout --signal=TERM --kill-after=15s 120s docker run --rm --pull never --no-healthcheck --user "$(id -u):$(id -g)" --network none --cpus 1 --memory 512m --memory-swap 512m --pids-limit 64 --cap-drop ALL --security-opt no-new-privileges --read-only --tmpfs /tmp:size=32m,mode=1777 --mount "type=bind,src=$proof,dst=/proof" --entrypoint python "$image_ref" -I -B -S /usr/local/libexec/pamolive-expat4/verify_runtime.py /proof/expat-runtime
-          python -m deploy.native_sbom --app-sbom "$proof/application.cdx.json" --native-manifest "$proof/native-manifest.json" --native-report "$proof/native-report.json" --expat-report "$proof/expat-image.json" --image-digest-kind image_config --image-digest "$config_id" --output "$proof/combined.cdx.json"
+          python -m deploy.native_sbom --app-sbom "$proof/application.cdx.json" --native-manifest "$proof/native-manifest.json" --native-report "$proof/native-report.json" --expat-report "$proof/expat-image.json" --debian-report "$proof/debian-runtime-image.json" --image-digest-kind image_config --image-digest "$config_id" --output "$proof/combined.cdx.json"
       - name: Exercise Jansson differential and receive exact-image absence DATA
         timeout-minutes: 15
         shell: bash

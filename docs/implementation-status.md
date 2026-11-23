@@ -1,5 +1,37 @@
 # État réel de l’implémentation
 
+## Archive du témoin et candidat de livraison — 23 novembre 2026
+
+La PR nº 43 valide sur `c39bfec` les 96 tests de la wheel installée et la
+restauration de l'archive avec PostgreSQL 17.12. Les cinq constats d'archive
+et les neuf contrôles physiques passent. Les deux jobs de sécurité réussissent
+après actualisation de la référence de ligne du fixture SSH. Le build Docker
+de cette branche échoue encore au téléchargement de la version Kerberos
+historique. [CI de l'archive](https://github.com/pamolive/PamOlive-Platform/actions/runs/45096782576) ·
+[CI Platform](https://github.com/pamolive/PamOlive-Platform/actions/runs/45096770175)
+
+La PR nº 42 construit l'image avec les versions Debian disponibles et atteint
+le scan de l'image exacte. Le rapport contient 45 groupes High en attente
+d'arbitrage, dont 14 pour Kerberos et 8 pour OpenSSL. L'attestation
+cryptographique du build reste à établir. La branche d'intégration réunit
+ces travaux pour une nouvelle mesure sur un seul candidat.
+[CI du candidat Debian](https://github.com/pamolive/PamOlive-Platform/actions/runs/45089228559)
+
+## Revue de livraison et mises à jour Debian — 23 novembre 2026
+
+Le correctif `b9d8044` de la PR nº 32 met à jour une position de test dans le
+catalogue des secrets. Les 1 487 fichiers Git ont été rescannés par la revue
+indépendante. Zéro nouveau signalement, retrait ou changement de décision.
+Les deux jobs de sécurité GitHub réussissent.
+[CI de la PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087533213)
+[CI de la branche](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087528395)
+
+Le laboratoire Debian de la [PR nº 41](https://github.com/pamolive/PamOlive-Platform/pull/41)
+valide Kerberos `1.21.3-5+deb13u2` et glibc `2.41-12+deb13u5` sur amd64.
+Les 14 paquets, les six ELF et l'essai natif hors réseau sont vérifiés.
+La composition et le scan du candidat suivant sont relevés ci-dessus.
+[CI du laboratoire](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087805069)
+
 ## Livraison du code de développement — 17 novembre 2026
 
 À la demande explicite du propriétaire, la capture Expat APT et ses diagnostics

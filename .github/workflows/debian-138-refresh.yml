@@ -1,0 +1,81 @@
+name: Debian 13.8 library refresh
+
+on:
+  push:
+    branches: [agent/release-debian-138-security, agent/release-debian-138-product]
+
+permissions:
+  contents: read
+
+jobs:
+  native-debian-refresh:
+    if: github.repository == 'pamolive/PamOlive-Platform' && github.ref == 'refs/heads/agent/release-debian-138-security'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Verify the exact inputs and the public receipt contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          cd qualification/debian_138_refresh
+          printf '%s  source-checksums.sha256\n' b31443e2a347fe7e403c98de21306605341c9027e79b28d8fe20488fc94b3bd7 | sha256sum --check --strict
+          sha256sum --check --strict source-checksums.sha256
+          python3 -I -B -S test_refresh.py
+      - name: Qualify the Debian runtime and SDK packages on amd64
+        shell: bash
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          umask 077
+          context="$GITHUB_WORKSPACE/qualification/debian_138_refresh"
+          evidence="$RUNNER_TEMP/pamolive-debian-refresh-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test ! -e "$evidence"
+          docker build --platform=linux/amd64 --no-cache --progress=plain \
+            --target debian-138-refresh-evidence \
+            --output "type=local,dest=$evidence" \
+            --file "$context/Dockerfile" "$context"
+          python3 -I -B -S "$context/verify_refresh.py" validate "$evidence/debian-138-refresh.json"
+          test "$(find "$evidence" -mindepth 1 -printf '%f\n')" = debian-138-refresh.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: debian-138-refresh-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pamolive-debian-refresh-${{ github.run_id }}-${{ github.run_attempt }}/debian-138-refresh.json
+          if-no-files-found: error
+          retention-days: 7
+  product-debian-base:
+    if: github.repository == 'pamolive/PamOlive-Platform' && github.ref == 'refs/heads/agent/release-debian-138-product'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - name: Build the actual Debian product runtime stage
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          iid="$RUNNER_TEMP/pamolive-debian-base.iid"
+          test ! -e "$iid"
+          docker build --platform=linux/amd64 --no-cache --progress=plain \
+            --target debian-runtime --iidfile "$iid" "$GITHUB_WORKSPACE"
+          image="$(cat "$iid")"
+          [[ "$image" =~ ^sha256:[a-f0-9]{64}$ ]]
+          docker run --rm --pull never --no-healthcheck --user 1000:1000 --network none \
+            --cap-drop ALL --security-opt no-new-privileges --read-only \
+            --entrypoint /usr/bin/dpkg-query "$image" --show \
+            --showformat='${Package} ${Version} ${Architecture}\n' \
+            libc-bin libc6 libgssapi-krb5-2 libk5crypto3 libkrb5-3 libkrb5support0 \
+            > "$RUNNER_TEMP/pamolive-debian-base-installed.txt"
+          cmp "$RUNNER_TEMP/pamolive-debian-base-installed.txt" - <<'EXPECTED'
+          libc-bin 2.41-12+deb13u5 amd64
+          libc6 2.41-12+deb13u5 amd64
+          libgssapi-krb5-2 1.21.3-5+deb13u2 amd64
+          libk5crypto3 1.21.3-5+deb13u2 amd64
+          libkrb5-3 1.21.3-5+deb13u2 amd64
+          libkrb5support0 1.21.3-5+deb13u2 amd64
+          EXPECTED

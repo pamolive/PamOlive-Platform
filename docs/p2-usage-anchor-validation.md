@@ -253,6 +253,12 @@ La campagne sur un seul hôte qualifie la comparaison à une référence
 capturée avant restauration. L'authenticité et la durabilité d'un registre de
 points d'ancrage exploité séparément demandent une qualification dédiée.
 
+La campagne sur `c39bfec` passe les 96 tests installés, les 35 contrôles
+antérieurs, les neuf contrôles PITR et les cinq constats d'archive. Le reçu
+public de l'artefact GitHub `14783493475` a été vérifié et porte l'empreinte
+SHA-256 `4d6acf3b2555aa9454cde112e2f60e0b11e3fa8038a9ee98f39eb968ac9f1205`.
+[CI de l'archive](https://github.com/pamolive/PamOlive-Platform/actions/runs/45096782576)
+
 ## Wheel W1 installée — 18 novembre 2026
 
 La [CI installée](https://github.com/pamolive/PamOlive-Platform/actions/runs/44302067191)

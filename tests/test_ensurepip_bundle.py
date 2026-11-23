@@ -410,7 +410,7 @@ class EnsurepipReviewedPinsTests(unittest.TestCase):
         docker = (ROOT / "Dockerfile").read_text()
         before, runtime = docker.split("FROM expat-runtime AS runtime-build", 1)
         self.assertNotIn("ensurepip_bundle", before)
-        self.assertIn("FROM " + overlay.BASE_REFERENCE + " AS krb5-builder", before)
+        self.assertIn("FROM " + overlay.BASE_REFERENCE + " AS debian-runtime", before)
         runtime = runtime.split("COPY manage.py", 1)[0]
         self.assertIn("RUN --network=none python -B /tmp/ensurepip_bundle.py", runtime)
         self.assertLess(
