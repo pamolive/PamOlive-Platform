@@ -251,6 +251,25 @@ s'ajoute au parcours fermé sans migration ni nouvel accès HTTP. La vérificati
 d'une chaîne avant et après rotation de slot repose sur des points séparés
 pour chaque contexte.
 
+La capture `assembly.capture_audit_checkpoint` vérifie le fichier de slot
+et lit le bail fermé et la tête d'audit dans la même transaction observateur
+en lecture seule. L'opérateur peut vérifier la chaîne complète à partir de
+cette tête avant de la soumettre à l'autorité qui conserve les points.
+Cette autorité appelle `signed_anchor.sign_checkpoint` avec son service de
+signature Ed25519. La clef privée reste sous sa garde. Le domaine dédié
+et le format signé `pamolive.vault.usage-audit-anchor/1` lient le point
+d'ancrage complet et l'identité de la clef.
+
+Après restauration, l'opérateur choisit la référence attendue dans le
+registre indépendant. Il fournit à `signed_anchor.verify_checkpoint` la
+clef publique attendue et le SHA-256 exact du document signé. Une autre
+signature valide de la même clef doit être refusée si le document diffère.
+Le point vérifié sert à exporter puis à vérifier les pages. Conserver les
+anciens documents, leurs empreintes et les clefs publiques correspondantes
+lors d'une rotation. Cette signature atteste la référence acceptée par son
+détenteur. Le choix de la référence, son authenticité avant capture et la
+durabilité du registre reposent sur sa gouvernance et son hébergement.
+
 Un V compromis disposant d'un unwrap KMS générique peut ignorer W. Avant remise,
 une garde indépendante devra imposer chaque usage W avec claim d'émission unique,
 tenant/destination/broker/version/certificat exacts et aucun chemin générique

@@ -38,7 +38,7 @@ def pins(directory):
 
 def wheel_contents(raw, approved):
     sources = {name: sha256 for name, sha256 in approved.items() if name.startswith(MODULE + "/")}
-    need(len(sources) == 13)
+    need(len(sources) == 14)
     pinned = {**sources, DATA: approved["sql/schema.sql"], LICENSE: approved["LICENSE"]}
     files = members(raw, METADATA | pinned.keys())
     need(all(sha(files[name]) == expected for name, expected in pinned.items()))

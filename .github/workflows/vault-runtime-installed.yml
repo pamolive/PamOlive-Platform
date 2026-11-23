@@ -53,6 +53,10 @@ on:
         description: Verify the restored audit chain against the original witness checkpoint
         type: boolean
         default: false
+      run_witness_signed_anchor:
+        description: Verify the signed external checkpoint after restoring the witness
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -63,7 +67,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     env:
-      VAULT_SOURCES_SHA: 783dd1d317a3bec43f7cfd791f9c9dcd5254d1bcde0955c51557d82aaa139dfb
+      VAULT_SOURCES_SHA: bef3fe3d7604bc9fc03b1ae09c82622e32fedad45a755b07da8097d5d288dbc7
       VAULT_ASSETS_SHA: 71d26e9cc4b1c27465f875879fff28c0c657688f70f797b91f174f86fed6a1eb
       VAULT_PAYLOAD_SHA: d9e7ff40d7395a109833225b5051feb1f85f6dc9f7061a07c3fa97110bc6b4a6
     steps:
@@ -140,6 +144,9 @@ jobs:
         run: exit 42
       - name: Require PITR before comparing the restored audit chain
         if: inputs.run_witness_audit_archive == true && inputs.run_witness_pitr != true
+        run: exit 42
+      - name: Require the archive campaign for a signed checkpoint
+        if: inputs.run_witness_signed_anchor == true && inputs.run_witness_audit_archive != true
         run: exit 42
       - name: Seventeen existing wheel DATA regressions
         run: python -I -B qualification/vault_reservation/test_wheel.py
@@ -260,6 +267,7 @@ jobs:
           VAULT_WITNESS_RESTORE_CLUSTER: ${{ inputs.run_witness_restore_cluster }}
           VAULT_WITNESS_PITR: ${{ inputs.run_witness_pitr }}
           VAULT_WITNESS_AUDIT_ARCHIVE: ${{ inputs.run_witness_audit_archive }}
+          VAULT_WITNESS_SIGNED_ANCHOR: ${{ inputs.run_witness_signed_anchor }}
         shell: bash
         run: |
           set -euo pipefail
@@ -284,6 +292,9 @@ jobs:
           fi
           if [[ "$VAULT_WITNESS_AUDIT_ARCHIVE" == true ]]; then
             options+=(--audit-archive)
+          fi
+          if [[ "$VAULT_WITNESS_SIGNED_ANCHOR" == true ]]; then
+            options+=(--signed-audit-anchor)
           fi
           python -I -B -S qualification/vault_runtime_installed_ci/run_witness_lab.py \
             --work "$VAULT_WORK" "${options[@]}"

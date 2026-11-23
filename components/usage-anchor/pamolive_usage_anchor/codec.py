@@ -18,6 +18,7 @@ class Error(Exception):
             "invalid_request": 400,
             "proof_refused": 403,
             "context_refused": 403,
+            "anchor_refused": 403,
             "caller_refused": 403,
             "idempotency_conflict": 409,
             "baseline_stale": 409,
