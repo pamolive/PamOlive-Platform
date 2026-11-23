@@ -1,5 +1,22 @@
 # Roadmap d’implémentation et qualification
 
+## Prérequis de livraison Debian 13.8 — 23 novembre 2026
+
+La [PR nº 41](https://github.com/pamolive/PamOlive-Platform/pull/41) valide
+sur `31d52f0` l'installation des paquets officiels Kerberos et glibc sur la
+base amd64 du produit. L'essai de compilation et de chargement compare les
+six ELF aux archives Debian. Les avis couvrent huit des 37 groupes High
+de l'ancien scan. La composition de l'image, les régressions natives et
+le nouveau scan déterminent l'état des findings du candidat suivant.
+[CI Debian 13.8](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087805069)
+
+La [PR nº 32](https://github.com/pamolive/PamOlive-Platform/pull/32) reçoit
+`b9d8044`. Ce commit actualise un numéro de ligne dans le catalogue de
+secrets. Le scan complet indépendant et les deux jobs de sécurité passent.
+La qualification de l'image reste une porte distincte.
+[CI PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087533213)
+[CI branche](https://github.com/pamolive/PamOlive-Platform/actions/runs/45087528395)
+
 ## Livraison du code de développement — 17 novembre 2026
 
 À la demande explicite du propriétaire, la capture Expat APT et ses diagnostics
