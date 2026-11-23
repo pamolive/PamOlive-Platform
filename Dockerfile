@@ -11,11 +11,11 @@ RUN test "$(dpkg --print-architecture)" = amd64 && test -s /usr/share/keyrings/d
 FROM debian-refresh-inputs AS debian-refresh-verified
 RUN --network=none python -I -B -S verify_refresh.py qualify
 
-FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS debian-runtime
+FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS debian-runtime-config
 COPY --from=debian-refresh-verified /opt/pamolive-refresh/debian.list /etc/apt/pamolive-debian.list
 COPY --from=debian-refresh-verified /opt/pamolive-refresh/debian-138-refresh.json /usr/share/pamolive/debian-refresh/debian-138-refresh.json
 COPY --from=debian-refresh-verified /opt/pamolive-refresh/verify_refresh.py /app/qualification/debian_138_refresh/verify_refresh.py
-COPY deploy/debian_refresh_inventory.py /app/deploy/debian_refresh_inventory.py
+COPY deploy/debian_refresh_inventory.py deploy/krb5_trixie_materials.py /app/deploy/
 # Keep Debian release, updates and security authenticated across product builds.
 # The version preference does not authorize a downgrade.
 RUN printf '%s\n' 'deb [arch=amd64 signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] https://deb.debian.org/debian trixie-updates main' >> /etc/apt/pamolive-debian.list \
@@ -26,11 +26,13 @@ RUN printf '%s\n' 'deb [arch=amd64 signed-by=/usr/share/keyrings/debian-archive-
     'Acquire::https::AllowRedirect "false";' 'Acquire::https::Timeout "30";' 'Acquire::Retries "1";' \
     'APT::Get::AllowUnauthenticated "false";' 'APT::Update::Error-Mode "any";' > /etc/apt/apt.conf.d/99pamolive-debian \
   && printf '%s\n' \
-    'Package: libc6 libc-bin libc6-dev libc-dev-bin' 'Pin: version 2.41-12+deb13u5' 'Pin-Priority: 999' '' \
-    'Package: libkrb5-3 libk5crypto3 libkrb5support0 libgssapi-krb5-2 libkrb5-dev krb5-multidev libgssrpc4t64 libkadm5clnt-mit12 libkadm5srv-mit12 libkdb5-10t64' \
-    'Pin: version 1.21.3-5+deb13u2' 'Pin-Priority: 999' > /etc/apt/preferences.d/pamolive-debian
+    'Package: libc6 libc-bin libc6-dev libc-dev-bin' 'Pin: version 2.41-12+deb13u5' 'Pin-Priority: 999' > /etc/apt/preferences.d/pamolive-debian
+
+FROM debian-runtime-config AS debian-runtime
 RUN --mount=from=debian-refresh-inputs,source=/opt/pamolive-apt-cache,target=/tmp/debian-refresh-archives,ro \
-  archives=/tmp/debian-refresh-archives && apt-get update \
+  printf '%s\n' 'Package: libkrb5-3 libk5crypto3 libkrb5support0 libgssapi-krb5-2 libkrb5-dev krb5-multidev libgssrpc4t64 libkadm5clnt-mit12 libkadm5srv-mit12 libkdb5-10t64' \
+    'Pin: version 1.21.3-5+deb13u2' 'Pin-Priority: 999' > /etc/apt/preferences.d/pamolive-kerberos-debian \
+  && archives=/tmp/debian-refresh-archives && apt-get update \
   && apt-get install -y --no-install-recommends --no-remove --reinstall \
     "$archives/libc6_2.41-12+deb13u5_amd64.deb" "$archives/libc-bin_2.41-12+deb13u5_amd64.deb" \
     "$archives/libkrb5-3_1.21.3-5+deb13u2_amd64.deb" "$archives/libk5crypto3_1.21.3-5+deb13u2_amd64.deb" \
@@ -41,6 +43,41 @@ RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --roo
 FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS debian-rebuild-base
 RUN test "$(dpkg --print-architecture)" = amd64 \
  && test -s /usr/share/keyrings/debian-archive-keyring.gpg
+
+FROM debian-rebuild-base AS krb5-trixie-package
+COPY --chmod=0444 deploy/krb5-trixie-backport/materials.sh deploy/krb5-trixie-backport/source.sha256 deploy/krb5-trixie-backport/test-patch.sha256 deploy/krb5-test-keyring-seccomp.patch /opt/krb5-inputs/
+RUN chmod 0755 /opt/krb5-inputs \
+ && printf '%s\n' 'deb-src [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] https://security.debian.org/debian-security trixie-security main' > /etc/apt/sources.list.d/pamolive-krb5-source.list \
+ && apt-get -o APT::Update::Error-Mode=any update \
+ && apt-get install -y --no-install-recommends --no-remove build-essential fakeroot quilt keyutils curl ca-certificates \
+ && apt-get build-dep -y --arch-only --no-install-recommends 'krb5=1.21.3-5+deb13u2' \
+ && install -d -m 0755 -o _apt /work
+WORKDIR /work
+RUN sh /opt/krb5-inputs/materials.sh acquire \
+ && chown -R 65534:65534 /work \
+ && rm -rf /var/lib/apt/lists/*
+ENV HOME=/work
+USER 65534:65534
+RUN --network=none sh /opt/krb5-inputs/materials.sh build
+
+FROM debian-runtime-config AS debian-runtime-kerberos
+COPY --chmod=0444 deploy/krb5-trixie-backport/qualification.json /app/deploy/krb5-trixie-backport/qualification.json
+COPY --chmod=0444 deploy/krb5-trixie-backport/qualification.json /usr/share/pamolive/krb5-trixie/qualification.json
+RUN --mount=from=debian-refresh-inputs,source=/opt/pamolive-apt-cache,target=/tmp/debian-refresh-archives,ro \
+  --mount=from=krb5-trixie-package,source=/work,target=/tmp/krb5-packages,ro \
+  set -eu; \
+  archives=/tmp/debian-refresh-archives; krb=/tmp/krb5-packages; version='1.21.3-5+deb13u2+pamolive1'; \
+  python -I -B -S /app/deploy/krb5_trixie_materials.py --directory "$krb"; \
+  packages='libkrb5-3 libk5crypto3 libkrb5support0 libgssapi-krb5-2 libkrb5-dev krb5-multidev libgssrpc4t64 libkadm5clnt-mit12 libkadm5srv-mit12 libkdb5-10t64'; \
+  printf '%s\n' "Package: $packages" "Pin: version $version" 'Pin-Priority: 999' '' \
+    "Package: $packages" 'Pin: version *' 'Pin-Priority: -1' > /etc/apt/preferences.d/00pamolive-kerberos-backport; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends --no-remove --reinstall \
+    "$archives/libc6_2.41-12+deb13u5_amd64.deb" "$archives/libc-bin_2.41-12+deb13u5_amd64.deb" \
+    "$krb/libkrb5-3_${version}_amd64.deb" "$krb/libk5crypto3_${version}_amd64.deb" \
+    "$krb/libkrb5support0_${version}_amd64.deb" "$krb/libgssapi-krb5-2_${version}_amd64.deb"; \
+  rm -rf /var/lib/apt/lists/*
+RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --kerberos-backport --root / --output /tmp/debian-refresh-base.json && rm /tmp/debian-refresh-base.json
 
 FROM debian-rebuild-base AS sqlite-trixie-source
 COPY deploy/sqlite-rebuild/source-apt.conf deploy/sqlite-rebuild/forky.sources deploy/sqlite-rebuild/materials.sh /opt/sqlite-inputs/
@@ -131,7 +168,7 @@ RUN --network=none install -m 0755 /python-xml-build/pyexpat.cpython-312-x86_64-
 RUN --network=none python -I -B -S /opt/expat4/abi_gate.py capture /usr/share/pamolive/expat4/after && python -I -B -S /opt/expat4/abi_gate.py compare /expat-before.json /usr/share/pamolive/expat4/after/ABI.json
 RUN --network=none python -I -B -S /opt/expat4/qualify_linux.py /expat-materials /expat-tests
 
-FROM debian-runtime AS expat-runtime
+FROM debian-runtime-kerberos AS expat-runtime
 COPY --from=expat-source-builder /expat-packages/runtime/ /tmp/expat-runtime/
 RUN --network=none dpkg --install /tmp/expat-runtime/*.deb && rm -r /tmp/expat-runtime
 COPY --from=expat-python-builder /usr/local/lib/python3.12/lib-dynload/pyexpat.cpython-312-x86_64-linux-gnu.so /usr/local/lib/python3.12/lib-dynload/
@@ -149,13 +186,17 @@ RUN --network=none find /usr/share/pamolive/expat4 -type d -exec chmod 0755 {} +
 
 FROM expat-runtime AS expat-sdk
 RUN --mount=from=debian-refresh-inputs,source=/opt/pamolive-apt-cache,target=/tmp/debian-refresh-archives,ro \
-  archives=/tmp/debian-refresh-archives && apt-get update \
-  && apt-get install -y --no-install-recommends --no-remove \
+  --mount=from=krb5-trixie-package,source=/work,target=/tmp/krb5-packages,ro \
+  set -eu; \
+  archives=/tmp/debian-refresh-archives; krb=/tmp/krb5-packages; version='1.21.3-5+deb13u2+pamolive1'; \
+  python -I -B -S /app/deploy/krb5_trixie_materials.py --directory "$krb" --sdk; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends --no-remove \
     "$archives/libc6-dev_2.41-12+deb13u5_amd64.deb" "$archives/libc-dev-bin_2.41-12+deb13u5_amd64.deb" \
-    "$archives/libkrb5-dev_1.21.3-5+deb13u2_amd64.deb" "$archives/krb5-multidev_1.21.3-5+deb13u2_amd64.deb" \
-    "$archives/libgssrpc4t64_1.21.3-5+deb13u2_amd64.deb" "$archives/libkadm5clnt-mit12_1.21.3-5+deb13u2_amd64.deb" \
-    "$archives/libkadm5srv-mit12_1.21.3-5+deb13u2_amd64.deb" "$archives/libkdb5-10t64_1.21.3-5+deb13u2_amd64.deb" \
-  && rm -rf /var/lib/apt/lists/*
+    "$krb/libkrb5-dev_${version}_amd64.deb" "$krb/krb5-multidev_${version}_amd64.deb" \
+    "$krb/libgssrpc4t64_${version}_amd64.deb" "$krb/libkadm5clnt-mit12_${version}_amd64.deb" \
+    "$krb/libkadm5srv-mit12_${version}_amd64.deb" "$krb/libkdb5-10t64_${version}_amd64.deb"; \
+  rm -rf /var/lib/apt/lists/*
 COPY --from=expat-source-builder /expat-packages/sdk/ /tmp/expat-sdk/
 RUN --network=none dpkg --install /tmp/expat-sdk/*.deb && rm -r /tmp/expat-sdk
 
@@ -171,7 +212,7 @@ RUN --mount=from=cairo-trixie-package,source=/opt/cairo-build,target=/packages,r
     "/packages/libcairo-gobject2_${cairo}_amd64.deb" "/packages/libcairo-script-interpreter2_${cairo}_amd64.deb" \
   && test "$(dpkg-query -W -f='${Version}' libcairo2-dev)" = "$cairo" \
   && rm -rf /var/lib/apt/lists/*
-RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --root / --sdk --output /tmp/debian-refresh-sdk.json && rm /tmp/debian-refresh-sdk.json
+RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --kerberos-backport --root / --sdk --output /tmp/debian-refresh-sdk.json && rm /tmp/debian-refresh-sdk.json
 COPY deploy/build-freerdp.sh /build-freerdp.sh
 RUN --network=none test "$(dpkg-query --show --showformat='${Version}' libexpat1)" = '2.10.0-1+pamolive2' && test "$(dpkg-query --show --showformat='${Version}' libexpat1-dev)" = '2.10.0-1+pamolive2'
 COPY deploy/freerdp-jansson-compat.patch /freerdp-jansson-compat.patch
@@ -183,7 +224,7 @@ RUN apt-get update && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends --no-remove libtool-bin libcairo2-dev=1.18.4-1+pamolive13u1 libpng-dev libpango1.0-dev libssh2-1-dev uuid-dev \
   && test "$(dpkg-query -W -f='${Version}' libcairo2)" = '1.18.4-1+pamolive13u1' \
   && rm -rf /var/lib/apt/lists/*
-RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --root / --sdk --output /tmp/debian-refresh-sdk.json && rm /tmp/debian-refresh-sdk.json
+RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --kerberos-backport --root / --sdk --output /tmp/debian-refresh-sdk.json && rm /tmp/debian-refresh-sdk.json
 COPY deploy/build-guacd.sh /build-guacd.sh
 COPY deploy/guacd-deny-rdp-redirection.patch /guacd-deny-rdp-redirection.patch
 COPY deploy/guacd-freerdp3-gdi-lifecycle.patch /guacd-freerdp3-gdi-lifecycle.patch
@@ -196,7 +237,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 COPY --chmod=0444 deploy/sasl-rebuild/materials.sh deploy/sasl-rebuild/package.sha256 /opt/sasl-inputs/
 RUN --network=none --mount=from=sasl-trixie-package,source=/opt/sasl-build,target=/tmp/pamolive-sasl-build,ro \
   sh /opt/sasl-inputs/materials.sh install-sdk /tmp/pamolive-sasl-build
-RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --root / --sdk --output /tmp/debian-refresh-sdk.json && rm /tmp/debian-refresh-sdk.json
+RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --kerberos-backport --root / --sdk --output /tmp/debian-refresh-sdk.json && rm /tmp/debian-refresh-sdk.json
 RUN --network=none test "$(dpkg-query --show --showformat='${Version}' libexpat1)" = '2.10.0-1+pamolive2' && test "$(dpkg-query --show --showformat='${Version}' libexpat1-dev)" = '2.10.0-1+pamolive2'
 COPY requirements-bootstrap.lock requirements-python-runtime-linux.lock requirements-python-build-tools-linux.lock requirements-python-native-sources-linux.lock requirements-python-native-test-linux.lock /tmp/
 COPY deploy/python_materials.py deploy/python-materials.linux-amd64.json /tmp/
@@ -255,7 +296,7 @@ RUN --network=none --mount=from=acl-trixie-package,source=/opt/acl-build,target=
 RUN --network=none --mount=from=sasl-trixie-package,source=/opt/sasl-build,target=/tmp/pamolive-sasl-build,ro \
   sh deploy/sasl-rebuild/materials.sh install-runtime /tmp/pamolive-sasl-build
 RUN python deploy/native_inventory.py --capture --output /opt/pamolive-native-manifest.json
-RUN --network=none python -B -m deploy.debian_refresh_inventory --root / --output /tmp/debian-refresh-runtime.json && rm /tmp/debian-refresh-runtime.json
+RUN --network=none python -B -m deploy.debian_refresh_inventory --kerberos-backport --root / --output /tmp/debian-refresh-runtime.json && rm /tmp/debian-refresh-runtime.json
 RUN python manage.py collectstatic --noinput
 USER root
 EXPOSE 8000
@@ -298,7 +339,7 @@ RUN --network=none /opt/pamolive-test/winpr-jansson-regression > /opt/pamolive-t
 FROM native-test-builder AS json-reference-test
 ARG CJSON_REFERENCE_VERSION=1.7.18-3.1+deb13u1
 RUN apt-get update && apt-get install -y --no-install-recommends libcjson-dev=${CJSON_REFERENCE_VERSION} && rm -rf /var/lib/apt/lists/*
-RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --root / --sdk --output /tmp/debian-refresh-sdk.json && rm /tmp/debian-refresh-sdk.json
+RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --kerberos-backport --root / --sdk --output /tmp/debian-refresh-sdk.json && rm /tmp/debian-refresh-sdk.json
 COPY tests/fixtures/json_backend_reference.c /tmp/json_backend_reference.c
 RUN cc -O2 -Wall -Wextra -Werror /tmp/json_backend_reference.c -o /tmp/json-backend-reference -Wl,-rpath,/opt/pamolive-freerdp/lib $(pkg-config --cflags --libs freerdp3 winpr3 jansson libcjson)
 RUN --network=none /tmp/json-backend-reference > /json-reference.jsonl && python /tmp/jansson_oracle_identity.py reference /reference-identity.json

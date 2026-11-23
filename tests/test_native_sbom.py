@@ -162,6 +162,65 @@ class NativeSbomTests(TestCase):
         self.assertEqual(len(files), 6)
         self.assertTrue(all(row["hashes"][0]["content"] == "7" * 64 for row in files))
 
+    def debian_backport_report(self):
+        from deploy import debian_refresh_inventory as inventory
+        from deploy import krb5_trixie_materials as materials
+
+        reviewed = materials.load_reviewed()
+        report = self.debian_report()
+        report["schema"] = inventory.SCHEMA_V2
+        report["kerberos_receipt_sha256"] = materials.SHA256
+        report["installed_elf_sha256"].update(reviewed["installed_elf_sha256"])
+        for row in report["packages"]:
+            if row["source"] == "krb5":
+                package = reviewed["packages"][row["package"]]
+                row.update(version=materials.VERSION, suite=inventory.KERBEROS_SUITE,
+                           archive_sha256=package["sha256"], archive_bytes=package["bytes"])
+        return report, reviewed
+
+    def test_debian_sbom_separates_the_kerberos_deb_and_github_zip_digests(self):
+        self.hashes["debian"] = "4" * 64
+        report, reviewed = self.debian_backport_report()
+        result = self.merge(image_digest_kind="image_config", debian_report=report)
+        packages = {row["name"]: row for row in result["components"]
+                    if ":debian:" in row["bom-ref"]}
+        package = packages["libkrb5-3"]
+        self.assertEqual(package["purl"],
+                         "pkg:deb/debian/libkrb5-3@1.21.3-5%2Bdeb13u2%2Bpamolive1"
+                         "?arch=amd64&distro=debian-13&upstream=krb5")
+        deb_sha = reviewed["packages"]["libkrb5-3"]["sha256"]
+        zip_sha = reviewed["qualification"]["artifact_digest"].removeprefix("sha256:")
+        self.assertEqual(package["hashes"], [{"alg": "SHA-256", "content": deb_sha}])
+        ref, = package["externalReferences"]
+        self.assertEqual(ref["url"], "https://github.com/pamolive/PamOlive-Platform/actions/runs/"
+                         "45131107539/artifacts/14798285716")
+        self.assertEqual(ref["hashes"], [{"alg": "SHA-256", "content": zip_sha}])
+        self.assertNotEqual(deb_sha, zip_sha)
+        properties = {prop["name"]: prop["value"] for prop in package["properties"]}
+        self.assertEqual(properties["pamolive:debian:receipt-sha256"],
+                         report["kerberos_receipt_sha256"])
+        self.assertEqual(properties["pamolive:debian:origin"], "pamolive-kerberos-backport")
+        self.assertEqual(properties["pamolive:debian:qualification-commit"],
+                         reviewed["qualification"]["commit"])
+
+        official = self.merge(image_digest_kind="image_config", debian_report=self.debian_report())
+        self.assertEqual(packages["libc6"],
+                         next(row for row in official["components"] if row["name"] == "libc6"))
+
+    def test_debian_sbom_rejects_unreviewed_kerberos_materials(self):
+        self.hashes["debian"] = "4" * 64
+        valid, reviewed = self.debian_backport_report()
+        path = next(iter(reviewed["installed_elf_sha256"]))
+        for field, replacement in (
+            ("kerberos_receipt_sha256", "e" * 64),
+            ("installed_elf_sha256", {**valid["installed_elf_sha256"], path: "e" * 64}),
+            ("packages", [{**row, "archive_bytes": row["archive_bytes"] + 1}
+                          if row["package"] == "libkrb5-3" else row for row in valid["packages"]]),
+        ):
+            with self.subTest(field=field), self.assertRaisesRegex(sbom.SbomError, "debian_report"):
+                self.merge(image_digest_kind="image_config",
+                           debian_report={**valid, field: replacement})
+
     def test_debian_sbom_requires_one_exact_image_and_unambiguous_package_identity(self):
         self.hashes["debian"] = "4" * 64
         report = self.debian_report()

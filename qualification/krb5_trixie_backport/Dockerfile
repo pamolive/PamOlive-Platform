@@ -1,5 +1,5 @@
 FROM python:3.12.16-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS trixie
-COPY --chmod=0444 qualification/krb5_trixie_backport/materials.sh qualification/krb5_trixie_backport/source.sha256 qualification/krb5_trixie_backport/test-patch.sha256 deploy/krb5-test-keyring-seccomp.patch /opt/krb5-inputs/
+COPY --chmod=0444 deploy/krb5-trixie-backport/materials.sh deploy/krb5-trixie-backport/source.sha256 deploy/krb5-trixie-backport/test-patch.sha256 deploy/krb5-test-keyring-seccomp.patch /opt/krb5-inputs/
 RUN test "$(dpkg --print-architecture)" = amd64 \
  && test -s /usr/share/keyrings/debian-archive-keyring.gpg \
  && chmod 0755 /opt/krb5-inputs

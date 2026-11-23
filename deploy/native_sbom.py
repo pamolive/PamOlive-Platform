@@ -319,7 +319,7 @@ def expat_components(report, image_digest, image_digest_kind):
 
 
 def debian_components(report, image_digest, image_digest_kind):
-    from deploy.debian_refresh_inventory import validate_report
+    from deploy.debian_refresh_inventory import KERBEROS_SUITE, SCHEMA_V2, validate_report
     from qualification.debian_138_refresh.verify_refresh import NATIVE_FILES, PACKAGES, archive_name
 
     require(image_digest_kind == "image_config", "debian_image_digest_kind")
@@ -328,32 +328,59 @@ def debian_components(report, image_digest, image_digest_kind):
     except ValueError as exc:
         raise SbomError("debian_report") from exc
     require(report["image_config_id"] == image_digest, "debian_image_binding")
+    qualification = None
+    if report["schema"] == SCHEMA_V2:
+        from deploy import krb5_trixie_materials
+
+        qualification = krb5_trixie_materials.load_reviewed()["qualification"]
     components, deps, roots = [], [], []
     for item in report["packages"]:
         name, version = item["package"], item["version"]
         ref = PREFIX + "debian:" + name + ":" + version
-        repo = "debian-security" if item["suite"] == "trixie-security" else "debian"
-        archive = "https://deb.debian.org/" + repo + "/" + PACKAGES[name][3] + archive_name(name)
         purl = (
             "pkg:deb/debian/" + name + "@" + quote(version, safe="")
             + "?arch=amd64&distro=debian-13&upstream=" + item["source"]
         )
-        components.append({
+        component = {
             "type": "application" if name == "libc-bin" else "library",
             "name": name,
             "version": version,
             "bom-ref": ref,
             "purl": purl,
-            "externalReferences": [{
-                "type": "distribution",
-                "url": archive,
-                "hashes": [{"alg": "SHA-256", "content": item["archive_sha256"]}],
-            }],
             "properties": [
                 {"name": "pamolive:debian:suite", "value": item["suite"]},
-                {"name": "pamolive:debian:receipt-sha256", "value": report["receipt_sha256"]},
             ],
+        }
+        archive_sha = item["archive_sha256"]
+        receipt_sha = report["receipt_sha256"]
+        reference = {"type": "distribution"}
+        if item["suite"] == KERBEROS_SUITE:
+            # The component hash is for the binary .deb. The distribution URL
+            # locates the GitHub artifact ZIP containing the qualified build.
+            component["hashes"] = [{"alg": "SHA-256", "content": archive_sha}]
+            receipt_sha = report["kerberos_receipt_sha256"]
+            archive_sha = qualification["artifact_digest"].removeprefix("sha256:")
+            reference.update(
+                url="https://github.com/pamolive/PamOlive-Platform/actions/runs/"
+                    f"{qualification['run_id']}/artifacts/{qualification['artifact_id']}",
+                comment="GitHub Actions qualification artifact ZIP",
+            )
+            component["properties"].extend([
+                {"name": "pamolive:debian:origin", "value": "pamolive-kerberos-backport"},
+                {"name": "pamolive:debian:deb-bytes", "value": str(item["archive_bytes"])},
+                {"name": "pamolive:debian:qualification-commit", "value": qualification["commit"]},
+            ])
+        else:
+            repo = "debian-security" if item["suite"] == "trixie-security" else "debian"
+            reference["url"] = (
+                "https://deb.debian.org/" + repo + "/" + PACKAGES[name][3] + archive_name(name)
+            )
+        reference["hashes"] = [{"alg": "SHA-256", "content": archive_sha}]
+        component["externalReferences"] = [reference]
+        component["properties"].append({
+            "name": "pamolive:debian:receipt-sha256", "value": receipt_sha,
         })
+        components.append(component)
         roots.append(ref)
         files = []
         for path in NATIVE_FILES.get(name, ()):
