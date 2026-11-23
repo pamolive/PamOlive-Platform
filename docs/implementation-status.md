@@ -1,5 +1,23 @@
 # État réel de l’implémentation
 
+## Scan intégré et qualification du CLI du témoin — 23 novembre 2026
+
+Les deux CI de `b588ae0` franchissent le build et les validations qui
+précèdent le scan Grype. L'image compte 31 groupes bloquants, contre 43 sur
+`a26337c`. La comparaison des empreintes retire exactement six CVE Kerberos
+de DSA-6650-1, chacune signalée deux fois, et n'ajoute aucun groupe. Deux
+groupes Kerberos restent ouverts pour CVE-2026-107778. OpenSSL reste la plus
+grosse famille avec huit groupes. L'ADR-041 prépare un correctif Trixie pour
+Kerberos. L'image intégrée reste en attente d'un verdict vert.
+[CI du candidat intégré](https://github.com/pamolive/PamOlive-Platform/actions/runs/45126161877) ·
+[ADR-041](adr-041-kerberos-trixie-backport.md)
+
+Sur `e2b111f`, la campagne du CLI installé passe 143 tests sans test ignoré.
+Elle valide le commissionnement, deux propositions concurrentes, le réessai
+exact et la lecture de deux checkpoints distincts après la reprise PostgreSQL.
+Les trois archives GitHub correspondent au commit et au document transféré.
+[CI du CLI](https://github.com/pamolive/PamOlive-Platform/actions/runs/45129724274)
+
 ## Garde atomique du témoin et image Cairo — 23 novembre 2026
 
 Sur `eda158e`, les 136 tests installés du témoin passent sans test ignoré.
