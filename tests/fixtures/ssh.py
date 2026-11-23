@@ -2,6 +2,9 @@
 
 import asyncio
 import secrets
+import threading
+from concurrent.futures import Future
+from contextlib import suppress
 
 import asyncssh
 
@@ -66,6 +69,64 @@ class SSHFixture:
             self.echoed.set()
         while await process.stdin.read(4096):
             pass
+
+
+class ThreadedSSHFixture:
+    """Own the SSH peer from a synchronous browser case on a separate loop."""
+
+    def __init__(self):
+        self._started = Future()
+        self._worker = threading.Thread(target=self._run, name="pamolive-test-ssh", daemon=True)
+        self._error = None
+
+    def __enter__(self):
+        self._worker.start()
+        try:
+            self.peer = self._started.result(timeout=5)
+        except BaseException:
+            self.close()
+            raise
+        return self
+
+    def _run(self):
+        try:
+            asyncio.run(self._serve())
+        except BaseException as error:
+            self._error = error
+            if not self._started.done():
+                self._started.set_exception(error)
+
+    async def _serve(self):
+        self._loop = asyncio.get_running_loop()
+        self._stop = asyncio.Event()
+        async with SSHFixture() as peer:
+            self._started.set_result(peer)
+            await self._stop.wait()
+
+    def wait(self, signal, timeout=8):
+        event = {"opened": self.peer.opened, "echoed": self.peer.echoed, "lost": self.peer.lost}[
+            signal
+        ]
+        if not self._worker.is_alive():
+            raise RuntimeError("Test SSH peer already stopped")
+        pending = asyncio.run_coroutine_threadsafe(event.wait(), self._loop)
+        try:
+            pending.result(timeout)
+        finally:
+            pending.cancel()
+
+    def close(self):
+        if self._worker.is_alive() and hasattr(self, "_stop"):
+            with suppress(RuntimeError):
+                self._loop.call_soon_threadsafe(self._stop.set)
+        self._worker.join(6)
+        if self._worker.is_alive():
+            raise RuntimeError("Test SSH peer did not shut down")
+        if self._error is not None and self._started.done() and not self._started.exception():
+            raise RuntimeError("Test SSH peer failed while running") from self._error
+
+    def __exit__(self, *_):
+        self.close()
 
 
 class _Peer(asyncssh.SSHServer):

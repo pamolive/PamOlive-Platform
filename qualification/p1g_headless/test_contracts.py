@@ -4,6 +4,7 @@ import ast
 import hashlib
 import json
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -29,6 +30,21 @@ def environment():
 
 
 class Contracts(unittest.TestCase):
+    def test_native_socket_matches_one_relay_path_on_the_exact_lab_origin(self):
+        pattern = lab.relay_socket_pattern("https://pam.example.test:15443")
+        route = "wss://pam.example.test:15443/ws/pam/01234567-1234-1234-1234-0123456789ab/"
+        self.assertIsNotNone(re.fullmatch(pattern, route))
+        for url in (
+            route.replace("wss:", "ws:"), route.replace(":15443", ":15444"),
+            route.replace("pam.example.test", "pam.example.test.other.invalid"),
+            route.replace("/ws/pam/", "/ws/other/"), route + "?extra=1", route[:-1],
+        ):
+            self.assertIsNone(re.fullmatch(pattern, url))
+        for origin in ("https://other.invalid:15443", "http://pam.example.test:15443",
+                       "https://pam.example.test:65536", "https://pam.example.test:15443/"):
+            with self.assertRaisesRegex(ValueError, "native_browser_origin"):
+                lab.relay_socket_pattern(origin)
+
     def test_chrome_refusal_codes_are_exact_closed_and_phase_exclusive(self):
         class PrivateValueError(ValueError):
             def __str__(self):

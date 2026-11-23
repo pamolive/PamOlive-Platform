@@ -74,3 +74,6 @@ class TLSASGIServer:
 
     def __exit__(self, *_):
         self.close()
+
+    def is_alive(self):
+        return self._thread is not None and self._thread.is_alive()

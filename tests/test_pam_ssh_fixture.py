@@ -1,11 +1,11 @@
 """Loopback integration tests for the shared native SSH fixture."""
 
 import asyncio
-from unittest import IsolatedAsyncioTestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 
 import asyncssh
 
-from .fixtures.ssh import INPUT, REPLY, WELCOME, SSHFixture
+from .fixtures.ssh import INPUT, REPLY, WELCOME, SSHFixture, ThreadedSSHFixture
 
 
 def connect(peer, **authentication):
@@ -60,3 +60,21 @@ class SSHFixtureTests(IsolatedAsyncioTestCase):
                 self.assertTrue(peer.opened.is_set())
             await client.wait_closed()
             self.assertFalse(peer.lost.is_set())
+
+
+class ThreadedSSHFixtureTests(TestCase):
+    def test_sync_driver_observes_real_open_round_trip_and_close(self):
+        async def terminal(peer):
+            async with asyncio.timeout(6):
+                observed = await asyncssh.get_server_host_key(peer.host, peer.port, config=None)
+                self.assertEqual(observed.export_public_key().decode(), peer.host_key)
+                async with connect(peer, password=peer.password) as client:
+                    process = await client.create_process()
+                    self.assertEqual((await process.stdout.readline()).strip(), WELCOME)
+                    process.stdin.write(INPUT + "\n")
+                    self.assertEqual((await process.stdout.readline()).strip(), REPLY)
+
+        with ThreadedSSHFixture() as fixture:
+            asyncio.run(terminal(fixture.peer))
+            for event in ("opened", "echoed", "lost"):
+                fixture.wait(event, timeout=2)

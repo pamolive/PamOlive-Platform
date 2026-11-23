@@ -15,11 +15,19 @@ HOST = "pam.example.test"
 BRANCH = "agent/p1-g-headless"
 BOUNDED_SHA = "72b778ad6e441744e8bd9ac84ba7f47b1f6b577b7885a2e0daf3b4584cc0150a"
 SDK_VERSION = "1.65.2"
+RELAY_PATH = r"/ws/pam/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})/"
 
 
 def need(value, code):
     if not value:
         raise ValueError(code)
+
+
+def relay_socket_pattern(origin):
+    """Return the single WSS route grammar for the synthetic lab origin."""
+    match = re.fullmatch(r"https://" + re.escape(HOST) + r":([1-9][0-9]{0,4})", origin)
+    need(match and int(match[1]) <= 65535, "native_browser_origin")
+    return re.escape("wss://" + origin.removeprefix("https://")) + RELAY_PATH
 
 
 def guard(env, *, platform=sys.platform, uid=None):
@@ -82,7 +90,7 @@ def same_origin(url, origin):
         return False
 
 
-def source_binding(repo, receipt, revision):
+def source_binding(repo, receipt, revision, *, additional=()):
     reader = bounded(repo)
     raw = reader.read_regular(receipt, 2 * 1024**2)
     value = json.loads(raw)
@@ -100,6 +108,9 @@ def source_binding(repo, receipt, revision):
     )
     pins = json.loads(pin_raw)
     need(isinstance(pins, dict) and len(pins) == 24, "UI_input_pin_budget")
+    need(len(additional) <= 24 and not set(additional).intersection(pins), "native_input_budget")
+    for name in additional:
+        pins[name] = value["files"].get(name)
     result = {}
     for name, expected in pins.items():
         path = Path(name)

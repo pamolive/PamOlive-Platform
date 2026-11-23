@@ -4,15 +4,11 @@ import asyncio
 import json
 import os
 import re
-import signal
-import socket
 import ssl
-import subprocess
 import tempfile
 import threading
 import time
 from datetime import timedelta
-from pathlib import Path
 from unittest import skipUnless
 from unittest.mock import patch
 
@@ -53,12 +49,12 @@ from platform_modules.pam.recordings import issue_recording_grant, recording_pag
 from platform_modules.pam.trust import launch_payload
 
 from .fixtures.asgi import TLSASGIServer
+from .fixtures.guacd import BINARY, guacd_fixture
 from .fixtures.oidc import write_loopback_tls_files
 from .fixtures.ssh import INPUT, SSHFixture
 from .pam_trust_fixtures import TrustFixture
 from .person_fixtures import bind_person
 
-BINARY = Path("/opt/pamolive-guac/sbin/guacd")
 STARTUP_STATUSES = {"pending", "connecting", "active", "ended", "failed", "expired"}
 STARTUP_REASONS = {
     "authority_lost",
@@ -73,12 +69,6 @@ STARTUP_REASONS = {
     "ssh_identity_probe_failed",
     "stop_requested",
 }
-
-
-def unused_port():
-    with socket.socket() as reservation:
-        reservation.bind(("127.0.0.1", 0))
-        return reservation.getsockname()[1]
 
 
 async def ssh_open_failure(opened, display, *, timeout=10):
@@ -105,33 +95,7 @@ class RelayHarness(TransactionTestCase):
         self.assertTrue(BINARY.is_file(), "PAM_REQUIRE_NATIVE cannot silently skip this gate")
         self.directory = tempfile.TemporaryDirectory(prefix="pamolive-relay-e2e-")
         self.addCleanup(self.directory.cleanup)
-        self.log = tempfile.TemporaryFile()
-        self.addCleanup(self.log.close)
-        self.native_port = unused_port()
-        self.native = subprocess.Popen(
-            [
-                str(BINARY),
-                "-f",
-                "-b",
-                "127.0.0.1",
-                "-l",
-                str(self.native_port),
-                "-p",
-                self.directory.name + "/guacd.pid",
-                "-L",
-                "error",
-            ],
-            env={
-                "PATH": "/usr/local/bin:/usr/bin:/bin",
-                "LANG": "C.UTF-8",
-                "LD_LIBRARY_PATH": "/opt/pamolive-freerdp/lib:/opt/pamolive-guac/lib",
-                "HOME": self.directory.name,
-            },
-            stdout=self.log,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-        self.addCleanup(self.stop_native)
+        self.native_port, self.native = self.enterContext(guacd_fixture())
         self.overrides = override_settings(
             ALLOWED_HOSTS=["127.0.0.1", "testserver"],
             PAM_PUBLIC_ORIGIN="",
@@ -143,16 +107,6 @@ class RelayHarness(TransactionTestCase):
         certificate, key = write_loopback_tls_files(self.directory.name)
         self.web = self.enterContext(TLSASGIServer(certificate, key))
         self.web_tls = ssl.create_default_context(cafile=str(certificate))
-        deadline = time.monotonic() + 10
-        while time.monotonic() < deadline:
-            try:
-                with socket.create_connection(("127.0.0.1", self.native_port), timeout=0.1):
-                    break
-            except OSError:
-                pass
-            time.sleep(0.02)
-        else:
-            self.fail("Native/ASGI fixture did not start")
         self.org = Organization.objects.create(key="relay", name="Relay test organization")
         self.actor = get_user_model().objects.create_user("operator", password="test-only-password")
         self.reviewer = get_user_model().objects.create_superuser("reviewer", password=None)
@@ -200,17 +154,6 @@ class RelayHarness(TransactionTestCase):
         session["mfa_verified_at"] = time.time()
         session.save()
         self.session_key = session.session_key
-
-    def stop_native(self):
-        try:
-            os.killpg(self.native.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-        try:
-            self.native.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            os.killpg(self.native.pid, signal.SIGKILL)
-            self.native.wait(timeout=5)
 
     def connect_relay(self, path):
         return connect(
