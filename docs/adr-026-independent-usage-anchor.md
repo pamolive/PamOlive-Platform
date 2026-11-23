@@ -236,6 +236,9 @@ de tête. Conserver ce tuple dans un registre authentifié avec intégrité et
 contrôle d'accès. La preuve couvre la chaîne conservée jusqu'au point d'ancrage.
 Son origine et l'intégrité de la source avant capture relèvent de l'autorité
 qui conserve le point.
+Chaque page demande une tête égale au point d'ancrage. Si une révocation
+administrative avance cette tête après la fermeture, lire l'instantané scellé
+correspondant ou faire authentifier un nouveau point et repartir de la genèse.
 
 L'opérateur utilise `assembly.audit_archive_page` avec le slot épinglé, la
 connexion observateur et le point d'ancrage indépendant. Son premier appel
