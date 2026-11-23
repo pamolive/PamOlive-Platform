@@ -135,6 +135,21 @@ class SandboxProbeTests(unittest.TestCase):
             "browser_measurement_refused",
         )
 
+    def test_invalid_isolation_produces_refusal_without_loading_browser(self):
+        with (
+            patch.object(
+                probe,
+                "isolated_worker_status",
+                side_effect=ValueError("sandbox_probe_network_namespace"),
+            ),
+            patch.object(probe, "browser_probe") as browser,
+        ):
+            refusal = probe.worker(Path("synthetic"), 35)
+        browser.assert_not_called()
+        self.assertEqual(refusal["code"], "sandbox_probe_network_namespace")
+        self.assertTrue(probe.valid_worker_result(refusal))
+        self.assertFalse(probe.valid_worker_result({**refusal, "ip_network_isolated": True}))
+
     def test_shared_browser_observer_refuses_suid_before_renderer_proof_in_probe(self):
         browser = Mock()
         context = browser.new_context.return_value
