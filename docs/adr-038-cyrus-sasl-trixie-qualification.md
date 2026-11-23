@@ -24,6 +24,8 @@ Les programmes du SDK et les modules facultatifs restent dans le builder.
 
 Le témoin et le candidat vérifient l'identité dpkg du couple, les SONAME,
 les exports dynamiques des deux ELF et la chaîne libpq, libldap, libsasl2.
+La comparaison conserve le type et la version des fonctions exportées
+ainsi que la taille des symboles de données.
 Les trois bibliothèques clientes sont initialisées sur des valeurs synthétiques
 hors réseau.
 Le laboratoire conserve les deux paquets, le buildinfo et les empreintes

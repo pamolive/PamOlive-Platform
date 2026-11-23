@@ -40,7 +40,7 @@ USER 65534:65534
 WORKDIR /opt/sasl-build/tree
 ENV HOME=/opt/sasl-build LC_ALL=C.UTF-8 DEB_BUILD_OPTIONS=parallel=2
 RUN --network=none dpkg-checkbuilddeps -B -P nodoc \
- && dpkg-buildpackage -B -P nodoc -us -uc -j2
+ && dpkg-buildpackage -B --build-profiles=nodoc -us -uc -j2
 
 FROM trixie AS runtime
 RUN apt-get update \

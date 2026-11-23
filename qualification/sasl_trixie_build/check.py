@@ -51,14 +51,17 @@ def exports(path):
         fields = line.split()
         if len(fields) < 8 or not re.fullmatch(r"\d+:", fields[0]):
             continue
-        _, _, _, kind, binding, visibility, index, name = fields[:8]
-        if (
-            kind in {"FUNC", "IFUNC"}
-            and binding in {"GLOBAL", "WEAK"}
+        _, _, size, kind, binding, visibility, index, name = fields[:8]
+        if not (
+            binding in {"GLOBAL", "WEAK"}
             and visibility in {"DEFAULT", "PROTECTED"}
-            and index != "UND"
+            and index not in {"UND", "ABS"}
         ):
-            names.add(name)
+            continue
+        if kind in {"FUNC", "IFUNC"}:
+            names.add(f"{kind} {name}")
+        elif kind == "OBJECT":
+            names.add(f"{kind} {name} {int(size, 0)}")
     require(0 < len(names) <= 256, "export_count")
     return sorted(names)
 
