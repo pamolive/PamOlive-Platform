@@ -34,3 +34,28 @@ Les outils ACL du runner LDAP restent disponibles pour la qualification.
 
 Le laboratoire laisse l'image de livraison et le seuil du scan inchangés.
 Il n'établit aucune correction automatique des anciens appels ACL.
+
+## Migration des appels GNU tar
+
+L'inventaire de l'image amd64 relève cinq binaires consommateurs des
+anciennes fonctions dans trois paquets. Le premier lot porte sur GNU tar
+Trixie `1.35+dfsg-3.1`. Il utilise les descripteurs déjà détenus par tar
+et, pour les métadonnées différées, ouvre chaque composant de chemin depuis
+le répertoire sélectionné avec `O_NOFOLLOW`. Avant de restaurer les ACL d'un
+répertoire, il vérifie son type et son identité relevée lors de la planification.
+La lecture conserve la sélection de chemins de tar, y compris `--dereference`,
+et vérifie le type et l'inode avant de lire les ACL.
+[Inventaire de l'image de référence](https://github.com/pamolive/PamOlive-Platform/actions/runs/45223383511/artifacts/14854463532)
+
+Le laboratoire vérifie les trois composants de la source Debian et les
+empreintes des fichiers avant et après le correctif. La construction native
+repose sur les mêmes binaires libacl que la qualification de la bibliothèque.
+Le reçu relie l'ELF exécuté au paquet et au buildinfo. Le test synthétique
+couvre la restauration des ACL d'accès et par défaut, la suppression des ACL
+par défaut héritées et la lecture de fichiers vides et non vides par les chemins
+prévus par tar. La CI exige les quatre variantes `*_at` et vérifie l'absence
+des imports historiques ciblés. Ce contrôle porte sur les appels POSIX ACL de
+tar sous `--acls`. Le traitement général des attributs étendus reste séparé.
+
+Une décision pour l'image de livraison exige encore la qualification de
+`cp`, `install`, `mv` et `sed` et le contrôle des binaires dans l'image exacte.

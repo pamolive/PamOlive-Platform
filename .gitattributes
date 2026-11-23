@@ -4,6 +4,7 @@
 *.gz binary
 *.sh text eol=lf
 *.patch text eol=lf
+qualification/acl_trixie_build/tar-descriptor.patch whitespace=-blank-at-eol,-space-before-tab
 Dockerfile text eol=lf
 # Preserve mandatory unified-diff context spaces and upstream tab indentation.
 deploy/freerdp-jansson-compat.patch whitespace=-blank-at-eol,-space-before-tab
