@@ -225,7 +225,6 @@ def browser_probe(work):
     support.need(
         support.playwright_node_pin(driver) == driver_before,
         "sandbox_probe_driver_changed",
-        "playwright_driver_identity",
     )
     return {
         "state": "SANDBOX_OBSERVED",

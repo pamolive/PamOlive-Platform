@@ -1,5 +1,8 @@
 """Source and synthetic contracts for the relocated sandbox measurement."""
 
+import os
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -41,6 +44,35 @@ SUCCESS = {
 
 
 class SandboxProbeTests(unittest.TestCase):
+    def test_successful_launch_rechecks_both_tools_and_returns_renderer_evidence(self):
+        browser = Mock(version=probe.BROWSER_VERSION)
+        playwright = Mock()
+        playwright.chromium.launch.return_value = browser
+        manager = Mock()
+        manager.__enter__ = Mock(return_value=playwright)
+        manager.__exit__ = Mock(return_value=False)
+        sync_api = SimpleNamespace(sync_playwright=lambda: manager)
+        binary_pin = {"sha256": probe.CHROME_SHA, "bytes": probe.CHROME_BYTES}
+        distribution = Mock(version=lab_support.SDK_VERSION)
+        distribution.locate_file.return_value = Path("driver/node")
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.dict(sys.modules, {"playwright.sync_api": sync_api}),
+            patch.dict(os.environ, {}, clear=True),
+            patch.object(probe.importlib.metadata, "distribution", return_value=distribution),
+            patch.object(lab_support, "tool_pin", return_value=binary_pin) as binary,
+            patch.object(lab_support, "playwright_node_pin", return_value={"bytes": 1}) as node,
+            patch.object(lab_support, "observe_browser_sandbox",
+                         return_value=SUCCESS["renderer_evidence"]),
+        ):
+            observed = probe.browser_probe(Path(directory))
+        browser.close.assert_called_once_with()
+        self.assertEqual(binary.call_count, 2)
+        self.assertEqual(node.call_count, 2)
+        self.assertTrue(probe.valid_worker_result({
+            **observed, "namespace_control": SUCCESS["namespace_control"],
+        }))
+
     def test_scope_refuses_other_runners_forks_and_branches(self):
         self.assertEqual(
             probe.run_identity(ENV),
