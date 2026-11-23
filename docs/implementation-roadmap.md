@@ -1,5 +1,17 @@
 # Roadmap d’implémentation et qualification
 
+## Prochaines qualifications P1-F et P1-G
+
+La CI de livraison doit confirmer les conditions GCC et Perl sur son
+propre TAR, puis traiter les groupes High encore bloquants. Le scan
+de la PR #72 fixe le dernier décompte entièrement vérifié à 10.
+Pour P1-G, la première étape après le staging 158 est une mesure
+isolée du sandbox sous un compte non-root sur GitHub Actions,
+avec un binaire et un chemin épinglés. Le parcours UI est soumis
+à sa qualification complète avant publication.
+[Scan de référence](https://github.com/pamolive/PamOlive-Platform/actions/runs/45163015819/artifacts/14818645061) ·
+[Staging P1-G](https://github.com/pamolive/PamOlive-Platform/pull/74)
+
 ## Image intégrée — qualification des dépendances Trixie
 
 Les deux scans de la PR #68 ont observé 39 groupes High. Seize sont

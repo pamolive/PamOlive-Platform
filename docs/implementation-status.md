@@ -1,5 +1,26 @@
 # État réel de l’implémentation
 
+## Vérifications de livraison — 23 novembre 2026
+
+Les deux scans de la PR #72 au commit `bdfacd7` donnent 43 groupes
+High, 33 décisions vérifiées et 10 groupes bloquants. La PR #75 au
+commit `4d973bf` lie une décision GCC à l'ELF Debian vérifié. Le
+candidat Perl ajoute deux contrôles d'absence de modules, liés aux
+paquets officiels et exécutés sur chaque TAR par le gate. Les 207
+tests locaux du candidat Perl passent. Les trois décisions
+supplémentaires requièrent chacune un résultat sur l'image exacte.
+[Scan #72](https://github.com/pamolive/PamOlive-Platform/actions/runs/45163015819/artifacts/14818645061) ·
+[PR GCC #75](https://github.com/pamolive/PamOlive-Platform/pull/75) ·
+[Conditions de qualification](image-scan-policy.md)
+
+P1-G a validé la signature, les contrôles négatifs et le nettoyage
+du paquet Chrome 158 dans les deux CI de la PR #74 au commit
+`8b22b0f`. La mesure du sandbox et le parcours UI sont deux
+qualifications encore ouvertes. Les reçus de staging proviennent
+de runners GitHub isolés. Le NAS reste en attente.
+[Reçu PR P1-G](https://github.com/pamolive/PamOlive-Platform/actions/runs/45198963823/artifacts/14831685472) ·
+[Reçu push P1-G](https://github.com/pamolive/PamOlive-Platform/actions/runs/45198951396/artifacts/14830137517)
+
 ## Contrôles d'image SQLite et Expat — 23 novembre 2026
 
 Les deux CI de la PR #68 ont terminé les essais PostgreSQL, PAM,

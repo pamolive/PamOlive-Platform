@@ -4215,6 +4215,104 @@
         "https://github.com/gcc-mirror/gcc/commit/200183d4ab5d57575f3dfebc6af3baf649910b9e",
         "https://packages.debian.org/trixie/amd64/libstdc%2B%2B6/download"
       ]
+    },
+    {
+      "analysis": "The reviewed Debian .deb places Pod::Text in perl-modules-5.40. The exact perl-base package omits it. The image gate requires the matching installed perl-base identity, refuses the companion package and other known suppliers, and checks every image layer for the module filenames, including links and whiteouts. The High finding remains visible in Grype.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "pruned_debian_runtime",
+          "source": "perl"
+        }
+      ],
+      "disposition": "code_not_present",
+      "expires": "2026-12-07T15:03:23+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-82560",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "perl-base",
+            "purl": "pkg:deb/debian/perl-base@5.40.1-6%2Bdeb13u1?arch=amd64&distro=debian-13.8&upstream=perl",
+            "type": "deb",
+            "version": "5.40.1-6+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "perl",
+        "vulnerability_id": "CVE-2026-82560"
+      },
+      "fingerprint": "sha256:bbf06d3cdb7ddc6648484d4cc23a9852e8e60a111e5d7b83afd77605aa3107bf",
+      "local_evidence": [
+        {
+          "path": ".github/qualification/evidence/perl-base-trixie-module-split.v1.json",
+          "sha256": "a13f83a74d51eba4c220b32d0a1005d39b8852f89967d3bacfa0faacbe8d45f4"
+        }
+      ],
+      "reviewed_at": "2026-11-23T15:03:23+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/checkpoint_store_review"
+      ],
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-82560",
+        "https://github.com/rra/podlators/commit/70510174f69eb54aa6d617bde4e1402cd9b7c61f"
+      ]
+    },
+    {
+      "analysis": "The reviewed Debian .deb places Archive::Tar in perl-modules-5.40. The exact perl-base package omits it. The image gate requires the matching installed perl-base identity, refuses the companion package and other known suppliers, and checks every image layer for the module filenames, including links and whiteouts. The High finding remains visible in Grype.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "pruned_debian_runtime",
+          "source": "perl"
+        }
+      ],
+      "disposition": "code_not_present",
+      "expires": "2026-12-07T15:03:23+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-9538",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "perl-base",
+            "purl": "pkg:deb/debian/perl-base@5.40.1-6%2Bdeb13u1?arch=amd64&distro=debian-13.8&upstream=perl",
+            "type": "deb",
+            "version": "5.40.1-6+deb13u1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "perl",
+        "vulnerability_id": "CVE-2026-9538"
+      },
+      "fingerprint": "sha256:618fea76df86267f5b3080857e29f34e22c15cf04e4cfc4c193af229947c4fe8",
+      "local_evidence": [
+        {
+          "path": ".github/qualification/evidence/perl-base-trixie-module-split.v1.json",
+          "sha256": "a13f83a74d51eba4c220b32d0a1005d39b8852f89967d3bacfa0faacbe8d45f4"
+        }
+      ],
+      "reviewed_at": "2026-11-23T15:03:23+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/checkpoint_store_review"
+      ],
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-9538",
+        "https://github.com/jib/archive-tar-new/commit/f9af01426038e29d9578825a0cd3626946ab08c7"
+      ]
     }
   ],
   "positive_control": {

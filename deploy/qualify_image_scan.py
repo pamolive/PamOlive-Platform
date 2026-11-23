@@ -126,7 +126,33 @@ EXPAT_PROOFS = {
         "7a0f98e4c36ce3c7a9d3c21493986236a3db72e6aa7a9d281e781ee025e2e3a1",
 }
 EXPAT_CONDITION = {"kind": "expat_rebuild", "sha256": EXPAT_PROOFS[EXPAT_MATERIALS]}
+PERL_BASE_PROOFS = {
+    ".github/qualification/evidence/perl-base-trixie-module-split.v1.json":
+        "a13f83a74d51eba4c220b32d0a1005d39b8852f89967d3bacfa0faacbe8d45f4",
+}
 PRUNED_RUNTIME = {
+    "CVE-2026-82560": {
+        "source": "perl",
+        "version": "5.40.1-6+deb13u1",
+        "packages": ("perl-base",),
+        "additional_package_globs": ("perl", "perl-modules-*", "libperl*", "libpod-lators-perl"),
+        "disposition": "code_not_present",
+        "vendor": "https://github.com/rra/podlators/commit/70510174f69eb54aa6d617bde4e1402cd9b7c61f",
+        "proofs": PERL_BASE_PROOFS,
+        "forbidden": ("Text.pm", "Text.pmc"),
+        "providers": (),
+    },
+    "CVE-2026-9538": {
+        "source": "perl",
+        "version": "5.40.1-6+deb13u1",
+        "packages": ("perl-base",),
+        "additional_package_globs": ("perl", "perl-modules-*", "libperl*", "libarchive-tar-perl"),
+        "disposition": "code_not_present",
+        "vendor": "https://github.com/jib/archive-tar-new/commit/f9af01426038e29d9578825a0cd3626946ab08c7",
+        "proofs": PERL_BASE_PROOFS,
+        "forbidden": ("Tar.pm", "Tar.pmc"),
+        "providers": (),
+    },
     "CVE-2026-54370": {
         "source": "acl",
         "version": "2.4.0-1~pamolive13u1",
