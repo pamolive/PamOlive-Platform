@@ -1,0 +1,37 @@
+name: P1-G hosted runner canonical Chrome preflight
+on:
+  push:
+    branches: [agent/p1g-chrome-canonical-preflight]
+permissions:
+  contents: read
+jobs:
+  canonical-preflight:
+    if: github.repository == 'pamolive/PamOlive-Platform'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Verify measurement contracts
+        run: >-
+          python -B -m unittest
+          qualification.p1g_headless.test_chrome_canonical_preflight
+          qualification.p1g_headless.test_chrome_sandbox_probe
+      - name: Check the hosted installation path and exact executable pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python -I -B qualification/p1g_headless/chrome_canonical_preflight.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: p1g-canonical-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pamolive-canonical-${{ github.run_id }}-${{ github.run_attempt }}.json
+          if-no-files-found: error
+          retention-days: 7
