@@ -558,6 +558,7 @@ def run_cases(
     audit_archive=False,
     signed_anchor=False,
     anchor_store=False,
+    anchor_handoff=False,
 ):
     from cryptography.hazmat.primitives import serialization
     from pamolive_usage_anchor import codec
@@ -810,6 +811,11 @@ def run_cases(
                         report["audit_archive"] = check_restored_archive(
                             fixture.slot, checkpoint, factories, snapshot, advance
                         )
+                        if anchor_handoff:
+                            raw, public, pin, _ = signed_material
+                            advance("anchor_store_export")
+                            publish("anchor-handoff.json", raw)
+                            publish("anchor-reference", f"{public.hex()}\n{pin}\n".encode("ascii"))
     return report
 
 
@@ -826,6 +832,7 @@ def main():
     parser.add_argument("--audit-archive", action="store_true")
     parser.add_argument("--signed-audit-anchor", action="store_true")
     parser.add_argument("--audit-anchor-store", action="store_true")
+    parser.add_argument("--audit-anchor-handoff", action="store_true")
     args = parser.parse_args()
     phase = "boundary"
 
@@ -841,6 +848,7 @@ def main():
         require(not args.audit_archive or args.restore_cluster)
         require(not args.signed_audit_anchor or args.audit_archive)
         require(not args.audit_anchor_store or args.signed_audit_anchor)
+        require(not args.audit_anchor_handoff or args.audit_anchor_store)
         os.environ.clear()
         os.environ.update(LANG="C.UTF-8", LC_ALL="C.UTF-8", PSYCOPG_IMPL="c")
         require(
@@ -886,6 +894,7 @@ def main():
             audit_archive=args.audit_archive,
             signed_anchor=args.signed_audit_anchor,
             anchor_store=args.audit_anchor_store,
+            anchor_handoff=args.audit_anchor_handoff,
         )
         publish("public.json", encode(report))
         phase = "acknowledge"

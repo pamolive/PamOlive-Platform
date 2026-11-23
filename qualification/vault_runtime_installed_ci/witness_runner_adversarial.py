@@ -2,14 +2,17 @@
 
 import errno
 import json
+import os
 import sys
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run_witness_lab as runner  # noqa: E402
+import witness_anchor_handoff as handoff  # noqa: E402
 from lab import witness_driver  # noqa: E402
 
 RUN = "0123456789abcdef"
@@ -454,6 +457,57 @@ class OrchestrationTests(unittest.TestCase):
                     "tls_no_client_control_after",
                 ],
             )
+
+
+class AnchorHandoffTests(unittest.TestCase):
+    def setUp(self):
+        self.work = Path(self.enterContext(TemporaryDirectory(prefix="w01-handoff-"))).resolve()
+        self.outputs = self.work / "outputs"
+        self.enterContext(patch.dict(os.environ, {"GITHUB_OUTPUT": str(self.outputs)}))
+        self.boot = self.enterContext(
+            patch.object(handoff, "boot_fingerprint", return_value="a" * 64)
+        )
+        self.raw = b"synthetic handoff fixture"
+        self.pin = handoff.sha(self.raw)
+        self.public = "b" * 64
+        self.report = {
+            "schema": "pamolive.witness-installed-pitr-anchor-store/1",
+            "ok": True,
+            "cleaned_up": True,
+            "authority": False,
+            "native": {"anchor_store": {"restore_copy_exact": True}},
+        }
+        self.report_path = self.work / "witness-lab-public.json"
+        self.report_path.write_bytes(json.dumps(self.report).encode("ascii"))
+        (self.work / handoff.NAME).write_bytes(self.raw)
+        (self.work / "anchor-reference").write_bytes(f"{self.public}\n{self.pin}\n".encode("ascii"))
+
+    def test_handoff_exposes_only_fixed_references_and_the_boot_fingerprint(self):
+        handoff.publish(self.work)
+        self.assertEqual(
+            self.outputs.read_text(encoding="ascii"),
+            f"anchor_sha={self.pin}\npublic_hex={self.public}\nboot_sha={'a' * 64}\n",
+        )
+
+    def test_handoff_refuses_an_unfinished_or_unclean_producer(self):
+        for field in ("ok", "cleaned_up"):
+            with self.subTest(field=field):
+                self.report_path.write_bytes(json.dumps({**self.report, field: False}).encode())
+                with self.assertRaises(ValueError):
+                    handoff.publish(self.work)
+                self.assertFalse(self.outputs.exists())
+        self.boot.assert_not_called()
+
+    def test_handoff_refuses_modified_bytes_or_extra_reference_lines(self):
+        (self.work / handoff.NAME).write_bytes(self.raw + b"modified")
+        with self.assertRaises(ValueError):
+            handoff.publish(self.work)
+        (self.work / handoff.NAME).write_bytes(self.raw)
+        (self.work / "anchor-reference").write_bytes(f"{self.public}\n{self.pin}\n\n".encode())
+        with self.assertRaises(ValueError):
+            handoff.publish(self.work)
+        self.assertFalse(self.outputs.exists())
+        self.boot.assert_not_called()
 
 
 if __name__ == "__main__":
