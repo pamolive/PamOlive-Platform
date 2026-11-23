@@ -36,7 +36,11 @@ Le candidat produit reconstruit le même paquet et exige son SHA-256 avant
 installation hors réseau depuis un montage en lecture seule. Il laisse les
 utilitaires et en-têtes ACL hors de l'image. Après réimportation de l'image
 exacte, la CI inspecte le système de fichiers d'un conteneur jamais démarré.
-Elle relie l'identité dpkg, le lien et le SHA-256 ELF au config ID de l'image
+La création utilise l'identifiant Docker Engine obtenu après rechargement
+et vérification de l'archive. Le moteur containerd peut référencer un
+descripteur OCI, tandis que le reçu utilise le SHA-256 de la configuration
+archivée, lié au descripteur lors de la vérification de l'archive.
+L'inventaire relie l'identité dpkg, le lien et le SHA-256 ELF au config ID de l'image
 et recense les dépendances et imports dynamiques ACL des fichiers ELF
 réguliers, avec leurs modes et propriétaires. Le relevé n'exécute pas ces
 binaires et laisse le scan de l'image et sa politique inchangés.
