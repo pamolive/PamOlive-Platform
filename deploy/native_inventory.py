@@ -156,18 +156,29 @@ def components(root):
     return result
 
 
-def elf_dynamic(data):
+def elf_dynamic(data, *, observe_needed=False):
     """Parse bounded ELF64 LE/amd64 dynamic search paths without executing ELF."""
     require(64 <= len(data) <= MAX_FILE and data[:6] == b"\x7fELF\x02\x01", "elf_platform")
     try:
         header = struct.unpack_from("<16sHHIQQQIHHHHHH", data)
         require(header[2] == 62 and header[9] == 56 and header[10] <= 128, "elf_headers")
+        if observe_needed:
+            require(header[10] > 0 and 64 <= header[5] <= len(data) - header[10] * 56,
+                    "elf_observation_headers")
         segments = [struct.unpack_from("<IIQQQQQQ", data, header[5] + n * 56)
                     for n in range(header[10])]
         require(all(p[2] + p[5] <= len(data) for p in segments), "elf_segment_bounds")
         dynamic = [p for p in segments if p[0] == 2]
+        if observe_needed and not dynamic:
+            return None
         require(len(dynamic) == 1 and dynamic[0][5] <= 65536, "elf_dynamic")
         p = dynamic[0]
+        if observe_needed:
+            require(16 <= p[5] and p[5] % 16 == 0, "elf_observation_dynamic")
+            mappings = [segment for segment in segments if segment[0] == 1
+                        and segment[3] <= p[3] and p[3] + p[5] <= segment[3] + segment[5]]
+            require(len(mappings) == 1 and p[2] == mappings[0][2] + p[3] - mappings[0][3],
+                    "elf_dynamic_mapping")
         entries = []
         for offset in range(p[2], p[2] + p[5], 16):
             tag, value = struct.unpack_from("<qQ", data, offset)
@@ -184,18 +195,26 @@ def elf_dynamic(data):
                  and address + size <= p[3] + p[5]]
         require(len(loads) == 1 and size <= MAX_FILE, "elf_strings_bounds")
         start = loads[0][2] + address - loads[0][3]
-        table = data[start:start + size]
         result = {"needed": [], "rpath": [], "runpath": []}
         for tag, offset in entries:
             if tag not in (1, 15, 29):
                 continue
-            end = table.find(b"\0", offset)
-            require(0 <= offset < len(table) and end >= offset, "elf_string")
-            value = table[offset:end].decode("ascii")
-            require(value and len(value) <= 4096, "elf_string")
+            if observe_needed and tag != 1:
+                continue
+            limit = 256 if observe_needed else 4096
+            require(offset < size, "elf_string")
+            begin = start + offset
+            end = data.find(b"\0", begin, min(start + size, begin + limit + 1))
+            require(end > begin, "elf_string")
+            value = data[begin:end].decode("ascii")
             field = {1: "needed", 15: "rpath", 29: "runpath"}[tag]
             if tag == 1:
-                require("/" not in value and "\\" not in value, "elf_needed_path")
+                if observe_needed:
+                    require(re.fullmatch(r"[A-Za-z0-9_+.-]+", value) is not None
+                            and value not in (".", "..") and len(result["needed"]) < 128,
+                            "elf_needed_observation")
+                else:
+                    require("/" not in value and "\\" not in value, "elf_needed_path")
                 result[field].append(value)
             else:
                 paths = value.split(":")
@@ -204,6 +223,22 @@ def elf_dynamic(data):
         return result
     except (struct.error, UnicodeError) as exc:
         raise InventoryError("elf_malformed") from exc
+
+
+def observe_elf_needed(data):
+    """Report direct dynamic linkage without applying the live loader policy."""
+    if len(data) < 64:
+        return {"status": "unparsed"}
+    if (data[:6] != b"\x7fELF\x02\x01" or data[18:20] != b"\x3e\0"
+            or data[16:18] not in (b"\x02\0", b"\x03\0")):
+        return {"status": "unsupported"}
+    try:
+        dynamic = elf_dynamic(data, observe_needed=True)
+    except InventoryError:
+        return {"status": "unparsed"}
+    if dynamic is None:
+        return {"status": "no_dynamic_segment"}
+    return {"status": "observed", "needed": dynamic["needed"]}
 
 
 def parse_ldd(text):

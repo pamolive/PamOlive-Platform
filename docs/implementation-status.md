@@ -1466,3 +1466,22 @@ Les quatorze nouveaux tests purs passent sans skip et disposent de leur job CI.
 Les résultats PostgreSQL et scans cités dans ce rapport sont liés à leur SHA ;
 la nouvelle fusion doit recevoir sa propre CI. Aucun déploiement ni image
 nouvelle qualifiée ne résulte de cette publication de code.
+
+## Qualification P1-F — inventaire des consommateurs ELF
+
+Les deux constructions de la PR #81 contiennent 822 ELF réguliers et 600 liens.
+Les 27 binaires APT, ICU et HarfBuzz documentés dans la preuve historique
+conservent leur SHA-256. Les deux constructions diffèrent sur trois ELF,
+l'extension `_ldap` et les extensions C `_psycopg` et `pq`.
+Le témoin GDI présente aussi un écart de 8 ajouts, 30 retraits et
+121 modifications d'ELF réguliers avec chacune des constructions.
+[Artefact push](https://github.com/pamolive/PamOlive-Platform/actions/runs/45212387600/artifacts/14842681978)
+· [Artefact PR](https://github.com/pamolive/PamOlive-Platform/actions/runs/45212446189/artifacts/14841599854)
+
+Sur les archives historiques exactes B2 et GDI, l'observation V2 des
+dépendances directes couvre respectivement 830 et 843 ELF. Dans chaque
+archive, l'objet relogeable `python.o` reste hors périmètre. Les deux
+archives ont chacune 25 utilisateurs directs observés de `libstdc++.so.6`.
+Le relevé aide à attribuer les nouveaux binaires. Le blocage GCC PBDS
+reste soumis à la preuve d'attribution des sources, en-têtes et objets
+liés pour l'image candidate exacte. [Contrat du reçu](image-scan-policy.md#deux-justifications-gcc-bornées)
