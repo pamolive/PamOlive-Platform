@@ -15,12 +15,14 @@ SCHEMA = "pamolive.debian-refresh-runtime/1"
 SCHEMA_V2 = "pamolive.debian-refresh-runtime/2"
 SCHEMA_V3 = "pamolive.debian-refresh-runtime/3"
 SCHEMA_V4 = "pamolive.debian-refresh-runtime/4"
+SCHEMA_V5 = "pamolive.debian-refresh-runtime/5"
 BACKPORT_SUITE = "pamolive-trixie"
 KERBEROS_SUITE = BACKPORT_SUITE
 RECEIPT_FIELDS = {
     "krb5": "kerberos_receipt_sha256",
     "openssl": "openssl_receipt_sha256",
     "util-linux": "util_linux_receipt_sha256",
+    "glibc": "glibc_receipt_sha256",
 }
 RECEIPT = "/usr/share/pamolive/debian-refresh/debian-138-refresh.json"
 DPKG_STATUS = "/var/lib/dpkg/status"
@@ -57,9 +59,11 @@ def expected_packages(sdk):
     return frozenset(refresh.PACKAGES) if sdk else RUNTIME_PACKAGES
 
 
-def _backport_modules(kerberos_backport, openssl_backport, util_linux_backport=False):
+def _backport_modules(kerberos_backport, openssl_backport, util_linux_backport=False,
+                      glibc_backport=False, *, openssl_receipt=None):
     need(not openssl_backport or kerberos_backport, "openssl_requires_kerberos")
     need(not util_linux_backport or openssl_backport, "util_linux_requires_openssl")
+    need(not glibc_backport or util_linux_backport, "glibc_requires_product_runtime")
     modules = {}
     if kerberos_backport:
         from deploy import krb5_trixie_materials
@@ -68,15 +72,27 @@ def _backport_modules(kerberos_backport, openssl_backport, util_linux_backport=F
     if openssl_backport:
         from deploy import openssl_trixie_materials
 
-        modules["openssl"] = openssl_trixie_materials
+        try:
+            modules["openssl"] = (
+                openssl_trixie_materials.CURRENT if openssl_receipt is None
+                else openssl_trixie_materials.select(openssl_receipt)
+            )
+        except ValueError as exc:
+            raise InventoryError("openssl_receipt_hash") from exc
     if util_linux_backport:
         from deploy import util_linux_trixie_materials
 
         modules["util-linux"] = util_linux_trixie_materials
+    if glibc_backport:
+        from deploy import glibc_trixie_materials
+
+        modules["glibc"] = glibc_trixie_materials
     return modules
 
 
 def _schema(modules):
+    if "glibc" in modules:
+        return SCHEMA_V5
     if "util-linux" in modules:
         return SCHEMA_V4
     if "openssl" in modules:
@@ -86,7 +102,7 @@ def _schema(modules):
 
 def _extra_elf_paths(modules):
     return frozenset(
-        path for source in ("openssl", "util-linux") if source in modules
+        path for source in ("openssl", "util-linux", "glibc") if source in modules
         for paths in modules[source].ELF_BY_PACKAGE.values() for path in paths
     )
 
@@ -116,8 +132,10 @@ def validate_report(value, *, archive=False, sdk=False):
     """Validate the closed report before combining it with other image evidence."""
     schema = value.get("schema") if type(value) is dict else None
     modules = _backport_modules(
-        schema in (SCHEMA_V2, SCHEMA_V3, SCHEMA_V4), schema in (SCHEMA_V3, SCHEMA_V4),
-        schema == SCHEMA_V4,
+        schema in (SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5),
+        schema in (SCHEMA_V3, SCHEMA_V4, SCHEMA_V5), schema in (SCHEMA_V4, SCHEMA_V5),
+        schema == SCHEMA_V5,
+        openssl_receipt=value.get("openssl_receipt_sha256") if type(value) is dict else None,
     )
     receipts = {source: module.load_reviewed() for source, module in modules.items()}
     return _validate_report(value, modules, receipts, archive=archive, sdk=sdk)
@@ -142,7 +160,7 @@ def _validate_report(value, modules, receipts, *, archive=False, sdk=False):
         label = receipt_field.removesuffix("_receipt_sha256")
         need(value[receipt_field] == module.SHA256, f"report_{label}_receipt_hash")
         installed = receipts[source]["installed_elf_sha256"]
-        if source in ("openssl", "util-linux"):
+        if source in ("openssl", "util-linux", "glibc"):
             need(set(installed) == _extra_elf_paths({source: module}), f"report_{label}_elf")
         need(all(paths[path] == sha for path, sha in installed.items()), f"report_{label}_elf")
     profiles = _package_profiles(sdk, modules)
@@ -175,8 +193,10 @@ def _validate_report(value, modules, receipts, *, archive=False, sdk=False):
 
 
 def verify_status(raw, *, sdk=False, kerberos_backport=False, openssl_backport=False,
-                  util_linux_backport=False):
-    modules = _backport_modules(kerberos_backport, openssl_backport, util_linux_backport)
+                  util_linux_backport=False, glibc_backport=False):
+    modules = _backport_modules(
+        kerberos_backport, openssl_backport, util_linux_backport, glibc_backport,
+    )
     _verify_status(raw, sdk, modules)
 
 
@@ -203,16 +223,23 @@ def _verify_status(raw, sdk, modules):
 
 
 def verified_report(raw, status, files, *, sdk=False, kerberos_raw=None, openssl_raw=None,
-                    util_linux_raw=None):
+                    util_linux_raw=None, glibc_raw=None):
     modules = _backport_modules(
         kerberos_raw is not None, openssl_raw is not None, util_linux_raw is not None,
+        glibc_raw is not None,
+        openssl_receipt=refresh.sha(openssl_raw) if openssl_raw is not None else None,
     )
     need(0 < len(raw) <= MAX_RECEIPT, "receipt_size")
     receipt = refresh.validate_receipt(json.loads(raw, object_pairs_hook=refresh.unique_dict))
     official_files = receipt["installed_elf_sha256"]
     installed_files = dict(official_files)
     receipts = {}
-    raw_receipts = {"krb5": kerberos_raw, "openssl": openssl_raw, "util-linux": util_linux_raw}
+    raw_receipts = {
+        "krb5": kerberos_raw,
+        "openssl": openssl_raw,
+        "util-linux": util_linux_raw,
+        "glibc": glibc_raw,
+    }
     for source, module in modules.items():
         backport_raw = raw_receipts[source]
         label = RECEIPT_FIELDS[source].removesuffix("_receipt_sha256")
@@ -247,7 +274,10 @@ def verified_report(raw, status, files, *, sdk=False, kerberos_raw=None, openssl
 
 
 def verify_alias_target(target, canonical, *, code="kerberos_alias"):
-    need(target in (canonical, PurePosixPath(canonical).name), code)
+    if canonical.startswith("../"):
+        need(target == canonical, code)
+    else:
+        need(target in (canonical, PurePosixPath(canonical).name), code)
 
 
 def _aliases(modules):
@@ -255,11 +285,16 @@ def _aliases(modules):
     if "util-linux" in modules:
         yield from ((alias, path, "util_linux_alias")
                     for alias, path in modules["util-linux"].ALIASES.items())
+    if "glibc" in modules:
+        yield from ((alias, target, "glibc_loader_alias")
+                    for alias, target in modules["glibc"].ALIASES.items())
 
 
 def inspect_root(root, *, sdk=False, kerberos_backport=False, openssl_backport=False,
-                 util_linux_backport=False):
-    modules = _backport_modules(kerberos_backport, openssl_backport, util_linux_backport)
+                 util_linux_backport=False, glibc_backport=False):
+    modules = _backport_modules(
+        kerberos_backport, openssl_backport, util_linux_backport, glibc_backport,
+    )
     root = Path(root)
     need(root.is_dir() and not root.is_symlink(), "runtime_root")
     root = root.resolve(strict=True)
@@ -282,6 +317,10 @@ def inspect_root(root, *, sdk=False, kerberos_backport=False, openssl_backport=F
         files[name] = refresh.sha(data)
     for alias, canonical, code in _aliases(modules):
         verify_alias_target(os.readlink(root / alias.lstrip("/")), canonical, code=code)
+    if glibc_backport:
+        need(os.readlink(root / "lib64") in ("usr/lib64", "/usr/lib64"), "glibc_interpreter_alias")
+        if root == Path("/"):
+            modules["glibc"].verify_live_mapping()
     if util_linux_backport:
         util_linux = modules["util-linux"]
         for name in util_linux.SPECIAL_MODE_PATHS:
@@ -291,9 +330,11 @@ def inspect_root(root, *, sdk=False, kerberos_backport=False, openssl_backport=F
                  {"mode": stat.S_IMODE(info.st_mode), "uid": info.st_uid, "gid": info.st_gid,
                   "has_capability": util_linux.has_capability(path)} ==
                  util_linux.SPECIAL_FILE_METADATA, "util_linux_special_mode")
-    return verified_report(raw, status, files, sdk=sdk,
-                           kerberos_raw=receipts.get("krb5"), openssl_raw=receipts.get("openssl"),
-                           util_linux_raw=receipts.get("util-linux"))
+    return verified_report(
+        raw, status, files, sdk=sdk, kerberos_raw=receipts.get("krb5"),
+        openssl_raw=receipts.get("openssl"), util_linux_raw=receipts.get("util-linux"),
+        glibc_raw=receipts.get("glibc"),
+    )
 
 
 def file_identity(info):
@@ -304,11 +345,13 @@ def file_identity(info):
 
 
 def inspect_bundle(directory, revision, *, kerberos_backport=False, openssl_backport=False,
-                   util_linux_backport=False):
+                   util_linux_backport=False, glibc_backport=False):
     from deploy import qualified_image
     from deploy import qualify_image_scan as archive_reader
 
-    modules = _backport_modules(kerberos_backport, openssl_backport, util_linux_backport)
+    modules = _backport_modules(
+        kerberos_backport, openssl_backport, util_linux_backport, glibc_backport,
+    )
     backport_paths = {source: str(module.PATH) for source, module in modules.items()}
     receipt_paths = {RECEIPT, DPKG_STATUS, *backport_paths.values()}
     directory = Path(directory)
@@ -346,6 +389,16 @@ def inspect_bundle(directory, revision, *, kerberos_backport=False, openssl_back
             entry = facts.entries.get(alias, {})
             need(entry.get("type") == "symlink", code)
             verify_alias_target(entry.get("target"), canonical, code=code)
+        if glibc_backport:
+            material = modules["glibc"]
+            interpreter = facts.entries.get("/lib64", {})
+            need(interpreter.get("type") == "symlink"
+                 and interpreter.get("target") in ("usr/lib64", "/usr/lib64"),
+                 "glibc_interpreter_alias")
+            providers = {material.LIBC, material.LOADER, *material.ALIASES}
+            names = {PurePosixPath(path).name for path in providers}
+            need({path for path in facts.entries if PurePosixPath(path).name in names} == providers,
+                 "archive_glibc_provider_paths")
         if util_linux_backport:
             material = modules["util-linux"]
             need(facts.attributes == dict.fromkeys(
@@ -370,6 +423,7 @@ def inspect_bundle(directory, revision, *, kerberos_backport=False, openssl_back
         kerberos_raw=facts.captured.get(backport_paths.get("krb5")),
         openssl_raw=facts.captured.get(backport_paths.get("openssl")),
         util_linux_raw=facts.captured.get(backport_paths.get("util-linux")),
+        glibc_raw=facts.captured.get(backport_paths.get("glibc")),
     )
     return validate_report({
         **report,
@@ -389,6 +443,7 @@ def main(argv=None):
     parser.add_argument("--kerberos-backport", action="store_true")
     parser.add_argument("--openssl-backport", action="store_true")
     parser.add_argument("--util-linux-backport", action="store_true")
+    parser.add_argument("--glibc-backport", action="store_true")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args(argv)
     if (args.bundle is not None) != (args.revision is not None) or (args.bundle and args.sdk):
@@ -397,24 +452,28 @@ def main(argv=None):
         parser.error("--openssl-backport requires --kerberos-backport")
     if args.util_linux_backport and (not args.openssl_backport or args.sdk):
         parser.error("--util-linux-backport requires the OpenSSL runtime")
+    if args.glibc_backport and not args.util_linux_backport:
+        parser.error("--glibc-backport requires the qualified product runtime")
     try:
         if args.bundle is not None:
             report = inspect_bundle(
                 args.bundle, args.revision, kerberos_backport=args.kerberos_backport,
                 openssl_backport=args.openssl_backport,
-                util_linux_backport=args.util_linux_backport,
+                util_linux_backport=args.util_linux_backport, glibc_backport=args.glibc_backport,
             )
         else:
             report = inspect_root(
                 args.root, sdk=args.sdk, kerberos_backport=args.kerberos_backport,
                 openssl_backport=args.openssl_backport,
-                util_linux_backport=args.util_linux_backport,
+                util_linux_backport=args.util_linux_backport, glibc_backport=args.glibc_backport,
             )
         with args.output.open("x", encoding="ascii") as stream:
             json.dump(report, stream, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
             stream.write("\n")
     except (ValueError, OSError, KeyError, TypeError, tarfile.TarError, RecursionError) as error:
-        if args.util_linux_backport:
+        if args.glibc_backport:
+            message = "Debian product runtime inventory with glibc refused."
+        elif args.util_linux_backport:
             message = "Debian runtime inventory with util-linux refused."
         elif args.openssl_backport:
             message = "Debian, Kerberos and OpenSSL refresh inventory refused."

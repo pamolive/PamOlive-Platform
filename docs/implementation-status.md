@@ -1,5 +1,21 @@
 # État réel de l’implémentation
 
+## Candidat de livraison glibc et OpenSSL DANE
+
+Le scan du candidat glibc `dc46333` a reçu 43 groupes High. Deux des
+sept blocages concernent les paquets glibc reconstruits avec le correctif
+gettext. L'image, les essais PAM PostgreSQL et les contrôles du SBOM ont
+atteint le scan. La branche combinée lie ces deux groupes au reçu V5 et
+installe les paquets OpenSSL DANE qualifiés en laboratoire.
+[Scan glibc](https://github.com/pamolive/PamOlive-Platform/actions/runs/45223383511/artifacts/14854463532)
+
+Le laboratoire OpenSSL DANE a produit quatre paquets `+pamolive2` et
+préservé les exports et les SONAME. La suite principale Debian rapporte
+4 932 tests et un verdict PASS, avec 12 recettes ignorées. La politique
+lie les décisions au reçu et aux binaires du candidat. Le prochain
+scan devra retrouver les identités de groupes attendues.
+[Artefact DANE](https://github.com/pamolive/PamOlive-Platform/actions/runs/45243975566/artifacts/14853358671)
+
 ## Parcours SSH du portail en laboratoire GitHub
 
 La PR #92 a mesuré le sandbox Chromium actif et une connexion SCRAM

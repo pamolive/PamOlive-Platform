@@ -251,11 +251,11 @@ class NativeSbomTests(TestCase):
                     if ":debian:" in row["bom-ref"]}
         dependencies = {row["ref"]: row.get("dependsOn", []) for row in result["dependencies"]}
         expected_url = ("https://github.com/pamolive/PamOlive-Platform/actions/runs/"
-                        "45134682372/artifacts/14799723947")
+                        "45243975566/artifacts/14853358671")
         artifact_sha = reviewed["qualification"]["artifact_digest"].removeprefix("sha256:")
         for name in openssl.RUNTIME_PACKAGES:
             package = packages[name]
-            self.assertEqual(package["purl"], f"pkg:deb/debian/{name}@3.5.9-1~deb13u1%2Bpamolive1"
+            self.assertEqual(package["purl"], f"pkg:deb/debian/{name}@3.5.9-1~deb13u1%2Bpamolive2"
                              "?arch=amd64&distro=debian-13&upstream=openssl")
             self.assertEqual(package["hashes"][0]["content"], reviewed["packages"][name]["sha256"])
             ref, = package["externalReferences"]

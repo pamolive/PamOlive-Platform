@@ -7,6 +7,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 from unittest import TestCase
@@ -14,6 +15,7 @@ from unittest.mock import patch
 
 from deploy import (
     build_context,
+    glibc_trixie_materials,
     krb5_trixie_materials,
     native_sbom,
     openssl_trixie_materials,
@@ -34,13 +36,16 @@ def native_files(paths=inventory.ELF_PATHS):
     return {path: bytes(header) + path.encode("ascii") for path in sorted(paths)}
 
 
-def installed_status(names, *, kerberos_version=None, openssl_version=None, util_linux=False):
+def installed_status(names, *, kerberos_version=None, openssl_version=None, util_linux=False,
+                     glibc_version=None):
     rows = []
     for package in sorted(names):
         if package in refresh.PACKAGES:
             source, version, _, _ = refresh.PACKAGES[package]
             if source == "krb5" and kerberos_version is not None:
                 version = kerberos_version
+            if source == "glibc" and glibc_version is not None:
+                version = glibc_version
         elif util_linux and package in util_linux_trixie_materials.PACKAGE_VERSIONS:
             source, version = "util-linux", util_linux_trixie_materials.PACKAGE_VERSIONS[package]
         else:
@@ -431,6 +436,13 @@ class DebianRuntimeInventoryTests(TestCase):
         reviewed = openssl.load_reviewed()
         files = native_files(reviewed["installed_elf_sha256"])
         raw = self.pin_backport_fixture(openssl, reviewed, files)
+        profile = replace(openssl.CURRENT, SHA256=refresh.sha(raw))
+        for replacement in (
+            patch.object(openssl, "CURRENT", profile),
+            patch.object(type(profile), "load_reviewed", return_value=reviewed),
+        ):
+            replacement.start()
+            self.addCleanup(replacement.stop)
         names = {*inventory.RUNTIME_PACKAGES, *openssl.RUNTIME_PACKAGES}
         return {
             **payload,
@@ -453,6 +465,15 @@ class DebianRuntimeInventoryTests(TestCase):
                 ])
         self.assertEqual(rejected.exception.code, 2)
         self.assertIn("--openssl-backport requires --kerberos-backport", stderr.getvalue())
+
+    def test_openssl_historical_and_dane_receipts_validate_as_distinct_profiles(self):
+        openssl = openssl_trixie_materials
+        for material in (openssl.HISTORICAL, openssl.CURRENT):
+            self.assertIs(openssl.select(material.SHA256), material)
+            self.assertEqual(material.load_reviewed()["version"], material.VERSION)
+        old_raw = (openssl.DIRECTORY / openssl.HISTORICAL.filename).read_bytes()
+        with self.assertRaisesRegex(ValueError, "unreviewed_openssl_materials"):
+            openssl.CURRENT.parse(old_raw)
 
     def util_linux_fixture(self):
         payload, _ = self.openssl_fixture()
@@ -544,6 +565,72 @@ class DebianRuntimeInventoryTests(TestCase):
                     attributes=attributes)
         with self.assertRaisesRegex(inventory.InventoryError, "archive_util_linux_libmount_copies"):
             inventory.inspect_bundle(self.root, REVISION, **mode)
+
+    def glibc_fixture(self):
+        payload, attributes = self.util_linux_fixture()
+        material = glibc_trixie_materials
+        reviewed = material.load_reviewed()
+        files = native_files(reviewed["installed_elf_sha256"])
+        files[material.LIBC] += b"candidate"
+        raw = self.pin_backport_fixture(material, reviewed, files)
+        names = {*inventory.RUNTIME_PACKAGES, *openssl_trixie_materials.RUNTIME_PACKAGES,
+                 *util_linux_trixie_materials.RUNTIME_PACKAGES}
+        self.aliases.update(material.ALIASES)
+        self.aliases["/lib64"] = "usr/lib64"
+        return {**payload, **files,
+                material.PATH: raw, inventory.DPKG_STATUS: installed_status(
+                    names, kerberos_version=krb5_trixie_materials.VERSION,
+                    openssl_version=openssl_trixie_materials.VERSION, util_linux=True,
+                    glibc_version=material.VERSION,
+                )}, attributes
+
+    def test_glibc_archive_and_sbom_bind_the_new_library_and_package_versions(self):
+        payload, attributes = self.glibc_fixture()
+        self.bundle(payload, attributes=attributes)
+        report = inventory.inspect_bundle(
+            self.root, REVISION, kerberos_backport=True, openssl_backport=True,
+            util_linux_backport=True, glibc_backport=True,
+        )
+        material = glibc_trixie_materials
+        self.assertEqual(report["schema"], inventory.SCHEMA_V5)
+        self.assertEqual(report["glibc_receipt_sha256"], material.SHA256)
+        self.assertEqual(report["installed_elf_sha256"][material.LIBC],
+                         refresh.sha(payload[material.LIBC]))
+        components, deps, _ = native_sbom.debian_components(
+            report, report["image_config_id"], "image_config",
+        )
+        libc = next(row for row in components if row["name"] == "libc6")
+        self.assertEqual(libc["version"], material.VERSION)
+        self.assertIn("14841015571", libc["externalReferences"][0]["url"])
+        properties = {
+            "pamolive:sbom:debian-archive-sha256": report["archive_sha256"],
+            "pamolive:sbom:openssl-receipt-sha256": report["openssl_receipt_sha256"],
+            "pamolive:sbom:util-linux-receipt-sha256": report["util_linux_receipt_sha256"],
+            "pamolive:sbom:glibc-receipt-sha256": report["glibc_receipt_sha256"],
+        }
+        sbom = {"components": components, "dependencies": deps}
+        scan.verify_trixie_sbom(sbom, report, report["image_config_id"], properties)
+        del properties["pamolive:sbom:glibc-receipt-sha256"]
+        with self.assertRaisesRegex(scan.ScanPolicyError, "trixie_glibc_sbom_binding"):
+            scan.verify_trixie_sbom(sbom, report, report["image_config_id"], properties)
+
+    def test_glibc_archive_refuses_an_unexpected_library_or_loader_link(self):
+        payload, attributes = self.glibc_fixture()
+        material = glibc_trixie_materials
+        modes = dict(kerberos_backport=True, openssl_backport=True,
+                     util_linux_backport=True, glibc_backport=True)
+        self.bundle({**payload, "/usr/local/lib/libc.so.6": payload[material.LIBC]},
+                    attributes=attributes)
+        with self.assertRaisesRegex(inventory.InventoryError, "archive_glibc_provider_paths"):
+            inventory.inspect_bundle(self.root, REVISION, **modes)
+        alias = next(iter(material.ALIASES))
+        self.bundle(payload, attributes=attributes,
+                    aliases={**self.aliases, alias: "ld-linux-x86-64.so.2"})
+        with self.assertRaisesRegex(inventory.InventoryError, "glibc_loader_alias"):
+            inventory.inspect_bundle(self.root, REVISION, **modes)
+        self.bundle(payload, attributes=attributes, aliases={**self.aliases, "/lib64": "usr/bin"})
+        with self.assertRaisesRegex(inventory.InventoryError, "glibc_interpreter_alias"):
+            inventory.inspect_bundle(self.root, REVISION, **modes)
 
     def test_cli_reports_permission_failure_without_disclosing_path(self):
         with (

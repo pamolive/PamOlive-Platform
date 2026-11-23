@@ -17,6 +17,7 @@ from urllib.parse import quote
 from deploy import (
     debian_refresh_inventory,
     expat_image,
+    glibc_trixie_materials,
     native_sbom,
     openssl_trixie_materials,
     qualified_image,
@@ -577,7 +578,9 @@ class ImageScanPolicyTests(TestCase):
             material = util_linux_trixie_materials
             versions = material.PACKAGE_VERSIONS
         else:
-            material = openssl_trixie_materials
+            material = (
+                glibc_trixie_materials if source == "glibc" else openssl_trixie_materials.CURRENT
+            )
             versions = dict.fromkeys(material.RUNTIME_PACKAGES, material.VERSION)
         for name, version in versions.items():
             row = self.match(cve, name=name, version=version, source=source)
@@ -593,9 +596,10 @@ class ImageScanPolicyTests(TestCase):
             report["matches"].append(row)
         key, finding = next(iter(gate.high_groups(report, scope).items()))
         directory = f"deploy/{source}-trixie-backport"
-        pins = gate.TRIXIE_BACKPORT_PINS[source]
+        pins = gate.OPENSSL_DANE_PINS if source == "openssl" else gate.TRIXIE_BACKPORT_PINS[source]
         materials = [name for name, _ in pins.get("materials", ())]
-        files = ("qualification.json", pins["recipe"][0], *materials)
+        receipt_name = material.filename if source == "openssl" else "qualification.json"
+        files = (receipt_name, pins["recipe"][0], *materials)
         source_root = Path(__file__).resolve().parents[1]
         for basename in files:
             name = f"{directory}/{basename}"
@@ -610,7 +614,11 @@ class ImageScanPolicyTests(TestCase):
             conditions=[{"kind": "debian_trixie_backport", "sha256": material.SHA256}],
         )
         commits = gate.TRIXIE_BACKPORT_COMMITS[source]
-        entry["vendor_evidence"].append(commits.get(cve, next(iter(commits.values()))))
+        fix = (
+            gate.OPENSSL_DANE_PROPOSAL if cve == gate.OPENSSL_DANE_ADVISORY
+            else commits.get(cve, next(iter(commits.values())))
+        )
+        entry["vendor_evidence"].append(fix)
         return entry
 
     def trixie_fixture(self, *, util_linux=False):
@@ -671,6 +679,23 @@ class ImageScanPolicyTests(TestCase):
         self.assertFalse(result["passed"])
         self.assertEqual([row["code"] for row in result["blockers"]], ["high_fix_available"])
 
+    def test_existing_trixie_decisions_check_the_installed_glibc_profile(self):
+        from deploy import glibc_trixie_materials
+
+        self.trixie_exception("compiled")
+        bundle, inspector = self.trixie_fixture(util_linux=True)
+        inspector.return_value["glibc_receipt_sha256"] = glibc_trixie_materials.SHA256
+        properties = self.sbom["metadata"]["properties"]
+        properties.append({
+            "name": "pamolive:sbom:glibc-receipt-sha256",
+            "value": glibc_trixie_materials.SHA256,
+        })
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        inspector.assert_called_once_with(
+            self.repo, bundle["revision"], kerberos_backport=True, openssl_backport=True,
+            util_linux_backport=True, glibc_backport=True,
+        )
+
     def test_trixie_exception_refuses_missing_or_mismatched_image_proof(self):
         self.trixie_exception("os")
         bundle, inspector = self.trixie_fixture()
@@ -682,7 +707,7 @@ class ImageScanPolicyTests(TestCase):
             self.evaluate(**bundle)
 
     def test_trixie_exception_refuses_unpatched_cve_and_static_python_distribution(self):
-        entry = self.trixie_exception("compiled", "CVE-2026-84786")
+        entry = self.trixie_exception("compiled", "CVE-2026-35190")
         bundle, _ = self.trixie_fixture()
         with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_fix"):
             self.evaluate(**bundle)
@@ -697,6 +722,33 @@ class ImageScanPolicyTests(TestCase):
         entry["finding"]["data_source"] = "https://security-tracker.debian.org/tracker/CVE-2026-124709"
         with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_packages"):
             gate.trixie_backport_holds(entry, entry["finding"], proofs=proof, report=None)
+
+    def test_dane_scope_requires_the_new_verified_openssl_receipt(self):
+        self.trixie_exception("compiled", gate.OPENSSL_DANE_ADVISORY)
+        bundle, inspector = self.trixie_fixture()
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        old = openssl_trixie_materials.HISTORICAL.SHA256
+        inspector.return_value["openssl_receipt_sha256"] = old
+        for prop in self.sbom["metadata"]["properties"]:
+            if prop["name"] == "pamolive:sbom:openssl-receipt-sha256":
+                prop["value"] = old
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_image"):
+            self.evaluate(**bundle)
+
+    def test_glibc_scope_requires_both_packages_and_image_receipt(self):
+        entry = self.trixie_exception("os", "CVE-2026-84243", source="glibc")
+        bundle, inspector = self.trixie_fixture(util_linux=True)
+        current = glibc_trixie_materials.SHA256
+        inspector.return_value["glibc_receipt_sha256"] = current
+        self.sbom["metadata"]["properties"].append({
+            "name": "pamolive:sbom:glibc-receipt-sha256", "value": current,
+        })
+        self.assertTrue(self.evaluate(**bundle)["passed"])
+        finding = {**entry["finding"], "packages": entry["finding"]["packages"][1:]}
+        with self.assertRaisesRegex(gate.ScanPolicyError, "trixie_backport_packages"):
+            gate.trixie_backport_holds(
+                entry, finding, proofs=entry["local_evidence"], report=inspector.return_value,
+            )
 
     def test_trixie_exception_refuses_modified_or_duplicate_sbom_component(self):
         self.trixie_exception("compiled")

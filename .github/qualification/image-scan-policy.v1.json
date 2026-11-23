@@ -4403,6 +4403,1588 @@
         "https://security-tracker.debian.org/tracker/CVE-2025-69720",
         "https://github.com/ThomasDickey/ncurses-snapshots/commit/6f6db0e8fd14e40096a0ee6f8bdf32dedbd3fc9e"
       ]
+    },
+    {
+      "analysis": "The qualified DANE package build preserves the seven previously reviewed OpenSSL corrections. The new receipt, precise package versions, binary identities and image archive must match for this scanner group.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "debian_trixie_backport",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T19:29:32+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-107493",
+        "distro": {
+          "name": "debian",
+          "version": "13"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libssl3t64",
+            "purl": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl",
+            "purl": "pkg:deb/debian/openssl@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl-provider-legacy",
+            "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          }
+        ],
+        "scope": "compiled",
+        "severity": "High",
+        "source_package": "openssl",
+        "vulnerability_id": "CVE-2026-107493"
+      },
+      "fingerprint": "sha256:c9cf74c108fc255f5768488611ddedbf36d8cb5c44a3f00cabc91947bb9ada0a",
+      "local_evidence": [
+        {
+          "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/patches.txt",
+          "sha256": "e3a4ccb061ed8da5772bb647ea4300fd16967b0b54547050af2e8972f64b47b7"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane.patch",
+          "sha256": "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-provenance.json",
+          "sha256": "4ebc5389f7150490c1f90ffe93eda1b0752af5c79a3d19093398f698862693b9"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-preimage.sha256",
+          "sha256": "0f6836870e245d5c4e8dae46b6190b22640077e62c0ed39961a83fb130c86dbb"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/postimage.sha256",
+          "sha256": "b66173afa764c51663168aa35ae6c2f13fc193da2f650173b4580286270e4533"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/materials.sh",
+          "sha256": "619707bbb1f148369d8dcdc5ddde46841723180b6825fe2ed24edc04ff95cb08"
+        }
+      ],
+      "reviewed_at": "2026-11-23T19:29:32+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/appsec"
+      ],
+      "trixie_backport_receipt": {
+        "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+        "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+      },
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-107493",
+        "https://github.com/openssl/openssl/commit/c8f6d04f8e6d40b1bf83334e4a2ec9daf5943a3d"
+      ]
+    },
+    {
+      "analysis": "The qualified DANE package build preserves the seven previously reviewed OpenSSL corrections. The new receipt, precise package versions, binary identities and image archive must match for this scanner group.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "debian_trixie_backport",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T19:29:32+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-107493",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libssl3t64",
+            "purl": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl",
+            "purl": "pkg:deb/debian/openssl@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl-provider-legacy",
+            "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "openssl",
+        "vulnerability_id": "CVE-2026-107493"
+      },
+      "fingerprint": "sha256:1cc36126a19f423e39d3a19f805b697d3e6d6890a330653253050205adfe4e25",
+      "local_evidence": [
+        {
+          "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/patches.txt",
+          "sha256": "e3a4ccb061ed8da5772bb647ea4300fd16967b0b54547050af2e8972f64b47b7"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane.patch",
+          "sha256": "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-provenance.json",
+          "sha256": "4ebc5389f7150490c1f90ffe93eda1b0752af5c79a3d19093398f698862693b9"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-preimage.sha256",
+          "sha256": "0f6836870e245d5c4e8dae46b6190b22640077e62c0ed39961a83fb130c86dbb"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/postimage.sha256",
+          "sha256": "b66173afa764c51663168aa35ae6c2f13fc193da2f650173b4580286270e4533"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/materials.sh",
+          "sha256": "619707bbb1f148369d8dcdc5ddde46841723180b6825fe2ed24edc04ff95cb08"
+        }
+      ],
+      "reviewed_at": "2026-11-23T19:29:32+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/appsec"
+      ],
+      "trixie_backport_receipt": {
+        "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+        "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+      },
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-107493",
+        "https://github.com/openssl/openssl/commit/c8f6d04f8e6d40b1bf83334e4a2ec9daf5943a3d"
+      ]
+    },
+    {
+      "analysis": "The qualified DANE package build preserves the seven previously reviewed OpenSSL corrections. The new receipt, precise package versions, binary identities and image archive must match for this scanner group.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "debian_trixie_backport",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T19:29:32+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-107496",
+        "distro": {
+          "name": "debian",
+          "version": "13"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libssl3t64",
+            "purl": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl",
+            "purl": "pkg:deb/debian/openssl@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl-provider-legacy",
+            "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          }
+        ],
+        "scope": "compiled",
+        "severity": "High",
+        "source_package": "openssl",
+        "vulnerability_id": "CVE-2026-107496"
+      },
+      "fingerprint": "sha256:57272cf2b0a4825d4304a9396666adb1098c071f3a613fd5564bae0991d532bf",
+      "local_evidence": [
+        {
+          "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/patches.txt",
+          "sha256": "e3a4ccb061ed8da5772bb647ea4300fd16967b0b54547050af2e8972f64b47b7"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane.patch",
+          "sha256": "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-provenance.json",
+          "sha256": "4ebc5389f7150490c1f90ffe93eda1b0752af5c79a3d19093398f698862693b9"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-preimage.sha256",
+          "sha256": "0f6836870e245d5c4e8dae46b6190b22640077e62c0ed39961a83fb130c86dbb"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/postimage.sha256",
+          "sha256": "b66173afa764c51663168aa35ae6c2f13fc193da2f650173b4580286270e4533"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/materials.sh",
+          "sha256": "619707bbb1f148369d8dcdc5ddde46841723180b6825fe2ed24edc04ff95cb08"
+        }
+      ],
+      "reviewed_at": "2026-11-23T19:29:32+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/appsec"
+      ],
+      "trixie_backport_receipt": {
+        "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+        "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+      },
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-107496",
+        "https://github.com/openssl/openssl/commit/a0051cfe699bf5a047bc1c4faef65f80f7987366"
+      ]
+    },
+    {
+      "analysis": "The qualified DANE package build preserves the seven previously reviewed OpenSSL corrections. The new receipt, precise package versions, binary identities and image archive must match for this scanner group.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "debian_trixie_backport",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T19:29:32+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-107496",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libssl3t64",
+            "purl": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl",
+            "purl": "pkg:deb/debian/openssl@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl-provider-legacy",
+            "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "openssl",
+        "vulnerability_id": "CVE-2026-107496"
+      },
+      "fingerprint": "sha256:25055e76741acffe9ec021d94330677eda8eba1bffeb6470399c1593684edd39",
+      "local_evidence": [
+        {
+          "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/patches.txt",
+          "sha256": "e3a4ccb061ed8da5772bb647ea4300fd16967b0b54547050af2e8972f64b47b7"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane.patch",
+          "sha256": "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-provenance.json",
+          "sha256": "4ebc5389f7150490c1f90ffe93eda1b0752af5c79a3d19093398f698862693b9"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-preimage.sha256",
+          "sha256": "0f6836870e245d5c4e8dae46b6190b22640077e62c0ed39961a83fb130c86dbb"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/postimage.sha256",
+          "sha256": "b66173afa764c51663168aa35ae6c2f13fc193da2f650173b4580286270e4533"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/materials.sh",
+          "sha256": "619707bbb1f148369d8dcdc5ddde46841723180b6825fe2ed24edc04ff95cb08"
+        }
+      ],
+      "reviewed_at": "2026-11-23T19:29:32+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/appsec"
+      ],
+      "trixie_backport_receipt": {
+        "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+        "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+      },
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-107496",
+        "https://github.com/openssl/openssl/commit/a0051cfe699bf5a047bc1c4faef65f80f7987366"
+      ]
+    },
+    {
+      "analysis": "The qualified DANE package build preserves the seven previously reviewed OpenSSL corrections. The new receipt, precise package versions, binary identities and image archive must match for this scanner group.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "debian_trixie_backport",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T19:29:32+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-121482",
+        "distro": {
+          "name": "debian",
+          "version": "13"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libssl3t64",
+            "purl": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl",
+            "purl": "pkg:deb/debian/openssl@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl-provider-legacy",
+            "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          }
+        ],
+        "scope": "compiled",
+        "severity": "High",
+        "source_package": "openssl",
+        "vulnerability_id": "CVE-2026-121482"
+      },
+      "fingerprint": "sha256:9333f9ec03c0cf494a056d8b1808ef8b7d8463777388f303b250be07b3bd2b6c",
+      "local_evidence": [
+        {
+          "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/patches.txt",
+          "sha256": "e3a4ccb061ed8da5772bb647ea4300fd16967b0b54547050af2e8972f64b47b7"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane.patch",
+          "sha256": "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-provenance.json",
+          "sha256": "4ebc5389f7150490c1f90ffe93eda1b0752af5c79a3d19093398f698862693b9"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-preimage.sha256",
+          "sha256": "0f6836870e245d5c4e8dae46b6190b22640077e62c0ed39961a83fb130c86dbb"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/postimage.sha256",
+          "sha256": "b66173afa764c51663168aa35ae6c2f13fc193da2f650173b4580286270e4533"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/materials.sh",
+          "sha256": "619707bbb1f148369d8dcdc5ddde46841723180b6825fe2ed24edc04ff95cb08"
+        }
+      ],
+      "reviewed_at": "2026-11-23T19:29:32+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/appsec"
+      ],
+      "trixie_backport_receipt": {
+        "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+        "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+      },
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-121482",
+        "https://github.com/openssl/openssl/commit/468c287cf451a834b370b69ab321b8ffdfac23aa"
+      ]
+    },
+    {
+      "analysis": "The qualified DANE package build preserves the seven previously reviewed OpenSSL corrections. The new receipt, precise package versions, binary identities and image archive must match for this scanner group.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "debian_trixie_backport",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T19:29:32+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-121482",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libssl3t64",
+            "purl": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl",
+            "purl": "pkg:deb/debian/openssl@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl-provider-legacy",
+            "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "openssl",
+        "vulnerability_id": "CVE-2026-121482"
+      },
+      "fingerprint": "sha256:ff9a4d4da60378c196711cec498780d0704c523026451b3f0d265a86afffe4e9",
+      "local_evidence": [
+        {
+          "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/patches.txt",
+          "sha256": "e3a4ccb061ed8da5772bb647ea4300fd16967b0b54547050af2e8972f64b47b7"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane.patch",
+          "sha256": "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-provenance.json",
+          "sha256": "4ebc5389f7150490c1f90ffe93eda1b0752af5c79a3d19093398f698862693b9"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-preimage.sha256",
+          "sha256": "0f6836870e245d5c4e8dae46b6190b22640077e62c0ed39961a83fb130c86dbb"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/postimage.sha256",
+          "sha256": "b66173afa764c51663168aa35ae6c2f13fc193da2f650173b4580286270e4533"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/materials.sh",
+          "sha256": "619707bbb1f148369d8dcdc5ddde46841723180b6825fe2ed24edc04ff95cb08"
+        }
+      ],
+      "reviewed_at": "2026-11-23T19:29:32+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/appsec"
+      ],
+      "trixie_backport_receipt": {
+        "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+        "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+      },
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-121482",
+        "https://github.com/openssl/openssl/commit/468c287cf451a834b370b69ab321b8ffdfac23aa"
+      ]
+    },
+    {
+      "analysis": "The qualified DANE package build preserves the seven previously reviewed OpenSSL corrections. The new receipt, precise package versions, binary identities and image archive must match for this scanner group.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "debian_trixie_backport",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T19:29:32+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-124709",
+        "distro": {
+          "name": "debian",
+          "version": "13"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libssl3t64",
+            "purl": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl",
+            "purl": "pkg:deb/debian/openssl@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl-provider-legacy",
+            "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          }
+        ],
+        "scope": "compiled",
+        "severity": "High",
+        "source_package": "openssl",
+        "vulnerability_id": "CVE-2026-124709"
+      },
+      "fingerprint": "sha256:74853dd2eee4b4c404b04b4c6f4033e3956a629b7f507c1ffb86f2e199161602",
+      "local_evidence": [
+        {
+          "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/patches.txt",
+          "sha256": "e3a4ccb061ed8da5772bb647ea4300fd16967b0b54547050af2e8972f64b47b7"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane.patch",
+          "sha256": "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-provenance.json",
+          "sha256": "4ebc5389f7150490c1f90ffe93eda1b0752af5c79a3d19093398f698862693b9"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-preimage.sha256",
+          "sha256": "0f6836870e245d5c4e8dae46b6190b22640077e62c0ed39961a83fb130c86dbb"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/postimage.sha256",
+          "sha256": "b66173afa764c51663168aa35ae6c2f13fc193da2f650173b4580286270e4533"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/materials.sh",
+          "sha256": "619707bbb1f148369d8dcdc5ddde46841723180b6825fe2ed24edc04ff95cb08"
+        }
+      ],
+      "reviewed_at": "2026-11-23T19:29:32+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/appsec"
+      ],
+      "trixie_backport_receipt": {
+        "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+        "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+      },
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-124709",
+        "https://github.com/openssl/openssl/commit/f3acb0a3328046741479482c51cec815839e1b05"
+      ]
+    },
+    {
+      "analysis": "The qualified DANE package build preserves the seven previously reviewed OpenSSL corrections. The new receipt, precise package versions, binary identities and image archive must match for this scanner group.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "debian_trixie_backport",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T19:29:32+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-124709",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libssl3t64",
+            "purl": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl",
+            "purl": "pkg:deb/debian/openssl@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl-provider-legacy",
+            "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "openssl",
+        "vulnerability_id": "CVE-2026-124709"
+      },
+      "fingerprint": "sha256:5f87b52bbef74336398a740c3bc59ca05c9b4a7d997f4868740785757d10bf12",
+      "local_evidence": [
+        {
+          "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/patches.txt",
+          "sha256": "e3a4ccb061ed8da5772bb647ea4300fd16967b0b54547050af2e8972f64b47b7"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane.patch",
+          "sha256": "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-provenance.json",
+          "sha256": "4ebc5389f7150490c1f90ffe93eda1b0752af5c79a3d19093398f698862693b9"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-preimage.sha256",
+          "sha256": "0f6836870e245d5c4e8dae46b6190b22640077e62c0ed39961a83fb130c86dbb"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/postimage.sha256",
+          "sha256": "b66173afa764c51663168aa35ae6c2f13fc193da2f650173b4580286270e4533"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/materials.sh",
+          "sha256": "619707bbb1f148369d8dcdc5ddde46841723180b6825fe2ed24edc04ff95cb08"
+        }
+      ],
+      "reviewed_at": "2026-11-23T19:29:32+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/appsec"
+      ],
+      "trixie_backport_receipt": {
+        "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+        "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+      },
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-124709",
+        "https://github.com/openssl/openssl/commit/f3acb0a3328046741479482c51cec815839e1b05"
+      ]
+    },
+    {
+      "analysis": "The qualified DANE package build preserves the seven previously reviewed OpenSSL corrections. The new receipt, precise package versions, binary identities and image archive must match for this scanner group.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "debian_trixie_backport",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T19:29:32+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-88823",
+        "distro": {
+          "name": "debian",
+          "version": "13"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libssl3t64",
+            "purl": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl",
+            "purl": "pkg:deb/debian/openssl@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl-provider-legacy",
+            "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          }
+        ],
+        "scope": "compiled",
+        "severity": "High",
+        "source_package": "openssl",
+        "vulnerability_id": "CVE-2026-88823"
+      },
+      "fingerprint": "sha256:4bc02b23500ae48aa0df07af0602bd9a30386a2e11f1c6137166a66a9451e609",
+      "local_evidence": [
+        {
+          "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/patches.txt",
+          "sha256": "e3a4ccb061ed8da5772bb647ea4300fd16967b0b54547050af2e8972f64b47b7"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane.patch",
+          "sha256": "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-provenance.json",
+          "sha256": "4ebc5389f7150490c1f90ffe93eda1b0752af5c79a3d19093398f698862693b9"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-preimage.sha256",
+          "sha256": "0f6836870e245d5c4e8dae46b6190b22640077e62c0ed39961a83fb130c86dbb"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/postimage.sha256",
+          "sha256": "b66173afa764c51663168aa35ae6c2f13fc193da2f650173b4580286270e4533"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/materials.sh",
+          "sha256": "619707bbb1f148369d8dcdc5ddde46841723180b6825fe2ed24edc04ff95cb08"
+        }
+      ],
+      "reviewed_at": "2026-11-23T19:29:32+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/appsec"
+      ],
+      "trixie_backport_receipt": {
+        "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+        "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+      },
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-88823",
+        "https://github.com/openssl/openssl/commit/159e1de0c448d7b9f09ad768c8e141def4aa1eb4"
+      ]
+    },
+    {
+      "analysis": "The qualified DANE package build preserves the seven previously reviewed OpenSSL corrections. The new receipt, precise package versions, binary identities and image archive must match for this scanner group.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "debian_trixie_backport",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T19:29:32+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-88823",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libssl3t64",
+            "purl": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl",
+            "purl": "pkg:deb/debian/openssl@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl-provider-legacy",
+            "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "openssl",
+        "vulnerability_id": "CVE-2026-88823"
+      },
+      "fingerprint": "sha256:57db040a40f668745cd97e05f099250f6522351a89ac4ef21b9383adbbeb5697",
+      "local_evidence": [
+        {
+          "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/patches.txt",
+          "sha256": "e3a4ccb061ed8da5772bb647ea4300fd16967b0b54547050af2e8972f64b47b7"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane.patch",
+          "sha256": "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-provenance.json",
+          "sha256": "4ebc5389f7150490c1f90ffe93eda1b0752af5c79a3d19093398f698862693b9"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-preimage.sha256",
+          "sha256": "0f6836870e245d5c4e8dae46b6190b22640077e62c0ed39961a83fb130c86dbb"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/postimage.sha256",
+          "sha256": "b66173afa764c51663168aa35ae6c2f13fc193da2f650173b4580286270e4533"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/materials.sh",
+          "sha256": "619707bbb1f148369d8dcdc5ddde46841723180b6825fe2ed24edc04ff95cb08"
+        }
+      ],
+      "reviewed_at": "2026-11-23T19:29:32+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/appsec"
+      ],
+      "trixie_backport_receipt": {
+        "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+        "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+      },
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-88823",
+        "https://github.com/openssl/openssl/commit/159e1de0c448d7b9f09ad768c8e141def4aa1eb4"
+      ]
+    },
+    {
+      "analysis": "The qualified DANE package build preserves the seven previously reviewed OpenSSL corrections. The new receipt, precise package versions, binary identities and image archive must match for this scanner group.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "debian_trixie_backport",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T19:29:32+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-95691",
+        "distro": {
+          "name": "debian",
+          "version": "13"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libssl3t64",
+            "purl": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl",
+            "purl": "pkg:deb/debian/openssl@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl-provider-legacy",
+            "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          }
+        ],
+        "scope": "compiled",
+        "severity": "High",
+        "source_package": "openssl",
+        "vulnerability_id": "CVE-2026-95691"
+      },
+      "fingerprint": "sha256:0029d114562f184bc2cdea05942ad63b40a6fd8621f5e2f10347cc63dfe69fee",
+      "local_evidence": [
+        {
+          "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/patches.txt",
+          "sha256": "e3a4ccb061ed8da5772bb647ea4300fd16967b0b54547050af2e8972f64b47b7"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane.patch",
+          "sha256": "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-provenance.json",
+          "sha256": "4ebc5389f7150490c1f90ffe93eda1b0752af5c79a3d19093398f698862693b9"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-preimage.sha256",
+          "sha256": "0f6836870e245d5c4e8dae46b6190b22640077e62c0ed39961a83fb130c86dbb"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/postimage.sha256",
+          "sha256": "b66173afa764c51663168aa35ae6c2f13fc193da2f650173b4580286270e4533"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/materials.sh",
+          "sha256": "619707bbb1f148369d8dcdc5ddde46841723180b6825fe2ed24edc04ff95cb08"
+        }
+      ],
+      "reviewed_at": "2026-11-23T19:29:32+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/appsec"
+      ],
+      "trixie_backport_receipt": {
+        "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+        "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+      },
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-95691",
+        "https://github.com/openssl/openssl/commit/f6244675833e097c2429a40d1b206d95385bd42f"
+      ]
+    },
+    {
+      "analysis": "The qualified DANE package build preserves the seven previously reviewed OpenSSL corrections. The new receipt, precise package versions, binary identities and image archive must match for this scanner group.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "debian_trixie_backport",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T19:29:32+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-95691",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libssl3t64",
+            "purl": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl",
+            "purl": "pkg:deb/debian/openssl@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl-provider-legacy",
+            "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "openssl",
+        "vulnerability_id": "CVE-2026-95691"
+      },
+      "fingerprint": "sha256:f0603875bf31209c58894ea8daf4b93419413e215f732ef7bb57a04522e44300",
+      "local_evidence": [
+        {
+          "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/patches.txt",
+          "sha256": "e3a4ccb061ed8da5772bb647ea4300fd16967b0b54547050af2e8972f64b47b7"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane.patch",
+          "sha256": "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-provenance.json",
+          "sha256": "4ebc5389f7150490c1f90ffe93eda1b0752af5c79a3d19093398f698862693b9"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-preimage.sha256",
+          "sha256": "0f6836870e245d5c4e8dae46b6190b22640077e62c0ed39961a83fb130c86dbb"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/postimage.sha256",
+          "sha256": "b66173afa764c51663168aa35ae6c2f13fc193da2f650173b4580286270e4533"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/materials.sh",
+          "sha256": "619707bbb1f148369d8dcdc5ddde46841723180b6825fe2ed24edc04ff95cb08"
+        }
+      ],
+      "reviewed_at": "2026-11-23T19:29:32+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/appsec"
+      ],
+      "trixie_backport_receipt": {
+        "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+        "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+      },
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-95691",
+        "https://github.com/openssl/openssl/commit/f6244675833e097c2429a40d1b206d95385bd42f"
+      ]
+    },
+    {
+      "analysis": "The qualified DANE package build preserves the seven previously reviewed OpenSSL corrections. The new receipt, precise package versions, binary identities and image archive must match for this scanner group.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "debian_trixie_backport",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T19:29:32+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-95692",
+        "distro": {
+          "name": "debian",
+          "version": "13"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libssl3t64",
+            "purl": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl",
+            "purl": "pkg:deb/debian/openssl@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl-provider-legacy",
+            "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          }
+        ],
+        "scope": "compiled",
+        "severity": "High",
+        "source_package": "openssl",
+        "vulnerability_id": "CVE-2026-95692"
+      },
+      "fingerprint": "sha256:d08942065b018d2ce020a566f3de762b25ce8b0675d7fd123dee701f2fc059ac",
+      "local_evidence": [
+        {
+          "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/patches.txt",
+          "sha256": "e3a4ccb061ed8da5772bb647ea4300fd16967b0b54547050af2e8972f64b47b7"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane.patch",
+          "sha256": "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-provenance.json",
+          "sha256": "4ebc5389f7150490c1f90ffe93eda1b0752af5c79a3d19093398f698862693b9"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-preimage.sha256",
+          "sha256": "0f6836870e245d5c4e8dae46b6190b22640077e62c0ed39961a83fb130c86dbb"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/postimage.sha256",
+          "sha256": "b66173afa764c51663168aa35ae6c2f13fc193da2f650173b4580286270e4533"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/materials.sh",
+          "sha256": "619707bbb1f148369d8dcdc5ddde46841723180b6825fe2ed24edc04ff95cb08"
+        }
+      ],
+      "reviewed_at": "2026-11-23T19:29:32+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/appsec"
+      ],
+      "trixie_backport_receipt": {
+        "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+        "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+      },
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-95692",
+        "https://github.com/openssl/openssl/commit/257a3427aa0ef8d9dd2ef5b3e2d1c021a221b116"
+      ]
+    },
+    {
+      "analysis": "The qualified DANE package build preserves the seven previously reviewed OpenSSL corrections. The new receipt, precise package versions, binary identities and image archive must match for this scanner group.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "debian_trixie_backport",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T19:29:32+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-95692",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libssl3t64",
+            "purl": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl",
+            "purl": "pkg:deb/debian/openssl@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl-provider-legacy",
+            "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "openssl",
+        "vulnerability_id": "CVE-2026-95692"
+      },
+      "fingerprint": "sha256:de31592fae87b61b9a8206b04c849df9e9a764077d71f4522b115b853e362499",
+      "local_evidence": [
+        {
+          "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/patches.txt",
+          "sha256": "e3a4ccb061ed8da5772bb647ea4300fd16967b0b54547050af2e8972f64b47b7"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane.patch",
+          "sha256": "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-provenance.json",
+          "sha256": "4ebc5389f7150490c1f90ffe93eda1b0752af5c79a3d19093398f698862693b9"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-preimage.sha256",
+          "sha256": "0f6836870e245d5c4e8dae46b6190b22640077e62c0ed39961a83fb130c86dbb"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/postimage.sha256",
+          "sha256": "b66173afa764c51663168aa35ae6c2f13fc193da2f650173b4580286270e4533"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/materials.sh",
+          "sha256": "619707bbb1f148369d8dcdc5ddde46841723180b6825fe2ed24edc04ff95cb08"
+        }
+      ],
+      "reviewed_at": "2026-11-23T19:29:32+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/appsec"
+      ],
+      "trixie_backport_receipt": {
+        "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+        "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+      },
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-95692",
+        "https://github.com/openssl/openssl/commit/257a3427aa0ef8d9dd2ef5b3e2d1c021a221b116"
+      ]
+    },
+    {
+      "analysis": "The Trixie gettext backport is installed in both exact runtime packages and was observed by this scanner scope. The selected loader and ELF files, archive receipts and SBOM bindings must agree.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "debian_trixie_backport",
+          "sha256": "17ff8e809479ab52179588a33d037a6f79f76b4ad0ec1357155910c5a908883a"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T19:29:32+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-84243",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libc-bin",
+            "purl": "pkg:deb/debian/libc-bin@2.41-12%2Bdeb13u5%2Bpamolive1?arch=amd64&distro=debian-13.8&upstream=glibc",
+            "type": "deb",
+            "version": "2.41-12+deb13u5+pamolive1"
+          },
+          {
+            "name": "libc6",
+            "purl": "pkg:deb/debian/libc6@2.41-12%2Bdeb13u5%2Bpamolive1?arch=amd64&distro=debian-13.8&upstream=glibc",
+            "type": "deb",
+            "version": "2.41-12+deb13u5+pamolive1"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "glibc",
+        "vulnerability_id": "CVE-2026-84243"
+      },
+      "fingerprint": "sha256:e33c33e3d20c033e7fe4b14c1c56ae461a09b5f742be2f6ecc0a6367aa6e6bc0",
+      "local_evidence": [
+        {
+          "path": "deploy/glibc-trixie-backport/qualification.json",
+          "sha256": "17ff8e809479ab52179588a33d037a6f79f76b4ad0ec1357155910c5a908883a"
+        },
+        {
+          "path": "deploy/glibc-trixie-backport/patch.sha256",
+          "sha256": "1ff8695dfafcdf00e946695587f42a6ef1bd171c21ee7c866527df481d7a61dd"
+        },
+        {
+          "path": "deploy/glibc-trixie-backport/upstream.sha256",
+          "sha256": "6cbfe951468da057a9ac8a4d8bbddb6821ad1dc654e99e9e19402d1b0d61b78b"
+        },
+        {
+          "path": "deploy/glibc-trixie-backport/preimage.sha256",
+          "sha256": "52514b424c171a3ce57f963a3e288bd30729a5ddf6d032ff010c18f13bfd4d5d"
+        },
+        {
+          "path": "deploy/glibc-trixie-backport/postimage.sha256",
+          "sha256": "4a92193c6588f65e6dca2977a42d50744d09e4bf18ce6c405cf30e3ebcb66380"
+        },
+        {
+          "path": "deploy/glibc-trixie-backport/materials.sh",
+          "sha256": "bb1570c277ac9c183c8c1df96af40a0ebf648a67f2960a21875775311b71bcfd"
+        }
+      ],
+      "reviewed_at": "2026-11-23T19:29:32+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/appsec"
+      ],
+      "trixie_backport_receipt": {
+        "path": "deploy/glibc-trixie-backport/qualification.json",
+        "sha256": "17ff8e809479ab52179588a33d037a6f79f76b4ad0ec1357155910c5a908883a"
+      },
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-84243",
+        "https://github.com/bminor/glibc/commit/03067f3c5e39aec5ec250a44bc1b395a1afd45e8"
+      ]
+    },
+    {
+      "analysis": "The local build contains the reviewed DANE delta from the proposal pinned to the Trixie preimage and postimage. The decision requires the qualified Debian package receipt and exact image evidence. Its scope is the Debian package finding.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "debian_trixie_backport",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T19:29:32+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-84786",
+        "distro": {
+          "name": "debian",
+          "version": "13.8"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libssl3t64",
+            "purl": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl",
+            "purl": "pkg:deb/debian/openssl@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl-provider-legacy",
+            "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13.8&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          }
+        ],
+        "scope": "os",
+        "severity": "High",
+        "source_package": "openssl",
+        "vulnerability_id": "CVE-2026-84786"
+      },
+      "fingerprint": "sha256:ae9730c0f238c97d0b3d3710fd6ef3a11be6cbcad887d65f4b42364a4f266079",
+      "local_evidence": [
+        {
+          "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/patches.txt",
+          "sha256": "e3a4ccb061ed8da5772bb647ea4300fd16967b0b54547050af2e8972f64b47b7"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane.patch",
+          "sha256": "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-provenance.json",
+          "sha256": "4ebc5389f7150490c1f90ffe93eda1b0752af5c79a3d19093398f698862693b9"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-preimage.sha256",
+          "sha256": "0f6836870e245d5c4e8dae46b6190b22640077e62c0ed39961a83fb130c86dbb"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/postimage.sha256",
+          "sha256": "b66173afa764c51663168aa35ae6c2f13fc193da2f650173b4580286270e4533"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/materials.sh",
+          "sha256": "619707bbb1f148369d8dcdc5ddde46841723180b6825fe2ed24edc04ff95cb08"
+        }
+      ],
+      "reviewed_at": "2026-11-23T19:29:32+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/appsec"
+      ],
+      "trixie_backport_receipt": {
+        "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+        "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+      },
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-84786",
+        "https://github.com/openssl/openssl/pull/33634"
+      ]
+    },
+    {
+      "analysis": "The Trixie gettext backport is installed in both exact runtime packages and was observed by this scanner scope. The selected loader and ELF files, archive receipts and SBOM bindings must agree.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "debian_trixie_backport",
+          "sha256": "17ff8e809479ab52179588a33d037a6f79f76b4ad0ec1357155910c5a908883a"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T19:29:32+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-84243",
+        "distro": {
+          "name": "debian",
+          "version": "13"
+        },
+        "fix_state": "wont-fix",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libc-bin",
+            "purl": "pkg:deb/debian/libc-bin@2.41-12%2Bdeb13u5%2Bpamolive1?arch=amd64&distro=debian-13&upstream=glibc",
+            "type": "deb",
+            "version": "2.41-12+deb13u5+pamolive1"
+          },
+          {
+            "name": "libc6",
+            "purl": "pkg:deb/debian/libc6@2.41-12%2Bdeb13u5%2Bpamolive1?arch=amd64&distro=debian-13&upstream=glibc",
+            "type": "deb",
+            "version": "2.41-12+deb13u5+pamolive1"
+          }
+        ],
+        "scope": "compiled",
+        "severity": "High",
+        "source_package": "glibc",
+        "vulnerability_id": "CVE-2026-84243"
+      },
+      "fingerprint": "sha256:691f125228e00aab980d909d87be1a6f2bb7307dca4944cfeb6a3572fbba6462",
+      "local_evidence": [
+        {
+          "path": "deploy/glibc-trixie-backport/qualification.json",
+          "sha256": "17ff8e809479ab52179588a33d037a6f79f76b4ad0ec1357155910c5a908883a"
+        },
+        {
+          "path": "deploy/glibc-trixie-backport/patch.sha256",
+          "sha256": "1ff8695dfafcdf00e946695587f42a6ef1bd171c21ee7c866527df481d7a61dd"
+        },
+        {
+          "path": "deploy/glibc-trixie-backport/upstream.sha256",
+          "sha256": "6cbfe951468da057a9ac8a4d8bbddb6821ad1dc654e99e9e19402d1b0d61b78b"
+        },
+        {
+          "path": "deploy/glibc-trixie-backport/preimage.sha256",
+          "sha256": "52514b424c171a3ce57f963a3e288bd30729a5ddf6d032ff010c18f13bfd4d5d"
+        },
+        {
+          "path": "deploy/glibc-trixie-backport/postimage.sha256",
+          "sha256": "4a92193c6588f65e6dca2977a42d50744d09e4bf18ce6c405cf30e3ebcb66380"
+        },
+        {
+          "path": "deploy/glibc-trixie-backport/materials.sh",
+          "sha256": "bb1570c277ac9c183c8c1df96af40a0ebf648a67f2960a21875775311b71bcfd"
+        }
+      ],
+      "reviewed_at": "2026-11-23T19:29:32+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/appsec"
+      ],
+      "trixie_backport_receipt": {
+        "path": "deploy/glibc-trixie-backport/qualification.json",
+        "sha256": "17ff8e809479ab52179588a33d037a6f79f76b4ad0ec1357155910c5a908883a"
+      },
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-84243",
+        "https://github.com/bminor/glibc/commit/03067f3c5e39aec5ec250a44bc1b395a1afd45e8"
+      ]
+    },
+    {
+      "analysis": "The local build contains the reviewed DANE delta from the proposal pinned to the Trixie preimage and postimage. The decision requires the qualified Debian package receipt and exact image evidence. Its scope is the Debian package finding.",
+      "analyst": "codex:/root",
+      "conditions": [
+        {
+          "kind": "debian_trixie_backport",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        }
+      ],
+      "disposition": "fixed_by_backport",
+      "expires": "2026-12-07T19:29:32+00:00",
+      "finding": {
+        "data_source": "https://security-tracker.debian.org/tracker/CVE-2026-84786",
+        "distro": {
+          "name": "debian",
+          "version": "13"
+        },
+        "fix_state": "not-fixed",
+        "namespace": "debian:distro:debian:13",
+        "packages": [
+          {
+            "name": "libssl3t64",
+            "purl": "pkg:deb/debian/libssl3t64@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl",
+            "purl": "pkg:deb/debian/openssl@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          },
+          {
+            "name": "openssl-provider-legacy",
+            "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.9-1~deb13u1%2Bpamolive2?arch=amd64&distro=debian-13&upstream=openssl",
+            "type": "deb",
+            "version": "3.5.9-1~deb13u1+pamolive2"
+          }
+        ],
+        "scope": "compiled",
+        "severity": "High",
+        "source_package": "openssl",
+        "vulnerability_id": "CVE-2026-84786"
+      },
+      "fingerprint": "sha256:46aab587b8b24dd5a012a70ee8baf340aa0ec0f790b5b8a7c0c7dc0b6dd6c433",
+      "local_evidence": [
+        {
+          "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+          "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/patches.txt",
+          "sha256": "e3a4ccb061ed8da5772bb647ea4300fd16967b0b54547050af2e8972f64b47b7"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane.patch",
+          "sha256": "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-provenance.json",
+          "sha256": "4ebc5389f7150490c1f90ffe93eda1b0752af5c79a3d19093398f698862693b9"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/dane-preimage.sha256",
+          "sha256": "0f6836870e245d5c4e8dae46b6190b22640077e62c0ed39961a83fb130c86dbb"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/postimage.sha256",
+          "sha256": "b66173afa764c51663168aa35ae6c2f13fc193da2f650173b4580286270e4533"
+        },
+        {
+          "path": "deploy/openssl-trixie-backport/materials.sh",
+          "sha256": "619707bbb1f148369d8dcdc5ddde46841723180b6825fe2ed24edc04ff95cb08"
+        }
+      ],
+      "reviewed_at": "2026-11-23T19:29:32+00:00",
+      "reviewers": [
+        "codex:/root/acl_native_smoke",
+        "codex:/root/appsec"
+      ],
+      "trixie_backport_receipt": {
+        "path": "deploy/openssl-trixie-backport/qualification-dane.json",
+        "sha256": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0"
+      },
+      "vendor_evidence": [
+        "https://security-tracker.debian.org/tracker/CVE-2026-84786",
+        "https://github.com/openssl/openssl/pull/33634"
+      ]
     }
   ],
   "positive_control": {

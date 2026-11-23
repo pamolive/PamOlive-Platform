@@ -58,15 +58,36 @@ TRIXIE_BACKPORT_COMMITS = {
         "CVE-2026-78409": "https://github.com/util-linux/util-linux/commit/ae19f7546ccb038966fc121e287e1a1385ba94bb",
         "CVE-2026-78410": "https://github.com/util-linux/util-linux/commit/9fcb98bf08d9119d07ba3a3c709b1a85e4a1bbcb",
     },
+    "glibc": {
+        "CVE-2026-84243": "https://github.com/bminor/glibc/commit/03067f3c5e39aec5ec250a44bc1b395a1afd45e8",
+    },
 }
+OPENSSL_DANE_ADVISORY = "CVE-2026-84786"
+OPENSSL_DANE_PROPOSAL = "https://github.com/openssl/openssl/pull/33634"
 TRIXIE_ABSENT_CODE = {("util-linux", "CVE-2026-78409")}
 TRIXIE_BACKPORT_FIELDS = {
     "krb5": "kerberos_receipt_sha256",
     "openssl": "openssl_receipt_sha256",
     "util-linux": "util_linux_receipt_sha256",
+    "glibc": "glibc_receipt_sha256",
 }
 # Scope each CVE catalog to the exact materials and output independently reviewed.
 TRIXIE_BACKPORT_PINS = {
+    "glibc": {
+        "recipe": (
+            "patch.sha256", "1ff8695dfafcdf00e946695587f42a6ef1bd171c21ee7c866527df481d7a61dd",
+        ),
+        "receipt": "17ff8e809479ab52179588a33d037a6f79f76b4ad0ec1357155910c5a908883a",
+        "materials": (
+            ("upstream.sha256", "6cbfe951468da057a9ac8a4d8bbddb6821ad1dc654e99e9e19402d1b0d61b78b"),
+            ("preimage.sha256", "52514b424c171a3ce57f963a3e288bd30729a5ddf6d032ff010c18f13bfd4d5d"),
+            (
+                "postimage.sha256",
+                "4a92193c6588f65e6dca2977a42d50744d09e4bf18ce6c405cf30e3ebcb66380",
+            ),
+            ("materials.sh", "bb1570c277ac9c183c8c1df96af40a0ebf648a67f2960a21875775311b71bcfd"),
+        ),
+    },
     "krb5": {
         "recipe": (
             "source.sha256", "337ba110e94364cdcc8fa60fd6598649c21c0dbb349b07307e169eef024e2047",
@@ -93,6 +114,23 @@ TRIXIE_BACKPORT_PINS = {
             ("materials.sh", "d3566e370fb1982ef3299714184b437e0a55232ca6eb6881e02fa651641b8a9c"),
         ),
     },
+}
+OPENSSL_DANE_PINS = {
+    "recipe": TRIXIE_BACKPORT_PINS["openssl"]["recipe"],
+    "receipt": "2b119889a3882af54f1271306467ec01013c87355b7034f4a7ed409c9c1b78a0",
+    "materials": (
+        ("dane.patch", "b221dae5fad608ab3a11d3c69108bfa88c57da1878683879e1231290ccf54672"),
+        (
+            "dane-provenance.json",
+            "4ebc5389f7150490c1f90ffe93eda1b0752af5c79a3d19093398f698862693b9",
+        ),
+        (
+            "dane-preimage.sha256",
+            "0f6836870e245d5c4e8dae46b6190b22640077e62c0ed39961a83fb130c86dbb",
+        ),
+        ("postimage.sha256", "b66173afa764c51663168aa35ae6c2f13fc193da2f650173b4580286270e4533"),
+        ("materials.sh", "619707bbb1f148369d8dcdc5ddde46841723180b6825fe2ed24edc04ff95cb08"),
+    ),
 }
 SQLITE_FIXES = {
     "CVE-2026-119373": "https://sqlite.org/src/info/a7f8c92f62",
@@ -1098,11 +1136,29 @@ def gcc_conditions(entry, finding, *, proofs, repo):
 
 
 def trixie_backport_holds(entry, finding, *, proofs, report):
-    from deploy import krb5_trixie_materials, openssl_trixie_materials, util_linux_trixie_materials
+    from deploy import (
+        glibc_trixie_materials,
+        krb5_trixie_materials,
+        openssl_trixie_materials,
+        util_linux_trixie_materials,
+    )
 
     source = finding["source_package"]
     cve = finding["vulnerability_id"]
+    require(source in TRIXIE_BACKPORT_PINS, "trixie_backport_fix")
+    installed_receipt = report.get(TRIXIE_BACKPORT_FIELDS[source]) if report is not None else None
+    pins = TRIXIE_BACKPORT_PINS[source]
+    receipt_filename = "qualification.json"
     expected_commit = TRIXIE_BACKPORT_COMMITS.get(source, {}).get(cve)
+    if source == "openssl":
+        if entry["trixie_backport_receipt"].get("sha256") == OPENSSL_DANE_PINS["receipt"]:
+            pins = OPENSSL_DANE_PINS
+            if cve == OPENSSL_DANE_ADVISORY:
+                expected_commit = OPENSSL_DANE_PROPOSAL
+        openssl = openssl_trixie_materials.select(pins["receipt"])
+        receipt_filename = openssl.filename
+    else:
+        openssl = None
     require(expected_commit and expected_commit in entry["vendor_evidence"], "trixie_backport_fix")
     disposition = (
         "code_not_present" if (source, cve) in TRIXIE_ABSENT_CODE else "fixed_by_backport"
@@ -1110,8 +1166,9 @@ def trixie_backport_holds(entry, finding, *, proofs, report):
     require(entry["disposition"] == disposition, "trixie_backport_disposition")
     module = {
         "krb5": krb5_trixie_materials,
-        "openssl": openssl_trixie_materials,
+        "openssl": openssl,
         "util-linux": util_linux_trixie_materials,
+        "glibc": glibc_trixie_materials,
     }[source]
     scope = finding["scope"]
     version = {"os": "13.8", "compiled": "13"}.get(scope)
@@ -1142,10 +1199,9 @@ def trixie_backport_holds(entry, finding, *, proofs, report):
                 "trixie_backport_package_identity")
 
     directory = f"deploy/{source}-trixie-backport"
-    pins = TRIXIE_BACKPORT_PINS[source]
     required = (pins["recipe"], *pins.get("materials", ()))
     receipt_hash = pins["receipt"]
-    expected = {"path": f"{directory}/qualification.json", "sha256": receipt_hash}
+    expected = {"path": f"{directory}/{receipt_filename}", "sha256": receipt_hash}
     condition = {"kind": "debian_trixie_backport", "sha256": receipt_hash}
     required_evidence = [{"path": f"{directory}/{name}", "sha256": sha} for name, sha in required]
     require(module.SHA256 == receipt_hash and
@@ -1154,8 +1210,7 @@ def trixie_backport_holds(entry, finding, *, proofs, report):
             entry.get("conditions") == [condition] and
             "backport_inventory" not in entry and "build_recipe" not in entry,
             "trixie_backport_receipt")
-    require(report is not None and report.get(TRIXIE_BACKPORT_FIELDS[source]) == receipt_hash,
-            "trixie_backport_image")
+    require(installed_receipt == receipt_hash, "trixie_backport_image")
     return True
 
 
@@ -1470,6 +1525,9 @@ def verify_trixie_sbom(sca_sbom, report, config_id, properties):
     if "util_linux_receipt_sha256" in report:
         require(properties.get("pamolive:sbom:util-linux-receipt-sha256") ==
                 report["util_linux_receipt_sha256"], "trixie_util_linux_sbom_binding")
+    if "glibc_receipt_sha256" in report:
+        require(properties.get("pamolive:sbom:glibc-receipt-sha256") ==
+                report["glibc_receipt_sha256"], "trixie_glibc_sbom_binding")
 
 
 def verify_expat_sbom(sca_sbom, report, config_id, properties):
@@ -1591,6 +1649,9 @@ def qualify(os_report, compiled_report, positive_report, compiled_sbom, policy, 
         modes = {"kerberos_backport": True, "openssl_backport": True}
         if any(finding["source_package"] == "util-linux" for finding in trixie_findings):
             modes["util_linux_backport"] = True
+        if ("pamolive:sbom:glibc-receipt-sha256" in props
+                or any(finding["source_package"] == "glibc" for finding in trixie_findings)):
+            modes.update(util_linux_backport=True, glibc_backport=True)
         trixie_report = debian_refresh_inventory.inspect_bundle(Path(archive).parent, revision,
                                                                 **modes)
         require(trixie_report["image_config_id"] == config_id, "trixie_backport_config")

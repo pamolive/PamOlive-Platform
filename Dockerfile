@@ -81,7 +81,7 @@ RUN --mount=from=debian-refresh-inputs,source=/opt/pamolive-apt-cache,target=/tm
 RUN --network=none cd /app && python -B -m deploy.debian_refresh_inventory --kerberos-backport --root / --output /tmp/debian-refresh-base.json && rm /tmp/debian-refresh-base.json
 
 FROM debian-rebuild-base AS openssl-trixie-package
-COPY --chmod=0444 deploy/openssl-trixie-backport/materials.sh deploy/openssl-trixie-backport/patches.py deploy/openssl-trixie-backport/patches.txt deploy/openssl-trixie-backport/source.sha256 deploy/openssl-trixie-backport/preimage.sha256 deploy/openssl-trixie-backport/postimage.sha256 /opt/openssl-inputs/
+COPY --chmod=0444 deploy/openssl-trixie-backport/materials.sh deploy/openssl-trixie-backport/patches.py deploy/openssl-trixie-backport/patches.txt deploy/openssl-trixie-backport/source.sha256 deploy/openssl-trixie-backport/preimage.sha256 deploy/openssl-trixie-backport/postimage.sha256 deploy/openssl-trixie-backport/dane.patch deploy/openssl-trixie-backport/dane-patch.sha256 deploy/openssl-trixie-backport/dane-preimage.sha256 /opt/openssl-inputs/
 RUN test -s /usr/share/keyrings/debian-archive-keyring.pgp \
  && chmod 0755 /opt/openssl-inputs \
  && sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
@@ -101,11 +101,11 @@ RUN --network=none sh /opt/openssl-inputs/materials.sh build
 FROM debian-runtime-kerberos AS debian-runtime-openssl
 RUN --network=none install -d -m 0755 /app/deploy/openssl-trixie-backport /usr/share/pamolive/openssl-trixie
 COPY --chmod=0444 deploy/openssl_trixie_materials.py /app/deploy/
-COPY --chmod=0444 deploy/openssl-trixie-backport/qualification.json /app/deploy/openssl-trixie-backport/qualification.json
-COPY --chmod=0444 deploy/openssl-trixie-backport/qualification.json /usr/share/pamolive/openssl-trixie/qualification.json
+COPY --chmod=0444 deploy/openssl-trixie-backport/qualification.json deploy/openssl-trixie-backport/qualification-dane.json /app/deploy/openssl-trixie-backport/
+COPY --chmod=0444 deploy/openssl-trixie-backport/qualification-dane.json /usr/share/pamolive/openssl-trixie/qualification.json
 RUN --mount=from=openssl-trixie-package,source=/work,target=/tmp/openssl-packages,ro \
   set -eu; \
-  ssl=/tmp/openssl-packages; version='3.5.9-1~deb13u1+pamolive1'; \
+  ssl=/tmp/openssl-packages; version='3.5.9-1~deb13u1+pamolive2'; \
   PYTHONPATH=/app python -B -S -P -m deploy.openssl_trixie_materials --directory "$ssl"; \
   packages='libssl3t64 libssl-dev openssl openssl-provider-legacy'; \
   printf '%s\n' "Package: $packages" "Pin: version $version" 'Pin-Priority: 999' '' \
@@ -170,6 +170,28 @@ RUN install -d -m 0755 -o 65534 -g 65534 /evidence && chmod 0755 /opt/ncurses-in
 USER 65534:65534
 RUN --network=none --mount=from=ncurses-trixie-package,source=/work,target=/packages,ro \
   sh /opt/ncurses-inputs/materials.sh export
+
+FROM debian-rebuild-base AS glibc-trixie-package
+COPY --chmod=0444 deploy/glibc-trixie-backport/ /opt/glibc-inputs/
+RUN test -s /usr/share/keyrings/debian-archive-keyring.pgp \
+ && chmod 0755 /opt/glibc-inputs \
+ && sed -i 's|http://deb.debian.org/|https://deb.debian.org/|g; s/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
+ && grep -Fxq 'Types: deb deb-src' /etc/apt/sources.list.d/debian.sources \
+ && printf '%s\n' 'Acquire::Check-Valid-Until "true";' \
+    'Acquire::AllowInsecureRepositories "false";' \
+    'APT::Get::AllowUnauthenticated "false";' \
+    'APT::Update::Error-Mode "any";' > /etc/apt/apt.conf.d/99pamolive-glibc \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends --no-remove build-essential fakeroot quilt curl ca-certificates \
+ && apt-get build-dep -y --arch-only --no-install-recommends 'glibc=2.41-12+deb13u5' \
+ && install -d -m 0755 -o _apt /work
+WORKDIR /work
+RUN sh /opt/glibc-inputs/materials.sh acquire \
+ && chown -R 65534:65534 /work \
+ && rm -rf /var/lib/apt/lists/*
+ENV HOME=/work
+USER 65534:65534
+RUN --network=none sh /opt/glibc-inputs/materials.sh build
 
 FROM debian-rebuild-base AS sqlite-trixie-source
 COPY deploy/sqlite-rebuild/source-apt.conf deploy/sqlite-rebuild/forky.sources deploy/sqlite-rebuild/materials.sh /opt/sqlite-inputs/
@@ -282,7 +304,7 @@ RUN --mount=from=debian-refresh-inputs,source=/opt/pamolive-apt-cache,target=/tm
   --mount=from=openssl-trixie-package,source=/work,target=/tmp/openssl-packages,ro \
   set -eu; \
   archives=/tmp/debian-refresh-archives; krb=/tmp/krb5-packages; version='1.21.3-5+deb13u2+pamolive1'; \
-  ssl=/tmp/openssl-packages; ssl_version='3.5.9-1~deb13u1+pamolive1'; \
+  ssl=/tmp/openssl-packages; ssl_version='3.5.9-1~deb13u1+pamolive2'; \
   PYTHONPATH=/app python -B -S -P -m deploy.krb5_trixie_materials --directory "$krb" --sdk; \
   PYTHONPATH=/app python -B -S -P -m deploy.openssl_trixie_materials --directory "$ssl" --sdk; \
   apt-get update; \
@@ -411,10 +433,19 @@ RUN --network=none --mount=from=ncurses-trixie-export,source=/evidence,target=/p
   && sha256sum --check --strict deploy/ncurses-trixie-backport/installed.sha256 \
   && install -d -m 0755 /usr/share/pamolive/ncurses-trixie \
   && install -m 0444 deploy/ncurses-trixie-backport/qualification.json /usr/share/pamolive/ncurses-trixie/qualification.json
+RUN --network=none --mount=from=glibc-trixie-package,source=/work,target=/packages,ro \
+  set -eu; \
+  python -B -m deploy.glibc_trixie_materials --directory /packages; \
+  version='2.41-12+deb13u5+pamolive1'; \
+  dpkg --install "/packages/libc6_${version}_amd64.deb" "/packages/libc-bin_${version}_amd64.deb"; \
+  audit=$(dpkg --audit); test -z "$audit"; \
+  apt-get check; \
+  install -d -m 0755 /usr/share/pamolive/glibc-trixie; \
+  install -m 0444 deploy/glibc-trixie-backport/qualification.json /usr/share/pamolive/glibc-trixie/qualification.json
 RUN python deploy/native_inventory.py --capture --output /opt/pamolive-native-manifest.json
 RUN python manage.py collectstatic --noinput
 USER 65534:65534
-RUN --network=none python -B -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport --util-linux-backport --root / --output /tmp/debian-refresh-runtime.json && rm /tmp/debian-refresh-runtime.json
+RUN --network=none python -B -m deploy.debian_refresh_inventory --kerberos-backport --openssl-backport --util-linux-backport --glibc-backport --root / --output /tmp/debian-refresh-runtime.json && rm /tmp/debian-refresh-runtime.json
 RUN --network=none sha256sum --check --strict deploy/ncurses-trixie-backport/installed.sha256
 USER root
 EXPOSE 8000

@@ -325,6 +325,7 @@ def debian_components(report, image_digest, image_digest_kind):
         SCHEMA_V2,
         SCHEMA_V3,
         SCHEMA_V4,
+        SCHEMA_V5,
         validate_report,
     )
     from qualification.debian_138_refresh.verify_refresh import NATIVE_FILES, PACKAGES, archive_name
@@ -337,24 +338,31 @@ def debian_components(report, image_digest, image_digest_kind):
     require(report["image_config_id"] == image_digest, "debian_image_binding")
     qualifications = {}
     native_files = NATIVE_FILES
-    if report["schema"] in (SCHEMA_V2, SCHEMA_V3, SCHEMA_V4):
+    if report["schema"] in (SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5):
         from deploy import krb5_trixie_materials
 
         qualifications["krb5"] = krb5_trixie_materials.load_reviewed()["qualification"]
-    if report["schema"] in (SCHEMA_V3, SCHEMA_V4):
+    if report["schema"] in (SCHEMA_V3, SCHEMA_V4, SCHEMA_V5):
         from deploy import openssl_trixie_materials
 
-        qualifications["openssl"] = openssl_trixie_materials.load_reviewed()["qualification"]
+        reviewed = openssl_trixie_materials.select(report["openssl_receipt_sha256"])
+        qualifications["openssl"] = reviewed.load_reviewed()["qualification"]
         native_files = {**NATIVE_FILES, **openssl_trixie_materials.ELF_BY_PACKAGE}
-    if report["schema"] == SCHEMA_V4:
+    if report["schema"] in (SCHEMA_V4, SCHEMA_V5):
         from deploy import util_linux_trixie_materials
 
         qualifications["util-linux"] = util_linux_trixie_materials.load_reviewed()["qualification"]
         native_files = {**native_files, **util_linux_trixie_materials.ELF_BY_PACKAGE}
+    if report["schema"] == SCHEMA_V5:
+        from deploy import glibc_trixie_materials
+
+        qualifications["glibc"] = glibc_trixie_materials.load_reviewed()["qualification"]
+        native_files = {**native_files, **glibc_trixie_materials.ELF_BY_PACKAGE}
     origins = {
         "krb5": "pamolive-kerberos-backport",
         "openssl": "pamolive-openssl-backport",
         "util-linux": "pamolive-util-linux-backport",
+        "glibc": "pamolive-glibc-backport",
     }
     components, deps, roots = [], [], []
     for item in report["packages"]:
@@ -510,6 +518,8 @@ def merge(app, manifest, report, *, image_digest, input_hashes,
         provenance["openssl-receipt-sha256"] = debian_report["openssl_receipt_sha256"]
     if debian_report is not None and "util_linux_receipt_sha256" in debian_report:
         provenance["util-linux-receipt-sha256"] = debian_report["util_linux_receipt_sha256"]
+    if debian_report is not None and "glibc_receipt_sha256" in debian_report:
+        provenance["glibc-receipt-sha256"] = debian_report["glibc_receipt_sha256"]
     properties.extend({"name": "pamolive:sbom:" + key, "value": value}
                       for key, value in sorted(provenance.items()))
     result["serialNumber"] = "urn:uuid:" + str(uuid.uuid5(uuid.NAMESPACE_URL,
