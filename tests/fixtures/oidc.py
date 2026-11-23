@@ -20,10 +20,10 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
 
-def tls_material(directory):
+def write_loopback_tls_files(directory):
     directory = Path(directory)
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "PamOlive disposable OIDC fixture")])
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "PamOlive disposable TLS fixture")])
     now = datetime.now(UTC)
     cert = (
         x509.CertificateBuilder()
@@ -51,6 +51,12 @@ def tls_material(directory):
             serialization.NoEncryption(),
         )
     )
+    key_path.chmod(0o600)
+    return cert_path, key_path
+
+
+def tls_material(directory):
+    cert_path, key_path = write_loopback_tls_files(directory)
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(cert_path, key_path)
     return context, str(cert_path)
