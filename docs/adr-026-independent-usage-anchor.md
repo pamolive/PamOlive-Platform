@@ -369,6 +369,33 @@ système de fichiers partagé entre hôtes ne sont pas couverts par le verrou.
 La garde des clés et la reprise entre autorités administrées séparément
 restent à qualifier sur l'infrastructure cible.
 
+### Commandes du dépositaire
+
+Le paquet installé expose `python -I -m pamolive_usage_anchor.recovery_cli`
+au compte Linux propriétaire du dossier de garde. Le dépositaire fournit le
+dossier, la clé publique de gouvernance et les quatre champs de périmètre
+issus de sa configuration indépendante. `commission` et `advance` prennent
+un manifeste signé, son empreinte approuvée et les fichiers des nouveaux
+checkpoints. `advance` exige aussi l'empreinte du manifeste prédécesseur.
+Fournir un argument `--checkpoint` pour chaque nouvel objet.
+
+```sh
+python -I -m pamolive_usage_anchor.recovery_cli \
+  --directory "$CUSTODY_DIR" --governance-key "$GOVERNANCE_PUBLIC_HEX" \
+  --organization "$ORG_ID" --installation "$INSTALLATION_ID" \
+  --context "$CONTEXT_ID" --slot-sha256 "$SLOT_SHA256" \
+  restore --current-sha256 "$MANIFEST_SHA256" --checkpoint-sha256 "$CHECKPOINT_SHA256"
+```
+
+Le succès produit un reçu JSON sur la sortie standard. Un refus émet un
+code stable sur la sortie d'erreur. Le journal du dépositaire peut associer
+le reçu à l'heure et à l'identité de l'opérateur authentifié. Un code
+`unavailable` ou une sortie perdue après `advance` impose un réessai exact
+avant d'actualiser le pin extérieur. En cas de commissionnement interrompu,
+le dépositaire rapproche les objets locaux des références approuvées avant
+de reprendre le service. Les fichiers d'entrée contiennent des documents
+signés et des clés publiques. Les clés privées restent sous garde séparée.
+
 ## Contrats et validation
 
 Les octets, tailles, états, sources, verrous et HTTP sont normatifs dans

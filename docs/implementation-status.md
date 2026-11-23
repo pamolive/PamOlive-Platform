@@ -1,5 +1,22 @@
 # État réel de l’implémentation
 
+## Garde atomique du témoin et image Cairo — 23 novembre 2026
+
+Sur `eda158e`, les 136 tests installés du témoin passent sans test ignoré.
+Le laboratoire Linux et PostgreSQL vérifie la rotation concurrente, le
+verrou entre processus, la réouverture du checkpoint historique et le rejet
+d'un objet conservé sans admission. Les trois archives de cette campagne
+correspondent au commit et à l'empreinte du transfert. La durabilité après
+coupure matérielle reste à démontrer.
+[CI de garde atomique](https://github.com/pamolive/PamOlive-Platform/actions/runs/45128677201)
+
+Sur `a26337c`, la preuve de l'image exacte confirme l'absence des binaires
+X11/Xrender. Le scan compare 43 groupes bloquants aux 45 de `36e35cd`. Les
+deux empreintes retirées concernent X11 et Xrender. Aucun groupe nouveau
+n'est apparu dans cette comparaison. Le candidat Cairo reste bloqué à la
+promotion.
+[CI du candidat Cairo](https://github.com/pamolive/PamOlive-Platform/actions/runs/45125072702)
+
 ## Rotation du témoin après PITR — 23 novembre 2026
 
 Sur `96740d3`, les 131 tests de la wheel installée passent sans test ignoré.
